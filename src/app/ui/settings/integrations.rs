@@ -381,7 +381,7 @@ impl DrawingApp {
             return;
         }
         let (mut save, mut test, mut remove) = (false, false, false);
-        let hint = "Clássico com o escopo repo, ou fine-grained só de leitura em Pull requests, Commit statuses e Actions.";
+        let hint = "Clássico com o escopo repo, ou fine-grained com leitura em Commit statuses e Actions e leitura e escrita em Pull requests (para salvar a descrição e comentar pela ilha).";
         row(ui, k, "Token pessoal", hint, |ui| {
             save = button(ui, k, "Salvar").clicked();
             if button(ui, k, "Criar token…").clicked() {
@@ -414,7 +414,7 @@ impl DrawingApp {
             note(ui, k, "Sem token: crie um, cole acima e salve. Ele vai para o cofre do sistema, nunca para um arquivo.");
         }
         if let Some(pulse) = &github.pulse {
-            for request in &pulse.mine {
+            for request in pulse.open() {
                 if link(ui, k, (request.ci.label().0, check_color(k, request.ci)), &format!("{}  {}", request.id, request.title), &request.state_words()) {
                     open_page(&request.url);
                 }

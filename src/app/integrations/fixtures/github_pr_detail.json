@@ -1,0 +1,39 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "id": "PR_kwDOAAAB07",
+        "number": 7,
+        "title": "Corrige o carrinho quebrado",
+        "url": "https://github.com/ana-dev/site/pull/7",
+        "body": "## O que muda\r\n\r\n- conserta o total\u0007\r\n- testa o frete\r\n\r\n\tFecha #3.",
+        "isDraft": false,
+        "state": "OPEN",
+        "mergeable": "CONFLICTING",
+        "reviewDecision": "CHANGES_REQUESTED",
+        "updatedAt": "2026-11-15T09:00:00Z",
+        "headRefName": "fix/carrinho",
+        "baseRefName": "main",
+        "repository": { "nameWithOwner": "ana-dev/site" },
+        "latestOpinionatedReviews": {
+          "nodes": [
+            { "state": "APPROVED", "author": { "login": "bia" } },
+            { "state": "CHANGES_REQUESTED", "author": { "login": "caio" } },
+            { "state": "APPROVED", "author": { "login": "duda" } },
+            { "state": "CHANGES_REQUESTED", "author": { "login": "duda" } },
+            { "state": "DISMISSED", "author": { "login": "eva" } },
+            { "state": "APPROVED", "author": null }
+          ]
+        },
+        "commits": { "nodes": [{ "commit": { "oid": "ccc333", "statusCheckRollup": { "state": "FAILURE", "contexts": { "nodes": [
+          { "name": "lint", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/ana-dev/site/actions/runs/9/job/1" },
+          { "name": "build", "conclusion": "FAILURE", "detailsUrl": "https://github.com/ana-dev/site/actions/runs/9/job/2" },
+          { "name": "e2e", "conclusion": "TIMED_OUT", "detailsUrl": "https://github.com/ana-dev/site/actions/runs/9/job/3" },
+          { "context": "ci/vercel", "state": "ERROR", "targetUrl": "https://vercel.com/ana-dev/site/abc" },
+          { "name": "ainda rodando", "conclusion": null, "detailsUrl": null }
+        ] } } } }] }
+      }
+    },
+    "rateLimit": { "remaining": 4980 }
+  }
+}

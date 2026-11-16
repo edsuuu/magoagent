@@ -103,6 +103,7 @@ mod tests {
             ci,
             review: "",
             head: Some("s1".into()),
+            ..Default::default()
         };
         let pulse = |ci| Pulse { login: "ana".into(), mine: vec![request(ci)], ..Default::default() };
         let mut app = DrawingApp::default();

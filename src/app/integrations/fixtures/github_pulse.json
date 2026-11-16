@@ -5,20 +5,34 @@
       "pullRequests": {
         "nodes": [
           {
+            "id": "PR_kwDOAAAB42",
             "number": 42,
             "title": "Adiciona o checkout",
             "url": "https://github.com/ana-dev/loja/pull/42",
             "isDraft": false,
+            "state": "OPEN",
+            "mergeable": "MERGEABLE",
             "reviewDecision": "APPROVED",
+            "updatedAt": "2026-11-16T11:56:00Z",
+            "headRefName": "feat/checkout",
+            "baseRefName": "main",
             "repository": { "nameWithOwner": "ana-dev/loja" },
-            "commits": { "nodes": [{ "commit": { "oid": "aaa111", "statusCheckRollup": { "state": "SUCCESS" } } }] }
+            "commits": { "nodes": [{ "commit": { "oid": "aaa111", "statusCheckRollup": { "state": "SUCCESS", "contexts": { "nodes": [
+              { "name": "build", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/ana-dev/loja/actions/runs/1/job/1" }
+            ] } } } }] }
           },
           {
+            "id": "PR_kwDOAAAB43",
             "number": 43,
             "title": "Rascunho do frete",
             "url": "https://github.com/ana-dev/loja/pull/43",
             "isDraft": true,
+            "state": "OPEN",
+            "mergeable": "UNKNOWN",
             "reviewDecision": null,
+            "updatedAt": "2026-11-16T10:00:00Z",
+            "headRefName": "feat/frete",
+            "baseRefName": "main",
             "repository": { "nameWithOwner": "ana-dev/loja" },
             "commits": { "nodes": [{ "commit": { "oid": "bbb222", "statusCheckRollup": null } }] }
           },
@@ -43,13 +57,56 @@
             "repository": { "nameWithOwner": "ana-dev/loja" }
           },
           {
+            "id": "PR_kwDOAAAB07",
             "number": 7,
             "title": "Corrige o carrinho \u0007quebrado",
             "url": "https://github.com/ana-dev/site/pull/7",
             "isDraft": false,
+            "state": "OPEN",
+            "mergeable": "CONFLICTING",
             "reviewDecision": "CHANGES_REQUESTED",
+            "updatedAt": "2026-11-15T09:00:00Z",
+            "headRefName": "fix/carrinho",
+            "baseRefName": "main",
             "repository": { "nameWithOwner": "ana-dev/site" },
-            "commits": { "nodes": [{ "commit": { "oid": "ccc333", "statusCheckRollup": { "state": "FAILURE" } } }] }
+            "commits": { "nodes": [{ "commit": { "oid": "ccc333", "statusCheckRollup": { "state": "FAILURE", "contexts": { "nodes": [
+              { "name": "lint", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/ana-dev/site/actions/runs/9/job/1" },
+              { "name": "build", "conclusion": "FAILURE", "detailsUrl": "https://github.com/ana-dev/site/actions/runs/9/job/2" },
+              { "context": "ci/vercel", "state": "ERROR", "targetUrl": "https://vercel.com/ana-dev/site/abc" },
+              { "name": "build", "conclusion": "FAILURE", "detailsUrl": "https://github.com/ana-dev/site/actions/runs/8/job/2" },
+              { "name": "deploy", "conclusion": "CANCELLED", "detailsUrl": "javascript:alert(1)" },
+              { "context": "ci/cobertura", "state": "SUCCESS", "targetUrl": "https://example.com/cobertura" }
+            ] } } } }] }
+          },
+          {
+            "id": "PR_kwDOAAAB40",
+            "number": 40,
+            "title": "Troca o logotipo",
+            "url": "https://github.com/ana-dev/loja/pull/40",
+            "isDraft": false,
+            "state": "MERGED",
+            "mergeable": "UNKNOWN",
+            "reviewDecision": "APPROVED",
+            "updatedAt": "2026-11-13T12:00:00Z",
+            "headRefName": "feat/logotipo",
+            "baseRefName": "main",
+            "repository": { "nameWithOwner": "ana-dev/loja" },
+            "commits": { "nodes": [{ "commit": { "oid": "ddd444", "statusCheckRollup": { "state": "FAILURE", "contexts": { "nodes": [] } } } }] }
+          },
+          {
+            "id": "PR_kwDOAAAB39",
+            "number": 39,
+            "title": "Experimento abandonado",
+            "url": "https://github.com/ana-dev/site/pull/39",
+            "isDraft": false,
+            "state": "CLOSED",
+            "mergeable": "CONFLICTING",
+            "reviewDecision": null,
+            "updatedAt": "2026-11-01T12:00:00Z",
+            "headRefName": "exp/tema",
+            "baseRefName": "main",
+            "repository": { "nameWithOwner": "ana-dev/site" },
+            "commits": { "nodes": [{ "commit": { "oid": "eee555", "statusCheckRollup": { "state": "PENDING" } } }] }
           }
         ]
       }
@@ -57,10 +114,16 @@
     "reviewRequested": {
       "nodes": [
         {
+          "id": "PR_kwDOAAAB310",
           "number": 310,
           "title": "Troca o cliente HTTP",
           "url": "https://github.com/time/api/pull/310",
           "isDraft": false,
+          "state": "OPEN",
+          "mergeable": "MERGEABLE",
+          "updatedAt": "2026-11-16T11:00:00Z",
+          "headRefName": "troca-http",
+          "baseRefName": "main",
           "repository": { "nameWithOwner": "time/api" }
         },
         {}

@@ -2,11 +2,21 @@
 //! with the state of their checks, the ones that wait for their review, and the contribution calendar. One GraphQL
 //! request a poll (every minute while a check runs, every five otherwise; GraphQL is a POST, so there is no ETag to
 //! send: the answer's own `rateLimit` holds the polls back instead), with a personal token that lives in the keychain.
-//! What reads the answers and tells the alerts is plain functions, away from the network.
+//! What reads the answers and tells the alerts is plain functions, away from the network. The island's GitHub tab
+//! lists the open ones and the ones merged or closed of late (`pulls.rs`), and reads, edits and comments on one
+//! (`detail.rs`).
 
 use super::http::{self, Request};
 use crate::prelude::*;
 use std::sync::mpsc::{Receiver, Sender, channel};
+
+mod activity;
+mod detail;
+mod pulls;
+mod token;
+pub(crate) use activity::*;
+pub(crate) use detail::*;
+pub(crate) use pulls::*;
 
 /// The token's item in the keychain.
 pub(crate) const TOKEN_ID: &str = "integration-github-token";
@@ -25,11 +35,12 @@ const LOW_BUDGET: i64 = 100;
 const SEEN_FOR: i64 = 6_000;
 const NOTICE_FOR: i64 = 600_000;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum CiState {
     Pending,
     Success,
     Failure,
+    #[default]
     Unknown,
 }
 
@@ -52,33 +63,6 @@ impl CiState {
             CiState::Failure => ("✕", "checks falharam"),
             CiState::Unknown => ("•", "sem checks"),
         }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) struct PullRequest {
-    /// "owner/repo#number".
-    pub(crate) id: String,
-    pub(crate) title: String,
-    pub(crate) url: String,
-    pub(crate) draft: bool,
-    pub(crate) ci: CiState,
-    /// `reviewDecision` in words, when there is one.
-    pub(crate) review: &'static str,
-    /// The last commit's oid, when GitHub gave it.
-    pub(crate) head: Option<String>,
-}
-
-impl PullRequest {
-    /// The page a click opens: its checks when they failed (where the failure is), else the pull request.
-    pub(crate) fn page(&self) -> String {
-        if self.ci == CiState::Failure { format!("{}/checks", self.url) } else { self.url.clone() }
-    }
-
-    /// "checks passaram · aprovado · rascunho".
-    pub(crate) fn state_words(&self) -> String {
-        let words = [self.ci.label().1, self.review, if self.draft { "rascunho" } else { "" }];
-        words.iter().filter(|word| !word.is_empty()).copied().collect::<Vec<_>>().join(" · ")
     }
 }
 
@@ -125,30 +109,6 @@ fn nodes(parent: Option<&Value>) -> &[Value] {
     parent.and_then(|parent| parent.get("nodes")).and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[])
 }
 
-/// A pull request's node; None when a field is missing or its address is not a GitHub page (it is opened on a click).
-fn pull_request(node: &Value) -> Option<PullRequest> {
-    let number = node.get("number")?.as_i64().filter(|number| *number > 0)?;
-    let repository = text_at(node.get("repository")?, "nameWithOwner", 140)?;
-    let url = text_at(node, "url", 400).filter(|url| url.starts_with("https://github.com/"))?;
-    let commit =
-        node.get("commits").and_then(|commits| commits.get("nodes")).and_then(Value::as_array).and_then(|list| list.last()).and_then(|last| last.get("commit"));
-    let review = match node.get("reviewDecision").and_then(Value::as_str) {
-        Some("APPROVED") => "aprovado",
-        Some("CHANGES_REQUESTED") => "mudanças pedidas",
-        Some("REVIEW_REQUIRED") => "aguarda revisão",
-        _ => "",
-    };
-    Some(PullRequest {
-        id: format!("{repository}#{number}"),
-        title: text_at(node, "title", 200)?,
-        url,
-        draft: node.get("isDraft").and_then(Value::as_bool).unwrap_or(false),
-        ci: CiState::from_github(commit.and_then(|commit| commit.get("statusCheckRollup")).and_then(|rollup| rollup.get("state")).and_then(Value::as_str)),
-        review,
-        head: commit.and_then(|commit| text_at(commit, "oid", 64)),
-    })
-}
-
 /// A repository's node with its default branch; None when archived, with no default branch or not a GitHub page.
 fn branch_ci(node: &Value) -> Option<BranchCi> {
     if node.get("isArchived").and_then(Value::as_bool).unwrap_or(false) {
@@ -177,8 +137,9 @@ impl Pulse {
                 pulse.mine.push(request);
             }
         }
-        for request in nodes(data.get("reviewRequested")).iter().filter_map(pull_request) {
+        for mut request in nodes(data.get("reviewRequested")).iter().filter_map(pull_request) {
             if !pulse.to_review.iter().any(|known| known.id == request.id) {
+                request.review_requested_of_me = true;
                 pulse.to_review.push(request);
             }
         }
@@ -190,15 +151,15 @@ impl Pulse {
         Some(pulse)
     }
 
-    /// A check still runs, of a pull request or a default branch: the next poll comes sooner.
+    /// A check still runs, of an open pull request or a default branch: the next poll comes sooner.
     pub(crate) fn has_pending(&self) -> bool {
-        self.mine.iter().any(|request| request.ci == CiState::Pending) || self.main.iter().any(|branch| branch.ci == CiState::Pending)
+        self.open().any(|request| request.ci == CiState::Pending) || self.main.iter().any(|branch| branch.ci == CiState::Pending)
     }
 
-    /// "3 PRs · 1 falhou · 2 para revisar".
+    /// "3 PRs abertos · 1 com checks falhando · 2 para revisar" (the merged and closed ones left out).
     pub(crate) fn summary(&self) -> String {
-        let failed = self.mine.iter().filter(|request| request.ci == CiState::Failure).count();
-        let mut parts = vec![match self.mine.len() {
+        let failed = self.open().filter(|request| request.ci == CiState::Failure).count();
+        let mut parts = vec![match self.open().count() {
             0 => "nenhum PR aberto".to_string(),
             1 => "1 PR aberto".to_string(),
             count => format!("{count} PRs abertos"),
@@ -216,11 +177,11 @@ impl Pulse {
 /// What changed between two polls, as Coucou tells it. The first poll (no `old`) is silent. On the same commit, the
 /// plain changes of state; on a new commit or a new pull request, its checks at once if they already ended (a run
 /// shorter than the interval), and nothing while they run: the next poll, on the same commit, sees them end. A
-/// default branch only ever tells that it failed, never that it passed.
+/// default branch only ever tells that it failed, never that it passed. A pull request merged or closed tells nothing.
 pub(crate) fn alerts(old: Option<&Pulse>, new: &Pulse) -> Vec<Alert> {
     let Some(old) = old else { return Vec::new() };
     let mut found = Vec::new();
-    for request in &new.mine {
+    for request in new.open() {
         match old.mine.iter().find(|known| known.id == request.id) {
             Some(before) if before.head == request.head => {
                 if request.ci == CiState::Failure && before.ci != CiState::Failure {
@@ -263,55 +224,15 @@ pub(crate) fn foremost(alerts: &[Alert]) -> Option<&Alert> {
     alerts.iter().min_by_key(|alert| rank(alert))
 }
 
-/// The contribution calendar: the year's total and each week's days as levels 0 to 4, the oldest week first.
-#[derive(Clone, Debug, PartialEq, Default)]
-pub(crate) struct Activity {
-    pub(crate) total: i64,
-    pub(crate) weeks: Vec<Vec<u8>>,
-    /// Contributions in the last day of the calendar (today).
-    pub(crate) today: i64,
-}
-
-impl Activity {
-    pub(crate) fn parse(root: &Value) -> Option<Activity> {
-        let calendar = root.get("data")?.get("viewer")?.get("contributionsCollection")?.get("contributionCalendar")?;
-        let mut activity = Activity { total: calendar.get("totalContributions")?.as_i64()?.max(0), ..Default::default() };
-        // a year is 53 weeks of 7 days: anything longer is not GitHub's answer
-        for week in calendar.get("weeks")?.as_array()?.iter().take(60) {
-            let Some(days) = week.get("contributionDays").and_then(Value::as_array) else { continue };
-            let levels: Vec<u8> = days
-                .iter()
-                .take(7)
-                .map(|day| match day.get("contributionLevel").and_then(Value::as_str) {
-                    Some("FIRST_QUARTILE") => 1,
-                    Some("SECOND_QUARTILE") => 2,
-                    Some("THIRD_QUARTILE") => 3,
-                    Some("FOURTH_QUARTILE") => 4,
-                    _ => 0,
-                })
-                .collect();
-            if let Some(count) = days.iter().take(7).next_back().and_then(|day| day.get("contributionCount")).and_then(Value::as_i64) {
-                activity.today = count.max(0);
-            }
-            if !levels.is_empty() {
-                activity.weeks.push(levels);
-            }
-        }
-        Some(activity)
-    }
-}
-
 /// The reference's pulse query (with the default branches of the 10 repositories pushed to last), plus what is left of the
-/// hour's budget.
+/// hour's budget. The person's pull requests are the 20 changed last, open, merged or closed, each with its branches,
+/// whether it merges and the failed checks among its first 25: still about one of the hour's 5000 points a poll (GitHub
+/// counts the connections asked, 83 here, by the hundred). No description: the tab reads it when one is picked.
 const PULSE_QUERY: &str = r#"query {
   viewer {
     login
-    pullRequests(states: OPEN, first: 20, orderBy: {field: UPDATED_AT, direction: DESC}) {
-      nodes {
-        number title url isDraft reviewDecision
-        repository { nameWithOwner }
-        commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } }
-      }
+    pullRequests(states: [OPEN, MERGED, CLOSED], first: 20, orderBy: {field: UPDATED_AT, direction: DESC}) {
+      nodes { ...Pull }
     }
     repositories(first: 10, ownerAffiliations: [OWNER], orderBy: {field: PUSHED_AT, direction: DESC}) {
       nodes {
@@ -320,17 +241,18 @@ const PULSE_QUERY: &str = r#"query {
       }
     }
   }
-  reviewRequested: search(query: "is:pr is:open review-requested:@me archived:false", type: ISSUE, first: 20) {
-    nodes { ... on PullRequest { number title url isDraft repository { nameWithOwner } } }
+  reviewRequested: search(query: "is:pr is:open review-requested:@me archived:false sort:updated-desc", type: ISSUE, first: 20) {
+    nodes { ...Pull }
   }
   rateLimit { remaining }
-}"#;
-
-const ACTIVITY_QUERY: &str = r#"query {
-  viewer { contributionsCollection { contributionCalendar {
-    totalContributions
-    weeks { contributionDays { contributionCount contributionLevel } }
-  } } }
+}
+fragment Pull on PullRequest {
+  id number title url isDraft state mergeable reviewDecision updatedAt headRefName baseRefName
+  repository { nameWithOwner }
+  commits(last: 1) { nodes { commit { oid statusCheckRollup { state contexts(first: 25) { nodes {
+    ... on CheckRun { name conclusion detailsUrl }
+    ... on StatusContext { context state targetUrl }
+  } } } } } }
 }"#;
 
 /// Why a request failed; `unauthorized` stops the polls until the token changes.
@@ -338,11 +260,6 @@ const ACTIVITY_QUERY: &str = r#"query {
 pub(crate) struct Failure {
     pub(crate) message: String,
     pub(crate) unauthorized: bool,
-}
-
-/// The token as GitHub makes them: printable ASCII with no spaces, of a sane length.
-pub(crate) fn token_looks_right(token: &str) -> bool {
-    (20..=255).contains(&token.len()) && token.chars().all(|letter| letter.is_ascii_graphic())
 }
 
 fn request<'a>(token: &str, method: &'a str, url: &'a str, body: Option<String>) -> Request<'a> {
@@ -366,7 +283,12 @@ fn read(answer: Result<http::Answer, String>) -> Result<Value, Failure> {
 }
 
 fn graphql(token: &str, query: &str) -> Result<Value, Failure> {
-    let root = read(http::send(&request(token, "POST", GRAPHQL, Some(json!({ "query": query }).to_string()))))?;
+    post(token, &json!({ "query": query }))
+}
+
+/// A GraphQL request (`payload`: its query and variables) and its answer, which must have data.
+fn post(token: &str, payload: &Value) -> Result<Value, Failure> {
+    let root = read(http::send(&request(token, "POST", GRAPHQL, Some(payload.to_string()))))?;
     if root.get("data").is_none_or(Value::is_null) {
         let why = text_at(&root["errors"][0], "message", 160).unwrap_or_else(|| "sem dados".into());
         return Err(Failure { message: format!("O GitHub recusou a consulta: {why}"), unauthorized: false });
@@ -374,16 +296,14 @@ fn graphql(token: &str, query: &str) -> Result<Value, Failure> {
     Ok(root)
 }
 
-/// Who the token is (`GET /user`): Testar's answer.
-fn fetch_login(token: &str) -> Result<String, Failure> {
-    let user = read(http::send(&request(token, "GET", USER, None)))?;
-    text_at(&user, "login", 60).ok_or(Failure { message: "A resposta do GitHub não tem o login.".into(), unauthorized: false })
-}
-
 enum Message {
     Pulse(Result<Pulse, Failure>),
     Activity(Result<Activity, Failure>),
     Login(Result<String, Failure>),
+    /// A pull request's detail, by its id.
+    Detail(String, Result<Box<PrDetail>, Failure>),
+    /// A write and the pull request it was for: done, or why not.
+    Wrote(Write, String, Result<(), Failure>),
 }
 
 /// What the pill warns of.
@@ -417,6 +337,17 @@ pub(crate) struct GitHub {
     /// When the next polls are due, ms; `i64::MAX` once the token was refused.
     next_pulse: i64,
     next_activity: i64,
+    /// Each pull request's detail, by its id ("owner/repo#42"), read when the tab picks it.
+    details: std::collections::HashMap<String, DetailEntry>,
+    /// A write (a description, a comment) is out.
+    writing: bool,
+    /// How the last write went, in the person's words: "Descrição salva.", or why not.
+    last_write: Option<Result<String, String>>,
+    /// What the island asked while it was drawn (it only reads the app): done by the next tick.
+    asked: std::cell::RefCell<Vec<Ask>>,
+    /// The writes' request bodies, as they would have gone (a test never reaches the network).
+    #[cfg(test)]
+    sent: Vec<Value>,
 }
 
 impl GitHub {
@@ -454,7 +385,7 @@ impl GitHub {
         }
         let Some(pulse) = &self.pulse else { return "GitHub: token no cofre, ainda sem resposta.".into() };
         let mut lines = vec![format!("GitHub: conectado como @{} · {}", pulse.login, pulse.summary())];
-        lines.extend(pulse.mine.iter().map(|request| format!("- {} {} ({}) {}", request.id, request.title, request.state_words(), request.url)));
+        lines.extend(pulse.open().map(|request| format!("- {} {} ({}) {}", request.id, request.title, request.state_words(), request.url)));
         lines.extend(pulse.to_review.iter().map(|request| format!("- revisar {} {} {}", request.id, request.title, request.url)));
         lines.extend(
             pulse
@@ -466,6 +397,12 @@ impl GitHub {
         if let Some(activity) = &self.activity {
             lines.push(format!("{} contribuições no último ano, {} hoje.", activity.total, activity.today));
         }
+        match (self.writing, &self.last_write) {
+            (true, _) => lines.push("Uma escrita está a caminho do GitHub.".into()),
+            (false, Some(Ok(done))) => lines.push(format!("Última escrita: {done}")),
+            (false, Some(Err(why))) => lines.push(format!("A última escrita falhou: {why}")),
+            (false, None) => {}
+        }
         lines.join("\n")
     }
 
@@ -473,8 +410,62 @@ impl GitHub {
     fn forget(&mut self) {
         self.generation += 1;
         (self.pulse, self.activity, self.error, self.notice, self.ring) = (None, None, None, None, None);
-        (self.busy_pulse, self.busy_activity, self.testing) = (false, false, false);
+        (self.busy_pulse, self.busy_activity, self.testing, self.writing) = (false, false, false, false);
         (self.next_pulse, self.next_activity) = (0, 0);
+        self.details.clear();
+        self.last_write = None;
+        self.asked.get_mut().clear();
+    }
+
+    /// A request is out: the answers are looked for each second.
+    fn busy(&self) -> bool {
+        self.busy_pulse || self.busy_activity || self.testing || self.writing || self.details.values().any(|entry| entry.loading)
+    }
+
+    /// The token was refused (401): nothing more is asked until it changes.
+    fn refused(&self) -> bool {
+        self.next_pulse == i64::MAX
+    }
+
+    /// A request failed: when the next poll is due, and why, for Ajustes and the card.
+    fn failed(&mut self, failure: Failure, now: i64) {
+        self.next_pulse = if failure.unauthorized { i64::MAX } else { now + IDLE_EVERY };
+        self.error = Some(failure.message);
+    }
+
+    /// An answer of the network, of this token: what it changes, and the toast it brings.
+    fn receive(&mut self, message: Message, now: i64) -> Option<String> {
+        match message {
+            Message::Pulse(result) => {
+                self.busy_pulse = false;
+                match result {
+                    Ok(pulse) => return self.take_pulse(pulse, now).and(self.notice.as_ref().map(|notice| format!("GitHub: {}.", notice.text))),
+                    Err(failure) => self.failed(failure, now),
+                }
+            }
+            Message::Activity(result) => {
+                self.busy_activity = false;
+                self.next_activity = now + ACTIVITY_EVERY;
+                self.activity = result.ok().or(self.activity.take());
+            }
+            Message::Login(result) => {
+                self.testing = false;
+                return Some(match result {
+                    Ok(login) => {
+                        self.error = None;
+                        format!("GitHub conectado como @{login}.")
+                    }
+                    Err(failure) => {
+                        let message = format!("GitHub: {}", failure.message);
+                        self.failed(failure, now);
+                        message
+                    }
+                });
+            }
+            Message::Detail(id, result) => self.take_detail(id, result, now),
+            Message::Wrote(write, id, result) => self.take_write(write, id, result, now),
+        }
+        None
     }
 
     fn spawn(&mut self, work: impl FnOnce(&str) -> Message + Send + 'static) {
@@ -518,51 +509,25 @@ impl DrawingApp {
     /// Each frame: the token read once, the answers taken, the polls that are due sent. Off, nothing reaches the network.
     pub(crate) fn github_tick(&mut self, ctx: &Context) {
         let enabled = self.prefs.integrations.github;
-        let github = &mut self.integrations.github;
         if !enabled {
-            if github.pulse.is_some() || github.error.is_some() || github.busy_pulse {
+            let github = &mut self.integrations.github;
+            // what the island asked goes too: off, nothing reaches the network
+            github.asked.get_mut().clear();
+            if github.pulse.is_some() || github.error.is_some() || github.busy() || !github.details.is_empty() || github.last_write.is_some() {
                 github.forget();
             }
             return;
         }
+        for ask in std::mem::take(self.integrations.github.asked.get_mut()) {
+            self.github_do(ask);
+        }
+        let github = &mut self.integrations.github;
         github.load_token();
         let now = now_ms();
         let mut toast = None;
         while let Some((generation, message)) = github.channel.as_ref().and_then(|(_, receiver)| receiver.try_recv().ok()) {
-            if generation != github.generation {
-                continue;
-            }
-            let failed = |github: &mut GitHub, failure: Failure| {
-                github.next_pulse = if failure.unauthorized { i64::MAX } else { now + IDLE_EVERY };
-                github.error = Some(failure.message);
-            };
-            match message {
-                Message::Pulse(result) => {
-                    github.busy_pulse = false;
-                    match result {
-                        Ok(pulse) => toast = github.take_pulse(pulse, now).and(github.notice.as_ref().map(|notice| format!("GitHub: {}.", notice.text))),
-                        Err(failure) => failed(github, failure),
-                    }
-                }
-                Message::Activity(result) => {
-                    github.busy_activity = false;
-                    github.next_activity = now + ACTIVITY_EVERY;
-                    github.activity = result.ok().or(github.activity.take());
-                }
-                Message::Login(result) => {
-                    github.testing = false;
-                    toast = Some(match result {
-                        Ok(login) => {
-                            github.error = None;
-                            format!("GitHub conectado como @{login}.")
-                        }
-                        Err(failure) => {
-                            let message = format!("GitHub: {}", failure.message);
-                            failed(github, failure);
-                            message
-                        }
-                    });
-                }
+            if generation == github.generation {
+                toast = github.receive(message, now).or(toast);
             }
         }
         if let Some(notice) = &github.notice
@@ -580,7 +545,7 @@ impl DrawingApp {
                     }))
                 });
             }
-            if !github.busy_activity && now >= github.next_activity && github.next_pulse != i64::MAX {
+            if !github.busy_activity && now >= github.next_activity && !github.refused() {
                 github.busy_activity = true;
                 github.spawn(|token| {
                     Message::Activity(
@@ -589,52 +554,11 @@ impl DrawingApp {
                 });
             }
             // the answers come by the clock, with nobody moving the mouse
-            ctx.request_repaint_after(std::time::Duration::from_secs(if github.busy_pulse || github.busy_activity || github.testing { 1 } else { 30 }));
+            ctx.request_repaint_after(std::time::Duration::from_secs(if github.busy() { 1 } else { 30 }));
         }
         if let Some(message) = toast {
             self.toast(message);
         }
-    }
-
-    /// Salvar: the token into the keychain (never a file), and the polls start over with it.
-    pub(crate) fn github_save_token(&mut self, token: &str) -> Result<String, String> {
-        #[cfg(test)]
-        mock_keyring();
-        let token = token.trim();
-        if !token_looks_right(token) {
-            return Err("Isso não parece um token do GitHub: cole o token inteiro, sem espaços.".into());
-        }
-        set_secret(TOKEN_ID, token).map_err(|why| format!("O cofre do sistema recusou o token: {why}"))?;
-        let github = &mut self.integrations.github;
-        github.forget();
-        github.token = Some(token.to_string());
-        self.github_test();
-        Ok("Token do GitHub guardado no cofre do sistema.".into())
-    }
-
-    /// Remover: the token out of the keychain and everything fetched with it forgotten.
-    pub(crate) fn github_remove_token(&mut self) -> Result<String, String> {
-        #[cfg(test)]
-        mock_keyring();
-        remove_secret(TOKEN_ID)?;
-        let github = &mut self.integrations.github;
-        github.forget();
-        github.token = Some(String::new());
-        Ok("Token do GitHub removido.".into())
-    }
-
-    /// Testar: asks GitHub who the token is; the answer comes as a toast.
-    pub(crate) fn github_test(&mut self) -> bool {
-        let github = &mut self.integrations.github;
-        github.load_token();
-        if !github.has_token() || github.testing {
-            return false;
-        }
-        (github.testing, github.next_pulse) = (!cfg!(test), 0);
-        if !cfg!(test) {
-            github.spawn(|token| Message::Login(fetch_login(token)));
-        }
-        true
     }
 
     /// GitHub in words, for the MCP's `integrations`: off, or what `GitHub::report` says.
