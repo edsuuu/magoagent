@@ -43,10 +43,10 @@ const MAIN_SIDE: f32 = 32.0;
 const SUBTITLES: [&str; 10] = [
     "Aparência, como o app abre, a ilha e o canvas.",
     "Os atalhos de início, a aparência e o shell dos terminais.",
-    "O que cada agente gastou e o que segura o Maestro.",
+    "O que cada agente gastou e o que segura a Luna.",
     "Como um chat novo começa: agente, pasta, permissão e estilo.",
-    "Quem ouve e fala na chamada com o Maestro e no Ditar.",
-    "Chamar o Maestro pela voz no meio da chamada.",
+    "Quem ouve e fala na chamada com a Luna e no Ditar.",
+    "Chamar a Luna pela voz no meio da chamada.",
     "Os hooks das sessões de fora e os serviços mostrados na ilha. Segredos vão para o cofre do sistema.",
     "Os da ilha valem com qualquer programa na frente. Clique nas teclas para trocar.",
     "Onde ficam os desenhos do canvas, os dados do app e os chats, neste computador.",

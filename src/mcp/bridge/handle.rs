@@ -90,7 +90,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         && nodes.iter().any(|node| node.id == from && !node.maestro)
         && matches!(cmd, "show" | "set_folder" | "screenshot" | "review" | "look" | "raise")
     {
-        return Err("Só um terminal Maestro (ou um chat) pode usar esse comando.".into());
+        return Err("Só um terminal da Luna (ou um chat) pode usar esse comando.".into());
     }
     if let Some(space) = away
         && !matches!(cmd, "list" | "check" | "ask" | "note_read" | "notify" | "hook")
@@ -114,7 +114,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     };
     // a child agent builds nothing: only a Maestro recruits, opens portals and connects
     if matches!(request["cmd"].as_str(), Some("recruit" | "portal_create" | "connect")) && nodes.iter().any(|n| n.id == from && !n.maestro) {
-        return Err("Só um terminal Maestro pode criar terminais, navegadores ou conexões.".into());
+        return Err("Só um terminal da Luna pode criar terminais, navegadores ou conexões.".into());
     }
     match request["cmd"].as_str().unwrap_or_default() {
         "list" => Ok(describe(&nodes, from, shared)),
@@ -327,7 +327,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             // changes the whole app, or acts on a name anywhere on the canvas, is for a Maestro or a chat
             if chat.is_none() && nodes.iter().any(|n| n.id == from && !n.maestro) {
                 if !matches!(action, "file_tree" | "tasks" | "memory") {
-                    return Err("Só um terminal Maestro (ou um chat) pode usar essa ação; um terminal comum só mexe nas árvores ligadas a ele.".into());
+                    return Err("Só um terminal da Luna (ou um chat) pode usar essa ação; um terminal comum só mexe nas árvores ligadas a ele.".into());
                 }
                 if action == "file_tree" {
                     // `aim` runs first so that a tree left unnamed means the roped one, never the app's choice

@@ -8,6 +8,9 @@ use super::{NewForm, cursor, paint};
 use crate::prelude::*;
 
 /// How near an edge a drop sticks to it.
+/// The island window's title: the system finds the window by it (the input shape, the click-through, the reveal).
+pub(super) const TITLE: &str = "Ilha da Luna";
+
 const SNAP: f32 = 60.0;
 /// How long the moved window stays still before it counts as let go: where it is, and a while longer when sticking to
 /// an edge moves it (`settle_for`).
@@ -276,7 +279,7 @@ impl DrawingApp {
         }
         let (origin, size) = (self.island.origin, window_size(visible));
         let builder = egui::ViewportBuilder::default()
-            .with_title("Ilha do Maestro")
+            .with_title(TITLE)
             // the main window's class: the island of the app in development is not the installed app's for the dock
             .with_app_id(crate::window_names().1)
             .with_transparent(true)
@@ -341,17 +344,17 @@ impl DrawingApp {
         #[cfg(target_os = "linux")]
         if clicks_through_part {
             let area = if holding { Rect::from_min_size(Pos2::ZERO, size) } else { hit.expand(cursor::HIT_MARGIN) };
-            crate::app::island::x11::input_shape("Ilha do Maestro", area, scale);
+            crate::app::island::x11::input_shape(TITLE, area, scale);
         }
         #[cfg(windows)]
         if self.island.plain < 3 {
-            crate::app::voice::popup::plain::reveal("Ilha do Maestro", &mut self.island.plain);
+            crate::app::voice::popup::plain::reveal(TITLE, &mut self.island.plain);
             ctx.request_repaint();
         }
         // asked again: the thread of `cursor::watch` takes the click-through off the moment the cursor comes in, and the
         // answer from before the frame would put it back for as long as the frame takes
         #[cfg(windows)]
-        crate::app::voice::popup::plain::click_through("Ilha do Maestro", !cursor::takes_click(cursor::screen_cursor, scale, origin, hit, holding));
+        crate::app::voice::popup::plain::click_through(TITLE, !cursor::takes_click(cursor::screen_cursor, scale, origin, hit, holding));
         self.island_moved(ctx, placed, size, time);
         out
     }

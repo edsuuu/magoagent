@@ -78,23 +78,23 @@ impl DrawingApp {
 
     /// Sends `prompt` to the Maestro and shows the answer in the mini chat. Err: it didn't go (and why).
     pub(crate) fn comment_to_maestro(&mut self, ctx: &Context, source: &str, root: &str, prompt: &str) -> Result<(), String> {
-        let id = self.maestro_chat(source, root).ok_or("Sem chat para o Maestro.")?;
+        let id = self.maestro_chat(source, root).ok_or("Sem chat para a Luna.")?;
         if self.chat_runs.contains_key(&id) {
-            return Err("O Maestro ainda está respondendo: espere ou pare com Esc.".into());
+            return Err("A Luna ainda está respondendo: espere ou pare com Esc.".into());
         }
         if !self.chat_send(ctx, &id, prompt) {
-            return Err("Não consegui enviar ao Maestro.".into());
+            return Err("Não consegui enviar à Luna.".into());
         }
         self.open_mini_chat(&id);
-        self.toast("Comentário enviado ao Maestro");
+        self.toast("Comentário enviado à Luna");
         Ok(())
     }
 
     /// `comment_to_maestro` without a frame's context (the MCP): the message waits in the outbox for the next frame.
     pub(crate) fn queue_to_maestro(&mut self, source: &str, root: &str, prompt: String) -> Result<(), String> {
-        let id = self.maestro_chat(source, root).ok_or("Sem chat para o Maestro.")?;
+        let id = self.maestro_chat(source, root).ok_or("Sem chat para a Luna.")?;
         if self.chat_runs.contains_key(&id) {
-            return Err("O Maestro ainda está respondendo: tente de novo depois.".into());
+            return Err("A Luna ainda está respondendo: tente de novo depois.".into());
         }
         self.chat_outbox.push((id.clone(), prompt));
         self.open_mini_chat(&id);
@@ -122,11 +122,11 @@ impl DrawingApp {
         egui::Area::new(egui::Id::unique("maestro_note")).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
             frame.show(ui, |ui| {
                 ui.set_width(320.0);
-                ui.label(egui::RichText::new("Comentar para o Maestro").strong());
+                ui.label(egui::RichText::new("Comentar para a Luna").strong());
                 ui.label(egui::RichText::new(format!("{}:{}-{}", note.rel, note.req.from, note.req.to)).color(muted).small());
                 ui.add_space(4.0);
                 let field = ui.add(
-                    egui::TextEdit::multiline(&mut note.comment).hint_text("O que o Maestro deve saber ou fazer").desired_rows(3).desired_width(f32::INFINITY),
+                    egui::TextEdit::multiline(&mut note.comment).hint_text("O que a Luna deve saber ou fazer").desired_rows(3).desired_width(f32::INFINITY),
                 );
                 if !note.focused {
                     field.request_focus();

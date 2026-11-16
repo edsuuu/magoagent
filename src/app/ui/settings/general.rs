@@ -18,7 +18,7 @@ impl DrawingApp {
         if let Some(i) = row(ui, k, "Tema", "Sistema segue o do seu sistema operacional.", |ui| choice(ui, k, "Tema", &["Sistema", "Claro", "Escuro"], now)) {
             self.prefs.theme = [Theme::System, Theme::Light, Theme::Dark][i];
         }
-        let hint = "O Maestro fala no idioma em que você fala com ele; aqui você fixa um.";
+        let hint = "A Luna fala no idioma em que você fala com ela; aqui você fixa um.";
         if let Some(i) = row(ui, k, "Idioma", hint, |ui| select(ui, k, "Idioma", &super::LANGUAGES, self.prefs.language)) {
             self.prefs.language = i;
         }

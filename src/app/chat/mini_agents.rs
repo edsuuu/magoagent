@@ -34,11 +34,11 @@ impl DrawingApp {
             let hit = ui
                 .interact(back, ui.scope_id().with("mini_back"), Sense::click())
                 .on_hover_cursor(CursorIcon::PointingHand)
-                .tip(format!("Voltar ao Maestro ({})", maestro.spec.label()));
+                .tip(format!("Voltar à Luna ({})", maestro.spec.label()));
             ui.painter().rect_filled(back, 13, if hit.hovered() { look.selected } else { look.raised });
             glyph(ui.painter(), Pos2::new(back.left() + 13.0, cy), 12.0, 2.2, look.text, &[&[(14.5, 6.0), (8.5, 12.0), (14.5, 18.0)]]);
             crate::app::ui::maestro_crown(ui.painter(), Pos2::new(back.left() + 27.0, cy + 0.5), 0.75, crate::app::chat::list::AMBER);
-            ui.painter().text(Pos2::new(back.left() + 36.0, cy), egui::Align2::LEFT_CENTER, "Maestro", FontId::proportional(12.0), look.text);
+            ui.painter().text(Pos2::new(back.left() + 36.0, cy), egui::Align2::LEFT_CENTER, "Luna", FontId::proportional(12.0), look.text);
             if hit.clicked() {
                 pick = Some(maestro.id);
             }
@@ -51,7 +51,7 @@ impl DrawingApp {
         let button = Rect::from_min_max(Pos2::new(right - 56.0, cy - 13.0), Pos2::new(right - 4.0, cy + 13.0));
         let hit = ui.interact(button, ui.scope_id().with("mini_agents"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
         let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&hit));
-        let hit = if open { hit } else { hit.tip("Ver os agentes deste Maestro") };
+        let hit = if open { hit } else { hit.tip("Ver os agentes da Luna") };
         ui.painter().rect_filled(button, 13, if hit.hovered() || open { look.selected } else { look.raised });
         paint_icon(ui.painter(), Icon::Agents, Pos2::new(button.left() + 16.0, cy), look.text);
         ui.painter().text(Pos2::new(button.left() + 29.0, cy), egui::Align2::LEFT_CENTER, agents.len().to_string(), FontId::proportional(13.0), look.text);

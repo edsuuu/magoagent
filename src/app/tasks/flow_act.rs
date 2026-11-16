@@ -58,7 +58,7 @@ impl DrawingApp {
             folder if !folder.is_empty() => folder,
             _ => self.current_space().map(|w| w.root.clone()).unwrap_or_default(),
         };
-        self.task_create(&json!({ "title": text("title"), "description": text("description") }), "Maestro")?;
+        self.task_create(&json!({ "title": text("title"), "description": text("description") }), "Luna")?;
         let i = self.tasks.list.len() - 1;
         let flow = Flow::new(&folder, now_ms());
         let task = &mut self.tasks.list[i];

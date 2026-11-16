@@ -88,7 +88,7 @@ pub(crate) fn watch(ctx: &Context) -> std::sync::Arc<std::sync::Mutex<Option<Rec
             if now != inside {
                 inside = now;
                 if now {
-                    crate::app::voice::popup::plain::click_through("Ilha do Maestro", false);
+                    crate::app::voice::popup::plain::click_through(super::window::TITLE, false);
                 }
                 ctx.request_repaint();
             }

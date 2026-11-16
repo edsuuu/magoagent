@@ -101,7 +101,7 @@ impl DrawingApp {
                 dialog_field_mono(ui, "Comando", &mut dialog.spec.command, "ex: claude, codex, ou deixe vazio para shell", DIALOG_WIDTH, &c);
                 let folder = "ex. ~/projeto ou /home/usuario/projeto";
                 dialog_folder(ui, "Diretório de Trabalho", &mut dialog.spec.cwd, folder, "Pasta do terminal", &c, &mut self.prefs.folders);
-                dialog_toggle(ui, &mut dialog.spec.maestro, "Maestro", "Promove este terminal a maestro, capaz de reger o restante do canvas.", &c);
+                dialog_toggle(ui, &mut dialog.spec.maestro, "Luna", "Faz deste terminal a Luna, capaz de reger o restante do canvas.", &c);
                 dialog_toggle(ui, &mut dialog.spec.chat, "Iniciar no modo de chat", "Um clique nele abre o chat em vez da tela.", &c);
             }
         });
