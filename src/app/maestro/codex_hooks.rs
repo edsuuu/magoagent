@@ -19,7 +19,7 @@ const EVENTS: [(&str, u64); 10] = [
 /// Codex's hooks file: `CODEX_CONFIG_DIR` or `~/.codex`; in the tests, a folder of their own, never the person's.
 pub(crate) fn codex_settings_path() -> Option<PathBuf> {
     if cfg!(test) {
-        return Some(std::env::temp_dir().join(format!("mago-codex-proprio-{}", std::process::id())).join("hooks.json"));
+        return Some(crate::app::maestro::claude_hooks::test_folder("codex").join("hooks.json"));
     }
     let folder = std::env::var_os("CODEX_CONFIG_DIR")
         .filter(|value| !value.is_empty())
