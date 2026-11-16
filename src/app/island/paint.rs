@@ -184,7 +184,8 @@ impl DrawingApp {
             mago: MagoState::from_agent(pill.state, self.now),
             id: pill.id,
             name: pill.name,
-            detail: pill.state.label().to_string(),
+            // what it is doing, as Coucou's step line (the prompt, the tool on what, how the turn ended); nothing yet: its state
+            detail: if pill.activity.is_empty() { pill.state.label().to_string() } else { pill.activity.clone() },
             state: pill.state,
             color: pill.color,
             chat: false,
