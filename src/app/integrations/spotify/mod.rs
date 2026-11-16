@@ -1,8 +1,8 @@
-//! Spotify on the island, as Coucou's (MIT) Spotify pill: what plays (the title, the artist, the cover) and play/pause,
-//! next and previous. No account and no key: the Spotify open on this computer is asked, by the system's media
-//! controls on Windows (`smtc`), AppleScript on macOS (`applescript`) and on Linux MPRIS (`mpris`), and Spotify's
-//! Soloist there too, by its local API (`soloist`; `linux` shows the one that plays). Off, nothing is asked; with
-//! Spotify closed, there is no pill.
+//! Spotify on the island, as the reference's (MIT) Spotify pill: what plays (the title, the artist, the cover) and
+//! play/pause, next and previous. No account and no key: the Spotify open on this computer is asked, by the system's
+//! media controls on Windows (`smtc`), AppleScript on macOS (`applescript`) and on Linux MPRIS (`mpris`, the app and
+//! Spotifast), and Spotify's Soloist there too, by its local API (`soloist`, its own or the one Spotifast starts;
+//! `linux` shows the one that plays). Off, nothing is asked; with Spotify closed, there is no pill.
 // ponytail: asked every two seconds instead of listening to the player's events; listen when the delay bothers.
 
 use super::{IslandItem, ItemRow};
@@ -61,14 +61,47 @@ pub(crate) struct Now {
     pub(crate) track: Track,
     pub(crate) playing: bool,
     pub(crate) player: Player,
+    /// Spotifast plays it through its own Soloist (the same song on both): it shows on both cards.
+    pub(crate) through_soloist: bool,
 }
 
-/// Which Spotify plays: the app, or Soloist (Spotify's Connect receiver, only on Linux).
+impl Now {
+    /// Whether it shows on a card of Ajustes: Spotify's (`App`: the app and Spotifast) or Soloist's.
+    pub(crate) fn on(&self, card: Player) -> bool {
+        match card {
+            Player::Soloist => self.player == Player::Soloist || self.through_soloist,
+            Player::App | Player::Spotifast => self.player != Player::Soloist,
+        }
+    }
+
+    /// Where it plays, on the island's pill: nothing for the app.
+    fn place(&self) -> &'static str {
+        match self.player {
+            Player::App => "",
+            Player::Spotifast => " no Spotifast",
+            Player::Soloist => " no Soloist",
+        }
+    }
+
+    /// Where it plays, after the title: nothing for the app.
+    fn from(&self) -> &'static str {
+        match self.player {
+            Player::App => "",
+            Player::Spotifast if self.through_soloist => " (Spotifast, no Soloist)",
+            Player::Spotifast => " (Spotifast)",
+            Player::Soloist => " (Soloist)",
+        }
+    }
+}
+
+/// Which Spotify plays: the app, Spotifast (a Spotify client of its own) or Soloist (Spotify's Connect receiver); the
+/// last two only on Linux.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
 pub(crate) enum Player {
     #[default]
     App,
+    Spotifast,
     Soloist,
 }
 
@@ -135,11 +168,20 @@ pub(crate) fn from_mpris(root: &Value) -> Option<Now> {
     Some(Now { track, playing: properties["PlaybackStatus"]["data"] == "Playing", ..Default::default() })
 }
 
-/// Of what the Spotify app and Soloist say, the one shown: the one that plays; when both or neither do, the app (it is
-/// the one on the screen), else Soloist.
+/// Of the players that answered (in order of preference), the first that plays, else the first; with its index.
+#[cfg(any(not(any(windows, target_os = "macos")), test))]
+pub(crate) fn first_playing<const N: usize>(answers: [Option<Now>; N]) -> Option<(usize, Now)> {
+    let found = || answers.iter().enumerate().filter_map(|(index, now)| Some((index, now.as_ref()?)));
+    found().find(|(_, now)| now.playing).or_else(|| found().next()).map(|(index, now)| (index, now.clone()))
+}
+
+/// Of what the Spotify app (or Spotifast) and Soloist say, the one shown: the one that plays; when both or neither do,
+/// the app (it is the one on the screen), else Soloist. Spotifast and a Soloist on the same song are Spotifast playing
+/// through its Soloist: one, on both cards.
 #[cfg(any(not(any(windows, target_os = "macos")), test))]
 pub(crate) fn pick(app: Option<Now>, soloist: Option<Now>) -> Option<Now> {
     match (app, soloist) {
+        (Some(app), Some(soloist)) if app.player == Player::Spotifast && app.track.title == soloist.track.title => Some(Now { through_soloist: true, ..app }),
         (Some(app), Some(soloist)) if soloist.playing && !app.playing => Some(soloist),
         (Some(app), _) => Some(app),
         (None, soloist) => soloist,
@@ -168,7 +210,7 @@ pub(crate) fn from_soloist(root: &Value) -> Option<Now> {
         &name(&decorations["parent"]["entity"]),
         cover.unwrap_or_default(),
     )?;
-    Some(Now { track, playing: matches!(status, "playing" | "buffering"), player: Player::Soloist })
+    Some(Now { track, playing: matches!(status, "playing" | "buffering"), player: Player::Soloist, ..Default::default() })
 }
 
 /// The `soloist ctl` command for a button: play or pause by whether it plays (`playing`), next, prev.
@@ -193,6 +235,15 @@ pub(crate) fn soloist_data(env: impl Fn(&str) -> Option<String>) -> Option<std::
 #[cfg(any(not(any(windows, target_os = "macos")), test))]
 pub(crate) fn soloist_program(env: impl Fn(&str) -> Option<String>) -> Option<std::path::PathBuf> {
     env("HOME").map(|home| std::path::Path::new(&home).join(".local/bin/soloist"))
+}
+
+/// Where Spotifast keeps the Soloist it starts (`XDG_STATE_HOME` or `~/.local/state`, then `spotifast/soloist`): a data
+/// folder for each account in `accounts`, and the program it downloaded in `builds/<hash>/soloist`.
+// ponytail: not the Flatpak's (~/.var/app); look there too when someone uses it.
+#[cfg(any(not(any(windows, target_os = "macos")), test))]
+pub(crate) fn spotifast_soloist(env: impl Fn(&str) -> Option<String>) -> Option<std::path::PathBuf> {
+    let base = env("XDG_STATE_HOME").filter(|base| !base.is_empty()).map(std::path::PathBuf::from);
+    Some(base.or_else(|| env("HOME").map(|home| std::path::Path::new(&home).join(".local/state")))?.join("spotifast/soloist"))
 }
 
 /// A cover's address is one of Spotify's own picture servers, over https, and nothing else.
@@ -305,8 +356,14 @@ fn soloist_installed() -> bool {
     false
 }
 
+/// The Spotify app, or on Linux Spotifast (on the PATH or in `~/.local/bin`).
 fn installed() -> bool {
-    (!cfg!(any(windows, target_os = "macos")) && crate::editor::lsp::which("spotify").is_some())
+    let linux = !cfg!(any(windows, target_os = "macos"));
+    let spotifast = || {
+        crate::editor::lsp::which("spotifast").is_some()
+            || std::env::var("HOME").is_ok_and(|home| std::path::Path::new(&home).join(".local/bin/spotifast").is_file())
+    };
+    (linux && (crate::editor::lsp::which("spotify").is_some() || spotifast()))
         || install_places(|name| std::env::var(name).ok()).iter().any(|place| place.exists())
 }
 
@@ -316,7 +373,7 @@ pub(crate) struct Spotify {
     pub(crate) now: Option<Now>,
     /// The cover of what plays, once it came.
     pub(crate) cover: Option<egui::TextureHandle>,
-    /// The Spotify app and Soloist are not installed here: looked once, when the integration turned on.
+    /// The Spotify app (or Spotifast) and Soloist are not installed here: looked once, when the integration turned on.
     pub(crate) missing: bool,
     pub(crate) soloist_missing: bool,
     /// The players the thread asks (Ajustes' two switches).
@@ -355,23 +412,26 @@ impl Spotify {
         match &self.now {
             Some(now) => {
                 let by = if now.track.artist.is_empty() { String::new() } else { format!(" — {}", now.track.artist) };
-                let from = if now.player == Player::Soloist { " (Soloist)" } else { "" };
-                format!("{}: {}{by}{from}", if now.playing { "Tocando" } else { "Pausado" }, now.track.title)
+                format!("{}: {}{by}{}", if now.playing { "Tocando" } else { "Pausado" }, now.track.title, now.from())
             }
             None if self.missing => "O Spotify não está instalado neste computador.".into(),
             None => "O Spotify não está aberto neste computador (ou não tem nada carregado).".into(),
         }
     }
 
-    /// What one of the two players plays, for its card in Ajustes: the report while it is the one shown, else why not.
-    pub(crate) fn report_of(&self, player: Player) -> String {
-        match (&self.now, player) {
-            (Some(now), _) if now.player == player => self.report(),
-            (_, Player::App) if self.missing => "O Spotify não está instalado neste computador.".into(),
-            (Some(_), Player::App) => "O Spotify não está tocando neste computador (o Soloist está).".into(),
-            (None, Player::App) => "O Spotify não está aberto neste computador (ou não tem nada carregado).".into(),
-            (_, Player::Soloist) if self.soloist_missing => "O Soloist não está instalado (em ~/.local/bin ou no PATH).".into(),
+    /// What one card's players play (Spotify's: `App`, the app and Spotifast; Soloist's), for Ajustes and the MCP: the
+    /// report while one of them is shown, else why not.
+    pub(crate) fn report_of(&self, card: Player) -> String {
+        let linux = !cfg!(any(windows, target_os = "macos"));
+        match (&self.now, card) {
+            (Some(now), _) if now.on(card) => self.report(),
+            (_, Player::Soloist) if self.soloist_missing => "O Soloist não está instalado (em ~/.local/bin, no PATH ou pelo Spotifast).".into(),
             (_, Player::Soloist) => "O Soloist não está tocando, ou foi aberto sem a API local (-w 127.0.0.1:0).".into(),
+            (_, _) if self.missing && linux => "Nem o Spotify nem o Spotifast estão instalados neste computador.".into(),
+            (_, _) if self.missing => "O Spotify não está instalado neste computador.".into(),
+            (Some(_), _) => "O Spotify não está tocando neste computador (o Soloist está).".into(),
+            (None, _) if linux => "O Spotify (ou o Spotifast) não está aberto neste computador (ou não tem nada carregado).".into(),
+            (None, _) => "O Spotify não está aberto neste computador (ou não tem nada carregado).".into(),
         }
     }
 }
@@ -446,7 +506,7 @@ impl DrawingApp {
         Some(IslandItem {
             id: format!("{}spotify", super::ITEM_PREFIX),
             name: "Spotify",
-            kind: format!("{}{}", if now.playing { "tocando" } else { "pausado" }, if now.player == Player::Soloist { " no Soloist" } else { "" }),
+            kind: format!("{}{}", if now.playing { "tocando" } else { "pausado" }, now.place()),
             color: GREEN,
             badge: None,
             failed: false,

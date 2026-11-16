@@ -208,8 +208,12 @@ impl DrawingApp {
     }
 
     fn settings_spotify(&mut self, ui: &mut egui::Ui, k: &K) {
-        let hint = "A música que toca, com a capa e os botões de tocar, pausar e pular. Sem conta e sem chave: fala com o Spotify aberto neste computador.";
-        let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.player == Player::App);
+        let hint = if cfg!(any(windows, target_os = "macos")) {
+            "A música que toca, com a capa e os botões de tocar, pausar e pular. Sem conta e sem chave: fala com o Spotify aberto neste computador."
+        } else {
+            "A música que toca, com a capa e os botões de tocar, pausar e pular. Sem conta e sem chave: fala com o Spotify (ou o Spotifast) aberto neste computador."
+        };
+        let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.on(Player::App));
         head(ui, k, "Spotify", hint, playing, &mut self.prefs.integrations.spotify);
         if self.prefs.integrations.spotify {
             self.settings_player(ui, k, Player::App);
@@ -218,8 +222,8 @@ impl DrawingApp {
 
     /// Spotify's Soloist (Linux): its own switch, and what it plays with the same buttons.
     fn settings_soloist(&mut self, ui: &mut egui::Ui, k: &K) {
-        let hint = "O receptor do Spotify Connect para Linux: a música que você escolhe no celular ou no site toca aqui e aparece na ilha, com os botões. Sem conta e sem chave: fala com o Soloist aberto com a API local (-w 127.0.0.1:0).";
-        let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.player == Player::Soloist);
+        let hint = "O receptor do Spotify Connect para Linux: a música que você escolhe no celular ou no site toca aqui e aparece na ilha, com os botões. Sem conta e sem chave: fala com o Soloist aberto com a API local (-w 127.0.0.1:0) e com o que o Spotifast abre.";
+        let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.on(Player::Soloist));
         head(ui, k, "Soloist", hint, playing, &mut self.prefs.integrations.soloist);
         if self.prefs.integrations.soloist {
             self.settings_player(ui, k, Player::Soloist);
@@ -228,7 +232,7 @@ impl DrawingApp {
 
     /// One player's line: what it plays and its buttons while it is the one shown, else why not.
     fn settings_player(&mut self, ui: &mut egui::Ui, k: &K, player: Player) {
-        let now = self.integrations.spotify.now.clone().filter(|now| now.player == player);
+        let now = self.integrations.spotify.now.clone().filter(|now| now.on(player));
         let mut asked = None;
         row(ui, k, &self.integrations.spotify.report_of(player), "", |ui| {
             let Some(now) = &now else { return };

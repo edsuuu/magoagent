@@ -1,6 +1,6 @@
-//! Linux: the Spotify app, by MPRIS (`mpris.rs`), and Spotify's Soloist, its headless Spotify Connect receiver (the
-//! music chosen on the phone or the web plays on this computer), by `soloist ctl` (`soloist.rs`). The island shows the
-//! one that plays (`pick`) of those Ajustes turned on, and its buttons go to that one.
+//! Linux: the Spotify app and Spotifast, by MPRIS (`mpris.rs`), and Spotify's Soloist, its headless Spotify Connect
+//! receiver (the music chosen on the phone or the web plays on this computer), by `soloist ctl` (`soloist.rs`). The
+//! island shows the one that plays (`pick`) of those Ajustes turned on, and its buttons go to that one.
 
 use super::{Command, Now, Player, Sources, Track, mpris, pick, soloist};
 use std::cell::Cell;
