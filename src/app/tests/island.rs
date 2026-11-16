@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::app::chat::decide::PersonAsk;
-use crate::app::island::{CLOSED_H, CLOSED_W, COMPACT_H, COMPACT_W, EXPANDED_W};
+use crate::app::island::{CLOSED_H, CLOSED_W, COMPACT_H, COMPACT_W, EXPANDED_W, Tab};
 
 const SIZE: Vec2 = Vec2::new(1200.0, 800.0);
 
@@ -58,7 +58,7 @@ fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() 
     frame_at(&mut app, &ctx, 2.65, vec![press(false)]);
     run(&mut app, &ctx, 2.7, 4.0, vec![egui::Event::PointerMoved(on_it)]);
     assert_eq!(app.island.size().x, EXPANDED_W, "open");
-    assert_eq!(app.island.size().y, 160.0);
+    assert_eq!(app.island.size().y, 270.0, "Início: the summary and the list");
     // the pointer left: it stays 15 s, then folds to compact
     frame_at(&mut app, &ctx, 4.05, vec![egui::Event::PointerGone]);
     run(&mut app, &ctx, 4.1, 18.0, vec![]);
@@ -284,4 +284,20 @@ fn the_island_lost_off_the_screen_comes_back_to_where_it_starts() {
     let answer = app.act("set_setting", &serde_json::json!({ "name": "island_place", "value": "reset" }));
     assert!(answer.is_ok(), "{answer:?}");
     assert!(app.prefs.island_at.is_none());
+}
+
+/// Every page of the island and Início's "Ocultar tudo" / "Mostrar ocultos" through the MCP, as by the hand.
+#[test]
+fn the_mcp_opens_each_page_and_hides_the_summary() {
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    run(&mut app, &ctx, 0.0, 0.3, vec![]);
+    for (name, tab) in [("claude", Tab::Claude), ("github", Tab::GitHub), ("spotify", Tab::Music), ("chats", Tab::Chats), ("home", Tab::Home)] {
+        let answer = app.act("set_setting", &serde_json::json!({ "name": "island_page", "value": name }));
+        assert!(answer.is_ok(), "{name}: {answer:?}");
+        assert_eq!(app.island.tab(), tab, "{name}");
+    }
+    assert!(app.act("set_setting", &serde_json::json!({ "name": "island_page", "value": "nenhuma" })).is_err());
+    app.act("set_setting", &serde_json::json!({ "name": "island_feed", "value": "hide_all" })).unwrap();
+    app.act("set_setting", &serde_json::json!({ "name": "island_feed", "value": "show_hidden" })).unwrap();
 }

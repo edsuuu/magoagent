@@ -28,6 +28,8 @@ impl DrawingApp {
             canvas: false,
             badge: item.badge,
             kind: item.kind,
+            at: 0,
+            asleep: false,
         };
         self.integration_items().into_iter().map(line).collect()
     }

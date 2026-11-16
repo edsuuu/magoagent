@@ -20,10 +20,12 @@ pub(crate) const WAIT: u64 = 108;
 pub(crate) const WAIT_TIMEOUT: u64 = 120;
 /// The asks waiting at once (the one shown and the queue); the next goes back to the terminal.
 pub(crate) const MAX_ASKS: usize = 5;
-/// How long the badge of a turn that ended stays, and the pill with it.
-const BADGE_FOR: i64 = 5200;
-/// A pill whose session said nothing for this long is gone (it died without a SessionEnd).
-const SILENT_FOR: i64 = 15 * 60 * 1000;
+/// How long the badge of a turn that ended (its ✓, or the error) stays when nobody looks at it: then the pill sleeps.
+const BADGE_FOR: i64 = 20 * 60 * 1000;
+/// A pill whose session said nothing for this long is gone (it died without a SessionEnd). Until then a session whose
+/// turn ended stays, asleep (asked: "se eles nao está trabalhando ou se ja terminou ele fica com a expressao zzz ou com o
+/// check ali"), instead of leaving with its badge.
+const SILENT_FOR: i64 = 8 * 60 * 60 * 1000;
 /// A question answered "no, in the terminal" asks again through the other hook of the CLI: ignore it for this long.
 const DECLINED_FOR: i64 = 3000;
 /// Os eventos que encerram a vez: um pedido que ainda esperava a pessoa nessa sessão perdeu o sentido.
@@ -99,6 +101,10 @@ pub(crate) struct PillView {
     pub(crate) limited: bool,
     #[allow(dead_code)]
     pub(crate) session: String,
+    /// Parada: a vez acabou e o selo dela já foi visto (ou passou): a mini dorme.
+    pub(crate) asleep: bool,
+    /// O último evento da sessão (ms).
+    pub(crate) at: i64,
 }
 
 /// O texto numa linha só, cortado em 90 caracteres.
@@ -253,8 +259,7 @@ impl DrawingApp {
                 "Stop" | "StopFailure" => {
                     (pill.working, pill.asking, pill.limited) = (false, false, false);
                     pill.badge = Some(if event == "Stop" { Badge::Finished } else { Badge::Error });
-                    pill.until = now + BADGE_FOR;
-                    pill.gone = pill.until;
+                    (pill.until, pill.gone) = (now + BADGE_FOR, 0);
                 }
                 // um subagente só deixa a sua linha de atividade: o do fim da vez chega depois do Stop e não pode reabrir a pílula
                 "SessionStart" | "SubagentStart" | "SubagentStop" => {}
@@ -335,15 +340,18 @@ impl DrawingApp {
                     (_, true) => AgentState::Working(0.0),
                     _ => AgentState::Idle(None),
                 };
+                let badge = if asked { Some(Badge::Approval) } else { pill.badge };
                 PillView {
                     id: format!("{PILL_PREFIX}{}", pill.key),
                     name: pill.name.clone(),
                     color: pill.color,
                     state,
-                    badge: if asked { Some(Badge::Approval) } else { pill.badge },
+                    badge,
                     activity: pill.activity.clone(),
                     limited: pill.limited,
                     session: pill.session.clone(),
+                    asleep: state == AgentState::Idle(None) && badge.is_none() && !pill.limited,
+                    at: pill.seen,
                 }
             })
             .collect()

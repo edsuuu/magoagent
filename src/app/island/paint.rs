@@ -147,6 +147,10 @@ pub(crate) struct Out {
     pub(super) focus: Option<String>,
     /// The height of the page's content (for the pages that grow with it).
     pub(super) body: f32,
+    /// Início's lines hidden by their × (or "Ocultar tudo"), with what they were at.
+    pub(super) hide: Vec<(String, u64)>,
+    /// "Mostrar ocultos".
+    pub(super) show_hidden: bool,
 }
 
 impl DrawingApp {
@@ -189,13 +193,17 @@ impl DrawingApp {
                     canvas: self.scene.elements.iter().any(|element| element.id == row.id) || self.away.contains_key(&row.id),
                     badge: None,
                     kind: stage::program_name(&program),
+                    at: 0,
+                    asleep: false,
                 }
             })
             .collect();
         // the sessions outside the app, one pill per origin
         lines.extend(self.outside_pills().into_iter().map(|pill| Line {
             kind: if pill.name == "Hermes" { "Hermes Agent" } else { "Claude Code" }.into(),
-            mago: MagoState::from_agent(pill.state, self.now),
+            mago: if pill.asleep { MagoState::Sleeping } else { MagoState::from_agent(pill.state, self.now) },
+            at: pill.at,
+            asleep: pill.asleep,
             id: pill.id,
             name: pill.name,
             // what it is doing, as Coucou's step line (the prompt, the tool on what, how the turn ended); nothing yet: its state
@@ -213,6 +221,8 @@ impl DrawingApp {
             AgentState::Working(_) => 1,
             _ => 2,
         });
+        self.island.listed =
+            super::feed::feed_lines(&lines, &Default::default()).0.iter().map(|line| (line.id.clone(), super::feed::signature(line))).collect();
         let island = &self.island;
         let grid = island.tab.grid();
         let in_grid = |line: &&Line| Tab::of(&line.id) == grid;
@@ -416,7 +426,8 @@ impl DrawingApp {
             return;
         }
         match view.tab {
-            Tab::Home | Tab::Chats => self.island_home(ui, rect, page, view, time, out),
+            Tab::Home => self.island_feed(ui, page, view, time, out),
+            Tab::Chats | Tab::Claude | Tab::GitHub | Tab::Music => self.island_home(ui, rect, page, view, time, out),
             Tab::Chat if view.session.is_some() => {
                 self.island_session(ui, page, view, time, out);
                 self.island_edges(ui, rect, out);
@@ -445,16 +456,13 @@ impl DrawingApp {
         }
     }
 
-    /// The tabs (Início, Chats, conversation, new chat) at the left; the voice, the settings and the close at the right.
+    /// The tabs at the left (Início, the conversation, Chats, Claude Code, GitHub and Spotify when they are on, the new
+    /// chat); the voice, the settings and the close at the right.
     fn island_header(&self, ui: &mut egui::Ui, rect: Rect, view: &View, out: &mut Out, time: f64) {
         let center_y = rect.top() + 8.0 + 17.0;
         let pinned = !view.asks.is_empty();
-        let tabs = [
-            (Tab::Home, icons::HOUSE, 17.0, "Início: as ferramentas"),
-            (Tab::Chat, icons::BUBBLE, 19.0, "Chat atual"),
-            (Tab::Chats, icons::LIST, 17.0, "Conversas: os agentes"),
-            (Tab::New, icons::PLUS, 16.0, "Chat novo num espaço novo"),
-        ];
+        let tabs = header_tabs(&view.lines);
+        let count = tabs.len();
         for (index, (tab, icon, size, tip)) in tabs.into_iter().enumerate() {
             let area = Rect::from_center_size(Pos2::new(rect.left() + 14.0 + 15.0 + index as f32 * 35.0, center_y), Vec2::new(30.0, 28.0));
             let response = ui.interact(area, ui.scope_id().with(("island_tab", index)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
@@ -479,8 +487,9 @@ impl DrawingApp {
         }
         // the call's note between them
         if !view.voice_note.is_empty() {
-            let galley = clipped(ui.painter(), view.voice_note.clone(), font(11.0), DIM_3, rect.width() - 300.0);
-            ui.painter().galley(Pos2::new(rect.left() + 165.0, center_y - galley.size().y / 2.0), galley, DIM_3);
+            let left = rect.left() + 14.0 + count as f32 * 35.0 + 10.0;
+            let galley = clipped(ui.painter(), view.voice_note.clone(), font(11.0), DIM_3, rect.right() - 150.0 - left);
+            ui.painter().galley(Pos2::new(left, center_y - galley.size().y / 2.0), galley, DIM_3);
         }
         // right to left: close, settings, voice; dim, the ink when on (`.header-actions button.on`), 14 apart
         let mut x = rect.right() - 16.0 - 9.0;
@@ -613,13 +622,37 @@ const PILL_MINI: f32 = 24.0;
 
 /// One pill of the grid, as Coucou's `buildPill`: its mini wizard and its name. The pointer over it only lights it in its
 /// colour (`mouseenter`); a click puts its agent in the card at the left (`setFocus`), where Abrir and Conversar are.
+/// The tabs of the header, in order: GitHub's and Spotify's only while their integration is on (its pill is there).
+pub(super) fn header_tabs(lines: &[Line]) -> Vec<(Tab, crate::editor::icons::Svg, f32, &'static str)> {
+    let on = |name: &str| lines.iter().any(|line| line.id.strip_prefix(crate::app::integrations::ITEM_PREFIX) == Some(name));
+    let mut tabs = vec![
+        (Tab::Home, icons::HOUSE, 17.0, "Início: o resumo"),
+        (Tab::Chat, icons::BUBBLE, 19.0, "Chat atual"),
+        (Tab::Chats, icons::LIST, 17.0, "Conversas: os agentes do app"),
+        (Tab::Claude, icons::CLAUDE, 16.0, "Claude Code: as sessões fora do app"),
+    ];
+    if on("github") {
+        tabs.push((Tab::GitHub, icons::PULL, 18.0, "GitHub: os pull requests"));
+    }
+    if on("spotify") {
+        tabs.push((Tab::Music, icons::NOTE, 17.0, "Spotify"));
+    }
+    tabs.push((Tab::New, icons::PLUS, 16.0, "Chat novo num espaço novo"));
+    tabs
+}
+
 pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, opens: bool, time: f64, out: &mut Out) {
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, PILL_H), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let hovered = response.hovered();
     // it grows on hover as Coucou's (scale 1.04), within its own room: past it the scroll area would cut its edge
     let rect = if hovered { rect } else { rect.shrink(1.0) };
-    ui.painter().rect(rect, 14, CARD_FLAT, Stroke::new(1.0, with_alpha(line.color, if hovered { 0x8c } else { 0x24 })), StrokeKind::Inside);
+    let edge = match (hovered, line.asleep) {
+        (true, _) => 0x8c,
+        (false, true) => 0x1e,
+        (false, false) => 0x24,
+    };
+    ui.painter().rect(rect, 14, CARD_FLAT, Stroke::new(1.0, with_alpha(line.color, edge)), StrokeKind::Inside);
     if hovered {
         // `${color}2e` over the card, `0 2px 10px ${color}59` around it
         let shadow = egui::epaint::Shadow { offset: [0, 2], blur: 10, spread: 0, color: with_alpha(line.color, 0x59) };
@@ -638,10 +671,14 @@ pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, opens: bool, time
     let whole = ui.painter().layout_no_wrap(line.name.clone(), semi(10.0), ink).size().x;
     let left = if whole <= room.width() { room.center().x - whole / 2.0 } else { room.left() };
     marquee(ui, egui::Id::unique(("island_pill_name", &line.id)), &line.name, semi(10.0), ink, (left, room.center().y), room.width(), hovered);
-    mini_badge(ui.painter(), mini, PILL_MINI, line, time);
-    // `pillBadge`: only the sessions from outside carry one on the pill's corner
-    if line.badge.is_some() {
-        badge(ui.painter(), Pos2::new(rect.right() - 10.0, rect.top() + 2.0), line, 7.0);
+    if line.id.starts_with(crate::app::maestro::outside::PILL_PREFIX) {
+        shoulder_mark(ui.painter(), mini, PILL_MINI, line, time);
+    } else {
+        mini_badge(ui.painter(), mini, PILL_MINI, line, time);
+        // `pillBadge`: an integration's on the pill's corner (what failed there)
+        if line.badge.is_some() {
+            badge(ui.painter(), Pos2::new(rect.right() - 10.0, rect.top() + 2.0), line, 7.0);
+        }
     }
     // a click again on the one put in the card opens it, as its Abrir (`opens_on_click`)
     if response.clicked() {
@@ -697,6 +734,35 @@ fn badge(painter: &Painter, center: Pos2, line: &Line, radius: f32) {
     painter.circle_filled(center, radius - 1.0, color);
     if radius > 5.0 {
         painter.text(center, egui::Align2::CENTER_CENTER, mark, font(radius), Color32::BLACK);
+    }
+}
+
+/// What a session outside is at, on its mini's shoulder (asked: "se eles nao está trabalhando ou se ja terminou ele fica
+/// com a expressao zzz ou com o check ali"): `!` it waits on the person, `✓` its turn ended, `✕` it failed, a `z` that
+/// drifts up while it is stopped; working, its mini is awake and says it.
+pub(super) fn shoulder_mark(painter: &Painter, center: Pos2, body: f32, line: &Line, time: f64) {
+    let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
+    let at = center + Vec2::new(body * 0.42, -body * 0.4);
+    let mark = match (line.badge, line.state) {
+        (Some(Badge::Approval), _) | (_, AgentState::Waiting) => Some((AMBER, "!", hex(0x2b1a00))),
+        (Some(Badge::Finished), _) => Some((hex(0x34d399), "✓", hex(0x062b1d))),
+        (Some(Badge::Error), _) => Some((hex(0xf4505e), "✕", hex(0x2b0006))),
+        _ => None,
+    };
+    let radius = (body * 0.23).max(4.5);
+    if let Some((color, glyph, ink)) = mark {
+        // the ring of the card around it (`box-shadow: 0 0 0 2px`)
+        painter.circle_filled(at, radius + 2.0, CARD_FLAT);
+        painter.circle_filled(at, radius, color);
+        painter.text(at + Vec2::new(0.0, 0.5), egui::Align2::CENTER_CENTER, glyph, semi(radius * 1.55), ink);
+    } else if line.asleep {
+        for (delay, size) in [(0.0, radius * 1.6), (0.5, radius * 1.2)] {
+            let phase = ((time * 0.45 + delay) % 1.0) as f32;
+            let fade = (1.0 - phase) * (phase * 4.0).min(1.0);
+            let drift = Vec2::new(phase * 3.0, -phase * 7.0 - 1.0);
+            painter.text(at + drift, egui::Align2::CENTER_CENTER, "z", semi(size), with_alpha(DIM, (fade * 230.0) as u8));
+        }
+        painter.ctx().request_repaint_after(std::time::Duration::from_millis(66));
     }
 }
 
