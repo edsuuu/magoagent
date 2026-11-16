@@ -420,6 +420,14 @@ mod tests {
         assert_eq!(set(&mut app, "shortcut_save", "Ctrl+Alt+F5").unwrap(), "Salvar: Ctrl+Alt+F5.");
         assert_eq!(set(&mut app, "shortcut_save", "none").unwrap(), "Salvar: Sem tecla.");
         assert_eq!(set(&mut app, "shortcut_save", "default").unwrap(), "Salvar: Ctrl+S.");
+        // the tool names every shortcut
+        let tools = crate::mcp::app_tools::app_tools();
+        let tool = tools.iter().find(|tool| tool["name"] == "set_setting").unwrap();
+        let names = tool["inputSchema"]["properties"]["name"]["enum"].as_array().unwrap();
+        for def in every() {
+            assert!(names.contains(&json!(format!("shortcut_{}", def.id))), "{}", def.id);
+        }
+        assert!(tool["description"].as_str().unwrap().contains("shortcut_save (salvar)"));
     }
 
     #[test]
