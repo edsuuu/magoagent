@@ -1,0 +1,5 @@
+Up next:
+  1. Próxima da Fila — Banda Exemplo, Convidada  (spotify:track:1111111111111111111111)
+  2. Da Playlist - Outra Banda
+  3) Sem Artista
+queue is empty
