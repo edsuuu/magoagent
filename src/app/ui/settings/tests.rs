@@ -451,10 +451,24 @@ fn ok_mago_switches_are_the_real_preferences() {
     for name in ["Responder a “Ok Mago”", "Responder em voz alta", "Iniciar a chamada"] {
         assert!(window.has(name), "{name}: {:?}", window.texts);
     }
-    assert!(window.app.prefs.ok_mago && window.app.prefs.speak_answers);
+    assert!(!window.app.prefs.ok_mago && !window.app.prefs.speak_answers, "both come off");
     let switch = window.switch_of("Responder em voz alta");
     window.click(switch);
-    assert!(!window.app.prefs.speak_answers);
+    assert!(window.app.prefs.speak_answers);
+    let switch = window.switch_of("Responder a “Ok Mago”");
+    window.click(switch);
+    assert!(window.app.prefs.ok_mago);
+}
+
+/// Ok Mago comes off: a new install and an old prefs.json that never had the two switches.
+#[test]
+fn ok_mago_comes_off_by_default_even_in_old_prefs() {
+    let fresh = Prefs::default();
+    assert!(!fresh.ok_mago && !fresh.speak_answers);
+    let old: Prefs = serde_json::from_str(r#"{"theme":"dark","island":true}"#).unwrap();
+    assert!(!old.ok_mago && !old.speak_answers);
+    let chosen: Prefs = serde_json::from_str(r#"{"ok_mago":true,"speak_answers":true}"#).unwrap();
+    assert!(chosen.ok_mago && chosen.speak_answers, "a choice saved stays");
 }
 
 #[test]
