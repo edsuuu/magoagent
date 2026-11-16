@@ -30,6 +30,24 @@ impl DrawingApp {
                 false => Err("sem token do GitHub (ou um teste já em curso): a pessoa cola o token em Ajustes › Integrações".into()),
             },
             ("github", "remove_token") => self.github_remove_token(),
+            ("github", "prs") => self.github_prs_report(&text("filter")),
+            // the pull request's id and the text keep their case and their lines
+            ("github", "pr" | "pr_body" | "pr_comment") => {
+                let pr = args["pr"].as_str().unwrap_or_default().trim().to_string();
+                if pr.is_empty() {
+                    return Err("diga o `pr`: dono/repo#número ou o endereço dele (como `prs` lista)".into());
+                }
+                let words = args["text"].as_str().unwrap_or_default();
+                match action.as_str() {
+                    "pr" => self.github_pr_report(&pr),
+                    "pr_body" => self
+                        .github_save_body(&pr, words)
+                        .map(|()| format!("Enviando a descrição nova de {pr} ao GitHub: o resultado aparece em `status` em alguns segundos.")),
+                    _ => self
+                        .github_comment(&pr, words)
+                        .map(|()| format!("Enviando o comentário em {pr} ao GitHub: o resultado aparece em `status` em alguns segundos.")),
+                }
+            }
             ("spotify", "" | "status") => Ok(format!("Spotify: {}", self.spotify_report())),
             ("spotify", "on" | "off") => {
                 self.prefs.integrations.spotify = action == "on";
