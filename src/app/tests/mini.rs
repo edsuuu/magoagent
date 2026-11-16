@@ -8,6 +8,8 @@ const SIZE: Vec2 = Vec2::new(1200.0, 800.0);
 
 fn app_with_chat() -> DrawingApp {
     let mut app = DrawingApp::default();
+    // the pill and its panel are the island-off way (on, the chats go to the island)
+    app.prefs.island = false;
     app.canvas_rect = Rect::from_min_size(Pos2::ZERO, SIZE);
     app.chats = vec![crate::app::chat::direct::Chat {
         id: "a".into(),

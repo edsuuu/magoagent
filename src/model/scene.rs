@@ -243,7 +243,7 @@ impl Default for Prefs {
                 .unwrap_or_default(),
             avatar: false,
             avatar_at: None,
-            island: false,
+            island: true,
             island_at: None,
             island_chat: None,
             island_sound: true,

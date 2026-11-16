@@ -254,6 +254,8 @@ fn a_chat_asks_the_chat_it_is_roped_to_over_tcp_by_a_token_of_its_own() {
 fn the_cards_menu_and_its_button_open_its_chat_in_the_mini_chat() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+    // with the island off: on, the chat opens in it
+    app.prefs.island = false;
     frame(&mut app, &ctx, vec![]);
     let id = new_chat(&mut app, "Claude Code", "claude");
     app.chat_open = false;
