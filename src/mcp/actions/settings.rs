@@ -58,6 +58,10 @@ impl DrawingApp {
             ("island_place", "top" | "topo") => self.put_island(crate::app::island::Place::Top),
             ("island_place", "bottom" | "embaixo" | "baixo") => self.put_island(crate::app::island::Place::Bottom),
             ("island_place", "reset" | "padrão" | "padrao") => self.reset_island(),
+            // Limpar todos os dados (system/wipe.rs) is the person's alone: it cannot be undone
+            ("wipe_data", _) => {
+                return Err("Apagar todos os dados só a pessoa faz, em Ajustes › Dados › Limpar todos os dados (pergunta antes e não tem volta).".into());
+            }
             ("island_page", page) if crate::app::island::Tab::named(page).is_some() => {
                 self.island_show_page(crate::app::island::Tab::named(page).unwrap_or_default())
             }

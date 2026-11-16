@@ -148,9 +148,9 @@ impl DrawingApp {
         }
     }
 
-    /// A question shown over Ajustes (`dialog_over`): the hooks' preview.
+    /// A question shown over Ajustes (`dialog_over`): the hooks' preview, Limpar todos os dados.
     pub(crate) fn dialog_over_settings(&self) -> bool {
-        self.claude_hooks_preview.is_some()
+        self.claude_hooks_preview.is_some() || self.wipe_confirm
     }
 
     /// The sidebar (#111215, a line at its right): the brand, then a row for each page, icon and name, the chosen one

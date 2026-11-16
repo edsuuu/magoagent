@@ -1,4 +1,4 @@
-//! Ajustes › Dados: where the canvas, the app's data and the chats are.
+//! Ajustes › Dados: where the canvas, the app's data and the chats are, and Limpar todos os dados.
 
 use super::kit::*;
 use crate::prelude::*;
@@ -74,6 +74,56 @@ impl DrawingApp {
             let hint = format!("{}: onde trabalha um chat sem pasta escolhida.", projects.display());
             if row(ui, k, "Chats sem pasta", &hint, |ui| projects.is_dir() && button(ui, k, "Abrir").clicked()) {
                 open_path(&projects);
+            }
+        }
+        divider(ui, k);
+        title(ui, k, "LIMPAR");
+        let hint = "Apaga os desenhos, os chats, os ajustes e as senhas guardadas e abre o MagoAgent do zero. Pergunta antes.";
+        if row(ui, k, "Limpar todos os dados", hint, |ui| button(ui, k, "Limpar…")).clicked() {
+            self.wipe_confirm = true;
+        }
+    }
+}
+
+impl DrawingApp {
+    /// Limpar todos os dados asks first: what goes, where, and that it can't be undone (`system/wipe.rs` does it).
+    pub(crate) fn wipe_confirm_ui(&mut self, ctx: &Context) {
+        use crate::app::system::wipe::plan;
+        let colors = self.colors();
+        let plan = plan();
+        let (confirm, cancel) = crate::app::ui::dialog_over(ctx, &colors, "Apagar todos os dados do MagoAgent?", "Apagar tudo", |ui| {
+            let k = K::new(self.dark());
+            let mut lines = vec![
+                "O MagoAgent fecha os agentes e os terminais, apaga e abre de novo como na primeira vez. Vão embora:".to_string(),
+                "• os desenhos, os espaços, as notas e as tarefas".into(),
+                "• os chats e as conversas guardadas".into(),
+                "• os ajustes e a memória da Luna".into(),
+            ];
+            if plan.keychain {
+                lines.push("• o cofre de senhas do navegador e os tokens do GitHub, do Spotify e do WhatsApp".into());
+                lines.push("• a pasta ~/.magoagent, onde trabalham os chats sem pasta escolhida".into());
+            } else {
+                lines.push("Esta é a versão de desenvolvimento: só a pasta dela é apagada (o cofre e o ~/.magoagent são do app instalado).".into());
+            }
+            lines.push("Os hooks instalados no Claude Code e no Codex ficam como estão. Não dá para desfazer.".into());
+            for line in lines {
+                let text = galley(ui, &line, BODY, BODY_LINE, k.fg, ui.available_width());
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), text.size().y), Sense::hover());
+                ui.painter().galley(rect.min, text, k.fg);
+                ui.add_space(3.0);
+            }
+            ui.add_space(5.0);
+            let folders = plan.folders.iter().map(|folder| folder.display().to_string()).collect::<Vec<_>>().join("\n");
+            let text = galley(ui, &folders, SMALL, SMALL_LINE, k.muted_fg, ui.available_width());
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), text.size().y), Sense::hover());
+            ui.painter().galley(rect.min, text, k.muted_fg);
+        });
+        if cancel {
+            self.wipe_confirm = false;
+        } else if confirm {
+            self.wipe_confirm = false;
+            if let Err(why) = self.wipe_all_data() {
+                self.toast(format!("Nada foi apagado: {why}."));
             }
         }
     }
