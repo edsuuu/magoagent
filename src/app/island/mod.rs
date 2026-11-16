@@ -23,6 +23,7 @@ mod keys;
 mod minis;
 mod paint;
 mod prompt;
+mod session;
 mod sounds;
 mod spring;
 mod stage;
@@ -292,6 +293,8 @@ pub(crate) struct Island {
     pulled: Option<[f32; 2]>,
     /// A conversation asked for from outside the island ("Abrir em miniatura"): opened on its Chat page next frame.
     pub(crate) chat_asked: bool,
+    /// A session outside the app on the conversation page, as its Abrir left it (`session.rs`).
+    pub(crate) session: Option<session::SessionView>,
     /// Where the eyes look (window coordinates), the sounds playing, and what the last frame was, to tell what changed.
     pointer: Option<Pos2>,
     tones: Vec<(cpal::Stream, f64)>,
@@ -469,7 +472,10 @@ impl DrawingApp {
         let chat = if self.island.chat_full {
             chat_size(self.island.pulled.or(self.prefs.island_chat), self.island.chat_big, work)
         } else {
-            let said = self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map_or(0, |transcript| prompt::said(&transcript.items).count());
+            let said = match &self.island.session {
+                Some(session) => session.said(),
+                None => self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map_or(0, |transcript| prompt::said(&transcript.items).count()),
+            };
             Vec2::new(EXPANDED_W, prompt::prompt_height(said))
         };
         self.island.floating = floats(self.island.anchor, work);
@@ -500,6 +506,7 @@ impl DrawingApp {
             island.tab = Tab::Home;
             island.chat_big = false;
             island.chat_full = false;
+            island.session = None;
         }
         island.open = open;
         let shape = match stage {
@@ -586,7 +593,17 @@ impl DrawingApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(if self.island.pointer.is_some() { 33 } else { 250 }));
         }
         // the clicks of the buttons; the pointer over a pill makes no sound, as in Coucou
-        if out.tab.is_some() || out.open_agent.is_some() || out.talk.is_some() || out.voice || out.close || out.big || out.full || out.sound || out.picked {
+        if out.tab.is_some()
+            || out.open_agent.is_some()
+            || out.talk.is_some()
+            || out.terminal.is_some()
+            || out.voice
+            || out.close
+            || out.big
+            || out.full
+            || out.sound
+            || out.picked
+        {
             tones.push(sounds::BLIP);
         }
         for tone in tones {

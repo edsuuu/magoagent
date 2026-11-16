@@ -19,6 +19,7 @@ mod gestures;
 mod groups;
 mod island;
 mod island_buttons;
+mod island_open;
 mod layout;
 mod links;
 mod locks;

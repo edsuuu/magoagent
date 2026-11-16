@@ -3,8 +3,10 @@
 //! enquanto o relay espera a resposta da ponte ele está vivo, e subir a partir dele acha o processo dessa janela. O que
 //! se acha fica por sessão, só em memória, e é consultado quando o botão é clicado. Onde nada se acha (um console
 //! clássico, cuja janela é de um conhost que não é ancestral) não há o que trazer.
-// ponytail: achar e trazer a janela só existe no Windows (EnumWindows, SetForegroundWindow); no Linux e no macOS nenhuma
-// sessão guarda janela e `focus` devolve false. Evoluir: _NET_ACTIVE_WINDOW no X11 e NSRunningApplication no macOS
+// No Linux, com o app no X11: um terminal no X11 vem pelo _NET_ACTIVE_WINDOW; um terminal do GNOME no Wayland (Ptyxis,
+// Console), que não aparece para o X11, vem pela ativação dele no D-Bus, com um token de ativação do app (`x11::startup_token`).
+// ponytail: a janela vem, não a aba da sessão (o Ptyxis só foca uma aba pelo UUID dela, que não sai para o shell); no macOS
+// nenhuma sessão guarda janela e `focus` devolve false. Evoluir: NSRunningApplication no macOS
 
 use crate::app::chat::direct::folder_label;
 use crate::prelude::*;
@@ -50,6 +52,21 @@ fn window_owner(above: &[u32], windows: &[(isize, u32, String)]) -> u32 {
     above.iter().copied().find(|process| windows.iter().any(|(_, owner, _)| owner == process)).unwrap_or(0)
 }
 
+/// O nome no D-Bus de um terminal que roda no Wayland e se traz para a frente quando ativado (um GApplication), pelo nome
+/// do processo (o `comm` do Linux, cortado em 15 letras): os do GNOME.
+fn terminal_app(process: &str) -> Option<&'static str> {
+    match process {
+        "ptyxis" => Some("org.gnome.Ptyxis"),
+        "kgx" => Some("org.gnome.Console"),
+        _ => None,
+    }
+}
+
+/// O ancestral mais próximo que é um desses terminais (`terminal_app`); 0 quando nenhum é.
+fn app_owner(above: &[u32], table: &HashMap<u32, (u32, String)>) -> u32 {
+    above.iter().copied().find(|process| table.get(process).is_some_and(|(_, name)| terminal_app(name).is_some())).unwrap_or(0)
+}
+
 /// Das janelas de um processo, (janela, título), a que vai para a frente: a que leva a pasta da sessão no título (um
 /// editor com vários projetos abertos), senão a primeira.
 #[allow(dead_code)]
@@ -82,13 +99,18 @@ pub(crate) fn note(payload: &Value) {
     if sessions().iter().any(|(known, ..)| known == session) {
         return;
     }
-    let above = ancestors(&crate::transcript::process::table(), relay as u32);
+    let table = crate::transcript::process::table();
+    let above = ancestors(&table, relay as u32);
     // nenhum ancestral: o relay já tinha saído, e o próximo evento da sessão tenta de novo
     if above.is_empty() {
         return;
     }
     let folder = Some(folder_label(payload["cwd"].as_str().unwrap_or_default())).filter(|folder| folder != "~").unwrap_or_default();
-    remember(session, window_owner(&above, &top_windows()), &folder);
+    let owner = match window_owner(&above, &top_windows()) {
+        0 => app_owner(&above, &table),
+        owner => owner,
+    };
+    remember(session, owner, &folder);
 }
 
 /// A sessão tem uma janela conhecida: "Abrir o Claude" tem o que abrir.
@@ -99,10 +121,43 @@ pub(crate) fn has_window(session: &str) -> bool {
 
 /// Traz para a frente a janela em que a sessão roda; false quando não há janela conhecida ou o sistema não deixou.
 pub(crate) fn focus_session_window(session: &str) -> bool {
+    // os testes nunca trazem uma janela de verdade (a do terminal que roda o cargo)
+    if cfg!(test) {
+        return false;
+    }
     let Some((owner, folder)) = lookup(session) else { return false };
     let windows: Vec<(isize, String)> =
         top_windows().into_iter().filter(|(_, process, _)| *process == owner).map(|(window, _, title)| (window, title)).collect();
-    pick_window(&windows, &folder).is_some_and(|window| bring_forward(*window))
+    match pick_window(&windows, &folder) {
+        Some(window) => bring_forward(*window),
+        None => activate_terminal(owner),
+    }
+}
+
+/// Linux: o terminal `owner`, ainda vivo e do GNOME no Wayland (`terminal_app`), ativado pelo D-Bus com um token do app,
+/// e ele mesmo traz a sua janela. Só o que já roda: chamar o nome de um que fechou o abriria de novo, numa janela nova.
+#[cfg(target_os = "linux")]
+fn activate_terminal(owner: u32) -> bool {
+    let process = fs::read_to_string(format!("/proc/{owner}/comm")).unwrap_or_default();
+    let Some(name) = terminal_app(process.trim()) else { return false };
+    let token = if crate::app::island::x11::active() { crate::app::island::x11::startup_token() } else { None };
+    let platform = token.as_ref().map_or("@a{sv} {}".to_string(), |token| format!("{{'activation-token': <'{token}'>, 'desktop-startup-id': <'{token}'>}}"));
+    let path = format!("/{}", name.replace('.', "/"));
+    let call = ["call", "--session", "--timeout", "3", "--dest", name, "--object-path", &path, "--method", "org.freedesktop.Application.Activate", &platform];
+    let done = std::process::Command::new("gdbus").args(call).output().is_ok_and(|output| output.status.success());
+    // the notification ends when the terminal uses its token; one left unused would hold the busy pointer until mutter gives up
+    if let Some(token) = token {
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(if done { 3 } else { 0 }));
+            crate::app::island::x11::startup_done(&token);
+        });
+    }
+    done
+}
+
+#[cfg(not(target_os = "linux"))]
+fn activate_terminal(_owner: u32) -> bool {
+    false
 }
 
 #[cfg(windows)]
@@ -148,7 +203,16 @@ fn top_windows() -> Vec<(isize, u32, String)> {
     list
 }
 
-#[cfg(not(windows))]
+/// Linux no X11: as janelas que o gerenciador de janelas conhece (as dos programas no X11).
+#[cfg(target_os = "linux")]
+fn top_windows() -> Vec<(isize, u32, String)> {
+    if !crate::app::island::x11::active() {
+        return Vec::new();
+    }
+    crate::app::island::x11::client_windows().into_iter().map(|(window, process, title)| (window as isize, process, title)).collect()
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 fn top_windows() -> Vec<(isize, u32, String)> {
     Vec::new()
 }
@@ -172,7 +236,13 @@ fn bring_forward(window: isize) -> bool {
     }
 }
 
-#[cfg(not(windows))]
+/// Linux no X11: como uma barra de tarefas pede (`x11::activate`).
+#[cfg(target_os = "linux")]
+fn bring_forward(window: isize) -> bool {
+    crate::app::island::x11::active() && crate::app::island::x11::activate(window as u32)
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 fn bring_forward(_window: isize) -> bool {
     false
 }
@@ -217,6 +287,31 @@ mod tests {
         // um console clássico: a janela é do conhost, que não é ancestral; a subida para no explorer em vez de achar a barra de tarefas
         let classic = tree(&[(100, 1, "Explorer.EXE"), (300, 100, "cmd.exe"), (400, 300, "node.exe"), (600, 400, "magoagent-hook.exe")]);
         assert_eq!(window_owner(&ancestors(&classic, 600), &windows_of(&[100])), 0);
+    }
+
+    #[test]
+    fn a_gnome_terminal_on_wayland_owns_the_session_when_no_window_of_x11_does() {
+        // Ptyxis → ptyxis-agent → zsh → claude → sh → o relay; nenhuma janela no X11
+        let table = tree(&[
+            (1, 0, "systemd"),
+            (900, 1, "systemd"),
+            (1000, 900, "ptyxis"),
+            (1010, 1000, "ptyxis-agent"),
+            (1020, 1010, "zsh"),
+            (1030, 1020, "claude"),
+            (1040, 1030, "sh"),
+            (1050, 1040, "magoagent"),
+        ]);
+        let above = ancestors(&table, 1050);
+        assert_eq!(window_owner(&above, &[]), 0);
+        assert_eq!(app_owner(&above, &table), 1000, "the terminal's own process, not its agent");
+        assert_eq!(terminal_app("ptyxis"), Some("org.gnome.Ptyxis"));
+        assert_eq!(terminal_app("kgx"), Some("org.gnome.Console"));
+        assert_eq!(terminal_app("zsh"), None);
+        // an editor's terminal on X11 (VS Code): its window, not a D-Bus name
+        let code = tree(&[(1, 0, "systemd"), (2000, 1, "code"), (2010, 2000, "bash"), (2020, 2010, "claude"), (2030, 2020, "magoagent")]);
+        let above = ancestors(&code, 2030);
+        assert_eq!((window_owner(&above, &windows_of(&[2000])), app_owner(&above, &code)), (2000, 0));
     }
 
     #[test]

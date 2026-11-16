@@ -105,12 +105,18 @@ impl DrawingApp {
                 for pair in lines.chunks(2) {
                     ui.horizontal(|ui| {
                         for line in pair {
-                            pill(ui, line, width, time, out);
+                            pill(ui, line, width, self.opens_on_click(line), time, out);
                         }
                     });
                 }
             });
         });
+    }
+
+    /// Whether a click on `line`'s pill opens it, as its Abrir: when the person put it in the card already. Not a tool's:
+    /// its card has its own buttons, and its Abrir leaves the app (GitHub's page).
+    fn opens_on_click(&self, line: &Line) -> bool {
+        self.island.focus.as_deref() == Some(line.id.as_str()) && !line.id.starts_with(crate::app::integrations::ITEM_PREFIX)
     }
 
     /// An agent with nothing to say of its turn: its name, its state and the buttons.

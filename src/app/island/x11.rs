@@ -6,8 +6,11 @@
 use crate::prelude::*;
 use std::sync::{Mutex, OnceLock};
 use x11rb::connection::Connection;
+use x11rb::protocol::Event;
 use x11rb::protocol::shape::{ConnectionExt as _, SK, SO};
-use x11rb::protocol::xproto::{AtomEnum, ClipOrdering, ConnectionExt as _, Rectangle, Window};
+use x11rb::protocol::xproto::{
+    AtomEnum, ClientMessageEvent, ClipOrdering, ConnectionExt as _, CreateWindowAux, EventMask, PropMode, Rectangle, Window, WindowClass,
+};
 use x11rb::rust_connection::RustConnection;
 
 /// Whether the app runs on X11: when there is an X server (`DISPLAY`), XWayland included, and the libraries winit's X11
@@ -39,6 +42,10 @@ struct Link {
     window: Option<Window>,
     /// The input shape last set, in pixels of the window (x, y, width, height).
     shape: Option<(i16, i16, u16, u16)>,
+    /// The screen's number, and a window of ours never shown: what the X server's time is read on and what sends the
+    /// startup notifications (`startup_token`).
+    screen: usize,
+    helper: Option<Window>,
 }
 
 fn link() -> &'static Mutex<Option<Link>> {
@@ -46,7 +53,7 @@ fn link() -> &'static Mutex<Option<Link>> {
     LINK.get_or_init(|| {
         let link = x11rb::connect(None).ok().map(|(connection, screen)| {
             let root = connection.setup().roots[screen].root;
-            Link { connection, root, window: None, shape: None }
+            Link { connection, root, window: None, shape: None, screen, helper: None }
         });
         Mutex::new(link)
     })
@@ -126,6 +133,125 @@ pub(crate) fn pixels(area: Rect, scale: f32) -> Rectangle {
     }
 }
 
+/// The windows the window manager knows (`_NET_CLIENT_LIST`): (window, its process, its title). Under XWayland only the
+/// programs on X11 are there; the ones on Wayland are not.
+pub(crate) fn client_windows() -> Vec<(u32, u32, String)> {
+    let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(link) = guard.as_ref() else { return Vec::new() };
+    let connection = &link.connection;
+    let (Some(list), Some(name), Some(utf8), Some(pid)) =
+        (atom(connection, "_NET_CLIENT_LIST"), atom(connection, "_NET_WM_NAME"), atom(connection, "UTF8_STRING"), atom(connection, "_NET_WM_PID"))
+    else {
+        return Vec::new();
+    };
+    let reply = connection.get_property(false, link.root, list, AtomEnum::WINDOW, 0, 4096).ok().and_then(|cookie| cookie.reply().ok());
+    let windows: Vec<u32> = reply.and_then(|reply| Some(reply.value32()?.collect())).unwrap_or_default();
+    windows
+        .into_iter()
+        .filter_map(|window| {
+            let process = connection.get_property(false, window, pid, AtomEnum::CARDINAL, 0, 1).ok()?.reply().ok()?.value32()?.next()?;
+            let title = connection.get_property(false, window, name, utf8, 0, 256).ok()?.reply().ok()?.value;
+            Some((window, process, String::from_utf8_lossy(&title).into_owned()))
+        })
+        .collect()
+}
+
+/// Brings `window` to the front with the keyboard, as a taskbar does: `_NET_ACTIVE_WINDOW` from a pager, with no time
+/// (mutter then takes its own, and a pager's ask is not held back as a program stealing the focus). Only after a click of
+/// the person in the app asking for it.
+pub(crate) fn activate(window: u32) -> bool {
+    let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(link) = guard.as_ref() else { return false };
+    let Some(active) = atom(&link.connection, "_NET_ACTIVE_WINDOW") else { return false };
+    // source 2: a pager; time 0: now
+    let event = ClientMessageEvent::new(32, window, active, [2u32, 0, 0, 0, 0]);
+    let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
+    let sent = link.connection.send_event(false, link.root, mask, event).ok().and_then(|cookie| cookie.check().ok()).is_some();
+    let _ = link.connection.flush();
+    sent
+}
+
+/// The window of ours that is never shown, made the first time.
+fn helper(link: &mut Link) -> Option<Window> {
+    if link.helper.is_none() {
+        let window = link.connection.generate_id().ok()?;
+        let aux = CreateWindowAux::new().event_mask(EventMask::PROPERTY_CHANGE);
+        link.connection.create_window(0, window, link.root, -10, -10, 1, 1, 0, WindowClass::INPUT_ONLY, 0, &aux).ok()?.check().ok()?;
+        link.helper = Some(window);
+    }
+    link.helper
+}
+
+/// The X server's time now, as ICCCM reads it: a property of our helper window changed (by nothing), and the time of its
+/// notify. Waits a moment at most.
+fn server_time(link: &mut Link) -> Option<u32> {
+    let window = helper(link)?;
+    let mark = atom(&link.connection, "_MAGOAGENT_TIME")?;
+    link.connection.change_property(PropMode::APPEND, window, mark, AtomEnum::STRING, 8, 0, &[]).ok()?;
+    link.connection.flush().ok()?;
+    for _ in 0..100 {
+        match link.connection.poll_for_event().ok()? {
+            Some(Event::PropertyNotify(notify)) if notify.window == window => return Some(notify.time),
+            Some(_) => {}
+            None => std::thread::sleep(std::time::Duration::from_millis(2)),
+        }
+    }
+    None
+}
+
+/// The startup notification's message (the startup-notification spec): what starts, on which screen.
+pub(crate) fn startup_message(id: &str, screen: usize) -> String {
+    format!("new: ID={id} NAME=MagoAgent SCREEN={screen}")
+}
+
+/// Sends a startup notification's message, in its pieces, from our helper window.
+fn startup_send(link: &mut Link, message: &str) -> Option<()> {
+    let window = helper(link)?;
+    let (begin, more) = (atom(&link.connection, "_NET_STARTUP_INFO_BEGIN")?, atom(&link.connection, "_NET_STARTUP_INFO")?);
+    for (index, piece) in startup_pieces(message).into_iter().enumerate() {
+        let event = ClientMessageEvent::new(8, window, if index == 0 { begin } else { more }, piece);
+        link.connection.send_event(false, link.root, EventMask::PROPERTY_CHANGE, event).ok()?;
+    }
+    link.connection.flush().ok()
+}
+
+/// A message in the pieces of 20 bytes the client messages carry, ended by a zero.
+pub(crate) fn startup_pieces(message: &str) -> Vec<[u8; 20]> {
+    let mut bytes = message.as_bytes().to_vec();
+    bytes.push(0);
+    bytes
+        .chunks(20)
+        .map(|chunk| {
+            let mut piece = [0u8; 20];
+            piece[..chunk.len()].copy_from_slice(chunk);
+            piece
+        })
+        .collect()
+}
+
+/// A token for a program on Wayland to come to the front with (xdg-activation, as a launcher hands one): a startup
+/// notification of ours on X11 (`_NET_STARTUP_INFO`), stamped with the X server's time now, whose ID mutter takes as a
+/// token when the program shows it, and honours when nothing the person did came after it.
+pub(crate) fn startup_token() -> Option<String> {
+    static COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let mut guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let link = guard.as_mut()?;
+    let time = server_time(link)?;
+    let count = COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let id = format!("magoagent-{}-{count}_TIME{time}", std::process::id());
+    let message = startup_message(&id, link.screen);
+    startup_send(link, &message)?;
+    Some(id)
+}
+
+/// The startup notification `id` is over (mutter ends it when the token is used; this one is for when it was not).
+pub(crate) fn startup_done(id: &str) {
+    let mut guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(link) = guard.as_mut() {
+        startup_send(link, &format!("remove: ID={id}"));
+    }
+}
+
 /// The cursor on the screen, in pixels, for the wizard's eyes. Under XWayland it is where the cursor last was over a
 /// window of X11 (the app's own included).
 pub(crate) fn cursor() -> Option<Pos2> {
@@ -157,6 +283,18 @@ mod tests {
         assert!(chosen(Some(display), Some("0")));
         assert!(!chosen(Some(display), Some("1")), "MAGOAGENT_WAYLAND=1 stays on Wayland");
         assert!(!chosen(None, None) && !chosen(Some(std::ffi::OsStr::new("")), None), "no X server");
+    }
+
+    #[test]
+    fn a_startup_notification_goes_in_pieces_of_twenty_bytes_ended_by_a_zero() {
+        let message = startup_message("magoagent-7-0_TIME1234", 0);
+        assert_eq!(message, "new: ID=magoagent-7-0_TIME1234 NAME=MagoAgent SCREEN=0");
+        let pieces = startup_pieces(&message);
+        assert_eq!(pieces.len(), message.len() / 20 + 1);
+        let joined: Vec<u8> = pieces.concat();
+        assert_eq!(&joined[..message.len()], message.as_bytes());
+        assert_eq!(joined[message.len()], 0, "the zero that ends it");
+        assert_eq!(startup_pieces(&"x".repeat(20)).len(), 2, "a message of exactly 20 bytes takes another piece for its zero");
     }
 
     #[test]

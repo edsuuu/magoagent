@@ -56,7 +56,8 @@ pub(crate) fn tag(payload: &mut Value, env: &dyn Fn(&str) -> Option<String>) {
     };
     let input = (payload["tool_name"] == "AskUserQuestion").then(|| payload["tool_input"].clone());
     if let Some(fields) = payload.as_object_mut() {
-        for weighty in ["tool_response", "tool_output", "transcript_path"] {
+        // the transcript's path goes: it is how the island reads the session's conversation (`outside_transcript`)
+        for weighty in ["tool_response", "tool_output"] {
             fields.remove(weighty);
         }
         fields.insert("mago_origin".into(), origin.into());
