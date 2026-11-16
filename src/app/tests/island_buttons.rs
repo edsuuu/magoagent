@@ -419,7 +419,7 @@ fn inicio_holds_only_the_tools_and_chats_only_the_agents() {
     assert_eq!((app.island.tab(), app.island.focus()), (Tab::Chats, Some("a")), "Chats: the agents, not the tool");
 }
 
-/// GitHub's alerts sound on the island as Coucou's: checks that passed, a review asked for (a failure is its red wizard's error).
+/// GitHub's alerts sound on the island as the reference's: checks that passed, a review asked for (a failure is its red wizard's error).
 #[test]
 fn checks_that_passed_and_a_review_asked_for_sound_on_the_island() {
     use crate::app::integrations::github::{CiState, GitHub, PullRequest, Pulse};
