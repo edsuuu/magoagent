@@ -334,13 +334,14 @@ impl DrawingApp {
         out
     }
 
-    /// The closed notch: only the wizard's face, in the middle, looking around by itself (the cursor is not followed
-    /// there, as in Coucou). The compact island: the wizard at the left, its eyes on the cursor, and a mini one per agent
+    /// The closed notch: only the wizard's face, in the middle, its eyes on the cursor (asked: "ele não acompanha o
+    /// cursor"; the reference's looks around by itself there), and around by itself while the cursor is not known. The
+    /// compact island: the wizard at the left, its eyes on the cursor, and a mini one per agent
     /// in a grid at the right (`mini_cells`), in its colour, with a badge on the ones that wait.
     fn island_small(&self, ui: &mut egui::Ui, rect: Rect, view: &View, compact: bool, time: f64, out: &mut Out) {
         let state = main_state(view.mood, view.celebrating);
         if !compact {
-            paint_mago_toward(ui.painter(), "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time, None);
+            paint_mago_toward(ui.painter(), "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time, view.pointer);
             return;
         }
         aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 30.0, state);
