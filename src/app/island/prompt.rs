@@ -37,7 +37,7 @@ impl DrawingApp {
         let origin = view.origin.get();
         let height = page.bottom() + 10.0 - origin.y;
         let state = MagoState::from_agent(row.state, time);
-        aim(view, Pos2::new(origin.x + 52.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 44.0, state, 40.0);
+        aim(view, Pos2::new(origin.x + 52.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 44.0, state);
 
         // ⤢: the whole mini chat in the island (attachments, folder, mode, model, dictation, voice)
         let expand = Rect::from_center_size(Pos2::new(page.right() - 18.0, page.top() + 18.0), Vec2::splat(20.0));

@@ -82,6 +82,7 @@ impl Default for DrawingApp {
             hidden_paint: None,
             paced: None,
             tray: None,
+            tray_tried: false,
             raise_window: false,
             raising: None,
             quitting: false,

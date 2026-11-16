@@ -464,13 +464,13 @@ mod tests {
         app.voice.state = VoiceState::Listening;
         app.now = 10.0;
         app.voice.connected_at = Some(5.0);
-        // the popup's figure: the wizard's polygons or the orb's mesh of rings
+        // the popup's figure: the mascot's flame or the orb's mesh of rings
         let figure = |app: &mut DrawingApp| {
             let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.voice_popup(ui.ctx()));
             output.textures_delta.clear();
-            // the wizard is a handful of filled polygons (body, hat, eyes…)
-            let polygons = output.shapes.iter().filter(|s| matches!(&s.shape, Shape::Path(_))).count();
-            (polygons > 8, output.shapes.iter().any(|s| matches!(&s.shape, Shape::Mesh(m) if m.vertices.len() > 1000)))
+            // the flame is a mesh of a few dozen points (its outline), the orb one of thousands
+            let mesh = |points: std::ops::Range<usize>| output.shapes.iter().any(|s| matches!(&s.shape, Shape::Mesh(m) if points.contains(&m.vertices.len())));
+            (mesh(40..200), mesh(1000..usize::MAX))
         };
         figure(&mut app);
         assert_eq!(figure(&mut app), (true, false), "Claude Code: the mascot, no orb");

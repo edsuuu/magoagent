@@ -1,13 +1,13 @@
-//! The wizard's motion: properties chasing targets, a spring for the hat, a hop, blinking, the eyes'
+//! The mascot's motion: properties chasing targets, a spring for the flame's sway, a hop, blinking, the eyes'
 //! gaze, the particles and the reactions to clicks.
 
 use super::{EyeKind, Look, MagoState};
 use crate::prelude::*;
 
 const GRAVITY: f32 = 14.0;
-/// The body: where its middle is (figure units, y down) and the squircle's half width and height.
+/// The face, the round bottom of the flame: where its middle is (figure units, y down) and its half width and height.
 pub(crate) const BODY_CENTER: f32 = 0.2;
-pub(crate) const BODY_HALF: (f32, f32) = (0.34, 0.27);
+pub(crate) const BODY_HALF: (f32, f32) = (0.3, 0.27);
 /// The eyes on the face, as Coucou's engine (MIT) projects them on its round body: each sits `EYE_SPREAD` radians to
 /// its side of the middle and `EYE_PITCH` from it, and the gaze turns both (by `LOOK_YAW` and `LOOK_PITCH` at the most),
 /// so they slide over a curved face and narrow as they near its edge. `LOOK_RATE` is its `1 - 0.0025^dt` a frame.
@@ -35,18 +35,8 @@ const MAX_PARTICLES: usize = 40;
 /// The hand as a ball (its width, which is also the capsule width) and as a capsule (twice as long).
 pub(crate) const HAND_BALL: f32 = 0.12;
 const HAND_CAPSULE: f32 = 0.24;
-/// The app icon hat in figure units: the icon is 512 px, the brim middle is at y 375 and one px is this big.
-pub(crate) const HAT_UNIT: f32 = 0.0017;
-pub(crate) const HAT_BASE_Y: f32 = 375.0;
-/// Where the hat brim sits (on top of the body) and how crooked it rests (radians).
-const HAT_BASE: (f32, f32) = (0.0, -0.02);
-const HAT_CROOK: f32 = 0.1;
-
-/// A point of the hat (figure units from the brim middle, y down) turned by the crook and the spring sway.
-pub(crate) fn hat_point(sway: f32, (x, y): (f32, f32)) -> (f32, f32) {
-    let (sin, cos) = (HAT_CROOK + sway * 0.12).sin_cos();
-    (HAT_BASE.0 + x * cos - y * sin, HAT_BASE.1 + x * sin + y * cos)
-}
+/// The tip of the flame (figure units, y down): the sparks come out of it.
+pub(crate) const FLAME_TIP: f32 = -0.4;
 
 /// A value that eases toward its target (exponentially, `rate` per second).
 #[derive(Clone, Copy, Debug)]
@@ -263,10 +253,14 @@ impl MagoMotion {
         self.reaction == Reaction::Dizzy && time < self.reaction_until
     }
 
-    /// Where the star beside the hat tip is, in figure units: the sparks come out of it.
-    pub(crate) fn star(&self) -> Vec2 {
-        let (x, y) = hat_point(self.sway, (133.0 * HAT_UNIT, -215.0 * HAT_UNIT));
-        Vec2::new(x, y)
+    /// Working or speaking: the flame licks quicker and taller.
+    pub(crate) fn lively(&self) -> bool {
+        matches!(self.state, MagoState::Working | MagoState::Speaking)
+    }
+
+    /// The flame's tip as it sways, in figure units: the sparks come out of it.
+    pub(crate) fn tip(&self) -> Vec2 {
+        Vec2::new(self.sway * 0.04, FLAME_TIP)
     }
 
     fn emit(&mut self, kind: ParticleKind) {
@@ -279,7 +273,7 @@ impl MagoMotion {
                 let angle = random_a * std::f32::consts::TAU;
                 let speed = 0.18 + random_b * 0.3;
                 Particle {
-                    at: self.star(),
+                    at: self.tip(),
                     velocity: Vec2::new(angle.cos(), angle.sin() - 0.4) * speed,
                     age: 0.0,
                     life: 0.7 + random_b * 0.4,
@@ -408,7 +402,7 @@ impl MagoMotion {
             tween.step(delta, rate);
         }
 
-        // the hat: a spring after its target, and kicked by the hops
+        // the flame's lean: a spring after its target, and kicked by the hops
         self.sway_velocity += (-70.0 * (self.sway - sway_target) - 7.0 * self.sway_velocity) * delta;
         self.sway = (self.sway + self.sway_velocity * delta).clamp(-1.2, 1.2);
 

@@ -1,10 +1,10 @@
-//! Home: the agent in focus in a card at the left (the wizard big over a glow of its state's colour) and the grid of
+//! Home: the agent in focus in a card at the left (the mascot big) and the grid of
 //! agents at the right, as Coucou's overview. What the card says follows what the agent does (`stage.rs`): the tool it is
 //! on with a glimpse of the file or the command's output, an edit's change in a card of its own, how a turn ended, and
 //! the wizard's dizziness when it is poked too much.
 
 use super::marquee::marquee;
-use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, View, aim, font, glow_with, mago, pill, semi, wash, wash_with};
+use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, View, aim, font, mago, pill, semi, wash, wash_with};
 use super::stage::{Activity, Phase};
 use super::{Line, Tab, entry, forms, main_state};
 use crate::app::chat::list::clipped;
@@ -49,19 +49,18 @@ impl DrawingApp {
                 entry::paint_particles(ui.painter(), rect.min, page, t);
             }
             let at = rect.min + pose.at.to_vec2();
-            glow_with(&ui.painter().with_clip_rect(page), at, 46.0, entry::halo_color(pose.blue), 0.65 * pose.halo);
             let waving = if pose.waving { MagoState::Waving } else { state };
             crate::app::mascot::mago::paint_scaled(ui.painter(), at, pose.scale, |painter| {
                 mago(painter, view.pointer, "island-main", at, pose.size, waving, time);
             });
-            aim(view, rect.min + entry::CENTER + Vec2::new(0.0, entry::SHIFT), 0.0, state, 0.0);
+            aim(view, rect.min + entry::CENTER + Vec2::new(0.0, entry::SHIFT), 0.0, state);
             return;
         }
         if view.dizzy {
             return self.home_dizzy(ui, page, view);
         }
         self.home_cards(ui, (left, right), view, focus, time, out);
-        aim(view, home, size, state, 46.0);
+        aim(view, home, size, state);
     }
 
     /// The focus card (and what is under it: its wash) and the grid of agents.
@@ -324,7 +323,7 @@ impl DrawingApp {
         wash_with(&clip, page, RED, 0.55, 0.0);
         wash_with(&clip, page, Color32::from_rgb(0x63, 0x66, 0xf1), 0.5, -page.width() * 0.22);
         let at = Pos2::new(page.left() + 58.0, page.center().y);
-        aim(view, at, 62.0, MagoState::Idle, 0.0);
+        aim(view, at, 62.0, MagoState::Idle);
         let x = page.left() + 106.0;
         ui.painter().text(Pos2::new(x, page.center().y - 11.0), egui::Align2::LEFT_CENTER, "Muitos toques de uma vez.", font(15.0), INK);
         ui.painter().text(Pos2::new(x, page.center().y + 11.0), egui::Align2::LEFT_CENTER, "Me dá um segundo…", font(12.5), DIM);

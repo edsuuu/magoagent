@@ -1,12 +1,11 @@
 //! Fechar mantém em segundo plano (Ajustes › Geral): the window's close hides it and the shells and agents keep
-//! running. An icon by the clock (Windows) or in the top bar (Linux, an AppIndicator, as Chrome's) brings it back
-//! (Mostrar in its menu, or a click on Windows) or quits (Sair); opening the app again also does it (`raise` through the
-//! bridge, main.rs). Ctrl+Q quits for real.
+//! running. An icon by the clock (Windows), in the menu bar (macOS) or in the top bar (Linux, an AppIndicator), there
+//! from the moment the app opens as Chrome's, brings it back (Mostrar in its menu, or a click on Windows and macOS) or
+//! quits (Sair); opening the app again also does it (`raise` through the bridge, main.rs). Ctrl+Q quits for real.
 
 use crate::prelude::*;
 
-/// What the icon asked for (macOS: no icon in the menu bar yet).
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+/// What the icon asked for.
 #[derive(Debug, PartialEq)]
 pub(crate) enum TrayAsk {
     Show,
@@ -15,7 +14,7 @@ pub(crate) enum TrayAsk {
 }
 
 /// The ids of the icon's menu, to tell what was picked.
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 struct Items {
     show: tray_icon::menu::MenuId,
     quit: tray_icon::menu::MenuId,
@@ -25,7 +24,7 @@ struct Items {
 }
 
 /// The icon and its menu.
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 fn build() -> Option<(tray_icon::TrayIcon, Items)> {
     use tray_icon::menu::{Menu, MenuItem};
     let picture = image::load_from_memory(include_bytes!("../../../assets/icon.png")).ok()?.thumbnail(64, 64).into_rgba8();
@@ -55,7 +54,7 @@ fn build() -> Option<(tray_icon::TrayIcon, Items)> {
 }
 
 /// What a pick in the menu asks (`None`: no item of it).
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 fn picked(items: &Items, id: &tray_icon::menu::MenuId) -> Option<TrayAsk> {
     if *id == items.quit {
         Some(TrayAsk::Quit)
@@ -72,25 +71,28 @@ fn picked(items: &Items, id: &tray_icon::menu::MenuId) -> Option<TrayAsk> {
     }
 }
 
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 pub(crate) struct Tray {
-    /// Windows: the icon lives on the app's thread; Linux: on GTK's (`new`).
-    #[cfg(windows)]
+    /// Windows and macOS: the icon lives on the app's thread; Linux: on GTK's (`new`).
+    #[cfg(not(target_os = "linux"))]
     _icon: tray_icon::TrayIcon,
-    items: Items,
+    /// Linux: the menu's ids, once GTK's thread has made the icon (`built` brings them).
+    items: Option<Items>,
+    #[cfg(target_os = "linux")]
+    built: std::sync::mpsc::Receiver<Option<Items>>,
 }
 
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 impl Tray {
-    #[cfg(windows)]
+    #[cfg(not(target_os = "linux"))]
     pub(crate) fn new() -> Option<Self> {
         let (icon, items) = build()?;
-        Some(Self { _icon: icon, items })
+        Some(Self { _icon: icon, items: Some(items) })
     }
 
     /// The AppIndicator is GTK's: GTK starts on a thread of its own, the icon is made there and its loop runs there for as
-    /// long as the app does. None without the library (libayatana-appindicator3, or the older libappindicator3: the
-    /// tray-icon crate would stop the app without it) or a display for GTK.
+    /// long as the app does; the app does not wait for it (`poll` takes the menu when it is ready). None without the
+    /// library (libayatana-appindicator3, or the older libappindicator3: the tray-icon crate would stop the app without it).
     #[cfg(target_os = "linux")]
     pub(crate) fn new() -> Option<Self> {
         let library = |name: &str| unsafe { libloading::Library::new(name) }.is_ok();
@@ -110,20 +112,25 @@ impl Tray {
             drop(icon);
         };
         std::thread::Builder::new().name("bandeja".into()).spawn(gtk_thread).ok()?;
-        built.recv_timeout(std::time::Duration::from_secs(5)).ok().flatten().map(|items| Self { items })
+        Some(Self { items: None, built })
     }
 
-    pub(crate) fn poll(&self) -> Option<TrayAsk> {
+    pub(crate) fn poll(&mut self) -> Option<TrayAsk> {
         use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent, menu::MenuEvent};
+        #[cfg(target_os = "linux")]
+        if self.items.is_none() {
+            self.items = self.built.try_recv().ok().flatten();
+        }
+        let items = self.items.as_ref()?;
         let mut ask = None;
-        // a click on the icon (Windows; the AppIndicator only has its menu)
+        // a click on the icon (Windows and macOS; the AppIndicator only has its menu)
         while let Ok(event) = TrayIconEvent::receiver().try_recv() {
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
                 ask = Some(TrayAsk::Show);
             }
         }
         while let Ok(event) = MenuEvent::receiver().try_recv() {
-            match picked(&self.items, &event.id) {
+            match picked(items, &event.id) {
                 Some(TrayAsk::Quit) => return Some(TrayAsk::Quit),
                 Some(other) => ask = Some(other),
                 None => {}
@@ -133,17 +140,17 @@ impl Tray {
     }
 }
 
-// ponytail: no icon in the macOS menu bar; opening the app again (the Dock) brings the window back. Evoluir: NSStatusItem
-#[cfg(not(any(windows, target_os = "linux")))]
+/// Elsewhere there is no icon: opening the app again brings the window back.
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub(crate) struct Tray;
 
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 impl Tray {
     pub(crate) fn new() -> Option<Self> {
         None
     }
 
-    pub(crate) fn poll(&self) -> Option<TrayAsk> {
+    pub(crate) fn poll(&mut self) -> Option<TrayAsk> {
         None
     }
 }
@@ -156,6 +163,11 @@ pub(crate) fn unix_seconds() -> u64 {
     SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |duration| duration.as_secs())
 }
 
+/// Whether this pass makes the icon: the first one, as Chrome's is there from the start; a script runs without one.
+pub(crate) fn makes_icon(tried: bool, scripted: bool) -> bool {
+    !tried && !scripted
+}
+
 /// What the window's close does: hide (the app keeps running) or let it close.
 pub(crate) fn hides_on_close(close_to_background: bool, quitting: bool, scripted: bool) -> bool {
     close_to_background && !quitting && !scripted
@@ -164,6 +176,10 @@ pub(crate) fn hides_on_close(close_to_background: bool, quitting: bool, scripted
 impl DrawingApp {
     /// Each pass, shown or hidden: the close that hides, Ctrl+Q, the icon's asks and a second launch's `raise`.
     pub(crate) fn background_window(&mut self, ctx: &Context) {
+        if !cfg!(test) && makes_icon(self.tray_tried, self.script.is_some()) {
+            self.tray_tried = true;
+            self.tray = Tray::new();
+        }
         if ctx.input_mut(|input| input.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::Q))) {
             self.quitting = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -176,11 +192,8 @@ impl DrawingApp {
                 // Wayland can't hide a window (winit ignores Visible there): it goes to the dock instead
                 ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
             }
-            if self.tray.is_none() {
-                self.tray = Tray::new();
-            }
         }
-        match self.tray.as_ref().and_then(Tray::poll) {
+        match self.tray.as_mut().and_then(Tray::poll) {
             Some(TrayAsk::PauseAlerts(seconds)) => {
                 self.prefs.pause_alerts_until = if seconds == u64::MAX { Some(u64::MAX) } else { Some(unix_seconds().saturating_add(seconds)) };
             }
@@ -235,7 +248,7 @@ const RAISE_FOR: f64 = 3.0;
 mod tests {
     use super::*;
 
-    #[cfg(any(windows, target_os = "linux"))]
+    #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
     #[test]
     fn each_item_of_the_icons_menu_asks_its_own_thing() {
         use tray_icon::menu::MenuId;
@@ -283,6 +296,13 @@ mod tests {
             assert_eq!(app.raising, None, "given up");
         }
         assert!(pass(&mut app, &ctx, 9.0).is_empty(), "nothing more is asked of the window");
+    }
+
+    #[test]
+    fn the_icon_is_made_on_the_first_pass_once_and_never_for_a_script() {
+        assert!(makes_icon(false, false), "the app just opened: the icon goes by the clock at once");
+        assert!(!makes_icon(true, false), "made (or missing its library) once, never asked again");
+        assert!(!makes_icon(false, true), "a scripted run leaves the person's top bar alone");
     }
 
     #[test]

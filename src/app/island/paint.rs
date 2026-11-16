@@ -80,19 +80,18 @@ pub(super) struct View {
     pub(super) origin: std::cell::Cell<Pos2>,
 }
 
-/// Where a page wants the island's one wizard (Coucou's `botPosition`): from the island's top left, how big, in which
-/// state, and the radius of its glow (none at 0). It springs there and is drawn once, over everything.
+/// Where a page wants the island's one mascot (Coucou's `botPosition`): from the island's top left, how big and in which
+/// state. It springs there and is drawn once, over everything.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Aim {
     pub(super) at: Vec2,
     pub(super) size: f32,
     pub(super) state: MagoState,
-    pub(super) glow: f32,
 }
 
 /// The page that shows puts the island's wizard at `at`, `size` big.
-pub(super) fn aim(view: &View, at: Pos2, size: f32, state: MagoState, glow: f32) {
-    view.aim.set(Some(Aim { at: at - view.origin.get(), size, state, glow }));
+pub(super) fn aim(view: &View, at: Pos2, size: f32, state: MagoState) {
+    view.aim.set(Some(Aim { at: at - view.origin.get(), size, state }));
 }
 
 impl Line {
@@ -321,9 +320,6 @@ impl DrawingApp {
             let (at, size) = view.bot.unwrap_or((wanted.at, wanted.size));
             let center = rect.min + at;
             let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
-            if wanted.glow > 0.0 {
-                glow(&painter, center, wanted.glow * size / wanted.size.max(1.0), wanted.state);
-            }
             mago(&painter, view.pointer, "island-main", center, size, wanted.state, time);
         }
         self.island_keys(ui, view, &mut out);
@@ -339,7 +335,7 @@ impl DrawingApp {
             paint_mago_toward(ui.painter(), "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time, None);
             return;
         }
-        aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 26.0, state, 0.0);
+        aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 26.0, state);
         for (line, cell) in view.lines.iter().zip(mini_cells(rect, view.lines.len())) {
             line.paint_mini(ui.painter(), &format!("island-mini-{}", line.id), cell.center(), cell.width(), time);
             mini_badge(ui.painter(), cell.center(), cell.width(), line, time);
@@ -514,7 +510,7 @@ impl DrawingApp {
         ui.painter().rect(page, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
         let state = main_state(view.mood, view.celebrating);
         let wizard = Pos2::new(page.left() + 44.0, page.center().y);
-        aim(view, wizard, 46.0, state, 40.0);
+        aim(view, wizard, 46.0, state);
         let (left, right) = (page.left() + 84.0, page.right() - 16.0);
         let rows = [20.0, 24.0, 18.0];
         let mut top = page.center().y - (rows.iter().sum::<f32>() + 20.0) / 2.0;
@@ -642,29 +638,6 @@ fn with_alpha(color: Color32, alpha: u8) -> Color32 {
 fn lighten(color: Color32, amount: f32) -> Color32 {
     let toward = |channel: u8| (channel as f32 + (255.0 - channel as f32) * amount).round() as u8;
     Color32::from_rgb(toward(color.r()), toward(color.g()), toward(color.b()))
-}
-
-/// The glow behind the wizard: the colour and strength of its state (Coucou's `botGlowColor` and `botGlowOpacity`).
-pub(super) fn glow(painter: &Painter, center: Pos2, radius: f32, state: MagoState) {
-    let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
-    let (color, strength) = match state {
-        MagoState::Working | MagoState::Listening | MagoState::Speaking => (hex(0x3b9eff), 0.65),
-        MagoState::NeedsYou => (hex(0xf5a524), 0.65),
-        MagoState::Asking => (hex(0x6366f1), 0.65),
-        MagoState::Done => (hex(0x34d399), 0.65),
-        MagoState::Error => (hex(0xf4505e), 0.65),
-        MagoState::Idle | MagoState::Sleeping => (Color32::WHITE, 0.15),
-        MagoState::Waving => (Color32::from_rgb(0xe8, 0xc3, 0x9a), 0.4),
-    };
-    glow_with(painter, center, radius, color, strength);
-}
-
-/// A glow of `color` and `strength`: concentric discs, each a little fainter and wider, a soft falloff.
-pub(super) fn glow_with(painter: &Painter, center: Pos2, radius: f32, color: Color32, strength: f32) {
-    for step in 0..10 {
-        let t = step as f32 / 10.0;
-        painter.circle_filled(center, radius * (1.0 - t * 0.85), color.gamma_multiply(strength * 0.085));
-    }
 }
 
 /// The island's type: the system face, as the reference's (`--font: system-ui`), whose sizes are CSS pixels, the same
