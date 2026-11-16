@@ -220,6 +220,45 @@ fn the_agents_reach_soloists_own_switch() {
     assert!(!app.prefs.integrations.soloist);
 }
 
+/// `integrations soloist`'s Configurar: its steps in words and its buttons, one at a time; the key never comes through
+/// the MCP, not even when an agent sends one.
+#[test]
+fn the_agents_set_soloist_up_but_never_carry_its_key() {
+    use crate::app::integrations::spotify::setup::{KeyFile, Login, Program, Status};
+    const KEY: &str = "spak_SEGREDO0123456789";
+    let soloist = |app: &mut DrawingApp, action: &str| app.act("integrations", &json!({ "integration": "soloist", "action": action, "key": KEY }));
+    let mut app = DrawingApp::default();
+    if cfg!(any(windows, target_os = "macos")) {
+        assert!(soloist(&mut app, "setup").unwrap_err().contains("só existe no Linux"));
+        return;
+    }
+    assert!(soloist(&mut app, "setup").unwrap().contains("Conferindo"), "nothing looked at yet");
+    app.integrations.soloist_setup.status = Some(Status {
+        program: Program::Ready("soloist 1.3.10".into()),
+        key: KeyFile::Private,
+        unit: true,
+        enabled: true,
+        active: "active".into(),
+        login: Login::Waiting,
+        vpn: vec!["wg0".into()],
+        ..Default::default()
+    });
+    app.integrations.soloist_setup.key_field = KEY.into();
+    let report = soloist(&mut app, "setup").unwrap();
+    assert!(report.contains("1. Baixar o Soloist — feito. soloist 1.3.10") && report.contains("5. Escolher o Soloist no celular — agora"), "{report}");
+    assert!(report.contains("wg0") && !report.contains("SEGREDO"), "{report}");
+    let refused = soloist(&mut app, "key").unwrap_err();
+    assert!(refused.contains("Ajustes › Integrações › Soloist") && !refused.contains("SEGREDO"), "{refused}");
+    assert!(soloist(&mut app, "update").unwrap().contains("Baixando"));
+    assert!(soloist(&mut app, "stop").unwrap_err().contains("ocupado"), "one at a time");
+    for action in ["stop", "start", "enable"] {
+        app.integrations.soloist_setup.busy = None;
+        soloist(&mut app, action).unwrap();
+    }
+    assert_eq!(app.integrations.soloist_setup.asked, ["download", "stop", "start", "turn_on"], "enable keeps the key saved before");
+    assert_eq!(app.integrations.soloist_setup.key_field, KEY, "what is in Ajustes' field is the person's, untouched");
+}
+
 /// `integrations hermes`: the switch, and the plugin's buttons (here on a Hermes that is not there: the tests' own
 /// folder, which is never made; what they write is in integrations/hermes/tests.rs).
 #[test]

@@ -1,7 +1,9 @@
 //! Ajustes › Integrações through the MCP's `integrations`: what each one shows, its switch and its buttons. A secret
-//! (GitHub's token) never comes through here: the person pastes it in Ajustes, so it stays out of the agents' logs.
+//! (GitHub's token, Soloist's key) never comes through here: the person pastes it in Ajustes, so it stays out of the
+//! agents' logs.
 
 use crate::app::integrations::spotify::Command;
+use crate::app::integrations::spotify::setup::Job;
 use crate::prelude::*;
 
 impl DrawingApp {
@@ -41,6 +43,18 @@ impl DrawingApp {
                 self.prefs.integrations.soloist = action == "on";
                 Ok(format!("Soloist {}.", if action == "on" { "ligado" } else { "desligado" }))
             }
+            // Configurar (integrations/spotify/setup): its steps, and what the person presses there; never the key
+            ("soloist", "setup") => Ok(self.soloist_setup_report()),
+            ("soloist", "key") => {
+                Err("a chave do Soloist nunca passa pelo MCP: a pessoa gera no painel do Spotify e cola em Ajustes › Integrações › Soloist › Configurar".into())
+            }
+            ("soloist", "update" | "install") => self.soloist_setup_run(Job::Download),
+            ("soloist", "enable") => {
+                let name = self.integrations.soloist_setup.name_field.clone();
+                self.soloist_setup_run(Job::TurnOn { key: None, name })
+            }
+            ("soloist", "start") => self.soloist_setup_run(Job::Start),
+            ("soloist", "stop") => self.soloist_setup_run(Job::Stop),
             ("spotify" | "soloist", command) if Command::parse(command).is_some() => {
                 match Command::parse(command).is_some_and(|command| self.spotify_control(command)) {
                     true => Ok("Pedido ao Spotify.".into()),
