@@ -38,6 +38,8 @@ pub(crate) struct Integrations {
     pub(crate) token_field: String,
     /// Ajustes' "Instalar…" of Hermes was pressed: what it will write is shown, waiting for the yes.
     pub(crate) hermes_confirm: bool,
+    /// Soloist's Configurar (Linux): its steps, the key's field and the work running.
+    pub(crate) soloist_setup: spotify::setup::Setup,
     /// What was pressed on the island's cards (they are drawn where the app is only read): done by the next tick.
     pub(crate) pressed: std::cell::RefCell<Vec<String>>,
 }
@@ -79,7 +81,7 @@ const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
 
 /// The pages a card or a button of the integrations may open: the services' own, never an address an answer made up.
 pub(crate) fn page_allowed(url: &str) -> bool {
-    ["https://github.com/"].iter().any(|start| url.starts_with(start)) && !url.chars().any(|letter| letter.is_control() || letter == ' ')
+    (url.starts_with("https://github.com/") || url == spotify::setup::DASHBOARD) && !url.chars().any(|letter| letter.is_control() || letter == ' ')
 }
 
 /// Opens one of the integrations' pages in the system's browser; never in a test.
@@ -97,6 +99,7 @@ impl DrawingApp {
         }
         self.github_tick(ctx);
         self.spotify_tick(ctx);
+        self.soloist_setup_tick(ctx);
         self.whatsapp_tick(ctx);
     }
 
@@ -232,12 +235,18 @@ mod tests {
 
     #[test]
     fn only_the_services_own_pages_open() {
-        for good in ["https://github.com/ana-dev/loja/pull/42", github::TOKENS_PAGE, github::PULLS_PAGE] {
+        for good in ["https://github.com/ana-dev/loja/pull/42", github::TOKENS_PAGE, github::PULLS_PAGE, spotify::setup::DASHBOARD] {
             assert!(page_allowed(good), "{good}");
         }
-        for bad in
-            ["file:///C:/Windows/System32/calc.exe", "http://github.com/a", "https://github.com.evil.example/a", "https://github.com/a b", "calc.exe", ""]
-        {
+        for bad in [
+            "file:///C:/Windows/System32/calc.exe",
+            "http://github.com/a",
+            "https://github.com.evil.example/a",
+            "https://github.com/a b",
+            "calc.exe",
+            "",
+            "https://developer.spotify.com/dashboard/soloist.evil.example",
+        ] {
             assert!(!page_allowed(bad), "{bad}");
         }
     }
