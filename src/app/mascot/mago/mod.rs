@@ -4,11 +4,15 @@
 //! eyes that follow the pointer and blink alone, particles, reactions to clicks) is adapted from Coucou's
 //! engine (MIT); the character, shapes and palette are this app's own.
 
+mod dance;
 mod draw;
 mod motion;
 #[cfg(test)]
 mod tests;
 
+// the island draws the dancer (next to the name on its Spotify tab, and closed); until it does, only the tests call it
+#[cfg_attr(not(test), allow(unused_imports))]
+pub(crate) use dance::paint_mago_dancing;
 pub(crate) use motion::{MagoMotion, gaze_toward};
 
 use crate::app::maestro::avatar::AvatarState;
