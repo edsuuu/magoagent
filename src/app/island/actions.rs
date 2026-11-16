@@ -110,6 +110,9 @@ impl DrawingApp {
         if let Some(id) = out.open_agent {
             self.island_show(&id, time);
         }
+        if let Some(id) = out.canvas {
+            self.island_on_canvas(&id);
+        }
         if let Some(id) = out.terminal
             && !self.outside_terminal(&id)
             && let Some(session) = self.island.session.as_mut()
@@ -119,6 +122,14 @@ impl DrawingApp {
         if out.voice {
             self.voice_toggle();
         }
+    }
+
+    /// The app in front on the canvas, on the card of agent `id` (the island's "No canvas"; `focus_canvas` for the MCP).
+    pub(crate) fn island_on_canvas(&mut self, id: &str) {
+        self.terminal_unread.remove(id);
+        self.show_canvas();
+        self.open_agent(id);
+        self.raise_window = true;
     }
 
     /// A new chat's form with what Ajustes presets: its folder.

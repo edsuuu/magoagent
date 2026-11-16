@@ -105,6 +105,8 @@ impl Line {
 #[derive(Default)]
 pub(crate) struct Out {
     pub(super) open_agent: Option<String>,
+    /// "No canvas" on the Home card: the app in front, on this agent's card in the canvas.
+    pub(super) canvas: Option<String>,
     /// "Conversar" on the Home card: this chat in the island.
     pub(super) talk: Option<String>,
     /// "Ir ao terminal" on a session's conversation: its terminal's window to the front.
@@ -177,6 +179,7 @@ impl DrawingApp {
                     mago,
                     color: agent_color(&program, &row.id),
                     chat: self.is_chat(&row.id),
+                    canvas: self.scene.elements.iter().any(|element| element.id == row.id) || self.away.contains_key(&row.id),
                     badge: None,
                     kind: stage::program_name(&program),
                 }
@@ -193,6 +196,7 @@ impl DrawingApp {
             state: pill.state,
             color: pill.color,
             chat: false,
+            canvas: false,
             badge: pill.badge,
         }));
         lines.extend(self.integration_lines());
@@ -589,10 +593,14 @@ impl DrawingApp {
     }
 }
 
+/// A pill of the grid and its mini (Coucou's are 28 and 24: asked a little bigger).
+pub(super) const PILL_H: f32 = 36.0;
+const PILL_MINI: f32 = 31.0;
+
 /// One pill of the grid, as Coucou's `buildPill`: its mini wizard and its name. The pointer over it only lights it in its
 /// colour (`mouseenter`); a click puts its agent in the card at the left (`setFocus`), where Abrir and Conversar are.
 pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, opens: bool, time: f64, out: &mut Out) {
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 28.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, PILL_H), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let hovered = response.hovered();
     // it grows on hover as Coucou's (scale 1.04), within its own room: past it the scroll area would cut its edge
@@ -605,17 +613,18 @@ pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, opens: bool, time
         ui.painter().rect_filled(rect, 14, CARD_FLAT);
         ui.painter().rect(rect, 14, with_alpha(line.color, 0x2e), Stroke::new(1.0, with_alpha(line.color, 0x8c)), StrokeKind::Inside);
     }
-    // Coucou's pill: a mini of 24 points 7 in, no ring around it
-    line.paint_mini(ui.painter(), &format!("island-pill-{}", line.id), Pos2::new(rect.left() + 19.0, rect.center().y), 24.0, time);
+    // a mini of `PILL_MINI` points 7 in, no ring around it
+    let mini = Pos2::new(rect.left() + 7.0 + PILL_MINI / 2.0, rect.center().y);
+    line.paint_mini(ui.painter(), &format!("island-pill-{}", line.id), mini, PILL_MINI, time);
     // the name, 600 10px, centred in the room after the mini (padding 0 8 0 34), lightened 30% toward white under the
     // pointer (`lighten(task.color, 0.3)`)
     let ink = if hovered { lighten(line.color, 0.3) } else { DIM_3 };
-    let room = Rect::from_min_max(Pos2::new(rect.left() + 34.0, rect.top()), Pos2::new(rect.right() - 8.0, rect.bottom()));
+    let room = Rect::from_min_max(Pos2::new(rect.left() + 10.0 + PILL_MINI, rect.top()), Pos2::new(rect.right() - 8.0, rect.bottom()));
     // centred when it fits; cut, it scrolls under the pointer
-    let whole = ui.painter().layout_no_wrap(line.name.clone(), semi(10.0), ink).size().x;
+    let whole = ui.painter().layout_no_wrap(line.name.clone(), semi(11.0), ink).size().x;
     let left = if whole <= room.width() { room.center().x - whole / 2.0 } else { room.left() };
-    marquee(ui, egui::Id::unique(("island_pill_name", &line.id)), &line.name, semi(10.0), ink, (left, room.center().y), room.width(), hovered);
-    mini_badge(ui.painter(), Pos2::new(rect.left() + 19.0, rect.center().y), 24.0, line, time);
+    marquee(ui, egui::Id::unique(("island_pill_name", &line.id)), &line.name, semi(11.0), ink, (left, room.center().y), room.width(), hovered);
+    mini_badge(ui.painter(), mini, PILL_MINI, line, time);
     // `pillBadge`: only the sessions from outside carry one on the pill's corner
     if line.badge.is_some() {
         badge(ui.painter(), Pos2::new(rect.right() - 10.0, rect.top() + 2.0), line, 7.0);

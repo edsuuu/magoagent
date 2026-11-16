@@ -20,6 +20,7 @@ mod icons;
 mod integrations;
 mod keymap;
 mod keys;
+mod log;
 mod marquee;
 mod minis;
 mod paint;
@@ -44,8 +45,8 @@ const COMPACT_CORNER: f32 = 14.0;
 /// The conversation at least this big, in points.
 const CHAT_MIN: (f32, f32) = (420.0, 300.0);
 const EXPANDED_CORNER: f32 = 22.0;
-/// Home's height, and the conversation's.
-const HOME_H: f32 = 160.0;
+/// Home's height (Coucou's 160, asked a little taller for bigger minis: three rows of pills), and the conversation's.
+const HOME_H: f32 = 180.0;
 const CHAT_H: f32 = 360.0;
 
 /// What the island says about the agents at a glance.
@@ -234,6 +235,8 @@ pub(super) struct Line {
     pub(super) mago: MagoState,
     pub(super) color: Color32,
     pub(super) chat: bool,
+    /// A card of the canvas (a terminal or a chat there, this workspace's or another's): its card offers "No canvas".
+    pub(super) canvas: bool,
     /// The dot on its corner (a session outside the app: `maestro/outside.rs`); the chats' come from their state.
     pub(super) badge: Option<crate::app::maestro::outside::Badge>,
     /// The program as its card names it ("Claude Code").
@@ -474,7 +477,7 @@ impl DrawingApp {
         } else {
             let said = match &self.island.session {
                 Some(session) => session.said(),
-                None => self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map_or(0, |transcript| prompt::said(&transcript.items).count()),
+                None => self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map_or(0, |transcript| log::said(&transcript.items).count()),
             };
             Vec2::new(EXPANDED_W, prompt::prompt_height(said))
         };
@@ -597,6 +600,7 @@ impl DrawingApp {
         // the clicks of the buttons; the pointer over a pill makes no sound, as in Coucou
         if out.tab.is_some()
             || out.open_agent.is_some()
+            || out.canvas.is_some()
             || out.talk.is_some()
             || out.terminal.is_some()
             || out.voice
@@ -646,7 +650,7 @@ mod tests {
         let chat = Vec2::new(640.0, 360.0);
         assert_eq!(target(Shape::Closed, Tab::Chat, false, false, 0.0, chat), (Vec2::new(80.0, 24.0), 10.0));
         assert_eq!(target(Shape::Compact, Tab::Chat, false, false, 0.0, chat), (Vec2::new(288.0, 32.0), 14.0));
-        assert_eq!(target(Shape::Open, Tab::Home, false, false, 0.0, chat), (Vec2::new(640.0, 160.0), 22.0));
+        assert_eq!(target(Shape::Open, Tab::Home, false, false, 0.0, chat), (Vec2::new(640.0, 180.0), 22.0));
         assert_eq!(target(Shape::Open, Tab::Chat, false, false, 0.0, Vec2::new(900.0, 500.0)).0, Vec2::new(900.0, 500.0), "the conversation: its own size");
         // a question takes the island over at its card's height: 200 with options to pick, 160 for a permission
         assert_eq!(target(Shape::Open, Tab::Home, true, false, ask::QUESTION_H - 52.0, chat).0.y, 200.0);

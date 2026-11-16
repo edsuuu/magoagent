@@ -5,13 +5,13 @@
 //! places at once. So the box is "Responder no terminal", beside the way to the terminal's window.
 
 use super::forms;
+use super::log::said;
 use super::paint::{CARD, DIM, DIM_3, INK, Out, View, aim, font, wash_with};
-use super::prompt::{paint_log, said};
 use crate::app::chat::list::clipped;
 use crate::app::mascot::mago::MagoState;
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
-use crate::transcript::Transcript;
+use crate::transcript::{ChatItem, Transcript};
 
 /// How long a word about the terminal's window stays in the box.
 const NOTICE_FOR: f64 = 5.0;
@@ -78,8 +78,8 @@ impl DrawingApp {
         let log = Rect::from_min_max(Pos2::new(body.left(), body.top()), Pos2::new(body.right() - 22.0, chip_row.top() - 6.0));
         match &session.transcript {
             Some(transcript) => {
-                let messages: Vec<(String, bool)> = said(&transcript.items).map(|(text, user)| (text.to_string(), user)).collect();
-                paint_log(ui, log, &messages, matches!(state, AgentState::Working(_)), time);
+                let messages: Vec<&ChatItem> = said(&transcript.items).collect();
+                self.island_log(ui, log, &messages, matches!(state, AgentState::Working(_)), time);
             }
             None => {
                 let words = "A conversa desta sessão não pode ser lida daqui.";
