@@ -82,16 +82,17 @@ impl DrawingApp {
             (Some(line), None) => self.idle_card(ui, left, line, out),
             (None, _) => {
                 let text_x = left.left() + 106.0;
-                let (title, hint) = if view.tab == Tab::Home {
-                    ("Nenhuma ferramenta ligada", "Ligue em Ajustes › Integrações")
-                } else {
-                    ("Nenhum agente ainda", "Crie um chat em  +")
+                let (title, hint) = match view.tab {
+                    Tab::Claude => ("Nenhuma sessão do Claude Code fora do app", "Instale os hooks em Ajustes › Integrações"),
+                    Tab::GitHub => ("O GitHub está desligado", "Ligue em Ajustes › Integrações"),
+                    Tab::Music => ("Nada tocando agora", "Ligue o Spotify em Ajustes › Integrações"),
+                    _ => ("Nenhum agente ainda", "Crie um chat em  +"),
                 };
                 ui.painter().text(Pos2::new(text_x, left.top() + 26.0), egui::Align2::LEFT_CENTER, title, font(13.0), INK);
                 ui.painter().text(Pos2::new(text_x, left.top() + 46.0), egui::Align2::LEFT_CENTER, hint, font(11.5), DIM);
             }
         }
-        // the grid: two columns of pills, a mini wizard and the name; Início the tools', Chats the agents'
+        // the grid: two columns of pills, a mini wizard and the name, the page's own (`Tab::of`)
         let lines: Vec<&Line> = view.lines.iter().filter(|line| Tab::of(&line.id) == view.tab.grid()).collect();
         let inner = right.shrink2(Vec2::new(8.0, 0.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {

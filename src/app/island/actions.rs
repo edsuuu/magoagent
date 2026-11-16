@@ -11,6 +11,23 @@ pub(crate) fn unique_name<'a>(taken: impl IntoIterator<Item = &'a str> + Clone, 
 }
 
 impl DrawingApp {
+    /// The island open on `tab` (the MCP's `set_setting island_page`), as its tab clicked.
+    pub(crate) fn island_show_page(&mut self, tab: Tab) {
+        (self.island.settings, self.island.tab, self.island.session) = (false, tab, None);
+        self.island.form = (tab == Tab::New).then(|| self.island_form());
+        self.island.machine.force_home(self.now);
+    }
+
+    /// Início's "Ocultar tudo" (`hide`) and "Mostrar ocultos" (the MCP's `set_setting island_feed`).
+    pub(crate) fn island_feed_hide(&mut self, hide: bool) {
+        if hide {
+            let listed = self.island.listed.clone();
+            self.island.hidden.extend(listed);
+        } else {
+            self.island.hidden.clear();
+        }
+    }
+
     pub(super) fn island_apply(&mut self, ctx: &Context, out: paint::Out, time: f64) {
         // the focus moves only when a pill is clicked (or the keyboard picks one) and stays, as Coucou's `focusId`
         if let Some(id) = out.focus.clone() {
@@ -52,6 +69,10 @@ impl DrawingApp {
             self.island.machine.force_petit(time);
             (self.island.tab, self.island.form) = (Tab::Home, None);
             self.island.settings = false;
+        }
+        self.island.hidden.extend(out.hide.iter().cloned());
+        if out.show_hidden {
+            self.island.hidden.clear();
         }
         if let Some(tab) = out.tab {
             self.island.settings = false;

@@ -297,13 +297,15 @@ fn the_turn_going_on_or_ending_drops_the_card_and_the_badge_comes_and_goes() {
     assert_eq!(app.outside_pills()[0].badge, Some(Badge::Error));
     app.take_hook("ext:s1", &hook("UserPromptSubmit", "", Value::Null), None);
     assert_eq!(app.outside_pills()[0].badge, None);
-    // 5.2 s after a Stop the pill leaves; a session that ended goes at once
+    // after a Stop the pill stays (asked: "ele fica com a expressao zzz ou com o check ali"): its ✓, then asleep once
+    // the badge is over; a session that ended goes at once
     app.take_hook("ext:s1", &hook("Stop", "", Value::Null), None);
     app.outside_tick();
-    assert_eq!(app.outside_pills().len(), 1);
+    assert!(app.outside_pills()[0].badge == Some(Badge::Finished) && !app.outside_pills()[0].asleep);
     app.outside.expire_badges();
     app.outside_tick();
-    assert!(app.outside_pills().is_empty());
+    assert_eq!(app.outside_pills().len(), 1, "still there");
+    assert!(app.outside_pills()[0].asleep && app.outside_pills()[0].badge.is_none(), "asleep");
     app.take_hook("ext:s2", &hook("SessionStart", "", Value::Null), None);
     assert_eq!(app.outside_pills().len(), 1);
     app.take_hook("ext:s2", &hook("SessionEnd", "", Value::Null), None);
