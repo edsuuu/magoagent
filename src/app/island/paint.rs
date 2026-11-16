@@ -2,6 +2,7 @@
 //! header (tabs at the left, buttons at the right) over Home or the page of a tab. It only draws and says what was asked
 //! (`Out`); `island_apply` does it.
 
+use super::marquee::marquee;
 use super::minis::mini_cells;
 use super::stage::{self, Activity, Phase};
 use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, main_state};
@@ -613,8 +614,10 @@ pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, opens: bool, time
     // pointer (`lighten(task.color, 0.3)`)
     let ink = if hovered { lighten(line.color, 0.3) } else { DIM_3 };
     let room = Rect::from_min_max(Pos2::new(rect.left() + 34.0, rect.top()), Pos2::new(rect.right() - 8.0, rect.bottom()));
-    let label = clipped(ui.painter(), line.name.clone(), semi(10.0), ink, room.width());
-    ui.painter().galley(room.center() - label.size() / 2.0, label, ink);
+    // centred when it fits; cut, it scrolls under the pointer
+    let whole = ui.painter().layout_no_wrap(line.name.clone(), semi(10.0), ink).size().x;
+    let left = if whole <= room.width() { room.center().x - whole / 2.0 } else { room.left() };
+    marquee(ui, egui::Id::unique(("island_pill_name", &line.id)), &line.name, semi(10.0), ink, (left, room.center().y), room.width(), hovered);
     mini_badge(ui.painter(), Pos2::new(rect.left() + 19.0, rect.center().y), 24.0, line, time);
     // `pillBadge`: only the sessions from outside carry one on the pill's corner
     if line.badge.is_some() {
