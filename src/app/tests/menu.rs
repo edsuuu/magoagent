@@ -158,6 +158,60 @@ fn the_title_bar_holds_the_top_buttons_and_moves_the_window() {
     assert!(sent.contains(&egui::ViewportCommand::Minimized(true)), "{sent:?}");
 }
 
+/// Ajustes' veil covers the whole window, the drawn bar too, and took the press: the window did not move while Ajustes
+/// was open (asked). The bar's empty stretch under the veil moves it and a second press maximizes, as without Ajustes;
+/// Ajustes stays open, and a press on the veil off the bar still closes it.
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn the_title_bar_moves_the_window_with_ajustes_open() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.prefs.sidebar_hidden = true;
+    // as in the app: the bar is drawn after Ajustes, which opens over a bar already there
+    let frame = |app: &mut DrawingApp, time: f64, events: Vec<egui::Event>| {
+        let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0));
+        let mut raw = egui::RawInput { screen_rect: Some(screen), time: Some(time), events, ..Default::default() };
+        app.caption_drag(&ctx, &mut raw);
+        let mut output = ctx.run_ui(raw, |_| {
+            if app.settings_open {
+                app.settings_ui(&ctx);
+            }
+            app.title_bar(&ctx);
+        });
+        output.textures_delta.clear();
+        output.viewport_output.remove(&egui::ViewportId::ROOT).map(|v| v.commands).unwrap_or_default()
+    };
+    let mut time = 0.0;
+    for _ in 0..2 {
+        frame(&mut app, time, vec![]);
+    }
+    app.settings_open = true;
+    for _ in 0..4 {
+        time += 0.1;
+        frame(&mut app, time, vec![]);
+    }
+    let empty = Pos2::new(300.0, TITLE_BAR / 2.0);
+    assert_eq!(ctx.layer_id_at(empty).map(|layer| layer.id), Some(crate::app::ui::settings::settings_veil()), "the veil is over the bar");
+    let press = |app: &mut DrawingApp, time: &mut f64, at: Pos2| {
+        let mut sent = frame(app, *time, vec![egui::Event::PointerMoved(at), button(at, true)]);
+        sent.extend(frame(app, *time + 0.05, vec![button(at, false)]));
+        *time += 0.1;
+        sent
+    };
+    time += 1.0;
+    assert_eq!(press(&mut app, &mut time, empty), vec![egui::ViewportCommand::StartDrag]);
+    assert!(app.settings_open, "the press moved the window, it did not close Ajustes");
+    time += 1.0;
+    let mut sent = press(&mut app, &mut time, empty);
+    time -= 0.05;
+    sent.extend(press(&mut app, &mut time, empty));
+    assert!(sent.contains(&egui::ViewportCommand::Maximized(true)) && app.settings_open, "{sent:?}");
+    // off the bar, the veil is Ajustes' as before: a press there closes it and moves nothing
+    time += 1.0;
+    let sent = press(&mut app, &mut time, Pos2::new(80.0, 400.0));
+    assert!(sent.is_empty() && !app.settings_open, "{sent:?}");
+}
+
 #[test]
 fn the_window_edges_resize_it() {
     use egui::ResizeDirection as R;

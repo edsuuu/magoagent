@@ -310,7 +310,7 @@ impl DrawingApp {
                     Some(CardAction::Refresh) => self.usage_ui.probe.refresh(now),
                     Some(CardAction::Settings) => {
                         self.usage_ui.open = false;
-                        self.open_settings_at(ctx, "Agentes", "Uso");
+                        self.open_settings_at("Agentes");
                     }
                     None => {}
                 }

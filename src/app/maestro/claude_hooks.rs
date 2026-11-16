@@ -1,4 +1,4 @@
-//! Ajustes › Agentes › Hooks: `magoagent hook external` in the person's own `~/.claude/settings.json` (or
+//! Ajustes › Integrações: `magoagent hook external` in the person's own `~/.claude/settings.json` (or
 //! `CLAUDE_CONFIG_DIR`'s), so the island sees every Claude Code session on the machine, Claude Desktop's included.
 //! The file is merged, never replaced: what was there stays, a dated backup is kept beside it, and removing takes out
 //! only the entries that are ours (a command with `magoagent` and ` hook external`). Nothing here runs by itself: the
@@ -30,16 +30,25 @@ const EVENTS: [(&str, Option<&str>, u64, bool); 13] = [
     ("PermissionRequest", None, WAIT_TIMEOUT, false),
 ];
 
-/// Claude Code's settings file: `CLAUDE_CONFIG_DIR` when the person moved it there, else `~/.claude`.
+/// Claude Code's settings file: `CLAUDE_CONFIG_DIR` when the person moved it there, else `~/.claude`. In the tests, a folder
+/// of their own: Ajustes reads it on every frame of Integrações and its buttons write it, never the person's.
 pub(crate) fn settings_path() -> Option<PathBuf> {
+    if cfg!(test) {
+        return Some(std::env::temp_dir().join(format!("mago-claude-proprio-{}", std::process::id())).join("settings.json"));
+    }
     let var = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty()).map(PathBuf::from);
     let folder = var("CLAUDE_CONFIG_DIR").or_else(|| var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(|home| home.join(".claude")))?;
     Some(folder.join("settings.json"))
 }
 
 /// Onde fica a cópia do relay que os hooks rodam: `%LOCALAPPDATA%\MagoAgent\hook` no Windows (um exe não vai na pasta
-/// que acompanha o usuário pela rede), a pasta de dados do usuário nos outros sistemas.
+/// que acompanha o usuário pela rede), a pasta de dados do usuário nos outros sistemas. Nos testes, uma pasta só deles:
+/// um botão Instalar apertado num teste copiaria o executável de teste por cima do relay que os hooks da pessoa rodam
+/// (o cargo novo põe esse executável fundo em `target/<perfil>/build/`, e ele não se vê como build do repo).
 pub(crate) fn relay_path() -> Option<PathBuf> {
+    if cfg!(test) {
+        return Some(std::env::temp_dir().join(format!("mago-relay-proprio-{}", std::process::id())).join("magoagent-hook"));
+    }
     let local = std::env::var_os("LOCALAPPDATA").filter(|value| !value.is_empty()).map(|local| PathBuf::from(local).join("MagoAgent"));
     let folder = if cfg!(windows) { local } else { crate::file::legacy_data_dir() }?;
     Some(folder.join("hook").join(if cfg!(windows) { "magoagent-hook.exe" } else { "magoagent-hook" }))
@@ -199,9 +208,32 @@ fn ours_in(settings: &Value) -> Vec<(String, Value)> {
 /// Os nossos hooks estão no arquivo em `path`, mas não são os que esta versão instalaria com `exe`: apontam para outro
 /// executável (o do app, que muda a cada build) ou falta um evento. Só instalar de novo conserta: nada roda sozinho.
 pub(crate) fn outdated_at(path: &Path, exe: &str) -> bool {
-    let (Ok(existing), Ok(wanted)) = (read(path), merged(&Value::Null, exe)) else { return false };
-    let installed = ours_in(&existing);
-    !installed.is_empty() && installed != ours_in(&wanted)
+    read(path).is_ok_and(|existing| state_in(&existing, exe) == HooksState::Outdated)
+}
+
+/// Como os hooks do MagoAgent estão num settings.json: ausentes, os desta versão ou os de outra.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HooksState {
+    Missing,
+    Installed,
+    Outdated,
+}
+
+/// O estado dos nossos hooks em `settings` (o arquivo já lido), para o relay em `exe`.
+pub(crate) fn state_in(settings: &Value, exe: &str) -> HooksState {
+    let installed = ours_in(settings);
+    if installed.is_empty() {
+        HooksState::Missing
+    } else if merged(&Value::Null, exe).is_ok_and(|wanted| installed == ours_in(&wanted)) {
+        HooksState::Installed
+    } else {
+        HooksState::Outdated
+    }
+}
+
+/// O estado no arquivo em `path`; um arquivo que não se lê conta como sem hooks (instalar diz por quê).
+pub(crate) fn state_at(path: &Path, exe: &str) -> HooksState {
+    read(path).map_or(HooksState::Missing, |settings| state_in(&settings, exe))
 }
 
 pub(crate) fn install_at(path: &std::path::Path, exe: &str) -> Result<String, String> {
@@ -389,6 +421,22 @@ mod tests {
         settings["hooks"].as_object_mut().unwrap().remove("SubagentStart");
         fs::write(&path, settings.to_string()).unwrap();
         assert!(outdated_at(&path, "/dados/hook/magoagent-hook"));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn the_state_says_missing_installed_or_of_another_version() {
+        let home = temp_home("estado");
+        let path = home.join(".claude/settings.json");
+        let relay = "/dados/hook/magoagent-hook";
+        assert_eq!(state_at(&path, relay), HooksState::Missing, "no file");
+        fs::write(&path, json!({ "model": "opus" }).to_string()).unwrap();
+        assert_eq!(state_at(&path, relay), HooksState::Missing, "a file without ours");
+        install_at(&path, relay).unwrap();
+        assert_eq!(state_at(&path, relay), HooksState::Installed);
+        assert_eq!(state_in(&read(&path).unwrap(), "/outro/magoagent-hook"), HooksState::Outdated);
+        remove_at(&path).unwrap();
+        assert_eq!(state_at(&path, relay), HooksState::Missing);
         let _ = fs::remove_dir_all(&home);
     }
 }

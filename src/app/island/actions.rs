@@ -56,7 +56,7 @@ impl DrawingApp {
             self.island.machine.interacted(time);
         }
         if out.open_app_settings {
-            self.open_settings_at(ctx, "Geral", "");
+            self.open_settings_at("Geral");
             self.raise_window = true;
         }
         if let Some(volume) = out.volume {

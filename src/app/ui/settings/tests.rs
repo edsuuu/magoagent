@@ -6,6 +6,8 @@ struct Window {
     ctx: Context,
     time: f64,
     texts: Vec<(String, Rect)>,
+    /// The cards painted (`kit::close_group`'s rects in the card's colour).
+    cards: Vec<Rect>,
 }
 
 impl Window {
@@ -15,7 +17,7 @@ impl Window {
         let ctx = Context::default();
         // the titles are in the system face's weight 600, a family of the app's own
         crate::app::ui::install_fonts(&ctx, false);
-        let mut window = Self { app, ctx, time: 0.0, texts: vec![] };
+        let mut window = Self { app, ctx, time: 0.0, texts: vec![], cards: vec![] };
         for _ in 0..4 {
             window.frame(vec![]);
         }
@@ -32,13 +34,32 @@ impl Window {
     fn frame(&mut self, events: Vec<egui::Event>) {
         self.time += 0.1;
         let input = egui::RawInput { time: Some(self.time), events, ..Default::default() };
-        let mut output = self.ctx.run_ui(input, |ui| self.app.settings_ui(ui.ctx()));
+        let mut output = self.ctx.run_ui(input, |ui| {
+            self.app.settings_ui(ui.ctx());
+            // as the toolbar does: the hooks' question after Ajustes, over it
+            if self.app.claude_hooks_preview.is_some() {
+                self.app.claude_hooks_preview_ui(ui.ctx());
+            }
+        });
         output.textures_delta.clear();
         self.texts = output
             .shapes
             .iter()
             .filter_map(|s| if let egui::Shape::Text(t) = &s.shape { Some((t.galley.text().to_string(), t.visual_bounding_rect())) } else { None })
             .collect();
+        let card = K::with_cards(self.app.dark()).card;
+        self.cards = output.shapes.iter().filter_map(|s| if let egui::Shape::Rect(r) = &s.shape { (r.fill == card).then_some(r.rect) } else { None }).collect();
+    }
+
+    /// The card a text is drawn in.
+    fn card_of(&self, name: &str) -> Rect {
+        let text = self.at_text(name);
+        self.cards
+            .iter()
+            .copied()
+            .filter(|card| card.contains(text.center()))
+            .min_by(|a, b| a.area().total_cmp(&b.area()))
+            .unwrap_or_else(|| panic!("{name} in no card"))
     }
 
     fn at_text(&self, name: &str) -> Rect {
@@ -47,6 +68,12 @@ impl Window {
 
     fn has(&self, name: &str) -> bool {
         self.texts.iter().any(|(t, _)| t == name)
+    }
+
+    /// `name` is drawn somewhere under `anchor` (in the groups that follow it on the page).
+    fn has_under(&self, anchor: &str, name: &str) -> bool {
+        let top = self.at_text(anchor).top();
+        self.texts.iter().any(|(t, rect)| t == name && rect.top() > top)
     }
 
     fn click(&mut self, pos: Pos2) {
@@ -193,16 +220,12 @@ fn escape_and_a_click_outside_close_it() {
 
 #[test]
 fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
-    let mut window = Window::at(2);
-    for name in ["Uso", "Hooks"] {
-        assert!(window.has(name), "{name}: {:?}", window.texts);
-    }
-    // asked out: the skills, the memory in use, the hooks (Controle) and the avatar
-    for name in ["Skills", "Memória", "Controle", "Avatar"] {
+    let window = Window::at(tab_of("Agentes"));
+    // asked out: the skills, the memory in use, the hooks (now in Integrações) and the avatar; with them the sub-tabs
+    for name in ["Skills", "Memória", "Controle", "Avatar", "Hooks", "CLAUDE CODE FORA DO APP"] {
         assert!(!window.has(name), "{name}: {:?}", window.texts);
     }
     assert!(!window.has("Contas"), "the Contas tab is gone");
-    window.click_text("Uso");
     for name in ["LIMITES DO MAESTRO", "Parar de recrutar em"] {
         assert!(window.has(name), "{name} in Uso: {:?}", window.texts);
     }
@@ -216,10 +239,25 @@ fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
 #[test]
 fn the_usage_pill_opens_agentes_uso() {
     let mut window = Window::at(0);
-    let ctx = egui::Context::default();
-    window.app.open_settings_at(&ctx, "Agentes", "Uso");
+    window.app.settings_open = false;
+    window.app.open_settings_at("Agentes");
+    assert!(window.app.settings_open);
     assert_eq!(super::SETTINGS_TABS[window.app.settings_tab], "Agentes");
-    assert_eq!(ctx.data(|d| d.get_temp::<usize>(egui::Id::unique(("settings_sub", "agents")))), Some(0));
+    window.frame(vec![]);
+    assert!(window.has("LIMITES DO MAESTRO") && window.has("Parar de recrutar em"), "{:?}", window.texts);
+}
+
+/// The hooks of the sessions outside the app live in Integrações, first on the page (asked: easier to find), with the
+/// services after them.
+#[test]
+fn the_outside_hooks_are_in_integracoes() {
+    let window = Window::at(tab_of("Integrações"));
+    for name in ["CLAUDE CODE FORA DO APP", "CODEX FORA DO APP", "SERVIÇOS", "GitHub"] {
+        assert!(window.has(name), "{name}: {:?}", window.texts);
+    }
+    let (claude, codex, services) = (window.at_text("CLAUDE CODE FORA DO APP"), window.at_text("CODEX FORA DO APP"), window.at_text("SERVIÇOS"));
+    assert!(claude.top() < codex.top() && codex.top() < services.top() && services.top() < window.at_text("GitHub").top());
+    assert!(window.texts.iter().any(|(text, _)| text.contains("Os hooks das sessões de fora")), "the page's line says so");
 }
 
 #[test]
@@ -227,13 +265,13 @@ fn the_voice_tab_is_back_with_the_call_and_the_others_keep_their_places() {
     let window = Window::at(0);
     assert!(window.has("Voz"), "{:?}", window.texts);
     assert_eq!(SETTINGS_TABS[4], "Voz");
-    let (atalhos, sobre) = (Window::at(9), Window::at(11));
+    let (atalhos, sobre) = (Window::at(tab_of("Atalhos")), Window::at(tab_of("Sobre")));
     assert!(atalhos.has("Atalhos") && sobre.has("Sobre"));
 }
 
 #[test]
 fn typing_in_the_shortcut_search_narrows_the_list() {
-    let mut window = Window::at(9);
+    let mut window = Window::at(tab_of("Atalhos"));
     assert!(window.has("Desfazer") && window.has("Salvar"));
     window.click_text("Buscar pelo nome ou pela tecla");
     window.frame(vec![egui::Event::Text("salv".into())]);
@@ -244,7 +282,7 @@ fn typing_in_the_shortcut_search_narrows_the_list() {
 #[test]
 fn sobre_offers_the_check_and_then_the_update_with_its_notes() {
     use crate::app::system::updates::{Release, UpdateState};
-    let mut window = Window::at(11);
+    let mut window = Window::at(tab_of("Sobre"));
     assert!(window.has("Verificar atualizações"), "{:?}", window.texts);
     let release = Release { version: "99.0.0".into(), notes: "## Novo\n- mais legível".into(), page: String::new(), installer: None, digest: None };
     window.app.updates.state = UpdateState::Available(release);
@@ -331,12 +369,12 @@ fn integracoes_asks_before_installing_the_hermes_plugin() {
     let home = hermes::home().unwrap();
     assert!(home.starts_with(std::env::temp_dir()), "never the person's own Hermes");
     let mut window = Window::at(6);
-    assert!(window.has("Hermes Agent") && !window.has("Instalar…"), "{:?}", window.texts);
+    assert!(window.has("Hermes Agent") && !window.has_under("Hermes Agent", "Instalar…"), "{:?}", window.texts);
     window.app.prefs.integrations.hermes = true;
     window.frame(vec![]);
-    // no Hermes on this (the tests') machine: it says so and offers nothing to press
+    // no Hermes on this (the tests') machine: it says so and offers nothing to press (the hooks' buttons are above it)
     assert!(window.has("Plugin do MagoAgent no Hermes") && window.has(hermes::Status::NoHermes.words()), "{:?}", window.texts);
-    assert!(!window.has("Instalar…") && !window.has("Remover"), "{:?}", window.texts);
+    assert!(!window.has_under("Hermes Agent", "Instalar…") && !window.has_under("Hermes Agent", "Remover"), "{:?}", window.texts);
     // "Instalar…" was pressed: what it will write, and the two answers
     window.app.integrations.hermes_confirm = true;
     window.frame(vec![]);
@@ -346,7 +384,9 @@ fn integracoes_asks_before_installing_the_hermes_plugin() {
     assert!(!window.app.integrations.hermes_confirm && !window.has("Instalar o plugin no Hermes?"));
     window.app.integrations.hermes_confirm = true;
     window.frame(vec![]);
-    window.click_text("Instalar");
+    // the question's Instalar, the last one drawn (the Codex hooks' own is above, on the page)
+    let install = window.texts.iter().filter(|(text, _)| text == "Instalar").map(|(_, rect)| rect.center()).next_back().unwrap();
+    window.click(install);
     assert!(!window.app.integrations.hermes_confirm);
     assert_eq!(window.app.status, hermes::Status::NoHermes.words(), "what came of it is said");
     assert!(!home.exists(), "nothing was written");
@@ -470,9 +510,9 @@ fn chat_has_its_own_tab_with_the_new_chat_defaults() {
     let switch = window.switch_of("Hooks nos agentes do app");
     window.click(switch);
     assert!(window.app.prefs.agent_hooks, "its switch is the real preference");
-    // Agentes keeps Uso and Hooks only
+    // Agentes keeps the use and the Maestro's limits only
     let agents = Window::at(tab_of("Agentes"));
-    assert!(agents.has("Uso") && agents.has("Hooks") && !agents.has("Pasta de trabalho"), "{:?}", agents.texts);
+    assert!(agents.has("LIMITES DO MAESTRO") && !agents.has("Pasta de trabalho"), "{:?}", agents.texts);
 }
 
 #[test]
@@ -484,46 +524,150 @@ fn every_page_is_in_the_sidebar_at_once() {
 }
 
 #[test]
-fn dicionario_adds_and_removes_words_and_replacements() {
-    let mut window = Window::at(tab_of("Dicionário"));
-    window.click_text("Supabase");
-    window.frame(vec![egui::Event::Text("Supabase".into())]);
-    window.click_text("Adicionar");
-    assert_eq!(window.app.prefs.dictionary.words, ["Supabase"], "{:?}", window.texts);
-    // the word is listed under the field, whose hint is the same word
-    assert_eq!(window.texts.iter().filter(|(text, _)| text == "Supabase").count(), 2, "{:?}", window.texts);
-    window.click_text("cloud code");
-    window.frame(vec![egui::Event::Text("cloud code".into())]);
-    window.click_text("Claude Code");
-    window.frame(vec![egui::Event::Text("Claude Code".into())]);
-    // the second "Adicionar" is the replacement's
-    let add = window.texts.iter().filter(|(text, _)| text == "Adicionar").map(|(_, rect)| rect.center()).next_back().unwrap();
-    window.click(add);
-    assert_eq!(window.app.prefs.dictionary.apply("abre o cloud code"), "abre o Claude Code");
-}
-
-#[test]
 fn ok_mago_switches_are_the_real_preferences() {
     let mut window = Window::at(tab_of("Ok Mago"));
     for name in ["Responder a “Ok Mago”", "Responder em voz alta", "Iniciar a chamada"] {
         assert!(window.has(name), "{name}: {:?}", window.texts);
     }
-    assert!(window.app.prefs.ok_mago && window.app.prefs.speak_answers);
+    assert!(!window.app.prefs.ok_mago && !window.app.prefs.speak_answers, "both come off");
     let switch = window.switch_of("Responder em voz alta");
     window.click(switch);
-    assert!(!window.app.prefs.speak_answers);
+    assert!(window.app.prefs.speak_answers);
+    let switch = window.switch_of("Responder a “Ok Mago”");
+    window.click(switch);
+    assert!(window.app.prefs.ok_mago);
 }
 
+/// Ok Mago comes off: a new install and an old prefs.json that never had the two switches.
 #[test]
-fn email_fills_the_gmail_example_and_hands_it_to_the_agents() {
-    let mut window = Window::at(tab_of("Email"));
-    assert!(window.has("Programa") && window.has("Argumentos") && window.has("Conexão"), "{:?}", window.texts);
-    window.click_text("Usar o do Gmail");
-    assert_eq!(window.app.prefs.email.command, "npx");
-    assert!(window.app.prefs.email.args.contains("server-gmail"));
-    window.scroll_to("Dar o servidor aos agentes");
-    let switch = window.switch_of("Dar o servidor aos agentes");
-    window.click(switch);
-    assert!(window.app.prefs.email.on);
-    assert!(crate::app::chat::tools::mcp_servers(&window.app.prefs)["email"]["command"] == "npx");
+fn ok_mago_comes_off_by_default_even_in_old_prefs() {
+    let fresh = Prefs::default();
+    assert!(!fresh.ok_mago && !fresh.speak_answers);
+    let old: Prefs = serde_json::from_str(r#"{"theme":"dark","island":true}"#).unwrap();
+    assert!(!old.ok_mago && !old.speak_answers);
+    let chosen: Prefs = serde_json::from_str(r#"{"ok_mago":true,"speak_answers":true}"#).unwrap();
+    assert!(chosen.ok_mago && chosen.speak_answers, "a choice saved stays");
+}
+
+/// Email and Dicionário left Ajustes (asked): no page in the sidebar. What they set stays: the mail bridge through the
+/// MCP's `email`, the dictionary through its `dictionary`, and Ditar still writes with it.
+#[test]
+fn email_and_dicionario_are_no_pages_of_ajustes() {
+    assert!(!SETTINGS_TABS.contains(&"Email") && !SETTINGS_TABS.contains(&"Dicionário"));
+    let window = Window::at(0);
+    assert!(!window.has("Email") && !window.has("Dicionário") && window.has("Integrações"), "{:?}", window.texts);
+    let mut dictionary = Prefs::default().dictionary;
+    assert!(dictionary.add_replacement("cloud code", "Claude Code"));
+    assert_eq!(dictionary.apply("abre o cloud code"), "abre o Claude Code");
+}
+
+/// The hooks say whether they are installed (asked: "Instalar hooks" stayed there after installing): not installed,
+/// Instalar…; installed, "Instalados" with Reinstalar… and Remover. The question says so too, over Ajustes and a veil.
+#[test]
+fn the_hooks_say_they_are_installed_and_offer_to_reinstall_or_remove() {
+    use crate::app::maestro::claude_hooks::{merged, relay_path, settings_path};
+    let path = settings_path().unwrap();
+    assert!(path.starts_with(std::env::temp_dir()), "never the person's own settings.json");
+    let _ = fs::remove_file(&path);
+    let mut window = Window::at(tab_of("Integrações"));
+    assert!(window.has("Não instalados") && window.has("Instalar…"), "{:?}", window.texts);
+    assert!(!window.has("Instalados") && !window.has("Reinstalar…") && !window.has("Remover"), "{:?}", window.texts);
+    // installed as this version would, beside what the person had
+    let relay = relay_path().unwrap().to_string_lossy().into_owned();
+    let installed = serde_json::to_string_pretty(&merged(&json!({ "model": "opus" }), &relay).unwrap()).unwrap();
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, &installed).unwrap();
+    window.frame(vec![]);
+    assert!(window.has("Instalados") && window.has("Reinstalar…") && window.has("Remover"), "{:?}", window.texts);
+    assert!(!window.has("Instalar…"), "Instalar is no longer offered: {:?}", window.texts);
+    // Reinstalar… asks first, and the question says they are already there
+    window.click_text("Reinstalar…");
+    let title = "Reinstalar hooks do Claude Code?";
+    assert!(window.app.claude_hooks_preview.is_some() && window.has(title) && window.has("Reinstalar"), "{:?}", window.texts);
+    assert!(window.texts.iter().any(|(text, _)| text.contains("já estão instalados")), "{:?}", window.texts);
+    // over everything: its card under its title, its veil over the sheet of Ajustes (the sidebar's Geral); and again
+    // when it comes back, its layers already somewhere in egui's order (the sheet used to stay over it then)
+    let question = egui::Id::unique(("dialog", title));
+    let escape = |pressed| egui::Event::Key { key: Key::Escape, physical_key: None, pressed, repeat: false, modifiers: Modifiers::NONE };
+    for time in 0..2 {
+        if time > 0 {
+            window.click_text("Reinstalar…");
+        }
+        assert_eq!(window.ctx.layer_id_at(window.at_text(title).center()).map(|layer| layer.id), Some(question), "{time}");
+        assert_eq!(window.ctx.layer_id_at(window.at_text("Geral").center()).map(|layer| layer.id), Some(question.with("veil")), "{time}");
+        // Esc answers the question only: Ajustes stays, and nothing was written
+        window.frame(vec![escape(true)]);
+        window.frame(vec![escape(false)]);
+        assert!(window.app.claude_hooks_preview.is_none() && window.app.settings_open);
+        assert_eq!(fs::read_to_string(&path).unwrap(), installed);
+        for _ in 0..3 {
+            window.frame(vec![]);
+        }
+    }
+    let _ = fs::remove_file(&path);
+}
+
+/// What the question says, by what is in the file.
+#[test]
+fn the_hooks_question_names_what_it_will_do() {
+    use crate::app::maestro::claude_hooks::HooksState;
+    assert_eq!(hooks_preview::preview_words(HooksState::Missing, false).1, "Instalar");
+    assert_eq!(hooks_preview::preview_words(HooksState::Outdated, false).1, "Atualizar");
+    assert!(hooks_preview::preview_words(HooksState::Installed, true).2.contains("nada muda"));
+    assert_eq!(hooks::hooks_row(HooksState::Installed, false), ("Instalados", &["Reinstalar", "Remover"][..]));
+}
+
+/// Dados in three groups, in this order (asked): where the canvas is saved, the app's data, where the chats are.
+#[test]
+fn dados_says_where_the_canvas_the_data_and_the_chats_are() {
+    let mut window = Window::at(tab_of("Dados"));
+    window.app.autosave = Some(std::env::temp_dir().join("mago-dados").join("autosave.mago"));
+    window.frame(vec![]);
+    let titles = ["DESENHOS DO CANVAS", "DADOS DO APP", "CHATS"].map(|name| window.at_text(name).top());
+    assert!(titles[0] < titles[1] && titles[1] < titles[2], "{titles:?}");
+    for name in ["Desenho em uso", "Abrir pasta", "Pasta de dados", "Memória do Maestro", "Chats do app", "Conversas do Claude Code"] {
+        assert!(window.has(name), "{name}: {:?}", window.texts);
+    }
+    assert!(window.has_under("DESENHOS DO CANVAS", "Desenho em uso") && window.at_text("Desenho em uso").top() < titles[1]);
+    assert!(window.at_text("Memória do Maestro").top() < titles[2] && window.at_text("Chats do app").top() > titles[2]);
+    let file = std::env::temp_dir().join("mago-dados").join("autosave.mago").display().to_string();
+    assert!(window.texts.iter().any(|(text, _)| text.contains(&file)), "the drawing's own path: {:?}", window.texts);
+}
+
+/// Privacy lives in Sobre only (asked): Dados has none, Sobre lists what talks to whom.
+#[test]
+fn privacy_is_in_sobre_only() {
+    let dados = Window::at(tab_of("Dados"));
+    assert!(!dados.has("PRIVACIDADE") && !dados.has("Navegadores"), "{:?}", dados.texts);
+    let sobre = Window::at(tab_of("Sobre"));
+    for name in ["PRIVACIDADE", "O app", "Navegadores", "Microfone"] {
+        assert!(sobre.has_under("VERSÃO", name), "{name}: {:?}", sobre.texts);
+    }
+    assert!(sobre.texts.iter().any(|(text, _)| text.starts_with("O Claude Code e o Codex instalados")), "{:?}", sobre.texts);
+    for tab in SETTINGS_TABS.iter().filter(|tab| **tab != "Sobre") {
+        assert!(!Window::at(tab_of(tab)).has("PRIVACIDADE"), "{tab}");
+    }
+}
+
+/// Sobre's buttons sit inside their card's padding (asked: "Ver as releases no GitHub" was stuck to its edge), whatever
+/// the update's state: no release read yet, a release with its notes, the warning before Atualizar on Windows.
+#[test]
+fn sobre_buttons_keep_the_cards_padding() {
+    use crate::app::system::updates::{Release, UpdateState};
+    let mut window = Window::at(tab_of("Sobre"));
+    let release = || Release { version: "99.0.0".into(), notes: "- mais legível".into(), page: String::new(), installer: None, digest: None };
+    let states = [(UpdateState::Idle, false), (UpdateState::UpToDate(release()), false), (UpdateState::Available(release()), true)];
+    for (state, confirming) in states {
+        (window.app.updates.state, window.app.updates.confirming) = (state, confirming);
+        window.frame(vec![]);
+        window.frame(vec![]);
+        let buttons = ["Verificar atualizações", "Ver as releases no GitHub", "Abrir a página da release", "Atualizar e reiniciar", "Cancelar"];
+        let shown: Vec<&str> = buttons.into_iter().filter(|name| window.has(name)).collect();
+        assert!(shown.len() > 1, "{:?}", window.texts);
+        for name in shown {
+            let (text, card) = (window.at_text(name), window.card_of(name));
+            assert!(card.bottom() - text.bottom() >= 14.0, "{name}: {text:?} in {card:?}");
+            assert!(text.top() - card.top() >= 14.0 && text.left() - card.left() >= 14.0, "{name}: {text:?} in {card:?}");
+        }
+    }
 }
