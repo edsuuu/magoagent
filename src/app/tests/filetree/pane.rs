@@ -295,3 +295,33 @@ fn code_in_the_pane_knows_the_trees_project_with_no_ide_involved() {
     assert_eq!(fs::read_to_string(&index).unwrap(), "<?php\n// de fora\n");
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn abrir_shows_the_style_skill_in_a_tree_of_its_folder_with_the_file_selected_and_open() {
+    let ctx = Context::default();
+    let dir = temp("style-skill");
+    let skill = dir.join("SKILL.md");
+    fs::write(&skill, "# Estilo\n").unwrap();
+    let mut app = DrawingApp::default();
+    tree_frame(&mut app, &ctx, 0.0, vec![]);
+    (app.settings_open, app.chat_open) = (true, true);
+    let said = app.show_in_tree(&skill.to_string_lossy()).unwrap();
+    assert!(said.contains("SKILL.md"), "{said}");
+    assert!(!app.settings_open && !app.chat_open, "Ajustes closes and the canvas shows");
+    let trees: Vec<_> = app.scene.elements.iter().filter(|element| element.filetree.is_some()).collect();
+    assert_eq!(trees.len(), 1);
+    let tree = trees[0].id.clone();
+    assert_eq!(app.ft_spec(&tree).unwrap().root_path(), dir, "the tree is the skill's folder");
+    assert_eq!(app.filetrees.views[&tree].selected.as_deref(), Some(skill.as_path()), "its row selected");
+    assert_eq!(app.filetrees.editors[&tree].active.as_deref(), Some(skill.as_path()), "and open in the tree's editor");
+    assert_eq!(app.selected, vec![app.scene.elements.iter().position(|element| element.id == tree).unwrap()]);
+    // again: the same tree, not another one
+    tree_frame(&mut app, &ctx, 0.1, vec![]);
+    app.show_in_tree(&skill.to_string_lossy()).unwrap();
+    assert_eq!(app.scene.elements.iter().filter(|element| element.filetree.is_some()).count(), 1);
+    // a path that is not there, or none: said, and nothing made
+    assert!(app.show_in_tree(&dir.join("FALTA.md").to_string_lossy()).unwrap_err().contains("não existe"));
+    assert!(app.show_in_tree("  ").is_err());
+    assert_eq!(app.scene.elements.iter().filter(|element| element.filetree.is_some()).count(), 1);
+    let _ = fs::remove_dir_all(&dir);
+}
