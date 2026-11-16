@@ -1,4 +1,4 @@
-//! Ajustes › Dicionário through the MCP's `dictionary`: the words the ears spell right and what they write for what they hear.
+//! The MCP's `dictionary` (Ajustes has no page for it any more): the words the ears spell right and what they write for what they hear.
 
 use crate::prelude::*;
 

@@ -427,25 +427,6 @@ fn every_page_is_in_the_sidebar_at_once() {
 }
 
 #[test]
-fn dicionario_adds_and_removes_words_and_replacements() {
-    let mut window = Window::at(tab_of("Dicionário"));
-    window.click_text("Supabase");
-    window.frame(vec![egui::Event::Text("Supabase".into())]);
-    window.click_text("Adicionar");
-    assert_eq!(window.app.prefs.dictionary.words, ["Supabase"], "{:?}", window.texts);
-    // the word is listed under the field, whose hint is the same word
-    assert_eq!(window.texts.iter().filter(|(text, _)| text == "Supabase").count(), 2, "{:?}", window.texts);
-    window.click_text("cloud code");
-    window.frame(vec![egui::Event::Text("cloud code".into())]);
-    window.click_text("Claude Code");
-    window.frame(vec![egui::Event::Text("Claude Code".into())]);
-    // the second "Adicionar" is the replacement's
-    let add = window.texts.iter().filter(|(text, _)| text == "Adicionar").map(|(_, rect)| rect.center()).next_back().unwrap();
-    window.click(add);
-    assert_eq!(window.app.prefs.dictionary.apply("abre o cloud code"), "abre o Claude Code");
-}
-
-#[test]
 fn ok_mago_switches_are_the_real_preferences() {
     let mut window = Window::at(tab_of("Ok Mago"));
     for name in ["Responder a “Ok Mago”", "Responder em voz alta", "Iniciar a chamada"] {
@@ -471,10 +452,14 @@ fn ok_mago_comes_off_by_default_even_in_old_prefs() {
     assert!(chosen.ok_mago && chosen.speak_answers, "a choice saved stays");
 }
 
-/// Email left Ajustes (asked): no page in the sidebar; the bridge itself stays, set through the MCP's `email`.
+/// Email and Dicionário left Ajustes (asked): no page in the sidebar. What they set stays: the mail bridge through the
+/// MCP's `email`, the dictionary through its `dictionary`, and Ditar still writes with it.
 #[test]
-fn email_is_no_page_of_ajustes() {
-    assert!(!SETTINGS_TABS.contains(&"Email"));
+fn email_and_dicionario_are_no_pages_of_ajustes() {
+    assert!(!SETTINGS_TABS.contains(&"Email") && !SETTINGS_TABS.contains(&"Dicionário"));
     let window = Window::at(0);
-    assert!(!window.has("Email") && window.has("Integrações"), "{:?}", window.texts);
+    assert!(!window.has("Email") && !window.has("Dicionário") && window.has("Integrações"), "{:?}", window.texts);
+    let mut dictionary = Prefs::default().dictionary;
+    assert!(dictionary.add_replacement("cloud code", "Claude Code"));
+    assert_eq!(dictionary.apply("abre o cloud code"), "abre o Claude Code");
 }

@@ -199,7 +199,7 @@ pub(crate) struct Prefs {
     pub(crate) terminal: TermPrefs,
     /// The mail MCP server the chats' agents get (app/chat/email.rs), set through the MCP's `email`.
     pub(crate) email: crate::app::chat::email::EmailPrefs,
-    /// Ajustes › Dicionário: the words the ears spell right and what they write for what they hear.
+    /// The ears' dictionary (the MCP's `dictionary`): the words they spell right and what they write for what they hear.
     pub(crate) dictionary: crate::voice::dictionary::Dictionary,
     /// Ajustes › Integrações: the switches and what is not secret (a token lives in the keychain).
     pub(crate) integrations: crate::app::integrations::IntegrationPrefs,

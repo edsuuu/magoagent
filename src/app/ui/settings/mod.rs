@@ -8,7 +8,6 @@ mod about;
 mod agents;
 mod chat;
 mod data;
-mod dictionary;
 mod general;
 mod hooks_preview;
 mod hotkeys;
@@ -23,21 +22,9 @@ mod voice;
 
 use kit::K;
 
-pub(crate) const SETTINGS_TABS: [&str; 11] =
-    ["Geral", "Terminal", "Agentes", "Chat", "Voz", "Ok Mago", "Integrações", "Dicionário", "Atalhos", "Dados", "Sobre"];
-const TAB_ICONS: [Icon; 11] = [
-    Icon::Gear,
-    Icon::CodeBlock,
-    Icon::Agents,
-    Icon::Tool(Tool::Chat),
-    Icon::Composer,
-    Icon::Palette,
-    Icon::Connect,
-    Icon::Heading,
-    Icon::Menu,
-    Icon::Open,
-    Icon::Eye,
-];
+pub(crate) const SETTINGS_TABS: [&str; 10] = ["Geral", "Terminal", "Agentes", "Chat", "Voz", "Ok Mago", "Integrações", "Atalhos", "Dados", "Sobre"];
+const TAB_ICONS: [Icon; 10] =
+    [Icon::Gear, Icon::CodeBlock, Icon::Agents, Icon::Tool(Tool::Chat), Icon::Composer, Icon::Palette, Icon::Connect, Icon::Menu, Icon::Open, Icon::Eye];
 /// Tabs kept in the code but not shown (the indexes of the others do not move).
 const HIDDEN_TABS: [&str; 0] = [];
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];
@@ -50,7 +37,7 @@ const SIDEBAR: f32 = 200.0;
 const MAIN_TOP: f32 = 28.0;
 const MAIN_SIDE: f32 = 32.0;
 /// What each page says under its name.
-const SUBTITLES: [&str; 11] = [
+const SUBTITLES: [&str; 10] = [
     "Aparência, como o app abre, a ilha e o canvas.",
     "Os atalhos de início, a aparência e o shell dos terminais.",
     "O que cada agente gastou e os hooks das sessões de fora.",
@@ -58,7 +45,6 @@ const SUBTITLES: [&str; 11] = [
     "Quem ouve e fala na chamada com o Maestro e no Ditar.",
     "Chamar o Maestro pela voz no meio da chamada.",
     "Serviços mostrados na ilha. Segredos vão para o cofre do sistema.",
-    "Palavras e trocas que o Ditar usa ao escrever o que você fala.",
     "Os da ilha valem com qualquer programa na frente. Clique nas teclas para trocar.",
     "Tudo do app fica numa pasta só, neste computador.",
     "A versão, as novidades e a atualização.",
@@ -204,7 +190,6 @@ impl DrawingApp {
                         "Voz" => self.settings_voice(ui, k),
                         "Ok Mago" => self.settings_ok_mago(ui, k),
                         "Integrações" => self.settings_integrations(ui, k),
-                        "Dicionário" => self.settings_dictionary(ui, k),
                         "Atalhos" => {
                             self.settings_hotkeys(ui, k);
                             data::settings_shortcuts(ui, k);
