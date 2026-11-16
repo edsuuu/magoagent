@@ -73,6 +73,10 @@ pub(crate) struct Folders {
     pub(crate) favorite: Vec<String>,
 }
 
+/// The frames a second Ajustes offers: more is smoother and takes more of the processor; above the screen's own rate
+/// nothing changes.
+pub(crate) const FRAME_RATES: [u16; 5] = [30, 60, 120, 144, 240];
+
 /// Main menu → Preferências (DefaultItems.tsx Preferences), remembered between launches.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -147,6 +151,8 @@ pub(crate) struct Prefs {
     pub(crate) island_volume: f32,
     /// Seconds before the open island folds after the pointer leaves.
     pub(crate) island_close_after: u8,
+    /// Frames a second of the island and the animations (Ajustes › Geral › Quadros por segundo): one of `FRAME_RATES`.
+    pub(crate) frame_rate: u16,
     /// Background colour of the island, RGB.
     pub(crate) island_color: [u8; 3],
     /// The island's global shortcuts the person changed, by id (app/hotkeys/); the rest keep their default keys.
@@ -250,6 +256,7 @@ impl Default for Prefs {
             island_projects: Vec::new(),
             island_volume: 0.1,
             island_close_after: 15,
+            frame_rate: 60,
             island_color: [0, 0, 0],
             shortcuts: Default::default(),
             call_popup: None,

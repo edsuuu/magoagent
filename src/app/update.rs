@@ -1,15 +1,30 @@
 use super::*;
 
-/// The shortest time between two frames where the swap does not wait for the screen: 60 a second.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-const FRAME_SPACING: std::time::Duration = std::time::Duration::from_micros(16_667);
+/// The frames a second asked in Ajustes (`Prefs.frame_rate`, stored each frame), for the places that time their frames
+/// with no app at hand: the island and the pace below.
+static FRAME_RATE: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(60);
 
-/// Linux on X11, whose swap does not wait for the screen (main.rs): a frame that comes sooner than `FRAME_SPACING`
-/// after the last one (`last`) waits the rest (`sleep`), as a swap waiting for the screen would, without the hang of a
-/// covered window. Returns when this frame begins.
+/// The time between two frames at the rate asked in Ajustes.
+pub(crate) fn frame_spacing() -> std::time::Duration {
+    spacing(FRAME_RATE.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// The time between two frames at `rate` a second (kept between 15 and 480).
+fn spacing(rate: u16) -> std::time::Duration {
+    std::time::Duration::from_secs_f64(1.0 / f64::from(rate.clamp(15, 480)))
+}
+
+/// Linux on X11, whose swap does not wait for the screen (main.rs): a frame that comes sooner than `spacing` after the
+/// last one (`last`) waits the rest (`sleep`), as a swap waiting for the screen would, without the hang of a covered
+/// window. Returns when this frame begins.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn pace(last: Option<std::time::Instant>, now: std::time::Instant, sleep: impl FnOnce(std::time::Duration)) -> Option<std::time::Instant> {
-    let Some(next) = last.map(|last| last + FRAME_SPACING).filter(|next| *next > now) else { return Some(now) };
+fn pace(
+    last: Option<std::time::Instant>,
+    now: std::time::Instant,
+    spacing: std::time::Duration,
+    sleep: impl FnOnce(std::time::Duration),
+) -> Option<std::time::Instant> {
+    let Some(next) = last.map(|last| last + spacing).filter(|next| *next > now) else { return Some(now) };
     sleep(next - now);
     Some(next)
 }
@@ -34,9 +49,10 @@ impl eframe::App for DrawingApp {
     /// agents' states run: it paints unseen every 400 ms.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         const EVERY: std::time::Duration = std::time::Duration::from_millis(400);
+        FRAME_RATE.store(self.prefs.frame_rate, std::sync::atomic::Ordering::Relaxed);
         #[cfg(target_os = "linux")]
         if crate::app::island::x11::active() {
-            self.paced = pace(self.paced, std::time::Instant::now(), std::thread::sleep);
+            self.paced = pace(self.paced, std::time::Instant::now(), frame_spacing(), std::thread::sleep);
         }
         self.background_window(ctx);
         if ctx.input(|i| i.viewport().visible()) != Some(false) {
@@ -314,16 +330,27 @@ mod pace_tests {
 
     #[test]
     fn frames_sooner_than_a_sixtieth_wait_the_rest() {
-        let start = std::time::Instant::now();
+        let (start, sixtieth) = (std::time::Instant::now(), spacing(60));
         let mut slept = None;
-        assert_eq!(pace(None, start, |time| slept = Some(time)), Some(start), "the first frame waits for nothing");
+        assert_eq!(pace(None, start, sixtieth, |time| slept = Some(time)), Some(start), "the first frame waits for nothing");
         assert_eq!(slept, None);
         let soon = start + std::time::Duration::from_millis(4);
-        assert_eq!(pace(Some(start), soon, |time| slept = Some(time)), Some(start + FRAME_SPACING));
-        assert_eq!(slept, Some(FRAME_SPACING - std::time::Duration::from_millis(4)), "it waits the rest of the sixtieth");
+        assert_eq!(pace(Some(start), soon, sixtieth, |time| slept = Some(time)), Some(start + sixtieth));
+        assert_eq!(slept, Some(sixtieth - std::time::Duration::from_millis(4)), "it waits the rest of the sixtieth");
         slept = None;
         let late = start + std::time::Duration::from_millis(40);
-        assert_eq!(pace(Some(start), late, |time| slept = Some(time)), Some(late), "a late frame goes at once");
+        assert_eq!(pace(Some(start), late, sixtieth, |time| slept = Some(time)), Some(late), "a late frame goes at once");
         assert_eq!(slept, None);
+    }
+
+    #[test]
+    fn the_rate_asked_in_ajustes_sets_the_time_between_frames() {
+        assert_eq!(spacing(60).as_micros(), 16_666);
+        assert_eq!(spacing(144).as_micros(), 6_944);
+        assert_eq!(spacing(240).as_micros(), 4_166);
+        assert_eq!(spacing(0), spacing(15), "a broken rate never asks for endless frames");
+        for rate in FRAME_RATES {
+            assert!(spacing(rate) > std::time::Duration::ZERO);
+        }
     }
 }
