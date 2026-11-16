@@ -339,6 +339,7 @@ mod tests {
             effort: String::new(),
             recruit: false,
             named: false,
+            draft: false,
         }
     }
 

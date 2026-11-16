@@ -60,6 +60,7 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
         effort: String::new(),
         recruit: false,
         named: false,
+        draft: false,
     };
     app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
     // chats: listed, opened by part of the name, a message queued for the next frame
