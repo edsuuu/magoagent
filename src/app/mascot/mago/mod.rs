@@ -1,5 +1,5 @@
-//! The wizard mascot: a smooth blob in one color under a small crooked pointy hat, with two black dots for
-//! eyes and nothing else (all the expression is in the eyes); the hat throws sparks when an agent finishes.
+//! The mascot, Lume: a small magic flame that licks and sways, with two dark eyes on its round bottom and nothing
+//! else (all the expression is in the eyes and the flame); sparks fly from its tip when an agent finishes.
 //! The technique (properties chasing a target with easing, a table of states -> face,
 //! eyes that follow the pointer and blink alone, particles, reactions to clicks) is adapted from Coucou's
 //! engine (MIT); the character, shapes and palette are this app's own.
@@ -22,13 +22,13 @@ use std::collections::HashMap;
 pub(crate) enum MagoState {
     #[default]
     Idle,
-    /// Focused, the hat sways.
+    /// Focused, the flame licks quicker.
     Working,
     /// The `!` badge.
     NeedsYou,
     /// The `?` badge.
     Asking,
-    /// Sparks from the hat and a little hop.
+    /// Sparks from the tip and a little hop.
     Done,
     Error,
     /// Zz, after a long time still.
@@ -91,7 +91,7 @@ pub(crate) struct Look {
     pub(crate) mouth_width: f32,
     pub(crate) badge: Option<char>,
     pub(crate) tilt: f32,
-    /// The hat's sway: amplitude and speed.
+    /// The flame's sway: amplitude and speed.
     pub(crate) sway: (f32, f32),
     /// The tint over the body and how much of it.
     pub(crate) tint: (Color32, f32),

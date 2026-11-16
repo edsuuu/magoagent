@@ -1,5 +1,5 @@
-//! The entrance: when the app starts the island opens and the wizard drops into the middle of it with a glow behind it
-//! and sparkles around, bounces, slides aside to wave, comes back to the middle and sits there until the island folds to
+//! The entrance: when the app starts the island opens and the mascot drops into the middle of it with sparkles
+//! around, bounces, slides aside to wave, comes back to the middle and sits there until the island folds to
 //! compact, where the island's own wizard springs from that spot to its ear. The timing, curves and squash are Coucou's
 //! (windows/src/mochi/greeting.ts, MIT; its character is not used): the same 640 by 150 space, shifted to our page.
 
@@ -14,9 +14,8 @@ pub(super) const CENTER: Vec2 = Vec2::new(320.0, 90.0);
 pub(super) const SHIFT: f32 = 6.0;
 /// Where the wizard starts: the compact island's middle height (`COMPACT.botCenterY`).
 const START_Y: f32 = 16.0;
-/// The wave: from the pop to the tuck (`T.pop1`, `T.tuck0`); the glow turns blue (`T.tint0`, `T.tint1`).
+/// The wave: from the pop to the tuck (`T.pop1`, `T.tuck0`).
 const WAVE: (f32, f32) = (1.45, 2.45);
-const TINT: (f32, f32) = (3.85, 4.15);
 
 fn segment(t: f32, from: f32, to: f32) -> f32 {
     ((t - from) / (to - from)).clamp(0.0, 1.0)
@@ -55,9 +54,6 @@ pub(super) struct Pose {
     pub(super) size: f32,
     pub(super) scale: Vec2,
     pub(super) waving: bool,
-    /// The glow: how strong, and how blue (it goes from gold to blue).
-    pub(super) halo: f32,
-    pub(super) blue: f32,
     /// The card's own opacity.
     pub(super) card: f32,
 }
@@ -113,21 +109,7 @@ pub(super) fn pose(t: f32) -> Pose {
         1.0 + 0.14 * land_squash - 0.1 * bounce + 0.12 * plunge - 0.18 * spring_up + 0.18 * sinking + 0.08 * micro,
         1.0 - 0.14 * land_squash + 0.18 * bounce - 0.12 * plunge + 0.25 * spring_up - 0.14 * sinking - 0.07 * micro,
     );
-    Pose {
-        at: Pos2::new(x, y + SHIFT),
-        size: size * (62.0 / BODY),
-        scale,
-        waving,
-        halo: ease_out(segment(t, 0.3, 0.7)),
-        blue: segment(t, TINT.0, TINT.1),
-        card: segment(t, 0.18, 0.45),
-    }
-}
-
-/// The glow's colour: gold, turning blue.
-pub(super) fn halo_color(blue: f32) -> Color32 {
-    let channel = |gold: f32, sky: f32| lerp(gold, sky, blue).round() as u8;
-    Color32::from_rgb(channel(232.0, 59.0), channel(195.0, 158.0), channel(154.0, 255.0))
+    Pose { at: Pos2::new(x, y + SHIFT), size: size * (62.0 / BODY), scale, waving, card: segment(t, 0.18, 0.45) }
 }
 
 struct Streak {
@@ -222,7 +204,7 @@ mod tests {
         assert!(pose(2.0).at.x < 320.0 - 40.0, "it drifted left to wave");
         let end = pose(END);
         assert!((end.at.x - 320.0).abs() < 0.01 && (end.at.y - 96.0).abs() < 0.01, "back in the middle: {:?}", end.at);
-        assert_eq!((end.halo, end.blue, end.scale), (1.0, 1.0, Vec2::splat(1.0)));
+        assert_eq!(end.scale, Vec2::splat(1.0));
         assert!(pose(0.6).scale.x > 1.05 && pose(0.6).scale.y < 0.95, "squashed as it lands");
         assert!(pose(1.38).scale.y > 1.1, "stretched as it springs up to wave");
     }

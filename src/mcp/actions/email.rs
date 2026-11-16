@@ -1,5 +1,5 @@
-//! Ajustes › Email through the MCP's `email`: the mail MCP server the chats' agents get. The test starts the server, so
-//! it is the person's to ask for in Ajustes; here the Maestro only reads and sets what is configured.
+//! The MCP's `email`: the mail MCP server the chats' agents get (Ajustes has no page for it any more). The Maestro only
+//! reads and sets what is configured; it never starts the server.
 
 use crate::app::chat::email::GMAIL_EXAMPLE;
 use crate::prelude::*;

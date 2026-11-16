@@ -1,5 +1,56 @@
 use super::*;
 
+/// The frames a second asked in Ajustes (`Prefs.frame_rate`, stored each frame), for the places that time their frames
+/// with no app at hand: the island and the pace below.
+static FRAME_RATE: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(60);
+
+/// The time between two frames at the rate asked in Ajustes.
+pub(crate) fn frame_spacing() -> std::time::Duration {
+    spacing(FRAME_RATE.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// The time between two frames at `rate` a second (kept between 15 and 480).
+fn spacing(rate: u16) -> std::time::Duration {
+    std::time::Duration::from_secs_f64(1.0 / f64::from(rate.clamp(15, 480)))
+}
+
+/// Linux on X11, whose swap does not wait for the screen (main.rs): a frame that comes sooner than `spacing` after the
+/// last one (`last`) waits the rest (`sleep`), as a swap waiting for the screen would, without the hang of a covered
+/// window. Returns when this frame begins.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn pace(
+    last: Option<std::time::Instant>,
+    now: std::time::Instant,
+    spacing: std::time::Duration,
+    sleep: impl FnOnce(std::time::Duration),
+) -> Option<std::time::Instant> {
+    let Some(next) = last.map(|last| last + spacing).filter(|next| *next > now) else { return Some(now) };
+    sleep(next - now);
+    Some(next)
+}
+
+impl DrawingApp {
+    /// Linux on X11: the window manager's resize waits for the app (`x11::frame_drawn`). The frame that just went
+    /// drew the window's size when the size has not changed since it began; one that changed draws again at once, and
+    /// that next frame tells it.
+    #[cfg(target_os = "linux")]
+    fn resize_sync(&mut self, ctx: &egui::Context, frame: &eframe::Frame) {
+        use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        let size = ctx.input(|input| input.viewport().inner_rect.map(|rect| rect.size()));
+        let drawn = std::mem::replace(&mut self.drawn_size, size) == size;
+        if !drawn {
+            ctx.request_repaint();
+            return;
+        }
+        let window = match frame.window_handle().map(|handle| handle.as_raw()) {
+            Ok(RawWindowHandle::Xlib(handle)) => handle.window as u32,
+            Ok(RawWindowHandle::Xcb(handle)) => handle.window.get(),
+            _ => return,
+        };
+        crate::app::island::x11::frame_drawn(window);
+    }
+}
+
 impl eframe::App for DrawingApp {
     /// Closing mid-edit keeps the text being typed and anything not yet autosaved (that only runs
     /// while idle).
@@ -18,8 +69,16 @@ impl eframe::App for DrawingApp {
 
     /// Minimized (Windows) or covered (macOS), eframe stops calling `ui`, where the bridge and the
     /// agents' states run: it paints unseen every 400 ms.
-    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         const EVERY: std::time::Duration = std::time::Duration::from_millis(400);
+        FRAME_RATE.store(self.prefs.frame_rate, std::sync::atomic::Ordering::Relaxed);
+        #[cfg(target_os = "linux")]
+        if crate::app::island::x11::active() {
+            self.paced = pace(self.paced, std::time::Instant::now(), frame_spacing(), std::thread::sleep);
+            self.resize_sync(ctx, frame);
+        }
+        #[cfg(not(target_os = "linux"))]
+        let _ = frame;
         self.background_window(ctx);
         if ctx.input(|i| i.viewport().visible()) != Some(false) {
             self.hidden_paint = None;
@@ -201,6 +260,7 @@ impl eframe::App for DrawingApp {
         } else if self.floors_ui.fx.engaged {
             // the floors' stage: the canvas is a card in 3D, what floats over its nodes waits
         } else {
+            self.lift_backdrop(&ctx);
             self.terminal_overlay(&ctx);
             self.terminal_extras(&ctx);
             self.filetree_overlay(&ctx);
@@ -288,4 +348,35 @@ pub(crate) fn wheel_from_mouse(events: &[egui::Event]) -> Option<bool> {
         egui::Event::MouseWheel { delta, .. } if *delta != Vec2::ZERO => Some(delta.x.fract() == 0.0 && delta.y.fract() == 0.0),
         _ => None,
     })
+}
+
+#[cfg(test)]
+mod pace_tests {
+    use super::*;
+
+    #[test]
+    fn frames_sooner_than_a_sixtieth_wait_the_rest() {
+        let (start, sixtieth) = (std::time::Instant::now(), spacing(60));
+        let mut slept = None;
+        assert_eq!(pace(None, start, sixtieth, |time| slept = Some(time)), Some(start), "the first frame waits for nothing");
+        assert_eq!(slept, None);
+        let soon = start + std::time::Duration::from_millis(4);
+        assert_eq!(pace(Some(start), soon, sixtieth, |time| slept = Some(time)), Some(start + sixtieth));
+        assert_eq!(slept, Some(sixtieth - std::time::Duration::from_millis(4)), "it waits the rest of the sixtieth");
+        slept = None;
+        let late = start + std::time::Duration::from_millis(40);
+        assert_eq!(pace(Some(start), late, sixtieth, |time| slept = Some(time)), Some(late), "a late frame goes at once");
+        assert_eq!(slept, None);
+    }
+
+    #[test]
+    fn the_rate_asked_in_ajustes_sets_the_time_between_frames() {
+        assert_eq!(spacing(60).as_micros(), 16_666);
+        assert_eq!(spacing(144).as_micros(), 6_944);
+        assert_eq!(spacing(240).as_micros(), 4_166);
+        assert_eq!(spacing(0), spacing(15), "a broken rate never asks for endless frames");
+        for rate in FRAME_RATES {
+            assert!(spacing(rate) > std::time::Duration::ZERO);
+        }
+    }
 }

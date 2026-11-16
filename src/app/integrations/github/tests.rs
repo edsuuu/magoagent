@@ -13,7 +13,7 @@ fn request(id: &str, ci: CiState, head: Option<&str>) -> PullRequest {
 }
 
 fn pulse(mine: Vec<PullRequest>, to_review: Vec<PullRequest>) -> Pulse {
-    Pulse { login: "ana".into(), mine, to_review, remaining: None }
+    Pulse { login: "ana".into(), mine, to_review, ..Default::default() }
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn a_pulse_sets_the_next_poll_and_keeps_the_alert_for_the_pill() {
     assert_eq!(github.take_pulse(failed, 2_000), Some(Alert::CheckFailed("a/b#1".into())));
     assert_eq!(github.next_pulse, 2_000 + IDLE_EVERY);
     let notice = github.notice.as_ref().unwrap();
-    assert!(notice.failure && notice.text == "Os checks de a/b#1 falharam" && notice.url == "https://github.com/a/b/pull/1");
+    assert!(notice.failure && notice.text == "Os checks de a/b#1 falharam" && notice.url == "https://github.com/a/b/pull/1/checks");
     let spent = Pulse { remaining: Some(12), ..pulse(vec![request("a/b#1", CiState::Pending, Some("s2"))], vec![]) };
     github.take_pulse(spent, 3_000);
     assert_eq!(github.next_pulse, 3_000 + SPARING_EVERY, "the hour's budget nearly spent: sparing, even with a check running");
@@ -215,4 +215,60 @@ fn off_nothing_is_kept_and_an_alert_goes_after_its_card_was_seen() {
     app.github_tick(&ctx);
     assert!(app.integrations.github.pulse.is_none(), "off: what was fetched is forgotten");
     assert_eq!(app.github_report(), "GitHub: desligado.");
+}
+
+fn branch(ci: CiState, head: &str) -> BranchCi {
+    BranchCi { repo: "ana/loja".into(), url: "https://github.com/ana/loja".into(), branch: "main".into(), ci, head: Some(head.into()) }
+}
+
+fn with_main(main: Vec<BranchCi>) -> Pulse {
+    Pulse { login: "ana".into(), main, ..Default::default() }
+}
+
+#[test]
+fn the_default_branches_are_read_with_their_last_commit_s_checks() {
+    let answer = serde_json::json!({ "data": { "viewer": { "login": "ana", "repositories": { "nodes": [
+        { "nameWithOwner": "ana/loja", "url": "https://github.com/ana/loja", "isArchived": false,
+          "defaultBranchRef": { "name": "main", "target": { "oid": "c1", "statusCheckRollup": { "state": "FAILURE" } } } },
+        { "nameWithOwner": "ana/velho", "url": "https://github.com/ana/velho", "isArchived": true,
+          "defaultBranchRef": { "name": "main", "target": { "oid": "c2", "statusCheckRollup": { "state": "FAILURE" } } } },
+        { "nameWithOwner": "ana/vazio", "url": "https://github.com/ana/vazio", "isArchived": false, "defaultBranchRef": null },
+        { "nameWithOwner": "ana/site", "url": "https://github.com/ana/site", "isArchived": false,
+          "defaultBranchRef": { "name": "trunk", "target": { "oid": "c3", "statusCheckRollup": null } } }
+    ] } } } });
+    let pulse = Pulse::parse(&answer).unwrap();
+    let read: Vec<(&str, &str, CiState, Option<&str>)> =
+        pulse.main.iter().map(|branch| (branch.repo.as_str(), branch.branch.as_str(), branch.ci, branch.head.as_deref())).collect();
+    assert_eq!(read, [("ana/loja", "main", CiState::Failure, Some("c1")), ("ana/site", "trunk", CiState::Unknown, Some("c3"))], "archived and empty ones out");
+    assert!(PULSE_QUERY.contains("defaultBranchRef") && PULSE_QUERY.contains("ownerAffiliations: [OWNER]"));
+    assert!(with_main(vec![branch(CiState::Pending, "c1")]).has_pending(), "a default branch running: the next poll comes sooner");
+}
+
+#[test]
+fn a_default_branch_only_ever_tells_that_it_failed() {
+    let old = with_main(vec![branch(CiState::Pending, "c1")]);
+    assert_eq!(alerts(Some(&old), &with_main(vec![branch(CiState::Failure, "c1")])), [Alert::MainFailed("ana/loja".into())]);
+    assert_eq!(alerts(Some(&old), &with_main(vec![branch(CiState::Success, "c1")])), [], "never that it passed");
+    let failed = with_main(vec![branch(CiState::Failure, "c1")]);
+    assert_eq!(alerts(Some(&failed), &failed.clone()), [], "still failing: told once");
+    assert_eq!(alerts(Some(&failed), &with_main(vec![branch(CiState::Failure, "c2")])), [Alert::MainFailed("ana/loja".into())], "a new commit that failed too");
+    assert_eq!(alerts(None, &failed), [], "the first poll is silent");
+    let both = [Alert::CheckPassed("a/b#1".into()), Alert::ReviewRequested("a/b#2".into()), Alert::MainFailed("ana/loja".into())];
+    assert_eq!(foremost(&both), Some(&Alert::MainFailed("ana/loja".into())), "a failure before the rest");
+}
+
+#[test]
+fn a_failure_opens_where_it_failed_and_the_alert_is_kept_to_sound() {
+    let mut github = GitHub::with_token(TOKEN);
+    github.take_pulse(pulse(vec![request("a/b#1", CiState::Pending, Some("s1"))], vec![]), 1_000);
+    assert_eq!(github.ring, None, "the first poll is silent");
+    github.take_pulse(pulse(vec![request("a/b#1", CiState::Failure, Some("s1"))], vec![]), 2_000);
+    assert_eq!(github.notice.as_ref().map(|notice| notice.url.as_str()), Some("https://github.com/a/b/pull/1/checks"), "the PR's checks");
+    assert_eq!(github.ring, Some((Alert::CheckFailed("a/b#1".into()), 2_000)));
+    assert_eq!(request("a/b#1", CiState::Success, None).page(), "https://github.com/a/b/pull/1", "a PR that did not fail: itself");
+    let mut github = GitHub::with_token(TOKEN);
+    github.take_pulse(with_main(vec![branch(CiState::Success, "c1")]), 1_000);
+    github.take_pulse(with_main(vec![branch(CiState::Failure, "c2")]), 2_000);
+    let notice = github.notice.as_ref().unwrap();
+    assert_eq!((notice.text.as_str(), notice.url.as_str()), ("O CI da main de ana/loja falhou", "https://github.com/ana/loja/actions"));
 }

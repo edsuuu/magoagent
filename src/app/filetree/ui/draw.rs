@@ -272,18 +272,20 @@ pub(super) fn draw(
                 );
             }
         }
-        // the scrollbar: 8 wide, its thumb the reference's `--border-strong`
+        // the scrollbar: a 6 wide thumb (the reference's `--border-strong`) 3 in from the frame and 4 from the rows, in
+        // a track as tall as the rows less 3 at either end
         if bar_w > 0.0 {
-            let track = Rect::from_min_max(Pos2::new(list.right() - bar_w, top), Pos2::new(list.right(), list.bottom()));
+            let track = Rect::from_min_max(Pos2::new(list.right() - 9.0 * z, top + 3.0 * z), Pos2::new(list.right() - 3.0 * z, list.bottom() - 3.0 * z));
             let span = (total - shown_h).max(1.0);
             let thumb_h = (shown_h / total * track.height()).max(20.0 * z).min(track.height());
-            let thumb = Rect::from_min_size(Pos2::new(track.left(), track.top() + view.scroll / span * (track.height() - thumb_h)), Vec2::new(bar_w, thumb_h));
+            let thumb =
+                Rect::from_min_size(Pos2::new(track.left(), track.top() + view.scroll / span * (track.height() - thumb_h)), Vec2::new(track.width(), thumb_h));
             let drag = ui.interact(thumb.intersect(clip), ui.scope_id().with("thumb"), Sense::drag());
             if drag.dragged() {
                 view.scroll = (view.scroll + drag.drag_delta().y / (track.height() - thumb_h).max(1.0) * span).clamp(0.0, span);
             }
             let color = if drag.hovered() || drag.dragged() { c.muted } else { c.strong };
-            p.rect_filled(thumb, cr(4.0 * z), color);
+            p.rect_filled(thumb, cr(3.0 * z), color);
         }
         // the search bar under the rows
         let bar = Rect::from_min_size(Pos2::new(frame.left(), list.bottom()), Vec2::new(frame.width(), FT_BAR * z));

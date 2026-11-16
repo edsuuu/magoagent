@@ -35,10 +35,24 @@ pub(crate) fn parse_cursor(text: &str) -> Option<Pos2> {
 /// The cursor on the screen, in pixels (Windows; elsewhere the egui pointer is all there is). In a test scene
 /// (`MAGOAGENT_SCENE`), `MAGOAGENT_FAKE_CURSOR=x,y` stands in for it: the eyes and the hover are seen without the mouse.
 pub(crate) fn screen_cursor() -> Option<Pos2> {
+    screen_cursor_fake().or_else(system_cursor)
+}
+
+/// The cursor on the screen for the mascot's eyes: `screen_cursor`, and on X11 the X server's (only for the eyes: under
+/// XWayland it is known only over the windows of X11, so it never says whether the cursor is on the island; off them
+/// there is none and the eyes look around by themselves).
+pub(crate) fn eye_cursor() -> Option<Pos2> {
+    #[cfg(target_os = "linux")]
+    if crate::app::island::x11::active() {
+        return screen_cursor_fake().or_else(crate::app::island::x11::cursor);
+    }
+    screen_cursor()
+}
+
+/// The cursor a test puts in the real one's place (`MAGOAGENT_FAKE_CURSOR`, in a test scene).
+fn screen_cursor_fake() -> Option<Pos2> {
     static FAKE: OnceLock<Option<Pos2>> = OnceLock::new();
-    let fake =
-        FAKE.get_or_init(|| std::env::var_os("MAGOAGENT_SCENE").and_then(|_| std::env::var("MAGOAGENT_FAKE_CURSOR").ok()).and_then(|text| parse_cursor(&text)));
-    fake.or_else(system_cursor)
+    *FAKE.get_or_init(|| std::env::var_os("MAGOAGENT_SCENE").and_then(|_| std::env::var("MAGOAGENT_FAKE_CURSOR").ok()).and_then(|text| parse_cursor(&text)))
 }
 
 #[cfg(windows)]

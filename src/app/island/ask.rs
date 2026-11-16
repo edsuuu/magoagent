@@ -2,10 +2,9 @@
 //! with its wash (cyan asking, amber for a permission), the wizard inside it at the left, and at 116 the agent, the
 //! question (or the command) and a row of round buttons.
 
-use super::paint::{CARD, DIM, INK, Out, View, aim_as, font, semi, wash_with};
+use super::paint::{CARD, DIM, INK, Out, View, aim, font, semi, wash_with};
 use crate::app::chat::list::clipped;
 use crate::app::maestro::outside::ASK_PREFIX;
-use crate::app::mascot::claude::Mascot;
 use crate::app::mascot::mago::MagoState;
 use crate::prelude::*;
 
@@ -36,8 +35,8 @@ impl DrawingApp {
     /// The card of the first ask waiting (`view.asks`); its height goes to `out.body`.
     pub(super) fn island_ask(&self, ui: &mut egui::Ui, page: Rect, view: &View, time: f64, out: &mut Out) {
         let Some(chat) = view.asks.first() else { return };
-        // who asks, before the asks are borrowed: its colour and its character
-        let (color, mascot) = self.ask_line(view).map_or((None, Mascot::Mago), |line| (Some(line.color), line.mascot()));
+        // who asks, before the asks are borrowed: its colour
+        let color = self.ask_line(view).map(|line| line.color);
         let mut asks = self.person_asks.borrow_mut();
         // a chat that no longer runs gave its ask up
         if !self.chat_runs.contains_key(chat) && !chat.starts_with(ASK_PREFIX) {
@@ -57,7 +56,7 @@ impl DrawingApp {
         // botPosition with no botY: the middle of an 84 pt card under the header, at 62 from the island's left
         let origin = view.origin.get();
         let height = page.bottom() + 10.0 - origin.y;
-        aim_as(view, Pos2::new(origin.x + 62.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 56.0, state, 46.0, mascot);
+        aim(view, Pos2::new(origin.x + 62.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 56.0, state);
 
         // `foldButton`: "Depois — deixar esperando", the island folds and the ask keeps waiting
         let fold = Rect::from_center_size(Pos2::new(page.right() - 18.0, page.top() + 16.0), Vec2::splat(16.0));

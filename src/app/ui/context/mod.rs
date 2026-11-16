@@ -44,7 +44,7 @@ pub(crate) enum Entry {
         #[allow(dead_code)]
         danger: bool,
         enabled: bool,
-        keys: &'static str,
+        keys: String,
     },
     Sub {
         label: String,
@@ -54,12 +54,12 @@ pub(crate) enum Entry {
 }
 
 pub(crate) fn entry(id: &str, label: &str, check: Option<bool>, danger: bool, enabled: bool) -> Entry {
-    Entry::Item { id: id.into(), label: label.into(), check, danger, enabled, keys: "" }
+    Entry::Item { id: id.into(), label: label.into(), check, danger, enabled, keys: String::new() }
 }
 
 /// A row with its shortcut at the right, as the macOS menus show it.
-fn keyed(id: &str, label: &str, keys: &'static str) -> Entry {
-    Entry::Item { id: id.into(), label: label.into(), check: None, danger: false, enabled: true, keys }
+fn keyed(id: &str, label: &str, keys: impl Into<String>) -> Entry {
+    Entry::Item { id: id.into(), label: label.into(), check: None, danger: false, enabled: true, keys: keys.into() }
 }
 
 pub(crate) fn item(id: &str, label: &str) -> Entry {

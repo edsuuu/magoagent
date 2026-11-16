@@ -1,5 +1,6 @@
-//! Ajustes › Integrações: one group per integration (`app/integrations/`): its dot (green connected, red not), its name
-//! and what it does, its switch, then its own fields and buttons. Off, only the head shows.
+//! Ajustes › Integrações: the hooks of the sessions outside the app first (`hooks.rs`), then one group per integration
+//! (`app/integrations/`): its dot (green connected, red not), its name and what it does, its switch, then its own fields
+//! and buttons. Off, only the head shows.
 
 use super::kit::*;
 use crate::app::chat::list::clipped;
@@ -63,16 +64,22 @@ fn calendar(ui: &mut egui::Ui, k: &K, activity: &github::Activity) {
 
 impl DrawingApp {
     pub(super) fn settings_integrations(&mut self, ui: &mut egui::Ui, k: &K) {
-        // a card for each service (the page's line says what they are and where the secrets go)
+        // the hooks first, easy to find: the sessions of Claude Code and Codex outside the app (hooks.rs)
+        self.settings_hooks(ui, k);
+        divider(ui, k);
+        // then a card for each service (the page's line says what they are and where the secrets go)
+        title(ui, k, "SERVIÇOS");
         block(ui, k, |_| ());
         self.settings_github(ui, k);
         divider(ui, k);
         block(ui, k, |_| ());
         self.settings_spotify(ui, k);
         divider(ui, k);
-        block(ui, k, |_| ());
-        self.settings_hermes(ui, k);
-        divider(ui, k);
+        if crate::app::integrations::hermes::available() {
+            block(ui, k, |_| ());
+            self.settings_hermes(ui, k);
+            divider(ui, k);
+        }
         block(ui, k, |_| ());
         self.settings_whatsapp(ui, k);
     }
@@ -218,7 +225,7 @@ impl DrawingApp {
     }
 
     fn settings_github(&mut self, ui: &mut egui::Ui, k: &K) {
-        let hint = "Os seus pull requests com os checks, as revisões que pedem a você e a sua atividade.";
+        let hint = "Os seus pull requests com os checks, as revisões que pedem a você, o CI da branch principal dos seus repositórios e a sua atividade.";
         head(ui, k, "GitHub", hint, self.integrations.github.connected(), &mut self.prefs.integrations.github);
         if !self.prefs.integrations.github {
             return;
@@ -273,6 +280,8 @@ impl DrawingApp {
             note(ui, k, &format!("{} contribuições no último ano · {} hoje", activity.total, activity.today));
             ui.add_space(3.25);
             calendar(ui, k, activity);
+            // the card's padding under the grid, as a row's (it ended flush with the card's edge)
+            ui.add_space(14.0);
         }
         if save {
             let token = std::mem::take(&mut self.integrations.token_field);

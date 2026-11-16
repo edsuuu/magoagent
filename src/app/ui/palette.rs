@@ -1,5 +1,6 @@
 //! Command palette.
 
+use crate::app::hotkeys::local::AppAction;
 use crate::app::ui::links::LinkAction;
 use crate::prelude::*;
 
@@ -49,7 +50,7 @@ pub(crate) struct Row {
     pub(crate) group: &'static str,
     pub(crate) icon: Icon,
     pub(crate) label: String,
-    pub(crate) keys: &'static str,
+    pub(crate) keys: String,
     pub(crate) run: Run,
 }
 
@@ -154,35 +155,42 @@ impl Command {
         }
     }
 
-    pub(crate) fn keys(self) -> &'static str {
+    /// The shortcut of the command, whose keys Ajustes › Atalhos sets.
+    pub(crate) fn shortcut(self) -> Option<AppAction> {
+        Some(match self {
+            Command::DarkMode => AppAction::Theme,
+            Command::Export => AppAction::Export,
+            Command::Save => AppAction::Save,
+            Command::SaveAs => AppAction::SaveAs,
+            Command::Open => AppAction::Open,
+            Command::Undo => AppAction::Undo,
+            Command::Redo => AppAction::Redo,
+            Command::ZoomIn => AppAction::ZoomIn,
+            Command::ZoomOut => AppAction::ZoomOut,
+            Command::ZoomReset => AppAction::ZoomReset,
+            Command::ZoomFit => AppAction::FitAll,
+            Command::ZoomSelection => AppAction::FitSelection,
+            Command::SelectAll => AppAction::SelectAll,
+            Command::Clear => AppAction::ClearCanvas,
+            Command::Duplicate => AppAction::Duplicate,
+            Command::Group => AppAction::Group,
+            Command::Ungroup => AppAction::Ungroup,
+            Command::Layer(Layer::Front) => AppAction::LayerFront,
+            Command::Layer(Layer::Forward) => AppAction::LayerForward,
+            Command::Layer(Layer::Backward) => AppAction::LayerBackward,
+            Command::Layer(Layer::Back) => AppAction::LayerBack,
+            Command::Grid => AppAction::Grid,
+            Command::LockSelection => AppAction::Lock,
+            _ => return None,
+        })
+    }
+
+    /// The keys that never change: a tool's letter and Delete.
+    pub(crate) fn fixed_keys(self) -> &'static str {
         match self {
-            Command::DarkMode => "Shift+Option+D",
-            Command::Export => "Cmd+Shift+E",
-            Command::Save => "Cmd+S",
-            Command::SaveAs => "Cmd+Shift+S",
-            Command::Open => "Cmd+O",
-            Command::Undo => "Cmd+Z",
-            Command::Redo => "Cmd+Shift+Z",
-            Command::ZoomIn => "Cmd++",
-            Command::ZoomOut => "Cmd+-",
-            Command::ZoomReset => "Cmd+0",
-            Command::ZoomFit => "Shift+1",
-            Command::ZoomSelection => "Shift+2",
-            Command::SelectAll => "Cmd+A",
-            Command::Clear => "Cmd+Delete",
             Command::Tool(tool) => tool.badge(),
-            Command::Duplicate => "Cmd+D",
             Command::Delete => "Delete",
-            Command::Group => "Cmd+G",
-            Command::Ungroup => "Cmd+Shift+G",
-            Command::Layer(Layer::Front) => "Cmd+Option+]",
-            Command::Layer(Layer::Forward) => "Cmd+]",
-            Command::Layer(Layer::Backward) => "Cmd+[",
-            Command::Layer(Layer::Back) => "Cmd+Option+[",
-            Command::Grid => "Cmd+'",
-            Command::LockSelection => "Cmd+Shift+L",
-            Command::LockAll | Command::UnlockAll | Command::Connect | Command::Disconnect | Command::RemoveConnections | Command::NewChat => "",
-            Command::ShowHints => "",
+            _ => "",
         }
     }
 
@@ -289,12 +297,15 @@ impl DrawingApp {
                     let name = fold(name);
                     words.iter().all(|w| name.contains(w))
                 })
-                .map(|(id, icon, label)| Row { group: "", icon, label, keys: "", run: Run::Node(id) })
+                .map(|(id, icon, label)| Row { group: "", icon, label, keys: String::new(), run: Run::Node(id) })
                 .collect();
         }
         self.palette_items()
             .into_iter()
-            .map(|cmd| Row { group: cmd.group(), icon: cmd.icon(), label: cmd.label().into(), keys: cmd.keys(), run: Run::Command(cmd) })
+            .map(|cmd| {
+                let keys = cmd.shortcut().map_or_else(|| cmd.fixed_keys().to_string(), |action| self.app_keys_text(action));
+                Row { group: cmd.group(), icon: cmd.icon(), label: cmd.label().into(), keys, run: Run::Command(cmd) }
+            })
             .collect()
     }
 
@@ -458,7 +469,7 @@ impl DrawingApp {
                                     c.text,
                                 );
                                 let mut x = rect.right() - 8.0;
-                                let keys = keys_label(row.keys);
+                                let keys = keys_label(&row.keys);
                                 for key in shortcut_keys(&keys).iter().rev() {
                                     let galley = p.layout_no_wrap(key.to_string(), FontId::proportional(11.0), c.text);
                                     let chip =

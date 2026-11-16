@@ -207,17 +207,40 @@ fn a_new_chat_can_run_in_a_worktree_of_its_own() {
 }
 
 #[test]
-fn the_island_is_off_by_default_and_its_place_is_kept_in_the_prefs() {
+fn the_island_is_on_by_default_and_its_place_is_kept_in_the_prefs() {
     let prefs = Prefs::default();
-    assert!(!prefs.island && prefs.island_at.is_none());
+    assert!(prefs.island && prefs.island_at.is_none());
     let mut saved = prefs.clone();
+    saved.island = false;
+    let back: Prefs = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+    assert!(!back.island, "turned off, it stays off");
     saved.island = true;
     saved.island_at = Some([2880.0, 0.0]);
     let back: Prefs = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
     assert!(back.island && back.island_at == Some([2880.0, 0.0]));
-    // prefs from before the island still load
+    // prefs from before the island still load, with it on
     let old: Prefs = serde_json::from_str("{}").unwrap();
-    assert!(!old.island);
+    assert!(old.island);
+}
+
+#[test]
+fn the_island_waits_for_the_welcome_to_be_done() {
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    app.welcome = Some(Default::default());
+    run(&mut app, &ctx, 1.0, 2.0, vec![]);
+    assert_eq!(app.island.size(), Vec2::ZERO, "no island over the welcome");
+    // a session outside asking meanwhile: back to its terminal, no card waiting behind the welcome
+    let (reply, answer) = std::sync::mpsc::channel();
+    let payload =
+        json!({ "hook_event_name": "PermissionRequest", "session_id": "s1", "cwd": "/tmp/loja", "tool_name": "Bash", "tool_input": { "command": "ls" } });
+    app.take_outside_hook(&payload, Some(reply));
+    assert!(app.person_asks.borrow().is_empty());
+    assert!(answer.try_recv().is_ok(), "the hook was answered at once: the terminal asks");
+    // through the welcome, the island comes (compact: the session outside is at work)
+    app.welcome = None;
+    run(&mut app, &ctx, 2.0, 3.0, vec![]);
+    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "{:?}", app.island.size());
 }
 
 #[test]
@@ -231,4 +254,16 @@ fn an_agent_opened_from_the_island_shows_in_its_conversation_or_in_the_big_chat(
     app.chat_open = true;
     app.island_show("a", 5.0);
     assert!(app.raise_window && app.chat_agent.as_deref() == Some("a"));
+}
+
+#[test]
+fn no_canvas_on_the_card_brings_the_app_up_on_the_agents_card() {
+    let mut app = app_with_island();
+    let mut card = app.new_element(ElementKind::Rectangle { x: 600.0, y: 0.0, width: 200.0, height: 120.0 });
+    card.id = "c".into();
+    app.scene.elements.push(card);
+    app.chat_open = true;
+    app.island_on_canvas("c");
+    assert!(!app.chat_open && app.raise_window, "the canvas, with the app in front");
+    assert_eq!((app.selected.clone(), app.terminal_focus.as_deref()), (vec![0], Some("c")));
 }

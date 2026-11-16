@@ -435,6 +435,8 @@ mod tests {
     fn the_popup_shows_while_the_call_is_on_and_stays_where_it_was_left() {
         let ctx = Context::default();
         let mut app = DrawingApp::default();
+        // the popup is the call's place with the island off (on, the island shows the call)
+        app.prefs.island = false;
         app.prefs.call_popup = Some([500.0, 300.0]);
         let frame = |app: &mut DrawingApp| ctx.run_ui(egui::RawInput::default(), |ui| app.voice_popup(ui.ctx())).textures_delta.clear();
         frame(&mut app);
@@ -452,6 +454,7 @@ mod tests {
     fn claude_codes_call_has_its_mascot_and_codexs_the_orb() {
         let ctx = Context::default();
         let mut app = DrawingApp::default();
+        app.prefs.island = false;
         let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
         e.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
         let id = e.id.clone();
@@ -461,13 +464,13 @@ mod tests {
         app.voice.state = VoiceState::Listening;
         app.now = 10.0;
         app.voice.connected_at = Some(5.0);
-        // the popup's figure: the wizard's polygons or the orb's mesh of rings
+        // the popup's figure: the mascot's flame or the orb's mesh of rings
         let figure = |app: &mut DrawingApp| {
             let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.voice_popup(ui.ctx()));
             output.textures_delta.clear();
-            // the wizard is a handful of filled polygons (body, hat, eyes…)
-            let polygons = output.shapes.iter().filter(|s| matches!(&s.shape, Shape::Path(_))).count();
-            (polygons > 8, output.shapes.iter().any(|s| matches!(&s.shape, Shape::Mesh(m) if m.vertices.len() > 1000)))
+            // the flame is a mesh of a few dozen points (its outline), the orb one of thousands
+            let mesh = |points: std::ops::Range<usize>| output.shapes.iter().any(|s| matches!(&s.shape, Shape::Mesh(m) if points.contains(&m.vertices.len())));
+            (mesh(40..200), mesh(1000..usize::MAX))
         };
         figure(&mut app);
         assert_eq!(figure(&mut app), (true, false), "Claude Code: the mascot, no orb");

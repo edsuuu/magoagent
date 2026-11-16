@@ -11,6 +11,15 @@ use std::path::Path;
 #[cfg(test)]
 mod tests;
 
+/// Hermes is off for now (the owner asked): out of Ajustes › Integrações, what its plugin says never reaches the island
+/// and the MCP says so. The tests still go through all of it.
+pub(crate) const AVAILABLE: bool = false;
+
+/// Whether Hermes is offered: `AVAILABLE`, and always in the tests.
+pub(crate) fn available() -> bool {
+    AVAILABLE || cfg!(test)
+}
+
 /// The plugin's name: its folder and its entry in `plugins.enabled`.
 pub(crate) const NAME: &str = "magoagent";
 /// What tells our `__init__.py` from anyone else's.
@@ -21,7 +30,7 @@ const BY_HAND: &str = "Rode `hermes plugins enable magoagent`, ou ponha magoagen
 /// Hermes' folder: `HERMES_HOME` when the person moved it, else `~/.hermes`. A test never sees the person's own.
 pub(crate) fn home() -> Option<PathBuf> {
     if cfg!(test) {
-        return Some(std::env::temp_dir().join(format!("mago-hermes-proprio-{}", std::process::id())));
+        return Some(crate::app::maestro::claude_hooks::test_folder("hermes"));
     }
     let var = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty()).map(PathBuf::from);
     var("HERMES_HOME").or_else(|| var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(|home| home.join(".hermes")))

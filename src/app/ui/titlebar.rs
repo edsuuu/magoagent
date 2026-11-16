@@ -155,17 +155,23 @@ impl DrawingApp {
     /// A press on an empty stretch of the bar moves the window right away, as a native title bar
     /// does, and a second one soon after maximizes (or restores). Runs on the raw input like
     /// `edge_resize`: waiting for egui to see a drag, the move came too late while the first
-    /// frames are slow (pages and shells starting) and never started.
+    /// frames are slow (pages and shells starting) and never started. With Ajustes open its veil
+    /// covers the bar: the bar's stretches under it still move the window (the veil never sees
+    /// that press, so Ajustes stays open).
     pub(crate) fn caption_drag(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
         let (Some(screen), time) = (raw.screen_rect, raw.time.unwrap_or(0.0)) else { return };
         let maximized = raw.viewport().maximized == Some(true);
         let buttons = self.title_buttons;
         let empty = |pos: Pos2| {
             let bar = [egui::Id::unique("title_bar"), egui::Id::unique("title_bar_right")];
-            pos.y < TITLE_BAR
-                && ctx.layer_id_at(pos).is_some_and(|l| bar.contains(&l.id))
-                && !buttons.contains(pos)
-                && pos.x < screen.right() - 3.0 * CAPTION_WIDTH
+            let on_bar = match ctx.layer_id_at(pos) {
+                Some(layer) if bar.contains(&layer.id) => true,
+                Some(layer) if layer.id == crate::app::ui::settings::settings_veil() => {
+                    bar.iter().any(|id| ctx.memory(|memory| memory.area_rect(*id)).is_some_and(|rect| rect.contains(pos)))
+                }
+                _ => false,
+            };
+            pos.y < TITLE_BAR && on_bar && !buttons.contains(pos) && pos.x < screen.right() - 3.0 * CAPTION_WIDTH
         };
         raw.events.retain(|e| {
             let egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, .. } = e else { return true };

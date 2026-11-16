@@ -45,7 +45,7 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
     let Some(form) = form.as_mut() else { return };
     ui.painter().rect(page, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
     wash_with(&ui.painter().with_clip_rect(page), page, INDIGO, 0.5, 0.0);
-    aim(view, Pos2::new(page.left() + 48.0, page.center().y), 52.0, MagoState::Idle, 0.0);
+    aim(view, Pos2::new(page.left() + 48.0, page.center().y), 52.0, MagoState::Idle);
     // the reference's .launch-body: 98 from the card's left, 16 from its right, its rows 8 apart and centred
     let body = Rect::from_min_max(Pos2::new(page.left() + 98.0, page.top() + 4.0), Pos2::new(page.right() - 16.0, page.bottom() - 4.0));
     // the same height with the projects open: they drop over the text box, nothing above them moves
@@ -147,7 +147,7 @@ fn projects_menu(ui: &mut egui::Ui, full: Rect, drop: Rect, form: &mut NewForm, 
     let area = full.shrink(6.0);
     ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
         ui.set_clip_rect(drop.shrink(1.0).intersect(ui.clip_rect()));
-        ui.spacing_mut().scroll = egui::style::ScrollStyle::floating();
+        ui.spacing_mut().scroll = crate::app::ui::scroll_style();
         egui::ScrollArea::vertical().id_salt("launch_projects").max_height(area.height()).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
             let row = |ui: &mut egui::Ui, text: String, on: bool| {

@@ -2,7 +2,7 @@ use super::*;
 
 impl DrawingApp {
     /// 0 → 1 over the enlarge animation that started at `since`, eased.
-    pub(super) fn elevate_progress(&self, since: f64) -> f32 {
+    pub(crate) fn elevate_progress(&self, since: f64) -> f32 {
         let t = ((self.now - since) / 0.2).clamp(0.0, 1.0) as f32;
         t * t * (3.0 - 2.0 * t)
     }
@@ -27,7 +27,8 @@ impl DrawingApp {
     }
 
     pub(super) fn centered_rect(&self) -> Rect {
-        let margin = 16.0;
+        // room around it for the blurred canvas (canvas/lifted.rs), as the reference's panel away from the canvas
+        let margin = 40.0;
         let top = (self.toolbar_bottom - self.canvas_rect.top() + 12.0).max(margin);
         // an open prompt composer goes under it
         let composing = self.composer.as_ref().is_some_and(|(id, _)| self.terminal_elevated.as_ref() == Some(id));

@@ -20,7 +20,8 @@ pub(super) fn actions(input: &egui::InputState, open: bool, option_count: usize)
     if !open {
         return Vec::new();
     }
-    let control = |modifiers: Modifiers| modifiers.ctrl && !modifiers.alt && !modifiers.shift && !modifiers.command;
+    // off the Mac the Ctrl key sets `command` too: only ⌘ is left out
+    let control = |modifiers: Modifiers| modifiers.ctrl && !modifiers.alt && !modifiers.shift && !modifiers.mac_cmd;
     let bare = |modifiers: Modifiers| !modifiers.ctrl && !modifiers.alt && !modifiers.shift && !modifiers.command;
     let mut actions = Vec::new();
     if pressed(input, Key::Escape, bare) {
@@ -78,6 +79,11 @@ mod tests {
         assert_eq!(actions(&input(vec![key(Key::K, control)]), true, 0), [Action::Search]);
         assert_eq!(actions(&input(vec![key(Key::Comma, control)]), true, 0), [Action::Settings]);
         assert_eq!(actions(&input(vec![key(Key::Escape, Modifiers::NONE)]), true, 0), [Action::Collapse]);
+        // Ctrl as Windows and Linux hand it over: `command` held with it
+        let real = Modifiers { ctrl: true, command: true, ..Modifiers::NONE };
+        assert_eq!(actions(&input(vec![key(Key::K, real)]), true, 0), [Action::Search]);
+        assert_eq!(actions(&input(vec![key(Key::Num1, real)]), true, 0), [Action::SelectPill(0)]);
+        assert!(actions(&input(vec![key(Key::K, Modifiers { mac_cmd: true, ..real })]), true, 0).is_empty(), "⌘ is not Ctrl");
         assert!(actions(&input(vec![key(Key::Escape, Modifiers::NONE)]), false, 0).is_empty());
     }
 

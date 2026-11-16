@@ -357,7 +357,7 @@ impl DrawingApp {
         }
         // the Maestro's hands: the app's MCP and who it is (chat/tools.rs)
         command.args(crate::app::chat::tools::maestro_args(&chat.agent, &self.prefs, &chat));
-        // Ajustes › Agentes › Controle › Acompanhar os agentes: its hooks report to the app as this chat
+        // Ajustes › Chat › Hooks nos agentes do app: its hooks report to the app as this chat
         if chat.agent != "codex"
             && let Some(settings) = self.hook_settings()
         {

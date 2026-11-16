@@ -125,12 +125,12 @@ impl AgentUsage {
 pub(crate) fn recruit_block(running: usize, max_agents: usize, plan: &Plan, stop_at: u8, clock: impl Fn(i64) -> String) -> Option<String> {
     if max_agents > 0 && running >= max_agents {
         return Some(format!(
-            "Já há {running} agentes rodando e o teto é {max_agents} (Ajustes › Agentes › Uso). Espere um terminar ou feche um antes de recrutar outro."
+            "Já há {running} agentes rodando e o teto é {max_agents} (Ajustes › Agentes). Espere um terminar ou feche um antes de recrutar outro."
         ));
     }
     let window = plan.five_hour.filter(|window| stop_at > 0 && window.used >= stop_at as f64)?;
     Some(format!(
-        "A janela de 5 h do plano está em {:.0}% (reinicia às {}) e o app não recruta a partir de {stop_at}% (Ajustes › Agentes › Uso). \
+        "A janela de 5 h do plano está em {:.0}% (reinicia às {}) e o app não recruta a partir de {stop_at}% (Ajustes › Agentes). \
          Faça você mesmo, espere o reinício ou avise a pessoa.",
         window.used,
         clock(window.resets_at)
@@ -256,7 +256,7 @@ impl DrawingApp {
     /// The plan's line for the screen and the Maestro, or why there is none yet.
     pub(crate) fn plan_line(&self) -> String {
         self.usage.plan.line(local_clock).unwrap_or_else(|| {
-            "ainda sem leitura (vem do Claude Code depois da primeira resposta de um agente, com Acompanhar os agentes ligado em Ajustes › Agentes › Controle)".into()
+            "ainda sem leitura (vem do Claude Code depois da primeira resposta de um agente, com Hooks nos agentes do app ligado em Ajustes › Chat)".into()
         })
     }
 

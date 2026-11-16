@@ -1,6 +1,6 @@
 [package]
 name = "magoagent"
-version = "0.0.17"
+version = "0.0.18"
 edition = "2024"
 authors = ["edsuuu"]
 description = "MagoAgent: quadro branco nativo em Rust"
@@ -17,14 +17,12 @@ serde = { version = "1", features = ["derive", "rc"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 alacritty_terminal = "0.26"
-# the IDE node: HEAD-vs-working diffs, and the WebSocket Claude Code's IDE integration talks over
+# the file tree's HEAD-vs-working diffs
 similar = { version = "2", default-features = false, features = ["text"] }
-tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
 keyring = "4.2.0"
 # the vault keeps its secrets through keyring-core directly, so the tests can swap in its mock store
 keyring-core = "1"
 
-json5 = "0.4"
 
 # the syntax check of the tree (app/filetree/syntax): real parsers, ERROR and MISSING nodes with line and column
 tree-sitter = "0.27"
@@ -49,6 +47,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 # the pencil's picture of the circled region (WKWebView snapshot); both already come with wry
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "objc2-app-kit", "block2", "WKWebView", "WKSnapshotConfiguration"] }
 block2 = "0.6"
+# Fechar mantém em segundo plano: the icon in the menu bar (app/system/tray.rs)
+tray-icon = "0.21"
 # a scripted test window that does not take the person's focus (already in eframe's tree; its
 # default features would add Wayland decorations and a font rasterizer eframe doesn't use)
 winit = { version = "0.30", default-features = false }
@@ -61,6 +61,18 @@ raw-window-handle = "0.6"
 tray-icon = "0.21"
 # Ajustes › Integrações › Spotify: what plays, by the system's media controls (already in the tree through wry)
 windows = { version = "0.62", features = ["Media_Control", "Storage_Streams", "Foundation_Collections"] }
+
+# the island over every window: the X11 backend (XWayland in a Wayland session), the island's input shape, the cursor
+# and the work area (app/island/x11.rs); both already in the tree through winit
+[target.'cfg(target_os = "linux")'.dependencies]
+winit = { version = "0.30", default-features = false }
+x11rb = { version = "0.13", default-features = false, features = ["shape", "sync"] }
+# whether the libraries winit's X11 opens are there, before asking for it (already in the tree through winit)
+libloading = "0.8"
+# Fechar mantém em segundo plano: the icon in the top bar, an AppIndicator (its library is opened at run time) that GTK
+# runs on a thread of its own (system/tray.rs); without libxdo, which only the copy and paste items of menus use
+tray-icon = { version = "0.21", default-features = false }
+gtk = "0.18"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 wry = "0.57"

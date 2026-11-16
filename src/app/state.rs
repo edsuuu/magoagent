@@ -114,6 +114,7 @@ pub(crate) struct DrawingApp {
     /// When `dirty` last went from false to true (`ui`'s clock): the autosave waits 0.4 s after it.
     pub(crate) dirty_since: f64,
     /// When the Design overlay of a page that can't send by ipc was last asked for its messages.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) design_polled: f64,
     /// The camera on its way to a node: when it set off, from where, to where (pans).
     pub(crate) glide: Option<(f64, Vec2, Vec2)>,
@@ -129,12 +130,23 @@ pub(crate) struct DrawingApp {
     pub(crate) attention: bool,
     /// When the hidden window last asked to paint (`logic`).
     pub(crate) hidden_paint: Option<std::time::Instant>,
-    /// Fechar mantém em segundo plano (system/tray.rs): the icon by the clock once the window hid, a `raise`
+    /// Linux on X11: when the last frame began (`pace`).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub(crate) paced: Option<std::time::Instant>,
+    /// The window's size when the last frame began: the size that frame drew (Linux: `resize_sync`).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub(crate) drawn_size: Option<Vec2>,
+    /// Fechar mantém em segundo plano (system/tray.rs): the icon by the clock (made once, on the first pass), a `raise`
     /// to show it on the next pass, and Ctrl+Q or Sair asking for a real close.
     pub(crate) tray: Option<crate::app::system::tray::Tray>,
+    pub(crate) tray_tried: bool,
     pub(crate) raise_window: bool,
+    /// Linux on X11: the window asked back, until when it is looked for to be brought as a taskbar would (`tray.rs`).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub(crate) raising: Option<f64>,
     pub(crate) quitting: bool,
     /// The window's caption is the system's (ui/titlebar.rs::native_caption), once hooked.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) caption_hooked: bool,
     /// The chat in a window of its own (the call popup's pencil).
     pub(crate) chat_popup: bool,
@@ -203,7 +215,9 @@ pub(crate) struct DrawingApp {
     pub(crate) island: island::Island,
     /// A portal's page as a picture while the canvas moves, and where its page box was and when
     /// it last changed (`sync_portals`).
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) portal_stills: std::collections::HashMap<String, egui::TextureHandle>,
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) portal_motion: std::collections::HashMap<String, (Rect, f64)>,
     pub(crate) chat_agent: Option<String>,
     pub(crate) chat_draft: String,
@@ -293,6 +307,8 @@ pub(crate) struct DrawingApp {
     /// When the enlarged terminal started growing, and the one shrinking back (with when).
     pub(crate) elevate_since: f64,
     pub(crate) leaving: Option<(String, f64)>,
+    /// The blurred canvas behind a window enlarged in the middle (canvas/lifted.rs).
+    pub(crate) backdrop: Option<crate::app::canvas::lifted::Backdrop>,
     /// The enlarged window docked at a side (right?, width), and its title being dragged: where it
     /// was grabbed, inside it, and the pointer now.
     pub(crate) dock: Option<(bool, f32)>,

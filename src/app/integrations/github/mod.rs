@@ -70,6 +70,11 @@ pub(crate) struct PullRequest {
 }
 
 impl PullRequest {
+    /// The page a click opens: its checks when they failed (where the failure is), else the pull request.
+    pub(crate) fn page(&self) -> String {
+        if self.ci == CiState::Failure { format!("{}/checks", self.url) } else { self.url.clone() }
+    }
+
     /// "checks passaram · aprovado · rascunho".
     pub(crate) fn state_words(&self) -> String {
         let words = [self.ci.label().1, self.review, if self.draft { "rascunho" } else { "" }];
@@ -77,11 +82,24 @@ impl PullRequest {
     }
 }
 
+/// The checks of a repository's default branch, on its last commit.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct BranchCi {
+    /// "owner/repo".
+    pub(crate) repo: String,
+    pub(crate) url: String,
+    pub(crate) branch: String,
+    pub(crate) ci: CiState,
+    pub(crate) head: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Default)]
 pub(crate) struct Pulse {
     pub(crate) login: String,
     pub(crate) mine: Vec<PullRequest>,
     pub(crate) to_review: Vec<PullRequest>,
+    /// The default branches of the person's repositories pushed to last (archived ones left out).
+    pub(crate) main: Vec<BranchCi>,
     /// Points left of the hour's budget, when the answer says.
     pub(crate) remaining: Option<i64>,
 }
@@ -90,6 +108,8 @@ pub(crate) struct Pulse {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Alert {
     CheckFailed(String),
+    /// A default branch's checks failed ("owner/repo").
+    MainFailed(String),
     ReviewRequested(String),
     CheckPassed(String),
 }
@@ -129,6 +149,22 @@ fn pull_request(node: &Value) -> Option<PullRequest> {
     })
 }
 
+/// A repository's node with its default branch; None when archived, with no default branch or not a GitHub page.
+fn branch_ci(node: &Value) -> Option<BranchCi> {
+    if node.get("isArchived").and_then(Value::as_bool).unwrap_or(false) {
+        return None;
+    }
+    let branch = node.get("defaultBranchRef").filter(|branch| branch.is_object())?;
+    let target = branch.get("target");
+    Some(BranchCi {
+        repo: text_at(node, "nameWithOwner", 140)?,
+        url: text_at(node, "url", 400).filter(|url| url.starts_with("https://github.com/"))?,
+        branch: text_at(branch, "name", 100)?,
+        ci: CiState::from_github(target.and_then(|target| target.get("statusCheckRollup")).and_then(|rollup| rollup.get("state")).and_then(Value::as_str)),
+        head: target.and_then(|target| text_at(target, "oid", 64)),
+    })
+}
+
 impl Pulse {
     /// The pulse of a GraphQL answer; None without `data.viewer`.
     pub(crate) fn parse(root: &Value) -> Option<Pulse> {
@@ -146,12 +182,17 @@ impl Pulse {
                 pulse.to_review.push(request);
             }
         }
+        for branch in nodes(viewer.get("repositories")).iter().filter_map(branch_ci) {
+            if !pulse.main.iter().any(|known| known.repo == branch.repo) {
+                pulse.main.push(branch);
+            }
+        }
         Some(pulse)
     }
 
-    /// A check still runs: the next poll comes sooner.
+    /// A check still runs, of a pull request or a default branch: the next poll comes sooner.
     pub(crate) fn has_pending(&self) -> bool {
-        self.mine.iter().any(|request| request.ci == CiState::Pending)
+        self.mine.iter().any(|request| request.ci == CiState::Pending) || self.main.iter().any(|branch| branch.ci == CiState::Pending)
     }
 
     /// "3 PRs · 1 falhou · 2 para revisar".
@@ -174,7 +215,8 @@ impl Pulse {
 
 /// What changed between two polls, as Coucou tells it. The first poll (no `old`) is silent. On the same commit, the
 /// plain changes of state; on a new commit or a new pull request, its checks at once if they already ended (a run
-/// shorter than the interval), and nothing while they run: the next poll, on the same commit, sees them end.
+/// shorter than the interval), and nothing while they run: the next poll, on the same commit, sees them end. A
+/// default branch only ever tells that it failed, never that it passed.
 pub(crate) fn alerts(old: Option<&Pulse>, new: &Pulse) -> Vec<Alert> {
     let Some(old) = old else { return Vec::new() };
     let mut found = Vec::new();
@@ -194,6 +236,15 @@ pub(crate) fn alerts(old: Option<&Pulse>, new: &Pulse) -> Vec<Alert> {
             },
         }
     }
+    for branch in &new.main {
+        let failed = match old.main.iter().find(|known| known.repo == branch.repo) {
+            Some(before) if before.head == branch.head => branch.ci == CiState::Failure && before.ci != CiState::Failure,
+            _ => branch.ci == CiState::Failure,
+        };
+        if failed {
+            found.push(Alert::MainFailed(branch.repo.clone()));
+        }
+    }
     for request in &new.to_review {
         if !old.to_review.iter().any(|known| known.id == request.id) {
             found.push(Alert::ReviewRequested(request.id.clone()));
@@ -205,7 +256,7 @@ pub(crate) fn alerts(old: Option<&Pulse>, new: &Pulse) -> Vec<Alert> {
 /// The one alert a poll shows: a failure before a review asked for, that before a success.
 pub(crate) fn foremost(alerts: &[Alert]) -> Option<&Alert> {
     let rank = |alert: &Alert| match alert {
-        Alert::CheckFailed(_) => 0,
+        Alert::CheckFailed(_) | Alert::MainFailed(_) => 0,
         Alert::ReviewRequested(_) => 1,
         Alert::CheckPassed(_) => 2,
     };
@@ -250,7 +301,8 @@ impl Activity {
     }
 }
 
-/// Coucou's pulse query, less the default branches, plus what is left of the hour's budget.
+/// The reference's pulse query (with the default branches of the 10 repositories pushed to last), plus what is left of the
+/// hour's budget.
 const PULSE_QUERY: &str = r#"query {
   viewer {
     login
@@ -259,6 +311,12 @@ const PULSE_QUERY: &str = r#"query {
         number title url isDraft reviewDecision
         repository { nameWithOwner }
         commits(last: 1) { nodes { commit { oid statusCheckRollup { state } } } }
+      }
+    }
+    repositories(first: 10, ownerAffiliations: [OWNER], orderBy: {field: PUSHED_AT, direction: DESC}) {
+      nodes {
+        nameWithOwner url isArchived
+        defaultBranchRef { name target { ... on Commit { oid statusCheckRollup { state } } } }
       }
     }
   }
@@ -345,6 +403,8 @@ pub(crate) struct GitHub {
     /// Why the last request failed.
     pub(crate) error: Option<String>,
     pub(crate) notice: Option<Notice>,
+    /// The alert to sound on the island, and when it came (the island takes it; an old one is dropped).
+    pub(crate) ring: Option<(Alert, i64)>,
     /// Testar's request is out.
     pub(crate) testing: bool,
     /// The token as the keychain has it, read once; empty: none.
@@ -396,6 +456,13 @@ impl GitHub {
         let mut lines = vec![format!("GitHub: conectado como @{} · {}", pulse.login, pulse.summary())];
         lines.extend(pulse.mine.iter().map(|request| format!("- {} {} ({}) {}", request.id, request.title, request.state_words(), request.url)));
         lines.extend(pulse.to_review.iter().map(|request| format!("- revisar {} {} {}", request.id, request.title, request.url)));
+        lines.extend(
+            pulse
+                .main
+                .iter()
+                .filter(|branch| branch.ci != CiState::Unknown)
+                .map(|branch| format!("- {} ({}): {}", branch.repo, branch.branch, branch.ci.label().1)),
+        );
         if let Some(activity) = &self.activity {
             lines.push(format!("{} contribuições no último ano, {} hoje.", activity.total, activity.today));
         }
@@ -405,7 +472,7 @@ impl GitHub {
     /// What was fetched goes, so the next poll is silent: for another token, or the integration turned off.
     fn forget(&mut self) {
         self.generation += 1;
-        (self.pulse, self.activity, self.error, self.notice) = (None, None, None, None);
+        (self.pulse, self.activity, self.error, self.notice, self.ring) = (None, None, None, None, None);
         (self.busy_pulse, self.busy_activity, self.testing) = (false, false, false);
         (self.next_pulse, self.next_activity) = (0, 0);
     }
@@ -422,11 +489,20 @@ impl GitHub {
         if let Some(alert) = &alert {
             let (id, text, failure) = match alert {
                 Alert::CheckFailed(id) => (id, format!("Os checks de {id} falharam"), true),
+                Alert::MainFailed(repo) => {
+                    let branch = pulse.main.iter().find(|branch| &branch.repo == repo).map_or("principal", |branch| branch.branch.as_str());
+                    (repo, format!("O CI da {branch} de {repo} falhou"), true)
+                }
                 Alert::ReviewRequested(id) => (id, format!("Pediram a sua revisão em {id}"), false),
                 Alert::CheckPassed(id) => (id, format!("Os checks de {id} passaram"), false),
             };
-            let url = pulse.mine.iter().chain(&pulse.to_review).find(|request| &request.id == id).map(|request| request.url.clone()).unwrap_or_default();
-            self.notice = Some(Notice { text, failure, url, at: now, seen: None });
+            let url = match alert {
+                // the repository's Actions, where the failed run is
+                Alert::MainFailed(_) => pulse.main.iter().find(|branch| &branch.repo == id).map(|branch| format!("{}/actions", branch.url)),
+                _ => pulse.mine.iter().chain(&pulse.to_review).find(|request| &request.id == id).map(PullRequest::page),
+            };
+            self.notice = Some(Notice { text, failure, url: url.unwrap_or_default(), at: now, seen: None });
+            self.ring = Some((alert.clone(), now));
         }
         let wait = match (pulse.remaining.is_some_and(|left| left < LOW_BUDGET), pulse.has_pending()) {
             (true, _) => SPARING_EVERY,

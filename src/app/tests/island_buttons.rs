@@ -236,6 +236,48 @@ fn pulled_by_its_bottom_edge_the_conversation_grows_and_its_window_holds_it_all_
 }
 
 #[test]
+fn the_short_conversation_is_pulled_wider_by_a_side_and_a_double_click_takes_it_back() {
+    let (mut app, ctx, mut time) = opened();
+    let at = tab_button(&app, 1);
+    click(&mut app, &ctx, &mut time, at);
+    assert!(!app.island.chat_full);
+    let before = app.island.size();
+    let grip = Pos2::new(island_rect(&app).right() - 4.0, island_rect(&app).center().y);
+    let press = |at, pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    for events in [vec![egui::Event::PointerMoved(grip)], vec![egui::Event::PointerMoved(grip)], vec![press(grip, true)]] {
+        step(&mut app, &ctx, time, events);
+        time += 0.05;
+    }
+    let mut at = grip;
+    for _ in 0..20 {
+        at.x += 5.0;
+        step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)]);
+        time += 0.05;
+    }
+    step(&mut app, &ctx, time, vec![press(at, false)]);
+    for _ in 0..20 {
+        time += 0.05;
+        step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)]);
+    }
+    let pulled = app.island.size();
+    assert!(pulled.x > before.x + 150.0, "wider on both sides of its centre: {before:?} → {pulled:?}");
+    assert_eq!(app.prefs.island_talk.map(|[width, _]| width), Some(pulled.x.round()), "kept for the short conversation");
+    assert_eq!(app.prefs.island_chat, None, "not the whole chat's");
+    // a double click on the edge: back to growing with what was said
+    let edge = Pos2::new(island_rect(&app).right() - 4.0, island_rect(&app).center().y);
+    for pressed in [true, false, true, false] {
+        step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(edge), press(edge, pressed)]);
+        time += 0.03;
+    }
+    for _ in 0..20 {
+        time += 0.05;
+        step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(edge)]);
+    }
+    assert_eq!(app.prefs.island_talk, None);
+    assert!((app.island.size().x - before.x).abs() < 4.0, "its size from before: {:?}", app.island.size());
+}
+
+#[test]
 fn the_window_holds_the_big_conversation_while_it_opens() {
     let (mut app, ctx, mut time) = opened();
     // the whole mini chat (the conversation's ⤢)
@@ -375,4 +417,32 @@ fn inicio_holds_only_the_tools_and_chats_only_the_agents() {
     click(&mut app, &ctx, &mut time, at);
     click(&mut app, &ctx, &mut time, first);
     assert_eq!((app.island.tab(), app.island.focus()), (Tab::Chats, Some("a")), "Chats: the agents, not the tool");
+}
+
+/// GitHub's alerts sound on the island as the reference's: checks that passed, a review asked for (a failure is its red wizard's error).
+#[test]
+fn checks_that_passed_and_a_review_asked_for_sound_on_the_island() {
+    use crate::app::integrations::github::{CiState, GitHub, PullRequest, Pulse};
+    let (mut app, ctx, mut time) = opened();
+    app.prefs.integrations.github = true;
+    app.integrations.github = GitHub::with_token("ghp_0123456789abcdefghijABCDEFGHIJ012345");
+    let request = |id: &str, ci| PullRequest {
+        id: id.into(),
+        title: "T".into(),
+        url: "https://github.com/a/b/pull/1".into(),
+        draft: false,
+        ci,
+        review: "",
+        head: Some("s1".into()),
+    };
+    let pulse = |ci, to_review: Vec<PullRequest>| Pulse { login: "ana".into(), mine: vec![request("a/b#1", ci)], to_review, ..Default::default() };
+    app.integrations.github.take_pulse(pulse(CiState::Pending, vec![]), now_ms());
+    for (next, what) in [(pulse(CiState::Success, vec![]), "passed"), (pulse(CiState::Success, vec![request("c/d#2", CiState::Unknown)]), "review")] {
+        let before = app.island.chimes();
+        app.integrations.github.take_pulse(next, now_ms());
+        step(&mut app, &ctx, time, vec![]);
+        time += 0.05;
+        assert!(app.island.chimes() > before, "{what}: a sound");
+        assert_eq!(app.integrations.github.ring, None, "{what}: sounded once");
+    }
 }

@@ -1,88 +1,11 @@
-//! Ajustes › Agentes: what each agent uses with the Maestro's limits (Uso) and the hooks that bring outside sessions to the island.
+//! Ajustes › Agentes: what each agent uses and the Maestro's limits. The hooks of the sessions outside the app are in
+//! Integrações (`hooks.rs`).
 
 use super::kit::*;
 use crate::prelude::*;
 
-/// The sub-tabs of Ajustes › Agentes.
-pub(crate) const AGENT_TABS: [&str; 2] = ["Uso", "Hooks"];
-
 impl DrawingApp {
     pub(super) fn settings_agents(&mut self, ui: &mut egui::Ui, k: &K) {
-        match super::subtabs(ui, k, "agents", &AGENT_TABS) {
-            0 => self.settings_usage(ui, k),
-            _ => self.settings_hooks(ui, k),
-        }
-    }
-
-    /// The button that puts the app's hooks in the person's own Claude Code settings, and the one that takes them out.
-    fn settings_hooks(&mut self, ui: &mut egui::Ui, k: &K) {
-        title(ui, k, "CLAUDE CODE FORA DO APP");
-        note(
-            ui,
-            k,
-            "A ilha mostra as perguntas e os pedidos de permissão de qualquer sessão do Claude Code (o Claude Desktop, o VS Code, outro terminal) e você responde por ela. Instalar acrescenta os hooks do MagoAgent ao seu settings.json, com backup antes e sem apagar nada; Remover tira só os do MagoAgent. Vale para as sessões que começarem depois.",
-        );
-        ui.add_space(3.25);
-        use crate::app::maestro::claude_hooks::{installed_at, outdated_at, relay_path, settings_path};
-        let path = settings_path();
-        let installed = path.as_ref().is_some_and(|path| installed_at(path));
-        // instalados por outra versão (apontam para um exe que mudou, ou falta um evento): só o botão conserta
-        let outdated = installed && path.zip(relay_path()).is_some_and(|(path, relay)| outdated_at(&path, &relay.to_string_lossy()));
-        let state = match (installed, outdated) {
-            (_, true) => "Hooks desatualizados: instale de novo",
-            (true, _) => "Hooks instalados",
-            _ => "Hooks não instalados",
-        };
-        let mut action = "";
-        row(ui, k, state, "", |ui| {
-            if button(ui, k, "Remover").clicked() {
-                action = "remove";
-            }
-            if button(ui, k, "Instalar hooks do Claude Code").clicked() {
-                action = "install";
-            }
-        });
-        if action == "remove" {
-            let message = self.act_claude_hooks(action).unwrap_or_else(|why| why);
-            self.toast(message);
-        } else if action == "install" {
-            let preview = (|| {
-                let path = settings_path().ok_or("Não achei a pasta do Claude Code (.claude).")?;
-                let relay = relay_path().ok_or("Não achei a pasta de dados do MagoAgent para o relay dos hooks.")?;
-                let (before, after) = crate::app::maestro::claude_hooks::preview_at(&path, &relay.to_string_lossy())?;
-                Ok::<_, String>((path, relay.to_string_lossy().into_owned(), before, after))
-            })();
-            match preview {
-                Ok(preview) => self.claude_hooks_preview = Some(preview),
-                Err(error) => self.toast(error),
-            }
-        }
-        ui.add_space(12.0);
-        title(ui, k, "CODEX FORA DO APP");
-        note(
-            ui,
-            k,
-            "Instalar acrescenta os hooks do MagoAgent ao hooks.json do Codex, com backup antes e sem apagar nada; Remover tira só os do MagoAgent. Vale para as sessões novas.",
-        );
-        let path = crate::app::maestro::codex_hooks::codex_settings_path();
-        let installed = path.as_ref().is_some_and(|path| crate::app::maestro::codex_hooks::installed_at(path));
-        let state = if installed { "Hooks do Codex instalados" } else { "Hooks do Codex não instalados" };
-        let mut codex_action = "";
-        row(ui, k, state, "", |ui| {
-            if button(ui, k, "Remover").clicked() {
-                codex_action = "remove";
-            }
-            if button(ui, k, "Instalar hooks do Codex").clicked() {
-                codex_action = "install";
-            }
-        });
-        if !codex_action.is_empty() {
-            let message = self.act_codex_hooks(codex_action).unwrap_or_else(|why| why);
-            self.toast(message);
-        }
-    }
-
-    fn settings_usage(&mut self, ui: &mut egui::Ui, k: &K) {
         let agents = self.agent_usage_lines();
         if !agents.is_empty() {
             title(ui, k, "AGENTES");

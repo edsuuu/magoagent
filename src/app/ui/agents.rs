@@ -291,20 +291,24 @@ impl DrawingApp {
         self.record(event);
     }
 
-    /// ⌘1 chat, ⌘2 canvas, ⌘3 the first file tree, ⌘⇧A the next agent that needs you; they work even while a
-    /// terminal has the keyboard.
+    /// The chat (⌘1), the canvas (⌘2), the first file tree (⌘3) and the next agent that needs you (⌘⇧A), by the keys
+    /// Ajustes › Atalhos has for them: they work even while a terminal has the keyboard, which never gets them. None
+    /// while Ajustes records a shortcut's keys.
     pub(crate) fn screen_keys(&mut self, ctx: &Context) {
-        let key = |modifiers, key| ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(modifiers, key)));
-        if key(Modifiers::COMMAND, Key::Num1) {
+        use crate::app::hotkeys::local::AppAction;
+        if self.hotkeys.recording.is_some() {
+            return;
+        }
+        if self.take_app_key(ctx, AppAction::ShowChat) {
             self.show_chat();
         }
-        if key(Modifiers::COMMAND, Key::Num2) {
+        if self.take_app_key(ctx, AppAction::ShowCanvas) {
             self.show_canvas();
         }
-        if key(Modifiers::COMMAND, Key::Num3) {
+        if self.take_app_key(ctx, AppAction::OpenTree) {
             self.open_tree();
         }
-        if key(Modifiers::COMMAND | Modifiers::SHIFT, Key::A) {
+        if self.take_app_key(ctx, AppAction::NextNeedingYou) {
             self.next_needing_attention();
         }
     }

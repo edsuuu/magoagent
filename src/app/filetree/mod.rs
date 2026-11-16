@@ -196,6 +196,41 @@ impl DrawingApp {
         self.selected = vec![self.scene.elements.len() - 1];
     }
 
+    /// Shows file `path` on the canvas (Ajustes › Chat › Skill de estilo › Abrir): in the file tree of its folder (the
+    /// one on the canvas, else a new one in a free spot), its row selected and the file open in the tree's editor.
+    /// Ajustes closes and the canvas glides to the tree.
+    pub(crate) fn show_in_tree(&mut self, path: &str) -> Result<String, String> {
+        if path.trim().is_empty() {
+            return Err("Nenhum arquivo indicado: escreva o caminho dele.".into());
+        }
+        let file = folder(path).filter(|file| file.is_file()).ok_or_else(|| format!("O arquivo {} não existe.", path.trim()))?;
+        let dir = file.parent().map(Path::to_path_buf).unwrap_or_default();
+        let kept = self.scene.elements.iter().find(|element| element.filetree.as_ref().is_some_and(|tree| tree.root_path() == dir));
+        let id = match kept {
+            Some(element) => element.id.clone(),
+            None => {
+                let at = self.free_spot(Rect::from_center_size(self.to_world(self.canvas_rect.center()), FILETREE_SIZE));
+                let mut node = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
+                node.style = node_style(node.style);
+                node.filetree = Some(FileTreeSpec { root: dir.to_string_lossy().into_owned(), ..Default::default() });
+                let id = node.id.clone();
+                self.snapshot();
+                self.scene.elements.push(node);
+                id
+            }
+        };
+        (self.settings_open, self.settings_edit) = (false, None);
+        self.show_canvas();
+        self.filetrees.views.entry(id.clone()).or_insert_with(TreeView::new);
+        self.ft_reveal(&id, &file);
+        self.ft_activate(&id, file.clone());
+        if let Some(index) = self.scene.elements.iter().position(|element| element.id == id) {
+            self.glide_to(element_bounds(&self.scene.elements[index]).center());
+            self.selected = vec![index];
+        }
+        Ok(format!("{} aberto na árvore.", file.display()))
+    }
+
     fn check_root(&self, root: &str) -> Result<(), String> {
         match folder(root) {
             Some(p) if p.is_dir() => Ok(()),

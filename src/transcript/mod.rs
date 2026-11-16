@@ -426,8 +426,18 @@ impl Transcript {
 pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
     let queued = &line["attachment"];
     if line["type"] == "attachment" && queued["type"] == "queued_command" && queued["commandMode"] == "prompt" {
-        let text = unpasted(queued["prompt"].as_str().unwrap_or_default());
-        return (!text.trim().is_empty()).then(|| ChatItem::User(text.trim().into())).into_iter().collect();
+        let words = |text: &str| {
+            let text = unpasted(text);
+            (!text.trim().is_empty()).then(|| ChatItem::User(text.trim().into()))
+        };
+        // typed alone it is the words; with pictures pasted, blocks as a message's: the words and the images
+        let prompt = &queued["prompt"];
+        if let Some(text) = prompt.as_str() {
+            return words(text).into_iter().collect();
+        }
+        let at = queued["timestamp"].as_str().or(line["timestamp"].as_str()).and_then(iso_ms).unwrap_or(0);
+        let blocks = prompt.as_array().map(Vec::as_slice).unwrap_or_default();
+        return blocks.iter().filter_map(|block| if block["type"] == "text" { words(block["text"].as_str()?) } else { image(block, true, at) }).collect();
     }
     if line["type"] == "system" && line["subtype"] == "api_error" {
         let what = line["error"]["formatted"].as_str().or(line["error"]["message"].as_str()).unwrap_or("sem detalhes");
