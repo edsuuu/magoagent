@@ -56,6 +56,7 @@ impl DrawingApp {
             ("frame_rate", rate) if rate.parse::<u16>().is_ok_and(|rate| FRAME_RATES.contains(&rate)) => self.prefs.frame_rate = rate.parse().unwrap_or(60),
             ("gnome_cursor", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return gnome_cursor(action),
             ("island_place", "top" | "topo") => self.put_island(crate::app::island::Place::Top),
+            ("island_place", "bottom" | "embaixo" | "baixo") => self.put_island(crate::app::island::Place::Bottom),
             ("island_place", "left" | "esquerda") => self.put_island(crate::app::island::Place::Left),
             ("island_place", "right" | "direita") => self.put_island(crate::app::island::Place::Right),
             ("island_close_after", seconds) if ["5", "10", "15", "30"].contains(&seconds) => self.prefs.island_close_after = seconds.parse().unwrap_or(15),
