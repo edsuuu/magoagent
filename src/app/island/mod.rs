@@ -333,6 +333,11 @@ pub(crate) struct Island {
     built: Vec2,
     /// Where the window was seen after the person moved it, and since when: let go once it stays.
     moved: Option<(Pos2, f64)>,
+    /// X11: the window is the island's size since a drag began (the size it was), until the island grows once it is let
+    /// go. In its room the system stops the window at the top bar with the island still below it.
+    slim: Option<Vec2>,
+    /// The system's drag asked for, sent once the window has its drag size (`slim`): the next frame.
+    drag_next: bool,
     pub(crate) form: Option<NewForm>,
     /// The window on its way onto the screen without Windows' border (`plain::reveal`), and the pass it was last shown in.
     plain: u8,

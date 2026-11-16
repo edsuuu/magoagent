@@ -58,6 +58,11 @@ impl DrawingApp {
         if let Some(index) = row(ui, k, "Lugar da ilha", hint, |ui| choice(ui, k, "Lugar da ilha", &Place::NAMES, now)) {
             self.put_island(Place::ALL[index]);
         }
+        let hint = "Sumiu ou ficou fora da tela? Volta a ilha ao meio do topo do monitor onde está a janela do MagoAgent.";
+        if row(ui, k, "Trazer a ilha de volta", hint, |ui| button(ui, k, "Voltar ao lugar padrão")).clicked() {
+            self.reset_island();
+            self.toast("A ilha voltou ao topo da tela.");
+        }
         #[cfg(target_os = "linux")]
         if crate::app::island::gnome::wanted() {
             self.settings_gnome_cursor(ui, k);
