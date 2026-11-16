@@ -73,6 +73,11 @@ impl DrawingApp {
             }
             ("soloist", "start") => self.soloist_setup_run(Job::Start),
             ("soloist", "stop") => self.soloist_setup_run(Job::Stop),
+            ("spotify" | "soloist", "dance") => Ok(self.luna_report()),
+            ("spotify" | "soloist", "dance_on" | "dance_off") => {
+                self.prefs.integrations.luna_dances = action == "dance_on";
+                Ok(self.luna_report())
+            }
             ("spotify" | "soloist", command) if Command::parse(command).is_some() => {
                 match Command::parse(command).is_some_and(|command| self.spotify_control(command)) {
                     true => Ok("Pedido ao Spotify.".into()),

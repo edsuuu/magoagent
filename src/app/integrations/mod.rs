@@ -15,7 +15,7 @@ pub(crate) mod whatsapp;
 pub(crate) const ITEM_PREFIX: &str = "integration:";
 
 /// What Ajustes keeps of the integrations: the switches and what is not secret.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub(crate) struct IntegrationPrefs {
     pub(crate) github: bool,
@@ -27,6 +27,14 @@ pub(crate) struct IntegrationPrefs {
     pub(crate) whatsapp: bool,
     #[serde(default = "whatsapp::default_base")]
     pub(crate) whatsapp_base: String,
+    /// Luna dances to what Spotify plays on the island, by the beat heard in the computer's sound (on by default).
+    pub(crate) luna_dances: bool,
+}
+
+impl Default for IntegrationPrefs {
+    fn default() -> Self {
+        Self { github: false, spotify: false, soloist: false, hermes: false, whatsapp: false, whatsapp_base: String::new(), luna_dances: true }
+    }
 }
 
 #[derive(Default)]

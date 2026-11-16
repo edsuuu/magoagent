@@ -11,6 +11,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 
 #[cfg(target_os = "macos")]
 mod applescript;
+pub(crate) mod groove;
 #[cfg(not(any(windows, target_os = "macos")))]
 mod linux;
 #[cfg(not(any(windows, target_os = "macos")))]
@@ -379,6 +380,8 @@ pub(crate) struct Spotify {
     pub(crate) soloist_missing: bool,
     /// The players the thread asks (Ajustes' two switches).
     sources: Sources,
+    /// Luna dancing to what plays: the beat heard in the computer's sound while the island draws her (`groove`).
+    pub(crate) dancer: groove::Dancer,
     /// The thread's two ends, while the integration is on: dropping them ends it.
     thread: Option<(Sender<Command>, Receiver<Message>)>,
     /// What was asked of the player, for the tests (they have no thread).
@@ -468,6 +471,8 @@ impl DrawingApp {
         while let Some(message) = spotify.thread.as_ref().and_then(|(_, messages)| messages.try_recv().ok()) {
             spotify.take(message, ctx);
         }
+        let playing = spotify.now.as_ref().is_some_and(|now| now.playing);
+        spotify.dancer.tick(self.prefs.integrations.luna_dances, playing);
     }
 
     /// Spotify in words, for the MCP's `integrations`.

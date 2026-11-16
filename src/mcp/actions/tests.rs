@@ -197,6 +197,29 @@ fn the_agents_see_what_spotify_plays_and_press_its_buttons() {
     assert!(!app.prefs.integrations.spotify);
 }
 
+/// "A Luna dança com a música" (Ajustes › Integrações › Spotify) through the MCP: its switch and the dance of now.
+#[test]
+fn the_agents_turn_lunas_dance_on_and_off() {
+    use crate::app::integrations::spotify::{Now, Track};
+    let spotify = |app: &mut DrawingApp, action: &str| app.act("integrations", &json!({ "integration": "spotify", "action": action }));
+    let mut app = DrawingApp::default();
+    assert!(spotify(&mut app, "dance").unwrap().starts_with("A Luna dança com a música: ligado"), "on by default");
+    assert!(spotify(&mut app, "dance_off").unwrap().starts_with("A Luna dança com a música: desligado"));
+    assert!(!app.prefs.integrations.luna_dances);
+    spotify(&mut app, "dance_on").unwrap();
+    assert!(app.prefs.integrations.luna_dances);
+    // playing, before anything is heard: the clock's sway; paused: asleep
+    let now = Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, ..Default::default() };
+    app.prefs.integrations.spotify = true;
+    app.integrations.spotify.now = Some(now.clone());
+    assert!(spotify(&mut app, "dance").unwrap().ends_with("Agora: Balanço."));
+    app.integrations_tick(&Context::default());
+    assert_eq!(app.integrations.spotify.dancer.starts, 0, "the agents asking is no dancer on screen: she does not listen");
+    app.integrations.spotify.now = Some(Now { playing: false, ..now });
+    assert!(spotify(&mut app, "dance").unwrap().ends_with("Agora: Cochila."));
+    assert!(crate::mcp::app_tools::app_tools().iter().any(|tool| tool["inputSchema"]["properties"]["action"]["enum"].to_string().contains("dance_on")));
+}
+
 #[test]
 fn the_agents_reach_soloists_own_switch() {
     use crate::app::integrations::spotify::{Command, Now, Player, Track};
