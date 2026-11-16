@@ -232,6 +232,18 @@ mod tests {
         assert!(app.ask_line(&view).is_some_and(|line| line.kind == "Claude Code"), "the card is of the session's pill");
     }
     #[test]
+    fn a_session_from_a_terminal_is_on_home_when_the_island_opens() {
+        // the compact island shows its mini: opened, Início has it in focus and in its grid, not "no tool"
+        let (mut app, _ctx, _time) = island();
+        let payload = json!({ "hook_event_name": "UserPromptSubmit", "session_id": "s1", "cwd": "C:/proj", "prompt": "oi" });
+        app.take_outside_hook(&payload, None);
+        let view = app.island_view(vec![], vec![], crate::app::island::Mood::Working(1), 1.0);
+        assert_eq!(app.island.tab(), Tab::Home);
+        let pill = view.lines.iter().find(|line| line.id.starts_with(crate::app::maestro::outside::PILL_PREFIX)).expect("the session's pill");
+        assert_eq!(view.focus.as_deref(), Some(pill.id.as_str()), "Início opens on the session");
+        assert_eq!(Tab::of(&pill.id), Tab::Home);
+    }
+    #[test]
     fn the_pills_are_walked_around_both_ways() {
         let ids = ["a".to_string(), "b".to_string(), "c".to_string()];
         assert_eq!(cycle_pill(&ids, Some("a"), 1).as_deref(), Some("b"));

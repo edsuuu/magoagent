@@ -99,9 +99,12 @@ pub(crate) enum Tab {
 }
 
 impl Tab {
-    /// The grid a pill lives in: the tools (integrations) on Início, the agents and chats on Chats.
+    /// The grid a pill lives in: on Início the tools, the integrations and the sessions outside the app (Claude Code or
+    /// Hermes in a terminal, which show as minis in the compact island: opening it shows them at once); on Chats the
+    /// app's own agents and chats.
     pub(crate) fn of(id: &str) -> Tab {
-        if id.starts_with(crate::app::integrations::ITEM_PREFIX) { Tab::Home } else { Tab::Chats }
+        let tool = [crate::app::integrations::ITEM_PREFIX, crate::app::maestro::outside::PILL_PREFIX].iter().any(|prefix| id.starts_with(prefix));
+        if tool { Tab::Home } else { Tab::Chats }
     }
 
     /// The grid this page shows the focus of: Início its own, every other page the agents'.
