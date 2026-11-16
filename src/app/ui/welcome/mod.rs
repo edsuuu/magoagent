@@ -442,6 +442,7 @@ mod tests {
         let ctx = Context::default();
         crate::app::ui::install_fonts(&ctx, false);
         let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0));
+        // each text's middle by its layout, not its glyphs: the system's face (on CI another) moves the glyphs' edges
         let frame = |app: &mut DrawingApp, time: f64, events: Vec<egui::Event>| {
             let input = egui::RawInput { time: Some(time), screen_rect: Some(screen), events, ..Default::default() };
             let output = ctx.run_ui(input, |ui| app.welcome_ui(ui.ctx()));
@@ -449,7 +450,7 @@ mod tests {
                 .shapes
                 .iter()
                 .filter_map(
-                    |s| if let egui::Shape::Text(t) = &s.shape { Some((t.galley.text().to_string(), t.visual_bounding_rect().center().x)) } else { None },
+                    |s| if let egui::Shape::Text(t) = &s.shape { Some((t.galley.text().to_string(), (t.pos.x + t.galley.rect.center().x))) } else { None },
                 )
                 .collect::<Vec<_>>()
         };
