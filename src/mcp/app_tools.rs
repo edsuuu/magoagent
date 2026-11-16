@@ -303,6 +303,14 @@ pub(crate) fn app_tools() -> Vec<Value> {
             } },
         }),
         json!({
+            "name": "outside_message",
+            "description": "Manda uma mensagem da pessoa a uma sessão do Claude Code de fora do app (as que demands lista no fim), como a caixa da conversa dela na ilha. Se a sessão roda no tmux e nada espera a pessoa na tela dela, o texto é digitado no terminal com o Enter na hora; senão fica na fila e entra quando o Claude terminar a vez (uma sessão parada só recebe quando trabalhar de novo e terminar). A resposta diz qual foi. Claude Desktop, Cursor e Hermes não recebem: responda na janela deles.",
+            "inputSchema": { "type": "object", "properties": {
+                "session": name("o nome da sessão como demands mostra (Claude Code · pasta), a pasta ou parte dela; vazio: a única"),
+                "text": name("a mensagem"),
+            }, "required": ["text"] },
+        }),
+        json!({
             "name": "connection_history",
             "description": "O que dois agentes conversaram pela conexão entre eles (ask_agent / magoagent ask): as últimas mensagens, das mais antigas às mais novas, cada uma com quando, o sentido (quem → quem) e o resumo (a pergunta, ou como a resposta voltou).",
             "inputSchema": { "type": "object", "properties": {

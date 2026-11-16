@@ -37,7 +37,7 @@ GROUPS = [
     ("Notas e fichário", ("create_note", "read_note", "write_note", "note", "note_buttons", "note_stack", "binder")),
     ("Agentes, terminais e Maestro", ("list_agents", "ask_agent", "recruit_agent", "connect", "disconnect", "connection_history", "read_terminal",
                                       "terminal_find", "terminal_look", "terminal_menu", "terminal_processes", "terminal_restart", "notify",
-                                      "ask_person", "remember", "review", "demands", "timeline", "tasks", "skills", "maestro_comment", "avatar",
+                                      "ask_person", "remember", "review", "demands", "outside_message", "timeline", "tasks", "skills", "maestro_comment", "avatar",
                                       "avatar_follow", "flow", "usage", "usage_refresh", "memory")),
     ("Chats", ("chat_new", "chat_open", "chat_send", "chat_list", "chat_search", "chat_rename", "chat_provider", "chat_command", "chat_context",
                "chat_decide", "chat_node", "mini_chat")),

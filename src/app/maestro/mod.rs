@@ -9,6 +9,7 @@ pub(crate) mod codex_hooks;
 pub(crate) mod demands;
 pub(crate) mod environments;
 pub(crate) mod events;
+pub(crate) mod message;
 pub(crate) mod normalize;
 pub(crate) mod outside;
 pub(crate) mod relay;

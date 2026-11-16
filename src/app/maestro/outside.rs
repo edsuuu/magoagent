@@ -5,6 +5,7 @@
 //! The hook waits for the answer up to `WAIT`; with none, or "Responder no terminal", it prints nothing and the
 //! CLI asks in its own terminal as if the app were not there.
 
+use super::message::Reach;
 use crate::app::chat::decide::PersonAsk;
 use crate::app::chat::direct::folder_label;
 use crate::app::ui::agents::AgentState;
@@ -26,8 +27,10 @@ const BADGE_FOR: i64 = 5200;
 const SILENT_FOR: i64 = 15 * 60 * 1000;
 /// A question answered "no, in the terminal" asks again through the other hook of the CLI: ignore it for this long.
 const DECLINED_FOR: i64 = 3000;
+/// A pill whose conversation the island shows stays this long after the island last said so (`outside_shown`).
+const SHOWN_FOR: i64 = 2000;
 /// Os eventos que encerram a vez: um pedido que ainda esperava a pessoa nessa sessão perdeu o sentido.
-const TURN_OVER: [&str; 5] = ["Stop", "StopFailure", "UserPromptSubmit", "SessionEnd", "Interrupt"];
+pub(super) const TURN_OVER: [&str; 5] = ["Stop", "StopFailure", "UserPromptSubmit", "SessionEnd", "Interrupt"];
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Badge {
@@ -50,11 +53,11 @@ pub(crate) struct Source {
 }
 
 pub(crate) struct Pill {
-    key: String,
+    pub(super) key: String,
     name: String,
     color: Color32,
-    working: bool,
-    asking: bool,
+    pub(super) working: bool,
+    pub(super) asking: bool,
     /// O limite de uso do plano bateu (uma Notification de "rate limit"): fica até a sessão voltar a trabalhar.
     limited: bool,
     /// A última coisa que a sessão fez, numa linha: a ferramenta, o prompt, "+ subagente".
@@ -64,7 +67,9 @@ pub(crate) struct Pill {
     until: i64,
     gone: i64,
     seen: i64,
-    session: String,
+    /// When the island last showed its conversation (`outside_shown`): meanwhile the pill stays, to be written to.
+    shown: i64,
+    pub(super) session: String,
     /// The file Claude Code writes the session's conversation in (`outside_transcript`).
     transcript: String,
 }
@@ -74,6 +79,19 @@ pub(crate) struct Outside {
     pills: Vec<Pill>,
     /// The sessions whose question went back to the terminal: (session, when).
     pub(crate) declined: std::cell::RefCell<Vec<(String, i64)>>,
+    /// How to reach each session, by its id (message.rs): its tmux pane, what waits on its screen.
+    pub(super) sessions: std::collections::HashMap<String, Reach>,
+    /// The tmux the tests give in place of the person's (message.rs): what it printed, or why it failed.
+    #[cfg(test)]
+    pub(crate) fake_tmux: Option<Box<dyn Fn(&[String]) -> Result<String, String>>>,
+}
+
+impl Outside {
+    /// Pill `id` of the island ("pill:<key>").
+    pub(super) fn pill(&self, id: &str) -> Option<&Pill> {
+        let key = id.strip_prefix(PILL_PREFIX)?;
+        self.pills.iter().find(|pill| pill.key == key)
+    }
 }
 
 #[cfg(test)]
@@ -205,6 +223,7 @@ impl DrawingApp {
             }
             return;
         }
+        self.outside_reach(&session, &event, payload);
         // a pergunta só existe pelo hook que espera: o PermissionRequest dela e o PreToolUse geral não fazem cartão nem mexem na pílula
         if tool == "AskUserQuestion" && (event == "PermissionRequest" || (event == "PreToolUse" && reply.is_none())) {
             return;
@@ -235,6 +254,7 @@ impl DrawingApp {
                     until: 0,
                     gone: 0,
                     seen: now,
+                    shown: 0,
                     session: session.clone(),
                     transcript: String::new(),
                 };
@@ -249,8 +269,13 @@ impl DrawingApp {
             if let Some(line) = activity(&event, payload) {
                 pill.activity = line;
             }
+            // the Stop hook handed the session what the person wrote (message.rs): its turn goes on
+            let delivered = payload["mago_delivered"].as_u64().unwrap_or(0);
+            if delivered > 0 {
+                pill.activity = if delivered == 1 { "mensagem entregue".into() } else { format!("{delivered} mensagens entregues") };
+            }
             match event.as_str() {
-                "Stop" | "StopFailure" => {
+                "Stop" | "StopFailure" if delivered == 0 => {
                     (pill.working, pill.asking, pill.limited) = (false, false, false);
                     pill.badge = Some(if event == "Stop" { Badge::Finished } else { Badge::Error });
                     pill.until = now + BADGE_FOR;
@@ -313,13 +338,26 @@ impl DrawingApp {
         self.person_asks.get_mut().retain(|ask| ask.source.as_ref().is_none_or(|source| now - source.at < WAIT as i64 * 1000));
         self.outside.declined.get_mut().retain(|(_, at)| now - at < DECLINED_FOR);
         let waiting: Vec<String> = self.person_asks.get_mut().iter().filter_map(|ask| ask.source.as_ref().map(|source| source.pill.clone())).collect();
+        // a session with messages waiting for its turn to end keeps its pill: the island says how many
+        let queued: Vec<String> = self.bridge.as_ref().map(|bridge| locked(&bridge.shared).outbox.keys().cloned().collect()).unwrap_or_default();
         self.outside.pills.retain_mut(|pill| {
             if pill.until != 0 && now >= pill.until {
                 (pill.badge, pill.until) = (None, 0);
             }
-            let over = pill.gone != 0 && now >= pill.gone && !waiting.contains(&pill.key);
+            let kept = waiting.contains(&pill.key) || queued.contains(&pill.session) || now - pill.shown < SHOWN_FOR;
+            let over = pill.gone != 0 && now >= pill.gone && !kept;
             !over && now - pill.seen < SILENT_FOR
         });
+        self.outside.sessions.retain(|_, reach| now - reach.seen < SILENT_FOR);
+    }
+
+    /// The island shows the conversation of pill `id` (island/session.rs, while it is open): the pill stays though its
+    /// turn ended, so the person can still write to it.
+    pub(crate) fn outside_shown(&mut self, id: &str) {
+        let Some(key) = id.strip_prefix(PILL_PREFIX) else { return };
+        for pill in self.outside.pills.iter_mut().filter(|pill| pill.key == key) {
+            pill.shown = now_ms();
+        }
     }
 
     /// The pills of the sessions outside, for the island: waiting when an ask of theirs waits.

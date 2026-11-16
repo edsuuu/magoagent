@@ -138,7 +138,7 @@ fn abrir_on_a_session_outside_opens_its_conversation_followed_while_it_works_and
     let middle = island_rect(&app).center();
     let texts = rest(&mut app, &ctx, &mut time, middle, 1.0);
     assert_eq!((app.island.tab(), app.island.focus()), (Tab::Chat, Some(id.as_str())));
-    for words in ["arrume o login", "Vou olhar o formulário.", "Responder no terminal", "Ir ao terminal"] {
+    for words in ["arrume o login", "Vou olhar o formulário.", "Mensagem para esta sessão…", "Ir ao terminal"] {
         assert!(texts.iter().any(|text| text == words), "{words:?} in {texts:?}");
     }
     // it goes on working: the new answer shows in a moment

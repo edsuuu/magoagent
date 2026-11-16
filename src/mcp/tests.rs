@@ -195,6 +195,7 @@ fn every_app_action_is_a_tool_once() {
         "canvas_group",
         "history",
         "demands",
+        "outside_message",
         "connection_history",
         "tasks",
         "flow",
