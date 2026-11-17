@@ -180,6 +180,8 @@ pub(crate) struct Session {
     pub(crate) waiting_for: Option<String>,
     /// When the status last changed, ms since 1970.
     pub(crate) status_at: i64,
+    /// Its conversation's file when it is not under the folder asked (a Claude Code in WSL, `wsl_sessions`).
+    pub(crate) file: Option<PathBuf>,
 }
 
 /// Where Claude Code writes what is said in conversation `id`: <claude dir>/projects/<folder>/<id>.jsonl.
@@ -191,11 +193,36 @@ pub(crate) fn transcript_path(dir: &Path, folder: &str, id: &str) -> PathBuf {
 /// file sessions here too, and would take a terminal's place in its folder.
 impl Session {
     pub(crate) fn transcript(&self, dir: &Path) -> PathBuf {
-        transcript_path(dir, &project_folder(&self.cwd), &self.id)
+        self.file.clone().unwrap_or_else(|| transcript_path(dir, &project_folder(&self.cwd), &self.id))
     }
 }
 
 pub(crate) fn sessions(dir: &Path) -> Vec<Session> {
+    read_sessions(dir, alive)
+}
+
+/// The sessions of a Claude Code in WSL distro `distro` (app/system/wsl.rs), `dir` its folder as Windows reaches it: alive
+/// by the distro's /proc, the folder in Windows' name (as the terminal's), the conversation where Linux files it.
+pub(crate) fn wsl_sessions(dir: &Path, distro: &str) -> Vec<Session> {
+    let proc = |pid: u32| pid == 0 || Path::new(&crate::app::system::wsl::windows_path(distro, &format!("/proc/{pid}"))).exists();
+    let mut found = read_sessions(&dir.join("sessions"), proc);
+    for session in &mut found {
+        session.file = Some(transcript_path(dir, &project_folder(&session.cwd), &session.id));
+        session.cwd = crate::app::system::wsl::windows_path(distro, &session.cwd);
+    }
+    found
+}
+
+/// The sessions here and, on Windows, those of a Claude Code in WSL (`wsl`: its folder and distro).
+pub(crate) fn all_sessions(dir: Option<&Path>, wsl: Option<&(PathBuf, String)>) -> Vec<Session> {
+    let mut found = dir.map(|dir| sessions(&dir.join("sessions"))).unwrap_or_default();
+    if let Some((dir, distro)) = wsl {
+        found.extend(wsl_sessions(dir, distro));
+    }
+    found
+}
+
+fn read_sessions(dir: &Path, alive: impl Fn(u32) -> bool) -> Vec<Session> {
     let read = |path: PathBuf| -> Option<Session> {
         let s: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
         if !s["entrypoint"].as_str().is_none_or(|e| e == "cli") {
@@ -209,6 +236,7 @@ pub(crate) fn sessions(dir: &Path) -> Vec<Session> {
             status: s["status"].as_str().unwrap_or_default().into(),
             waiting_for: s["waitingFor"].as_str().map(Into::into),
             status_at: s["statusUpdatedAt"].as_i64().unwrap_or(0),
+            file: None,
         })
         .filter(|s| alive(s.pid))
     };
@@ -261,7 +289,8 @@ pub(crate) fn assign(terminals: &[(String, String, i64, u32)], sessions: &[Sessi
         false
     };
     for (id, _, _, shell) in left {
-        let free = sessions.iter().filter(|s| s.pid != 0 && descends(s.pid, *shell) && !taken.iter().any(|(_, t)| t == *s));
+        // a WSL session's pid is Linux's, no kin of a Windows shell
+        let free = sessions.iter().filter(|s| s.pid != 0 && s.file.is_none() && descends(s.pid, *shell) && !taken.iter().any(|(_, t)| t == *s));
         if let Some(pick) = free.max_by_key(|s| s.started) {
             taken.push((id.clone(), pick.clone()));
         }

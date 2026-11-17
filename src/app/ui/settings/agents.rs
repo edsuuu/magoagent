@@ -31,6 +31,44 @@ impl DrawingApp {
         if let Some(i) = row(ui, k, "Parar de recrutar em", hint, |ui| select(ui, k, "Parar de recrutar em", &["70%", "80%", "90%", "Nunca"], stop)) {
             self.prefs.usage_stop = [70, 80, 90, 0][i];
         }
+        if cfg!(windows) {
+            divider(ui, k);
+            self.settings_wsl(ui, k);
+        }
+    }
+
+    /// Para quem tem os agentes só dentro do WSL (system/wsl.rs): em que distro rodam.
+    fn settings_wsl(&mut self, ui: &mut egui::Ui, k: &K) {
+        title(ui, k, "WSL");
+        let found = match wsl_distro() {
+            Some(d) if d.agents.is_empty() => format!("{}: nem o claude nem o codex instalados lá.", d.name),
+            Some(d) => format!("{}: {}.", d.name, d.agents.join(" e ")),
+            None if self.prefs.wsl == WSL_OFF => "Os agentes do WSL ficam de fora.".into(),
+            None => "Para o Claude Code ou o Codex instalados só dentro do WSL.".into(),
+        };
+        note(ui, k, &found);
+        ui.add_space(3.25);
+        let mut options: Vec<String> = vec!["Automático".into(), "Desligado".into()];
+        options.extend(wsl_distros());
+        if !self.prefs.wsl.is_empty() && self.prefs.wsl != WSL_OFF && !options.contains(&self.prefs.wsl) {
+            options.push(self.prefs.wsl.clone());
+        }
+        let chosen = match self.prefs.wsl.as_str() {
+            "" => 0,
+            WSL_OFF => 1,
+            name => options.iter().position(|o| o == name).unwrap_or(0),
+        };
+        let names: Vec<&str> = options.iter().map(String::as_str).collect();
+        let hint = "Automático: a distro padrão, quando o Windows não tem nenhum agente. Uma distro: os agentes rodam sempre nela.";
+        if let Some(i) = row(ui, k, "Agentes no WSL", hint, |ui| select(ui, k, "Agentes no WSL", &names, chosen)) {
+            self.prefs.wsl = match i {
+                0 => String::new(),
+                1 => WSL_OFF.into(),
+                i => options[i].clone(),
+            };
+            wsl_choose(&self.prefs.wsl);
+            self.chat_installed = None;
+        }
     }
 }
 
