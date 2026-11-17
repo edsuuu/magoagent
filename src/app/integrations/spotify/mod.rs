@@ -278,7 +278,7 @@ fn watch(asks: Receiver<Ask>, messages: Sender<Message>, ctx: Context, sources: 
 }
 
 /// The grey of a cover with no colour to give, as the Dynamic Island's dots are for it.
-const GREY: Color32 = Color32::from_gray(0xa8);
+pub(crate) const GREY: Color32 = Color32::from_gray(0xa8);
 /// A cover's colours are counted in boxes of 32 levels per channel (8 × 8 × 8): one box, one colour of it.
 const LEVELS: usize = 8;
 /// The least a colour must be to count: how vivid (0 grey, 1 pure) and how bright its brightest channel is.
@@ -322,7 +322,7 @@ pub(crate) fn accents(rgba: &[u8]) -> (Color32, Color32) {
     }
     let mut ranked: Vec<(u32, [f32; 3])> =
         boxes.into_iter().filter(|(count, _)| *count > 0).map(|(count, sum)| (count, sum.map(|total| total / count as f32))).collect();
-    ranked.sort_by(|one, other| other.0.cmp(&one.0));
+    ranked.sort_by_key(|(count, _)| std::cmp::Reverse(*count));
     let first = ranked[0].1;
     // another hue with some presence: a shade of the first is not a second colour
     let second =
@@ -361,6 +361,29 @@ fn visible(colour: [f32; 3]) -> Color32 {
     let lift = (DARKEST / most).max(1.0);
     let [red, green, blue] = colour.map(|channel| (channel * lift).clamp(0.0, 255.0) as u8);
     Color32::from_rgb(red, green, blue)
+}
+
+/// How light a colour looks, 0 to 1 (the eye's weights for red, green and blue).
+fn lightness(colour: Color32) -> f32 {
+    (0.299 * f32::from(colour.r()) + 0.587 * f32::from(colour.g()) + 0.114 * f32::from(colour.b())) / 255.0
+}
+
+/// The least lightness Luna's body needs on the dark island: about her own blue's.
+const LUNA_LIGHT: f32 = 0.55;
+
+/// `colour` as Luna can wear it (asked: "deixa a Luna trocar de cor, mas com contraste: roxo escuro não tem"): its
+/// brightest channel brought to full, and then toward white until she is as light as `LUNA_LIGHT`, its hue kept.
+pub(crate) fn readable(colour: Color32) -> Color32 {
+    let most = colour.r().max(colour.g()).max(colour.b()).max(1);
+    let lift = |channel: u8| (u16::from(channel) * 255 / u16::from(most)) as u8;
+    let full = Color32::from_rgb(lift(colour.r()), lift(colour.g()), lift(colour.b()));
+    let mut toward = 0.0;
+    let mut readable = full;
+    while lightness(readable) < LUNA_LIGHT && toward < 1.0 {
+        toward += 0.05;
+        readable = full.lerp_to_gamma(Color32::WHITE, toward);
+    }
+    readable
 }
 
 /// A lighter tone of `colour`, for a cover with a single colour to give.

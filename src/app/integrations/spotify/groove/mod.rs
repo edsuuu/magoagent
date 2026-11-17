@@ -300,6 +300,17 @@ impl DrawingApp {
         self.prefs.integrations.luna_dances.then(|| self.integrations.spotify.dancer.groove(now.playing))
     }
 
+    /// Luna's colour while she dances: the cover's first one, made light enough for the dark island
+    /// (`spotify::readable`); `usual` until the cover comes, or with a grey cover.
+    pub(crate) fn luna_colour(&self, usual: Color32) -> Color32 {
+        self.integrations
+            .spotify
+            .tint
+            .filter(|tint| *tint != crate::app::integrations::spotify::GREY)
+            .map(crate::app::integrations::spotify::readable)
+            .unwrap_or(usual)
+    }
+
     /// "A Luna dança com a música" in words, for the MCP.
     pub(crate) fn luna_report(&self) -> String {
         let spotify = &self.integrations.spotify;

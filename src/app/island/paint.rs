@@ -352,7 +352,7 @@ impl DrawingApp {
             let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.playing);
             let calm = dances_through(wanted.state) && (view.shape != Shape::Open || playing);
             match self.luna_groove().filter(|_| calm) {
-                Some(groove) => paint_mago_dancing(&painter, "island-main-dance", center, size, LUME, &groove, time),
+                Some(groove) => paint_mago_dancing(&painter, "island-main-dance", center, size, self.luna_colour(LUME), &groove, time),
                 None => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),
             }
         }
@@ -379,7 +379,7 @@ impl DrawingApp {
             // the notch is 24 tall: she keeps 3 above and below (asked: "a Luna está quase colada, diminui um pouco")
             const LUNA: f32 = 18.0;
             match self.luna_groove().filter(|_| calm) {
-                Some(groove) => paint_mago_dancing(ui.painter(), "island-main-dance", center, LUNA, LUME, &groove, time),
+                Some(groove) => paint_mago_dancing(ui.painter(), "island-main-dance", center, LUNA, self.luna_colour(LUME), &groove, time),
                 None => paint_mago_toward(ui.painter(), "island-main", center, LUNA, state, time, view.pointer),
             }
             if let Some(now) = now {
