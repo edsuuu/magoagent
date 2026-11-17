@@ -163,6 +163,12 @@ pub(crate) fn dropped(island: Rect, work: Rect) -> [f32; 2] {
     }
 }
 
+/// The island let go with its window's top at `window_top`: the system keeps a window's top on the screen, so a window
+/// pushed against the top (an island lower in it, as on a side, cannot go higher) took the island to the top edge.
+pub(crate) fn pushed_to_top(island: Rect, window_top: f32, work: Rect) -> Rect {
+    if window_top <= work.top() + 1.0 { island.translate(Vec2::new(0.0, work.top() - island.top())) } else { island }
+}
+
 /// Where Ajustes › Lugar da ilha puts it on the monitor (`work`): the middle of the top or of the bottom, or a side at
 /// the height it is at (the side's middle when it was on the top or the bottom).
 pub(crate) fn place_anchor(place: Place, anchor: [f32; 2], work: Rect) -> [f32; 2] {
@@ -404,6 +410,7 @@ impl DrawingApp {
                 let old = self.island.anchor.unwrap_or([origin.x + size.x / 2.0, origin.y + TOP_PAD]);
                 let island = island_in(old, self.island.dock, origin, size, self.island.anim).translate(placed.min.to_vec2());
                 let work = crate::app::chat::mini::screen_work(ctx, island.center());
+                let island = pushed_to_top(island, placed.top(), work);
                 let anchor = keep_on_screen(dropped(island, work), work);
                 let target = kept_origin(anchor, self.island.built, work);
                 if time - since > settle_for(target, placed.min) {
@@ -511,6 +518,10 @@ mod tests {
         let at = |x: f32, y: f32| Rect::from_min_size(Pos2::new(x - 40.0, y), Vec2::new(80.0, 24.0));
         assert_eq!(dropped(at(700.0, 75.0), work), [700.0, 40.0], "near the top edge: on it");
         assert_eq!(dropped(at(700.0, 140.0), work), [700.0, 140.0], "farther: where it was let go");
+        // from a side, the island is low in its tall window: the window stops at the top of the screen, and it docks there
+        let standing = Rect::from_min_size(Pos2::new(900.0, 165.0), Vec2::new(40.0, 128.0));
+        assert_eq!(dropped(pushed_to_top(standing, 0.0, work), work), [920.0, 40.0]);
+        assert_eq!(pushed_to_top(standing, 200.0, work), standing, "let go lower down: where it was");
         assert_eq!(Dock::of([700.0, 40.0], work), Dock::Top, "on the top edge: a notch");
         assert_eq!(Dock::of([700.0, 300.0], work), Dock::Free, "away from it: a pill with four round corners");
     }

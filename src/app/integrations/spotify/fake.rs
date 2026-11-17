@@ -40,6 +40,14 @@ pub(super) fn now() -> Now {
     }
 }
 
+/// A page of a made-up playlist's songs from `offset`: as many as it says it has (Liked Songs': 2), 50 a page.
+pub(super) fn songs(playlist: &PlaylistItem, offset: usize) -> (Vec<QueueItem>, bool) {
+    let total = playlist.total.unwrap_or(2) as usize;
+    let end = (offset + 50).min(total);
+    let page = (offset..end).map(|index| song(100 + index, &format!("Faixa {} · {}", index + 1, playlist.name), "Artista de teste", 180)).collect();
+    (page, end < total)
+}
+
 /// The page's lists.
 pub(super) fn fill(library: &mut Library) {
     library.queue = vec![

@@ -14,7 +14,7 @@ use crate::prelude::*;
 pub(crate) type Job = Box<dyn FnOnce() -> Result<String, String> + Send>;
 
 /// The Spotify actions of the MCP beyond on, off, status and the three buttons.
-pub(crate) const ACTIONS: [&str; 18] = [
+pub(crate) const ACTIONS: [&str; 20] = [
     "shuffle",
     "repeat",
     "volume",
@@ -27,6 +27,8 @@ pub(crate) const ACTIONS: [&str; 18] = [
     "unlike",
     "playlists",
     "liked",
+    "songs",
+    "play_in",
     "devices",
     "device",
     "client_id",
@@ -103,7 +105,7 @@ impl DrawingApp {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
         let (query, uri, value) = (text("query"), text("uri"), text("value"));
         let wants = match action {
-            "queue" | "search" | "playlists" | "liked" | "devices" | "device" => true,
+            "queue" | "search" | "playlists" | "liked" | "songs" | "devices" | "device" => true,
             // with a uri they answer at once
             "play" | "enqueue" => uri.is_empty() && !query.is_empty(),
             _ => false,
@@ -133,6 +135,12 @@ impl DrawingApp {
         if matches!(action, "search" | "play" | "enqueue") && query.is_empty() {
             return Some(Err("diga o que buscar em `query`".into()));
         }
+        // a playlist's songs: `uri` the playlist (or `value` liked), `value` from where (a number)
+        let list = if uri.is_empty() && value.eq_ignore_ascii_case("liked") { LIKED_SONGS.to_string() } else { uri.clone() };
+        let offset = value.parse::<usize>().unwrap_or(0);
+        if action == "songs" && web::songs_path(&list, 0).is_none() {
+            return Some(Err("diga em `uri` a playlist (spotify:playlist:…) ou `value` liked para as Músicas curtidas".into()));
+        }
         if action == "device" && value.is_empty() {
             return Some(Err("diga o aparelho em `value` (o nome ou o id, como devices lista)".into()));
         }
@@ -149,6 +157,21 @@ impl DrawingApp {
             "queue" => web::queue(&shared).map(|queue| track_lines("A seguir", &queue)).map_err(failure),
             "playlists" => web::playlists(&shared).map(|playlists| playlist_lines("As suas playlists", &playlists)).map_err(failure),
             "liked" => web::liked(&shared).map(|liked| track_lines("Músicas curtidas (as últimas 50)", &liked)).map_err(failure),
+            "songs" => web::songs(&shared, &list, offset)
+                .map(|(songs, more)| {
+                    let title = format!("Músicas {} a {}", offset + 1, offset + songs.len());
+                    let next = if more {
+                        format!(
+                            "
+Tem mais: peça songs com `value` {}.",
+                            offset + songs.len()
+                        )
+                    } else {
+                        String::new()
+                    };
+                    format!("{}{next}", track_lines(&title, &songs))
+                })
+                .map_err(failure),
             "search" => web::search(&shared, &query)
                 .map(|found| format!("{}\n{}", track_lines("Músicas", &found.tracks), playlist_lines("Playlists", &found.playlists)))
                 .map_err(failure),
@@ -234,6 +257,14 @@ impl DrawingApp {
                 }
                 self.spotify_play_uri(&uri)?;
                 Ok("Pedido ao Spotify.".into())
+            }
+            "play_in" => {
+                let list = if value.eq_ignore_ascii_case("liked") { LIKED_SONGS } else { value };
+                if !is_track(&uri) || web::songs_path(list, 0).is_none() {
+                    return Err("diga `uri` a música (spotify:track:…) e `value` a playlist dela (spotify:playlist:… ou liked)".into());
+                }
+                self.spotify_play_in_list(&format!("{list} {uri}"))?;
+                Ok("Tocando a música na playlist; a lista segue depois dela.".into())
             }
             "enqueue" => {
                 if !is_track(&uri) {
