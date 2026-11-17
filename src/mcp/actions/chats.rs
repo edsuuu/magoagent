@@ -13,6 +13,43 @@ impl DrawingApp {
         self.chats.iter().map(line).collect::<Vec<_>>().join("\n")
     }
 
+    /// The Chats area (`chats_view`): open on the chip `filter` and the search `query` (None keeps it), with what it lists;
+    /// or the canvas back.
+    pub(super) fn act_chats_view(&mut self, state: &str, filter: &str, query: Option<&str>) -> Result<String, String> {
+        use crate::app::chat::list::running::{Show, chip, kept, running_counts, space_groups};
+        if state == "close" {
+            self.show_canvas();
+            return Ok("De volta ao canvas.".into());
+        }
+        if !filter.is_empty() {
+            self.chat_listing.show = Show::named(filter).ok_or_else(|| format!("Filtro desconhecido: {filter}. Use all, working, waiting ou ready."))?;
+        }
+        if let Some(query) = query {
+            self.chat_listing.filter = query.trim().to_string();
+        }
+        self.show_chat();
+        let entries = self.running_entries();
+        let (running, waiting) = running_counts(entries.iter().map(|entry| entry.state));
+        let show = self.chat_listing.show;
+        let shown = kept(&entries, show, &self.chat_listing.filter.to_lowercase());
+        let mut report = format!("Chats · {running} rodando · {waiting} esperando (filtro: {})", show.label());
+        if !self.chat_listing.filter.is_empty() {
+            report += &format!(", busca: {}", self.chat_listing.filter);
+        }
+        let order: Vec<String> = self.spaces.list.iter().map(|space| space.id.clone()).collect();
+        for (space, members) in space_groups(&shown, &order) {
+            report += &format!("\n\n{}:", self.group_look(&space).0);
+            for entry in members.into_iter().map(|index| shown[index]) {
+                let when = entry.ago.map(|seconds| format!(" ({})", crate::app::ui::agents::ago(seconds))).unwrap_or_default();
+                report += &format!("\n- {} — {} — {}{when}", entry.name, chip(&entry.state).0, entry.last);
+            }
+        }
+        if shown.is_empty() {
+            report += "\n\nNada com esse filtro.";
+        }
+        Ok(report)
+    }
+
     pub(super) fn act_chat_search(&mut self, query: &str, chat: &str, limit: usize) -> Result<String, String> {
         if query.trim().is_empty() {
             return Err("Diga o texto a procurar.".into());

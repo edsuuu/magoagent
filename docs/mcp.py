@@ -39,7 +39,7 @@ GROUPS = [
                                       "terminal_find", "terminal_look", "terminal_menu", "terminal_processes", "terminal_restart", "notify",
                                       "ask_person", "remember", "review", "demands", "outside_message", "timeline", "tasks", "skills", "maestro_comment", "avatar",
                                       "avatar_follow", "flow", "usage", "usage_refresh", "memory")),
-    ("Chats", ("chat_new", "chat_open", "chat_send", "chat_list", "chat_search", "chat_rename", "chat_provider", "chat_command", "chat_context",
+    ("Chats", ("chat_new", "chat_open", "chats_view", "chat_send", "chat_list", "chat_search", "chat_rename", "chat_provider", "chat_command", "chat_context",
                "chat_decide", "chat_node", "mini_chat")),
     ("Árvore de Arquivos e editor", ("file_tree", "ide_open", "ide_search", "ide_folder", "open_path", "open_default", "set_folder")),
     ("Navegador (portais)", ("create_portal", "portal_navigate", "portal_read", "portal_click", "portal_fill", "portal_eval", "portal_scroll",
