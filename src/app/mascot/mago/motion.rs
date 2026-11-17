@@ -198,10 +198,6 @@ impl MagoMotion {
         Self { seed: (seed as u32 ^ (seed >> 32) as u32) | 1, ..Self::default() }
     }
 
-    pub(crate) fn state(&self) -> MagoState {
-        self.state
-    }
-
     pub(crate) fn idle_for(&self, time: f64) -> f64 {
         time - self.last_time.unwrap_or(time)
     }

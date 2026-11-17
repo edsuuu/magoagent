@@ -119,13 +119,6 @@ Ligue em Ajustes (`Prefs.island`). É uma janela própria por cima de tudo; no W
 - CPU e memória com o app parado, com a ilha compacta e com ela aberta (`top`/`pidstat` por 20 s cada).
 - Fluidez da ilha (quadros por segundo aproximados) e do canvas com muitos elementos.
 
-### 13. Modelos locais e o OmniRoute (`docs/llm-local.md`)
-- Ollama com as variáveis do serviço e a GPU inteira (`ollama ps` em `100% GPU`); anote a GPU e quanto cabe.
-- O opencode com o provedor local (`ollama/gpt-oss:20b`) respondendo.
-- O OmniRoute da VPS pelo túnel SSH: o dono configura o acesso (o apelido `vps` no `~/.ssh/config` e a
-  `OMNIROUTE_API_KEY`). **Não procure endereço, IP ou chave em lugar nenhum**; se não estiver configurado, marque
-  NÃO TESTADO e diga o que falta. Com o túnel, `opencode run -m omniroute/livre "diga oi"`.
-
 ## Em andamento (ainda não no ramo quando esta nota foi escrita)
 
 Ramos sendo feitos em paralelo, que entram no `porte-referencia` depois de revisados; se já estiverem lá, teste

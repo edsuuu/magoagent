@@ -185,7 +185,7 @@ impl DrawingApp {
         frame
             .show(ui, |ui| {
                 // Claude's band is taller: its mascot works in it, in the pose of what it does
-                let claude = crate::app::mascot::poses::claude(&row.spec);
+                let claude = crate::app::mascot::claude(&row.spec);
                 let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), if claude { 44.0 } else { 28.0 }), Sense::hover());
                 let (cy, gap) = (rect.center().y, if narrow { 8.0 } else { 12.0 });
                 let small = FontId::monospace(if narrow { 11.5 } else { 12.0 });

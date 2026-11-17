@@ -296,7 +296,7 @@ impl DrawingApp {
         // its squares under ~1 px blur into marks that read as letters: too small, no figure
         let painter = painter.with_clip_rect(body.intersect(painter.clip_rect()));
         if figure < MIN_FIGURE {
-        } else if crate::app::mascot::poses::claude(&as_terminal) {
+        } else if crate::app::mascot::claude(&as_terminal) {
             paint_mago_for(&painter, &format!("{}-card", element.id), at, figure, MagoState::from_agent(state, time), time);
         } else {
             crate::editor::icons::paint_tint(&painter, crate::editor::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(figure * 0.55)), light);
