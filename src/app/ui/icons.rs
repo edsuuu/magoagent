@@ -70,10 +70,9 @@ pub(crate) enum Icon {
     Layers(bool),
     /// lucide's palette (the note's color button); `Palette` is the bolt.
     PaintPalette,
-    /// The right panels' buttons: Linha do tempo, Alterações, Fichário (Tarefas is `Todo`).
+    /// The right panels' buttons: Linha do tempo and Alterações (Tarefas is `Todo`).
     Clock,
     Diff,
-    Book,
 }
 
 /// How far a corner of an icon's stroke curves away from its point (or half the shorter side, when less).
@@ -402,11 +401,6 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             line(&[(-7.0, -3.5), (-1.0, -3.5)]);
             line(&[(1.0, 4.0), (7.0, 4.0)]);
             line(&[(-6.0, 6.5), (6.0, -6.5)]);
-        }
-        Icon::Book => {
-            closed(&[(-6.0, -6.5), (5.5, -6.5), (5.5, 6.5), (-6.0, 6.5)]);
-            line(&[(-3.0, -6.5), (-3.0, 6.5)]);
-            line(&[(-0.5, -3.0), (3.0, -3.0)]);
         }
         Icon::Todo => {
             rect(-6.5, -6.5, 5.0, 5.0, 1);

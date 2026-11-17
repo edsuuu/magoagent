@@ -346,8 +346,8 @@ fn the_panel_tool_opens_and_closes_the_right_panels() {
     assert_eq!(app.act("panel", &json!({ "name": "tasks" })).unwrap(), "Painel Tarefas aberto.");
     assert_eq!((app.panes.open, app.chat_open), (Some(Pane::Tasks), false), "it shows beside the canvas");
     // one at a time: another takes its place
-    app.act("panel", &json!({ "name": "binder", "open": true })).unwrap();
-    assert_eq!(app.panes.open, Some(Pane::Binder));
+    app.act("panel", &json!({ "name": "changes", "open": true })).unwrap();
+    assert_eq!(app.panes.open, Some(Pane::Changes));
     assert_eq!(app.act("panel", &json!({ "name": "Linha do tempo" })).unwrap(), "Painel Linha do tempo aberto.");
     assert_eq!(app.act("panel", &json!({ "name": "timeline" })).unwrap(), "Painel Linha do tempo fechado.", "no `open` toggles");
     assert_eq!(app.panes.open, None);
@@ -357,6 +357,6 @@ fn the_panel_tool_opens_and_closes_the_right_panels() {
     assert_eq!(app.panes.open, Some(Pane::Changes));
     assert_eq!(app.act("panel", &json!({ "open": false })).unwrap(), "Painel fechado.");
     assert_eq!(app.panes.open, None);
-    assert!(app.act("panel", &json!({ "name": "nada" })).unwrap_err().contains("tasks, timeline, changes ou binder"));
+    assert!(app.act("panel", &json!({ "name": "nada" })).unwrap_err().contains("tasks, timeline ou changes"));
     assert!(app.act("panel", &json!({ "open": true })).is_err());
 }

@@ -44,7 +44,7 @@ pub(crate) const STEPS: [Step; 7] = [
     Step {
         spot: Some(Spot::Panes),
         title: "Painéis",
-        text: "Tarefas, Linha do tempo, Alterações e Fichário abrem ao lado do quadro. O número no botão diz quanto espera por você.",
+        text: "Tarefas, Linha do tempo e Alterações abrem ao lado do quadro. O número no botão diz quanto espera por você.",
     },
     Step {
         spot: Some(Spot::Corners), title: "Navegar no canvas", text: "Andares, minimapa e zoom ficam neste canto. O uso dos planos fica no pé da lateral."

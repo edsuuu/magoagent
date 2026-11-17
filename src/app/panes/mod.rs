@@ -1,9 +1,8 @@
-//! The panels on the window's right, as in Claude Code: Tarefas, Linha do tempo, Alterações and
-//! Fichário. A button each in the title bar (`pane_buttons`); one open at a time, 340 wide under
+//! The panels on the window's right, as in Claude Code: Tarefas, Linha do tempo and Alterações
+//! (the Fichário went: "não entendi muito bem para o que ele serve, remove"). A button each in the title bar (`pane_buttons`); one open at a time, 340 wide under
 //! the bar, the canvas narrower beside it (update.rs takes `pane_width` off its rect). X, Esc or
 //! the same button close it; the MCP's `panel` opens and closes them for the Maestro.
 
-mod binder;
 mod changes;
 mod tasks;
 mod timeline;
@@ -20,15 +19,13 @@ pub(crate) enum Pane {
     Tasks,
     Timeline,
     Changes,
-    Binder,
 }
 
 /// Each panel: its id (MCP), its name (screen) and its button's icon, in the buttons' order.
-pub(crate) const PANES: [(Pane, &str, &str, Icon); 4] = [
+pub(crate) const PANES: [(Pane, &str, &str, Icon); 3] = [
     (Pane::Tasks, "tasks", "Tarefas", Icon::Todo),
     (Pane::Timeline, "timeline", "Linha do tempo", Icon::Clock),
     (Pane::Changes, "changes", "Alterações", Icon::Diff),
-    (Pane::Binder, "binder", "Fichário", Icon::Book),
 ];
 
 impl Pane {
@@ -41,7 +38,7 @@ impl Pane {
 #[derive(Default)]
 pub(crate) struct Panes {
     pub(crate) open: Option<Pane>,
-    /// Where the title bar's four buttons are (none while hidden): the caption leaves them alone.
+    /// Where the title bar's buttons are (none while hidden): the caption leaves them alone.
     pub(crate) buttons: Option<Rect>,
     pub(crate) task_draft: String,
     /// The agent the new task goes to (its id; empty: nobody).
@@ -52,7 +49,6 @@ pub(crate) struct Panes {
     pub(crate) timeline_agent: Option<String>,
     timeline: timeline::TimelineCache,
     pub(crate) changes: changes::ChangesPane,
-    pub(crate) binder: binder::BinderPane,
 }
 
 impl DrawingApp {
@@ -71,7 +67,6 @@ impl DrawingApp {
             // what it shows is read again on opening
             self.panes.timeline = Default::default();
             self.panes.changes.read_at = None;
-            self.panes.binder.read_at = None;
         }
         self.panes.open = pane;
     }
@@ -81,7 +76,7 @@ impl DrawingApp {
         self.tasks.list.iter().filter(|t| !t.state.is_final()).count()
     }
 
-    /// The title bar's four buttons, right to left from `right`, each with its badge; a click
+    /// The title bar's buttons, right to left from `right`, each with its badge; a click
     /// opens or closes its panel. Hidden over the chat, which the panels don't cover.
     pub(crate) fn pane_buttons(&mut self, ui: &mut egui::Ui) {
         self.panes.buttons = None;
@@ -91,7 +86,7 @@ impl DrawingApp {
         let (dark, width) = (self.dark(), ui.ctx().content_rect().width());
         let ink = glass_ink(dark);
         let p = ui.painter().clone();
-        let counts = [self.open_task_count(), 0, self.changed_file_count(), 0];
+        let counts = [self.open_task_count(), 0, self.changed_file_count()];
         for (k, (pane, _, name, icon)) in PANES.into_iter().enumerate() {
             let rect = self.pane_button(width, k);
             self.panes.buttons = Some(self.panes.buttons.map_or(rect, |span| span.union(rect)));
@@ -159,7 +154,6 @@ impl DrawingApp {
                         Pane::Tasks => self.tasks_pane(ui),
                         Pane::Timeline => self.timeline_pane(ui),
                         Pane::Changes => self.changes_pane(ui),
-                        Pane::Binder => self.binder_pane(ui),
                     }
                     ui.add_space(12.0);
                 });
@@ -167,7 +161,7 @@ impl DrawingApp {
         });
     }
 
-    /// The MCP's `panel`: opens `name` (tasks, timeline, changes, binder), closes it with `open`
+    /// The MCP's `panel`: opens `name` (tasks, timeline, changes), closes it with `open`
     /// false, toggles it with no `open`; no name with `open` false closes whichever is open.
     pub(crate) fn act_panel(&mut self, args: &Value) -> Result<String, String> {
         let name = args["name"].as_str().unwrap_or_default().trim().to_lowercase();
@@ -177,10 +171,10 @@ impl DrawingApp {
                 self.set_pane(None);
                 return Ok("Painel fechado.".into());
             }
-            return Err("Diga qual painel (name): tasks, timeline, changes ou binder.".into());
+            return Err("Diga qual painel (name): tasks, timeline ou changes.".into());
         }
         let pane = PANES.iter().find(|p| p.1 == name || p.2.to_lowercase() == name).map(|p| p.0);
-        let pane = pane.ok_or_else(|| format!("Painel desconhecido: {name}. Use tasks, timeline, changes ou binder."))?;
+        let pane = pane.ok_or_else(|| format!("Painel desconhecido: {name}. Use tasks, timeline ou changes."))?;
         let wanted = open.unwrap_or(self.panes.open != Some(pane));
         if wanted {
             self.chat_open = false;
