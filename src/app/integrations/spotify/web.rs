@@ -278,6 +278,32 @@ pub(crate) fn devices(shared: &Shared) -> Result<Vec<Device>, Failure> {
     Ok(parse_devices(&get(shared, "/me/player/devices")?))
 }
 
+/// The path of a page of `uri`'s songs from `offset`: Liked Songs' (`/me/tracks`) or a playlist's (`/items`, which
+/// replaced `/tracks`); None for anything else.
+pub(crate) fn songs_path(uri: &str, offset: usize) -> Option<String> {
+    if is_liked_songs(uri) {
+        return Some(format!("/me/tracks?limit={LIST_MOST}&offset={offset}"));
+    }
+    let id = uri.strip_prefix("spotify:playlist:").filter(|_| uri_allowed(uri))?;
+    Some(format!("/playlists/{id}/items?limit={LIST_MOST}&offset={offset}"))
+}
+
+/// A page of songs: what it brings, and whether more follow (`next`).
+pub(crate) fn parse_songs(root: &Value) -> (Vec<QueueItem>, bool) {
+    (parse_saved(root), root["next"].is_string())
+}
+
+/// A page of 50 of `uri`'s songs (a playlist, or Liked Songs) from `offset`, and whether more follow.
+pub(crate) fn songs(shared: &Shared, uri: &str, offset: usize) -> Result<(Vec<QueueItem>, bool), Failure> {
+    let path = songs_path(uri, offset).ok_or(Failure { message: "Essa lista não abre aqui.".into(), unauthorized: false, status: 0 })?;
+    let root = match get(shared, &path) {
+        // the older spelling, where `/items` is not known yet
+        Err(failure) if failure.status == 404 && path.contains("/items?") => get(shared, &path.replace("/items?", "/tracks?"))?,
+        other => other?,
+    };
+    Ok(parse_songs(&root))
+}
+
 /// A playlist's name, for "de onde" (`fields=name`: nothing else comes).
 pub(crate) fn playlist_name(shared: &Shared, uri: &str) -> Result<String, Failure> {
     let id = uri.strip_prefix("spotify:playlist:").filter(|_| uri_allowed(uri)).ok_or(Failure { message: String::new(), unauthorized: false, status: 0 })?;

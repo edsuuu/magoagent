@@ -43,8 +43,12 @@ impl Spotify {
     /// What plays as the Web API takes it for a song of the queue (Liked Songs as the account's own uri); None when
     /// nothing says.
     pub(crate) fn play_context(&self) -> Option<String> {
-        let context = self.now.as_ref()?.playback.context.as_ref()?.uri.trim();
-        let context = if is_liked_songs(context) { web::liked_songs_uri(&self.account.user_id) } else { context.to_string() };
+        self.context_uri(self.now.as_ref()?.playback.context.as_ref()?.uri.trim())
+    }
+
+    /// `uri` as the Web API takes a context: Liked Songs by the account's own uri; None when it is not one to play.
+    pub(crate) fn context_uri(&self, uri: &str) -> Option<String> {
+        let context = if is_liked_songs(uri) { web::liked_songs_uri(&self.account.user_id) } else { uri.to_string() };
         uri_allowed(&context).then_some(context)
     }
 
@@ -148,11 +152,23 @@ impl DrawingApp {
     /// A song of the queue (A seguir), now: with the account by the Web API in what plays from it, not skipping to it;
     /// without, as any `play`.
     pub(crate) fn spotify_jump(&mut self, uri: &str) -> Result<(), String> {
+        let context = self.integrations.spotify.play_context();
+        self.spotify_play_from(uri, context)
+    }
+
+    /// A song of an opened playlist (`words`: the playlist's uri and the song's), now, with the list going on after it.
+    pub(crate) fn spotify_play_in_list(&mut self, words: &str) -> Result<(), String> {
+        let (list, uri) = words.trim().split_once(' ').ok_or_else(String::new)?;
+        let context = self.integrations.spotify.context_uri(list);
+        self.spotify_play_from(uri, context)
+    }
+
+    /// A song now in `context`: with the account one Web API call; without, as any `play`.
+    fn spotify_play_from(&mut self, uri: &str, context: Option<String>) -> Result<(), String> {
         let uri = uri.trim().to_string();
         if !self.integrations.spotify.account.linked() || !is_track(&uri) || super::fake::active() || self.spotify_sources() == Sources::default() {
             return self.spotify_play_uri(&uri);
         }
-        let context = self.integrations.spotify.play_context();
         self.integrations.spotify.spawn_web("control", move |shared| Reply::Done(web::play_in(shared, &uri, context.as_deref())));
         Ok(())
     }
@@ -226,6 +242,16 @@ impl DrawingApp {
             "search" => self.spotify_search(rest),
             "device" => self.spotify_transfer(rest),
             "jump" => self.spotify_jump(rest),
+            "playin" => self.spotify_play_in_list(rest),
+            "open" => self.integrations.spotify.open_list(rest).ok_or_else(|| "Essa playlist não está mais na lista.".to_string()),
+            "more" => {
+                self.integrations.spotify.more_songs();
+                Ok(())
+            }
+            "close" => {
+                self.integrations.spotify.library.opened = None;
+                Ok(())
+            }
             "play" if rest == LIKED_SONGS => self.spotify_play_uri(rest),
             _ => match Command::parse(words) {
                 Some(command) => self.spotify_do(command),
