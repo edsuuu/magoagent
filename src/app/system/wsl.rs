@@ -59,6 +59,9 @@ pub(crate) fn wsl_choose(choice: &str) {
     let mut state = state();
     if state.choice != choice {
         (state.choice, state.at, state.distro) = (choice.to_string(), None, None);
+        drop(state);
+        // a distro picked (also when the app opens with one): found now, before the first message needs it
+        probe_soon(false);
     }
 }
 
@@ -80,6 +83,19 @@ pub(crate) fn wsl_distro() -> Option<WslDistro> {
 pub(crate) fn wsl_distro_in_use() -> Option<WslDistro> {
     probe_soon(true);
     state().distro.clone()
+}
+
+/// Before a chat runs its agent: the first probe for this choice, right after the app opens, is waited for (up to 15 s),
+/// or that first message would go to Windows' agent (or find none, with the agents only in WSL).
+pub(crate) fn wsl_settle() {
+    probe_soon(false);
+    let start = std::time::Instant::now();
+    while start.elapsed().as_secs() < 15 && {
+        let state = state();
+        state.running && state.at.is_none()
+    } {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
 }
 
 fn probe_soon(in_use: bool) {

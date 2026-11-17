@@ -92,6 +92,7 @@ impl DrawingApp {
     /// Runs the agent's CLI hidden in the chat's folder; what it prints comes in `poll_cmds`.
     pub(super) fn start_cmd(&mut self, ctx: &Context, id: &str, args: Vec<String>, kind: Kind) {
         let Some(chat) = self.chat_of(id) else { return };
+        wsl_settle();
         let Some(cli) = agent_cli(&chat.agent) else {
             self.chat_note(id, format!("{} não foi encontrado no PATH nem no WSL.", chat.agent));
             return;

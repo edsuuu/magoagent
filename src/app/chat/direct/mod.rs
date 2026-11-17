@@ -376,6 +376,7 @@ impl DrawingApp {
             self.queue_message(id, prompt.to_string());
             return true;
         }
+        wsl_settle();
         let Some(cli) = agent_cli(&chat.agent) else {
             self.toast(format!("{} não foi encontrado no PATH nem no WSL.", chat.agent));
             return false;
