@@ -3,53 +3,201 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MagoAgent</title>
-<meta name="description" content="Um canvas para orquestrar agentes de IA. Instale o MagoAgent no Windows e no Linux.">
-<style>
-:root{color-scheme:dark;--fundo:#17181b;--cartao:#1e1f23;--borda:rgba(255,255,255,.06);--texto:#f5f5f7;--suave:#8e8e93;--destaque:#0a84ff}
-*{box-sizing:border-box}
-body{margin:0;background:var(--fundo);color:var(--texto);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-main{max-width:720px;margin:0 auto;padding:48px 16px}
-h1{font-size:2.2rem;margin:0 0 8px}
-h2{font-size:1.15rem;margin:0 0 12px}
-p{margin:0 0 12px}
-.suave{color:var(--suave)}
-.cartao{background:var(--cartao);border:1px solid var(--borda);border-radius:12px;padding:20px;margin-top:16px}
-.botao{display:inline-block;background:var(--destaque);color:#fff;text-decoration:none;font-weight:600;padding:10px 18px;border-radius:8px;border:0;font:inherit;font-weight:600;cursor:pointer;margin:0 8px 8px 0}
-.botao.sec{background:transparent;border:1px solid var(--borda);color:var(--texto)}
-pre{background:var(--fundo);border:1px solid var(--borda);border-radius:8px;padding:12px;overflow-x:auto;margin:0 0 12px;font-size:.85rem}
-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-a{color:var(--destaque)}
-</style>
+<title>MagoAgent — um quadro para orquestrar agentes de IA</title>
+<meta name="description" content="Um quadro infinito e nativo onde agentes de IA trabalham em terminais de verdade, ligados por cordas. Windows, Linux e macOS.">
+<meta name="theme-color" content="#f7f6f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1e1e1e" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cpath fill='%2338bdf8' d='M50 4C62 26 88 44 88 74c0 24-18 42-38 42S12 98 12 74c0-18 12-30 20-40 2 14 8 20 14 22-4-16-2-36 4-52z'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="estilo.css">
 </head>
 <body>
+<!-- A Luna, desenhada uma vez e reusada com <use> -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="chama" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bae6fd"/><stop offset=".45" stop-color="#38bdf8"/><stop offset="1" stop-color="#0284c7"/>
+    </linearGradient>
+    <symbol id="luna" viewBox="0 0 100 120">
+      <g class="corpo">
+        <path fill="url(#chama)" d="M50 4C62 26 88 44 88 74c0 24-18 42-38 42S12 98 12 74c0-18 12-30 20-40 2 14 8 20 14 22-4-16-2-36 4-52z"/>
+        <path fill="#e0f2fe" opacity=".45" d="M50 58c8 10 18 16 18 32 0 12-8 20-18 20s-18-8-18-20c0-10 8-16 10-24 2 6 6 9 8 9-1-6-1-12 0-17z"/>
+        <g class="olhos" fill="#2f2f38">
+          <ellipse cx="39" cy="80" rx="5.5" ry="8"/><ellipse cx="61" cy="80" rx="5.5" ry="8"/>
+          <circle cx="41" cy="77" r="1.8" fill="#fff"/><circle cx="63" cy="77" r="1.8" fill="#fff"/>
+        </g>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<header class="topo">
+  <div class="largura">
+    <a class="marca" href="./"><svg class="luna" aria-hidden="true"><use href="#luna"/></svg>MagoAgent</a>
+    <nav aria-label="Seções">
+      <a class="some" href="#recursos">Recursos</a>
+      <a class="some" href="#ilha">Ilha</a>
+      <a class="some" href="#maestro">Maestro</a>
+      <a href="#instalar">Instalar</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="https://github.com/edsuuu/magoagent">GitHub</a>
+    </nav>
+  </div>
+</header>
+
 <main>
-<h1>MagoAgent</h1>
-<p class="suave">Um canvas para orquestrar agentes de IA: cada agente roda num terminal de verdade sobre um quadro infinito, e você liga os agentes uns aos outros e às notas e projetos de que precisam.</p>
+  <div class="largura heroi">
+    <div>
+      <span class="selo">Nativo · Windows, Linux e macOS</span>
+      <h1>Seus agentes de IA num <span class="sublinha">quadro só<svg viewBox="0 0 200 20" preserveAspectRatio="none" aria-hidden="true"><path d="M3 13c40-8 90-10 194-4" fill="none" stroke="#0a84ff" stroke-width="5" stroke-linecap="round"/></svg></span>.</h1>
+      <p class="lead">Um quadro infinito onde Claude Code, Codex e qualquer CLI trabalham em terminais de verdade, ligados por cordas às notas, páginas e projetos de que precisam.</p>
+      <div class="botoes">
+        <a class="botao" href="#instalar">Instalar</a>
+        <a class="botao sec" href="changelog.html">O que há de novo</a>
+      </div>
+    </div>
+    <div class="palco" aria-label="A Luna, a chama azul que mora no MagoAgent">
+      <span class="bilhete um">oi, eu sou a Luna!</span>
+      <svg class="luna" viewBox="0 0 100 120" role="img" aria-label="Luna"><use href="#luna"/></svg>
+      <span class="bilhete dois">recruto o time pra você</span>
+    </div>
+  </div>
 
-<section class="cartao">
-<h2>Windows</h2>
-<div id="win"></div>
-</section>
+  <svg class="corda" viewBox="0 0 120 46" aria-hidden="true"><path d="M60 2c-30 14 30 28 0 42" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="6 6"/></svg>
 
-<section class="cartao">
-<h2>Linux (apt)</h2>
-<p class="suave">Debian, Ubuntu e derivados. Adicione o repositório uma vez e instale:</p>
-<pre id="apt"><code>curl -fsSL https://edsuuu.github.io/magoagent/apt/magoagent.gpg | sudo tee /usr/share/keyrings/magoagent.gpg &gt; /dev/null
+  <section id="recursos" class="largura">
+    <h2>O que dá para fazer</h2>
+    <p class="intro">Você desenha o plano, liga as peças com uma corda e os agentes enxergam o que está ligado: conversam entre si, recrutam ajudantes e avisam quando precisam de você.</p>
+    <div class="grade">
+      <article class="cartao">
+        <div class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3M13 15h4"/></svg></div>
+        <h3>Terminais de verdade</h3>
+        <p>zsh, bash ou PowerShell com cores e acentos, e um agente rodando dentro. Cada terminal tem nome, cor e pasta.</p>
+      </article>
+      <article class="cartao">
+        <div class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7c6 0 6 10 16 10"/><circle cx="4" cy="7" r="2"/><circle cx="20" cy="17" r="2"/></svg></div>
+        <h3>Cordas que conectam</h3>
+        <p>Uma corda entre duas coisas diz quem fala com quem. Pelo terminal, <code>magoagent ask</code> manda um pedido a outro agente.</p>
+      </article>
+      <article class="cartao">
+        <div class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c4-1 12-9 14-13l-3-3C11 6 3 14 4 20z"/><path d="m13 6 5 5"/></svg></div>
+        <h3>Desenho à mão</h3>
+        <p>Formas com traço à mão, setas presas, texto, imagens e minimapa. A IA desenha no quadro, traço a traço.</p>
+      </article>
+      <article class="cartao">
+        <div class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v12H4zM4 10h16"/><path d="M8 14h3"/></svg></div>
+        <h3>Chats com agentes</h3>
+        <p>Converse com Claude Code ou Codex num cartão de chat, sem terminal, com as ferramentas do app já ligadas.</p>
+      </article>
+      <article class="cartao">
+        <div class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg></div>
+        <h3>Navegador no quadro</h3>
+        <p>Páginas abertas sobre o canvas. O agente circula trechos, lê o console e recebe os seus comentários.</p>
+      </article>
+      <article class="cartao">
+        <div class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h6l2 2h10v11H3z"/><path d="M8 13h8"/></svg></div>
+        <h3>Árvore de arquivos</h3>
+        <p>A pasta do projeto vira um cartão com git (ramos, diff, autor), editor com realce e Localizar.</p>
+      </article>
+    </div>
+    <div class="prints">
+      <figure class="cartao print largo"><img src="img/canvas.png" width="1600" height="1000" loading="lazy" alt="O canvas: um terminal que rege o time, ligado ao plano da sprint e a dois agentes, e a árvore do projeto"><figcaption>Um agente rege o time, ligado ao plano da sprint e a dois ajudantes.</figcaption></figure>
+      <figure class="cartao print"><img src="img/agentes.png" width="1600" height="1000" loading="lazy" alt="Vários agentes trabalhando no quadro"><figcaption>Vários agentes, cada um no seu terminal.</figcaption></figure>
+      <figure class="cartao print"><img src="img/arvore.png" width="1600" height="1000" loading="lazy" alt="A árvore de arquivos com git e o editor de código"><figcaption>A árvore de arquivos, com git e editor.</figcaption></figure>
+    </div>
+  </section>
+
+  <svg class="corda" viewBox="0 0 120 46" aria-hidden="true"><path d="M60 2c30 14-30 28 0 42" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="6 6"/></svg>
+
+  <section id="ilha" class="largura">
+    <h2>A ilha, no topo da tela</h2>
+    <p class="intro">Uma pílula fixa por cima de todas as janelas, onde a Luna mora. Fechada, mostra uma chaminha por agente com o estado de cada um. Os olhos dela seguem o cursor e, com música tocando, ela dança.</p>
+    <div class="ilha" role="img" aria-label="A ilha fechada: a Luna e três chaminhas de agentes">
+      <svg class="luna" viewBox="0 0 100 120"><use href="#luna"/></svg>
+      <span class="chamas"><span style="background:#30d158"></span><span style="background:#ffd60a"></span><span style="background:#8e8e93"></span></span>
+      <span class="estado">2 trabalhando · 1 espera você</span>
+    </div>
+    <ul class="lista">
+      <li class="cartao"><b>Início</b><span>O resumo dos agentes e as perguntas pendentes para responder.</span></li>
+      <li class="cartao"><b>Chats e conversas</b><span>O chat em uso, os agentes do app e as sessões do Claude Code de fora.</span></li>
+      <li class="cartao"><b>GitHub</b><span>Pull requests com filtros, a descrição e um comentário.</span></li>
+      <li class="cartao"><b>Música</b><span>O player com capa e controles; a Luna dança junto.</span></li>
+    </ul>
+  </section>
+
+  <svg class="corda" viewBox="0 0 120 46" aria-hidden="true"><path d="M60 2c-30 14 30 28 0 42" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="6 6"/></svg>
+
+  <section id="maestro" class="largura">
+    <h2>O Maestro e o MCP</h2>
+    <div class="dupla">
+      <div>
+        <p class="intro">Fale com a Luna pelo chat ou numa chamada de voz ("Ok Mago, …"). Ela rege o time pelas mesmas ferramentas que você usa no app.</p>
+        <ol class="passos">
+          <li><b>Você pede.</b> <span class="suave">"Monta um time para a tela de cadastro."</span></li>
+          <li><b>Ela recruta.</b> <span class="suave">Agentes em terminais ou chats, cada um no seu git worktree, se quiser.</span></li>
+          <li><b>Liga as cordas.</b> <span class="suave">O plano, a pasta do projeto e as páginas certas chegam a cada um.</span></li>
+          <li><b>Avisa você.</b> <span class="suave">Quem terminou, quem travou, quem precisa de aprovação.</span></li>
+        </ol>
+        <p class="suave">O app traz um servidor MCP embutido: qualquer IA lê e desenha no quadro, fala com agentes, usa o navegador e monta equipes.</p>
+        <div class="comando"><pre><code>claude mcp add magoagent -- /caminho/para/magoagent mcp</code></pre><button class="copiar" type="button">Copiar</button></div>
+        <ul class="ferramentas" aria-label="Algumas ferramentas do MCP">
+          <li>get_scene</li><li>add_elements</li><li>ask_agent</li><li>read_terminal</li><li>recruit_agent</li><li>connect</li><li>portal_navigate</li>
+        </ul>
+      </div>
+      <figure class="cartao print"><img src="img/arquitetura.png" width="1850" height="2000" loading="lazy" alt="Arquitetura do MagoAgent: o app, a ponte, os terminais e o servidor MCP"><figcaption>Como as peças conversam.</figcaption></figure>
+    </div>
+  </section>
+
+  <svg class="corda" viewBox="0 0 120 46" aria-hidden="true"><path d="M60 2c30 14-30 28 0 42" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="6 6"/></svg>
+
+  <section id="instalar" class="largura">
+    <h2>Instalar</h2>
+    <p class="intro" id="versao">Escolha o seu sistema.</p>
+    <div class="cartao instalar">
+      <div class="abas" role="tablist" aria-label="Sistema">
+        <button role="tab" id="aba-windows" aria-controls="painel-windows" aria-selected="true">Windows</button>
+        <button role="tab" id="aba-linux" aria-controls="painel-linux" aria-selected="false" tabindex="-1">Linux</button>
+        <button role="tab" id="aba-macos" aria-controls="painel-macos" aria-selected="false" tabindex="-1">macOS</button>
+      </div>
+
+      <div class="painel" id="painel-windows" role="tabpanel" aria-labelledby="aba-windows">
+        <h3>Instalador (.msi)</h3>
+        <p class="suave">Instala em <code>C:\Program Files\MagoAgent</code>. Ajustes › Sobre › Atualizar baixa o MSI novo.</p>
+        <div class="botoes" id="win"></div>
+      </div>
+
+      <div class="painel" id="painel-linux" role="tabpanel" aria-labelledby="aba-linux" hidden>
+        <h3>apt (Debian, Ubuntu e derivados)</h3>
+        <p class="suave">Adicione o repositório uma vez e instale; as atualizações vêm pelo apt.</p>
+        <div class="comando"><pre id="apt"><code>curl -fsSL https://edsuuu.github.io/magoagent/apt/magoagent.gpg | sudo tee /usr/share/keyrings/magoagent.gpg &gt; /dev/null
 echo "deb [arch=amd64 signed-by=/usr/share/keyrings/magoagent.gpg] https://edsuuu.github.io/magoagent/apt ./" | sudo tee /etc/apt/sources.list.d/magoagent.list
-sudo apt update &amp;&amp; sudo apt install magoagent</code></pre>
-<button class="botao sec" id="copiar" type="button">Copiar comandos</button>
-<p class="suave" style="margin-top:12px">Ou baixe o pacote direto:</p>
-<div id="deb"></div>
-</section>
+sudo apt update &amp;&amp; sudo apt install magoagent</code></pre><button class="copiar" type="button">Copiar</button></div>
+        <h3>Pacote .deb</h3>
+        <div id="deb"></div>
+        <h3>Arquivo .tar.gz</h3>
+        <p class="suave">Para as outras distribuições: extraia e rode o <code>magoagent</code>.</p>
+        <div class="botoes" id="tar"></div>
+      </div>
 
-<section class="cartao">
-<h2>macOS</h2>
-<p class="suave" style="margin:0">Em breve.</p>
-</section>
-
-<p class="suave" style="margin-top:24px"><a href="https://github.com/edsuuu/magoagent">Código no GitHub</a></p>
+      <div class="painel" id="painel-macos" role="tabpanel" aria-labelledby="aba-macos" hidden>
+        <h3>macOS</h3>
+        <p class="suave" style="margin:0">Em breve.</p>
+      </div>
+    </div>
+  </section>
 </main>
+
+<footer>
+  <div class="largura">
+    <span class="mao">MagoAgent</span>
+    <a href="changelog.html">Changelog</a>
+    <a href="https://github.com/edsuuu/magoagent">Código no GitHub</a>
+    <a href="https://github.com/edsuuu/magoagent/releases">Releases</a>
+  </div>
+</footer>
+
 <script>
 var paginaReleases = "https://github.com/edsuuu/magoagent/releases";
 function botao(rotulo, url, secundario) {
@@ -60,33 +208,84 @@ function botao(rotulo, url, secundario) {
   return link;
 }
 function semVersao(destino) {
-  destino.appendChild(botao("Ainda sem versão publicada", paginaReleases, true));
+  destino.appendChild(botao("Ver as releases no GitHub", paginaReleases, true));
 }
-document.getElementById("copiar").onclick = function () {
-  var botaoCopiar = this;
-  navigator.clipboard.writeText(document.querySelector("#apt code").textContent).then(function () {
-    botaoCopiar.textContent = "Copiado";
-    setTimeout(function () { botaoCopiar.textContent = "Copiar comandos"; }, 2000);
+
+// Botões de cópia: copiam o texto do <pre> ao lado
+function ligaCopiar(raiz) {
+  raiz.querySelectorAll(".copiar").forEach(function (copiar) {
+    copiar.onclick = function () {
+      var bloco = copiar.previousElementSibling;
+      function avisa(texto) {
+        copiar.textContent = texto;
+        setTimeout(function () { copiar.textContent = "Copiar"; }, 2000);
+      }
+      // Sem permissão para a área de transferência, deixa o texto selecionado para o Ctrl+C
+      navigator.clipboard.writeText(bloco.textContent).then(function () { avisa("Copiado"); }, function () {
+        getSelection().selectAllChildren(bloco);
+        avisa("Ctrl+C");
+      });
+    };
   });
-};
-var win = document.getElementById("win"), deb = document.getElementById("deb");
+}
+ligaCopiar(document);
+
+// Abas do Instalar, com setas do teclado; abre na aba do sistema de quem visita
+var abas = Array.prototype.slice.call(document.querySelectorAll("[role=tab]"));
+function escolhe(aba) {
+  abas.forEach(function (outra) {
+    var ativa = outra === aba;
+    outra.setAttribute("aria-selected", ativa);
+    outra.tabIndex = ativa ? 0 : -1;
+    document.getElementById(outra.getAttribute("aria-controls")).hidden = !ativa;
+  });
+}
+abas.forEach(function (aba, indice) {
+  aba.onclick = function () { escolhe(aba); };
+  aba.onkeydown = function (evento) {
+    var passo = evento.key === "ArrowRight" ? 1 : evento.key === "ArrowLeft" ? -1 : 0;
+    if (!passo) return;
+    var proxima = abas[(indice + passo + abas.length) % abas.length];
+    escolhe(proxima);
+    proxima.focus();
+  };
+});
+var plataforma = navigator.userAgent;
+if (/Mac/.test(plataforma) && !/iPhone|iPad/.test(plataforma)) escolhe(abas[2]);
+else if (/Linux|X11/.test(plataforma) && !/Android/.test(plataforma)) escolhe(abas[1]);
+
+// Os arquivos da última versão
+var win = document.getElementById("win"), deb = document.getElementById("deb"), tar = document.getElementById("tar");
 fetch("https://api.github.com/repos/edsuuu/magoagent/releases/latest")
   .then(function (resposta) { if (!resposta.ok) throw 0; return resposta.json(); })
   .then(function (release) {
     var arquivos = release.assets || [];
     function acha(extensao) { return arquivos.filter(function (a) { return a.name.endsWith(extensao); })[0]; }
-    var msi = acha(".msi"), exe = acha(".exe"), pacote = acha(".deb");
+    var msi = acha(".msi"), exe = acha(".exe"), pacote = acha(".deb"), compactado = acha(".tar.gz");
+    document.getElementById("versao").textContent = "Última versão: " + release.tag_name + ". Escolha o seu sistema.";
     if (msi) win.appendChild(botao("Baixar instalador (.msi)", msi.browser_download_url));
     if (exe) win.appendChild(botao("Baixar instalador (.exe)", exe.browser_download_url, !!msi));
     if (!msi && !exe) semVersao(win);
     if (pacote) {
       deb.appendChild(botao("Baixar " + pacote.name, pacote.browser_download_url, true));
+      var bloco = document.createElement("div");
+      bloco.className = "comando";
+      bloco.style.marginTop = "12px";
       var comando = document.createElement("pre");
       comando.textContent = "sudo apt install ./" + pacote.name;
-      deb.appendChild(comando);
+      var copiar = document.createElement("button");
+      copiar.className = "copiar";
+      copiar.type = "button";
+      copiar.textContent = "Copiar";
+      bloco.appendChild(comando);
+      bloco.appendChild(copiar);
+      deb.appendChild(bloco);
+      ligaCopiar(bloco);
     } else semVersao(deb);
+    if (compactado) tar.appendChild(botao("Baixar " + compactado.name, compactado.browser_download_url, true));
+    else semVersao(tar);
   })
-  .catch(function () { semVersao(win); semVersao(deb); });
+  .catch(function () { semVersao(win); semVersao(deb); semVersao(tar); });
 </script>
 </body>
 </html>
