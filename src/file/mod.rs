@@ -284,6 +284,11 @@ pub(crate) fn portal_profile_name(id: &str) -> String {
     id.chars().map(|c| if c.is_ascii_alphanumeric() || "-_".contains(c) { c } else { '_' }).collect()
 }
 
+/// A JSON file read into `T`; None when it is missing or does not parse.
+pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Option<T> {
+    serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
+}
+
 pub(crate) fn modified(path: &std::path::Path) -> Option<SystemTime> {
     fs::metadata(path).and_then(|m| m.modified()).ok()
 }
