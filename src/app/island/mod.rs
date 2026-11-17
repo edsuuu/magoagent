@@ -44,10 +44,10 @@ pub(crate) use window::*;
 /// The sizes of Coucou's island (core/layout.ts): the closed one, the open one and their corners.
 // asked: "entre a capa e a Luna, e entre a frequência e os mini mascotes, tem um espaço muito grande": about 15 each
 // with two minis
-pub(crate) const COMPACT_W: f32 = 180.0;
-/// How far the middle of the wizard and of the minis' grid (both 30 wide) are from the compact island's sides: 4 of room
-/// to the edge (asked: "perto da borda, eles podem ter um gap de 4px").
-pub(crate) const COMPACT_SIDE: f32 = 19.0;
+pub(crate) const COMPACT_W: f32 = 188.0;
+/// How far the middle of the wizard (30 wide) is from the compact island's left side: 12 of room to the edge, as the
+/// minis have at the right (asked: "coloca um padding na esquerda da Luna, ela ficou muito colada").
+pub(crate) const COMPACT_SIDE: f32 = 27.0;
 /// The same for the minis' grid at the right, which keeps 12 of room to the edge (asked: "os mini mascotes, coloca um
 /// padding na direita").
 pub(crate) const MINIS_SIDE: f32 = 27.0;
@@ -570,7 +570,10 @@ impl DrawingApp {
                 Some(session) => session.said(),
                 None => self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map_or(0, |transcript| log::said(&transcript.items).count()),
             };
-            talk_size(self.island.pulled.or(self.prefs.island_talk), said, work)
+            // the size the person pulled it to is the open conversation's; with none open, the page is its plain small
+            // self (asked: "se não tiver chat aberto, ele não é para manter")
+            let open = self.island.session.is_some() || self.chat_agent.as_ref().is_some_and(|id| self.chats.iter().any(|chat| &chat.id == id));
+            talk_size(self.island.pulled.or(self.prefs.island_talk).filter(|_| open), said, work)
         };
         self.island.dock = self.island.anchor.map_or(window::Dock::Top, |anchor| window::Dock::of(anchor, work));
         self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
@@ -763,7 +766,7 @@ mod tests {
     fn closed_it_is_a_small_notch_then_coucous_compact_island_and_the_open_panel() {
         let chat = Vec2::new(640.0, 360.0);
         assert_eq!(target(Shape::Closed, Tab::Chat, false, false, false, 0.0, chat), (Vec2::new(80.0, 24.0), 10.0));
-        assert_eq!(target(Shape::Compact, Tab::Chat, false, false, false, 0.0, chat), (Vec2::new(180.0, 38.5), 18.0));
+        assert_eq!(target(Shape::Compact, Tab::Chat, false, false, false, 0.0, chat), (Vec2::new(188.0, 38.5), 18.0));
         assert_eq!(target(Shape::Open, Tab::Home, false, false, false, 0.0, chat), (Vec2::new(760.0, 270.0), 22.0), "Início: the summary and the list");
         assert_eq!(target(Shape::Open, Tab::Music, false, true, false, 0.0, chat).0.y, 160.0, "its settings: short, whatever the tab");
         assert_eq!(target(Shape::Open, Tab::Home, false, true, false, 0.0, chat).0.y, 160.0);

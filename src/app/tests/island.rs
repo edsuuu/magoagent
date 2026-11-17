@@ -91,22 +91,22 @@ fn the_cover_and_the_bars_sit_in_the_middle_or_at_the_right() {
     let (cover, bars) = spread(pill, None);
     assert!(bars > cover + 22.0, "the bars after the cover");
     assert!((bars + 42.0 - (288.0 - 12.0)).abs() < 1.0, "at the right: the bars end at {}", bars + 42.0);
-    // with agents: the pair's middle halfway between the wizard (34) and the minis' grid
+    // with agents: the pair's middle halfway between the wizard (42) and the minis' grid
     let grid = mini_cells(pill, 2).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
     let (cover, bars) = spread(pill, Some(grid));
     let middle = (cover + bars + 42.0) / 2.0;
-    assert!((middle - (34.0 + grid.left()) / 2.0).abs() < 1.0, "in the middle: {middle} between 34 and {}", grid.left());
+    assert!((middle - (42.0 + grid.left()) / 2.0).abs() < 1.0, "in the middle: {middle} between 42 and {}", grid.left());
     assert!(bars + 42.0 < grid.left(), "clear of the minis");
-    // the compact island as it is: Luna (her right at 34) and the minis by the sides, the song in the middle between them
+    // the compact island as it is: Luna (her right at 42) and the minis by the sides, the song in the middle between them
     let pill = Rect::from_min_size(Pos2::ZERO, Vec2::new(crate::app::island::COMPACT_W, crate::app::island::COMPACT_H));
     let grid = mini_cells(pill, 1).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
     let (cover, bars) = spread(pill, Some(grid));
-    let (before, after) = (cover - 34.0, grid.left() - (bars + 42.0));
+    let (before, after) = (cover - 42.0, grid.left() - (bars + 42.0));
     assert!((before - after).abs() < 1.0 && before > 10.0, "the gaps: {before} and {after}");
     // two minis side by side: still some room, not the wide gaps (asked: "diminuir mais um pouco esse espaço")
     let grid = mini_cells(pill, 2).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
     let (cover, bars) = spread(pill, Some(grid));
-    let (before, after) = (cover - 34.0, grid.left() - (bars + 42.0));
+    let (before, after) = (cover - 42.0, grid.left() - (bars + 42.0));
     assert!((10.0..=20.0).contains(&before) && (before - after).abs() < 1.0, "the gaps: {before} and {after}");
 }
 
@@ -553,4 +553,19 @@ fn the_islands_settings_link_opens_app_settings_closes_island_settings_and_folds
     // the island has folded back to compact
     rest(&mut app, &ctx, &mut time, link_at, 0.5);
     assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "the island folded to compact: {:?}", app.island.size());
+}
+
+/// Asked ("o chat atual abre um monte, salva a altura que deixei, mas se não tiver chat aberto não é para manter"): the
+/// size the conversation was pulled to is not the page's with no chat open.
+#[test]
+fn with_no_chat_open_the_chat_page_is_its_plain_size_not_the_pulled_one() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.prefs.island = true;
+    app.prefs.island_talk = Some([1100.0, 700.0]);
+    app.island_show_page(Tab::Chat);
+    run(&mut app, &ctx, 1.0, 2.5, vec![]);
+    assert_eq!(app.island.tab(), Tab::Chat);
+    assert_eq!(app.island.size().x, EXPANDED_W, "not the 1100 it was pulled to: {:?}", app.island.size());
+    assert!(app.island.size().y < 700.0, "{:?}", app.island.size());
 }
