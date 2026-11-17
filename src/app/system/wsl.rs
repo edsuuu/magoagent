@@ -315,8 +315,13 @@ fn write_shim() {
     let _ = write_atomic(&dir.join("magoagent"), wsl_shim_text(&exe));
 }
 
+/// On a terminal a Windows exe writes to the console itself, where a line feed doesn't go back to the line's start (the
+/// lines come out in steps): there its output goes through a pipe, the exit code kept.
 pub(crate) fn wsl_shim_text(exe: &str) -> String {
-    format!("#!/bin/sh\nexec '{}' \"$@\"\n", exe.replace('\'', r"'\''"))
+    format!(
+        "#!/bin/sh\nexe='{}'\n[ -t 1 ] || exec \"$exe\" \"$@\"\nexec 3>&1\ncode=$({{ {{ \"$exe\" \"$@\"; echo $? >&4; }} | cat >&3; }} 4>&1)\nexit \"$code\"\n",
+        exe.replace('\'', r"'\''")
+    )
 }
 
 #[cfg(test)]
@@ -396,6 +401,8 @@ mod tests {
         // an agent here runs as it was
         let here = AgentCli::Here(PathBuf::from("claude"));
         assert_eq!(here.finish(here.command()).get_program(), "claude");
-        assert_eq!(wsl_shim_text("/mnt/c/Program Files/O'Mago/magoagent.exe"), "#!/bin/sh\nexec '/mnt/c/Program Files/O'\\''Mago/magoagent.exe' \"$@\"\n");
+        let shim = wsl_shim_text("/mnt/c/Program Files/O'Mago/magoagent.exe");
+        assert!(shim.starts_with("#!/bin/sh\nexe='/mnt/c/Program Files/O'\\''Mago/magoagent.exe'\n[ -t 1 ] || exec \"$exe\" \"$@\"\n"), "{shim}");
+        assert!(shim.contains("| cat >&3") && shim.ends_with("exit \"$code\"\n"), "{shim}");
     }
 }
