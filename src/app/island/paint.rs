@@ -27,6 +27,11 @@ const TAB_ON: Color32 = Color32::from_rgb(0x1d, 0x1f, 0x23);
 /// The radius of the round mark under the tab shown (and the one under the pointer).
 const TAB_DOT: f32 = 14.0;
 pub(super) const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
+pub(super) const RED: Color32 = Color32::from_rgb(0xf4, 0x50, 0x5e);
+/// The island's black: the words and arrows on a white button, a badge's ring, a picture's backdrop.
+pub(super) const BLACK: Color32 = Color32::from_rgb(0x0b, 0x0c, 0x0e);
+/// A row under the pointer (the GitHub, music and feed lists).
+pub(super) const HOVER: Color32 = Color32::from_rgb(0x1b, 0x1d, 0x21);
 /// The header's height under the 8 above it: what the pages start under.
 pub(super) const PAGE_TOP: f32 = 42.0;
 
@@ -548,7 +553,7 @@ impl DrawingApp {
             let ink = if on {
                 INK
             } else if response.hovered() {
-                Color32::from_rgb(0xb0, 0xb5, 0xbe)
+                super::log::REPLY
             } else {
                 DIM
             };
@@ -604,7 +609,6 @@ impl DrawingApp {
     /// reference's, which read too small here.
     fn island_settings_page(&self, ui: &mut egui::Ui, page: Rect, view: &View, out: &mut Out) {
         const GREEN: Color32 = Color32::from_rgb(0x22, 0xc5, 0x5e);
-        const RED: Color32 = Color32::from_rgb(0xf4, 0x50, 0x5e);
         const ROW_INK: Color32 = Color32::from_rgb(0xc5, 0xc8, 0xcd);
         ui.painter().rect(page, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
         let state = main_state(view.mood, view.celebrating);
@@ -798,13 +802,13 @@ const ISLAND_COLORS: [Color32; 5] = [
 /// permission, a green ✓ for a turn that just ended. `radius` 7 is the 14 px of the pill's own.
 fn badge(painter: &Painter, center: Pos2, line: &Line, radius: f32) {
     let (color, mark) = match (line.badge, line.state, line.mago) {
-        (Some(Badge::Error), ..) => (Color32::from_rgb(0xf4, 0x50, 0x5e), "✕"),
+        (Some(Badge::Error), ..) => (RED, "✕"),
         (Some(Badge::Approval), ..) | (_, AgentState::Waiting, _) => (AMBER, "!"),
         (Some(Badge::Finished), ..) | (_, _, MagoState::Done) => (Color32::from_rgb(0x22, 0xc5, 0x5e), "✓"),
-        (_, _, MagoState::Error) => (Color32::from_rgb(0xf4, 0x50, 0x5e), "✕"),
+        (_, _, MagoState::Error) => (RED, "✕"),
         _ => return,
     };
-    painter.circle_filled(center, radius, Color32::from_rgb(0x0b, 0x0c, 0x0e));
+    painter.circle_filled(center, radius, BLACK);
     painter.circle_filled(center, radius - 1.0, color);
     if radius > 5.0 {
         painter.text(center, egui::Align2::CENTER_CENTER, mark, font(radius), Color32::BLACK);
@@ -961,9 +965,9 @@ pub(super) fn mago(painter: &Painter, pointer: Option<Pos2>, id: &str, center: P
 /// done, red for an error; none for the rest.
 pub(super) fn wash(painter: &Painter, card: Rect, state: MagoState) {
     let (color, strength) = match state {
-        MagoState::NeedsYou | MagoState::Asking => (Color32::from_rgb(0xf5, 0xa5, 0x24), 0.42),
+        MagoState::NeedsYou | MagoState::Asking => (AMBER, 0.42),
         MagoState::Done => (Color32::from_rgb(0x34, 0xd3, 0x99), 0.5),
-        MagoState::Error => (Color32::from_rgb(0xf4, 0x50, 0x5e), 0.55),
+        MagoState::Error => (RED, 0.55),
         _ => return,
     };
     wash_with(painter, card, color, strength, 0.0);

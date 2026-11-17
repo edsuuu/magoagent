@@ -5,7 +5,7 @@
 
 use super::icons;
 use super::marquee::marquee;
-use super::paint::{CARD, CARD_FLAT, DIM, DIM_3, INK, font, semi};
+use super::paint::{CARD, CARD_FLAT, DIM, DIM_3, HOVER, INK, font, semi};
 use crate::app::chat::list::clipped;
 use crate::app::integrations::spotify::controls::LIKED_SONGS;
 use crate::app::integrations::spotify::library::{ERROR_FOR_MS, Opened, PlaylistItem};
@@ -23,7 +23,6 @@ const HEART_ROOM: f32 = 26.0;
 const ROW_H: f32 = 36.0;
 pub(super) const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
 const RED: Color32 = Color32::from_rgb(0xf8, 0x51, 0x49);
-const HOVER: Color32 = Color32::from_rgb(0x1b, 0x1d, 0x21);
 const TRACK: Color32 = Color32::from_rgb(0x2b, 0x2e, 0x33);
 /// The search waits this long after the last key before it asks.
 const SEARCH_AFTER: f64 = 0.45;

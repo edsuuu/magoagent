@@ -3,7 +3,7 @@
 //! plain), the model's pill and a one-line box. Its ⤢ opens the whole mini chat in the island instead.
 
 use super::log::said;
-use super::paint::{CARD, DIM_3, EXPAND, INK, Out, View, aim, font};
+use super::paint::{BLACK, CARD, DIM_3, EXPAND, INK, Out, View, aim, font};
 use crate::app::chat::list::glyph;
 use crate::app::mascot::mago::MagoState;
 use crate::app::ui::agents::{AgentRow, AgentState};
@@ -52,7 +52,7 @@ pub(super) fn send_field(
     let pressed = send.is_pointer_button_down_on();
     let ground = Rect::from_center_size(button.center(), button.size() * if pressed { 0.94 } else { 1.0 });
     painter.circle_filled(ground.center(), ground.width() / 2.0, if draft.trim().is_empty() { INK.gamma_multiply(0.5) } else { INK });
-    glyph(painter, ground.center(), 12.0, 1.8, Color32::from_rgb(0x0b, 0x0c, 0x0e), ARROW_UP);
+    glyph(painter, ground.center(), 12.0, 1.8, BLACK, ARROW_UP);
     let enter = edit.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
     let sent = (enter || send.clicked()) && !draft.trim().is_empty();
     (edit, sent)

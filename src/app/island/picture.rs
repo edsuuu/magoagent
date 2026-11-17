@@ -84,7 +84,7 @@ fn over_window(ctx: &Context, full: &Decoding, thumb: Option<&Decoding>) -> bool
 /// The picture fitted in `screen` on a dark ground, its size under it and a ✕; true when it is to close.
 fn paint_picture(ui: &mut egui::Ui, screen: Rect, full: &Decoding, thumb: Option<&Decoding>) -> bool {
     let painter = ui.painter().clone();
-    painter.rect_filled(screen, 0, Color32::from_rgb(0x0b, 0x0c, 0x0e).gamma_multiply(0.96));
+    painter.rect_filled(screen, 0, super::paint::BLACK.gamma_multiply(0.96));
     let ground = ui.interact(screen, ui.scope_id().with("island_picture_ground"), Sense::click());
     let pic: Option<&Pic> = full.get().and_then(Option::as_ref).or_else(|| thumb.and_then(|thumb| thumb.get()).and_then(Option::as_ref));
     let ppp = ui.ctx().pixels_per_point();
