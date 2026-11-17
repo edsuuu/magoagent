@@ -1,0 +1,280 @@
+//! The panels on the right (panes/): the title bar's buttons open and close them, and each one's
+//! gestures (a task made and concluded, the timeline filtered, a diff opened, the binder's pages).
+
+use super::filetree::{git, temp, tree_on};
+use super::*;
+use crate::app::panes::{PANE_WIDTH, PANES, Pane};
+use egui::accesskit::Role;
+
+const SCREEN: Vec2 = Vec2::new(1200.0, 800.0);
+
+/// One frame of the title bar and the panel, with the canvas's keys; gives what it showed, from
+/// its accessibility tree: each widget's role, text and rect.
+fn pane_frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) -> Vec<(Role, String, Rect)> {
+    ctx.enable_accesskit();
+    let time = Some(ctx.input(|i| i.time) + 0.05);
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SCREEN)), time, events, ..Default::default() };
+    let mut output = ctx.run_ui(raw, |_| {
+        app.screen_keys(ctx);
+        app.handle_shortcuts(ctx);
+        if TITLE_BAR > 0.0 {
+            app.title_bar(ctx);
+        }
+        app.panes_ui(ctx);
+    });
+    output.textures_delta.clear();
+    let nodes = output.platform_output.accesskit_update.map(|update| update.nodes).unwrap_or_default();
+    nodes
+        .into_iter()
+        .filter_map(|(_, node)| {
+            let bounds = node.bounds()?;
+            let text = node.label().or(node.value()).unwrap_or_default().to_string();
+            Some((node.role(), text, Rect::from_min_max(Pos2::new(bounds.x0 as f32, bounds.y0 as f32), Pos2::new(bounds.x1 as f32, bounds.y1 as f32))))
+        })
+        .collect()
+}
+
+fn pane_click(app: &mut DrawingApp, ctx: &Context, at: Pos2) -> Vec<(Role, String, Rect)> {
+    pane_frame(app, ctx, vec![egui::Event::PointerMoved(at), button(at, true)]);
+    let shown = pane_frame(app, ctx, vec![button(at, false)]);
+    // the pointer leaves, so no tooltip covers the next click
+    pane_frame(app, ctx, vec![egui::Event::PointerGone]);
+    shown
+}
+
+/// The first frames: the title bar's areas take their size before they take clicks.
+fn settle(app: &mut DrawingApp, ctx: &Context) {
+    for _ in 0..4 {
+        pane_frame(app, ctx, vec![]);
+    }
+}
+
+/// A press on the title bar's panel button `k`.
+fn press_pane(app: &mut DrawingApp, ctx: &Context, k: usize) {
+    let at = app.pane_button(SCREEN.x, k).center();
+    pane_click(app, ctx, at);
+}
+
+/// Where the widget of `role` whose text starts with `text` is.
+fn find(shown: &[(Role, String, Rect)], role: Role, text: &str) -> Option<Rect> {
+    shown.iter().find(|(r, t, _)| *r == role && t.starts_with(text)).map(|(_, _, rect)| *rect)
+}
+
+fn texts(shown: &[(Role, String, Rect)]) -> Vec<String> {
+    shown.iter().map(|(_, text, _)| text.clone()).collect()
+}
+
+/// The panel opened by its button, settled.
+fn opened(pane: Pane) -> (Context, DrawingApp, Vec<(Role, String, Rect)>) {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    settle(&mut app, &ctx);
+    let k = PANES.iter().position(|p| p.0 == pane).unwrap();
+    press_pane(&mut app, &ctx, k);
+    assert_eq!(app.panes.open, Some(pane));
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+    (ctx, app, shown)
+}
+
+#[test]
+fn each_button_opens_its_panel_and_closes_it_one_at_a_time() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    settle(&mut app, &ctx);
+    assert_eq!(app.pane_width(), 0.0);
+    for (k, (pane, ..)) in PANES.iter().enumerate() {
+        press_pane(&mut app, &ctx, k);
+        assert_eq!(app.panes.open, Some(*pane), "button {k}");
+        // the canvas gives it its width, and the corners move out of its way
+        assert_eq!((app.pane_width(), app.corner_inset().1), (PANE_WIDTH, PANE_WIDTH));
+    }
+    // the open one's button closes it
+    press_pane(&mut app, &ctx, 3);
+    assert_eq!(app.panes.open, None);
+    // the X on its header
+    press_pane(&mut app, &ctx, 0);
+    let close = Rect::from_center_size(Pos2::new(SCREEN.x - 22.0, 60.0 + 23.0), Vec2::splat(10.0));
+    pane_click(&mut app, &ctx, close.center());
+    assert_eq!(app.panes.open, None, "the X closes it");
+    // and Esc
+    press_pane(&mut app, &ctx, 1);
+    app.selected = vec![0];
+    pane_frame(&mut app, &ctx, vec![key_press(Key::Escape)]);
+    assert_eq!(app.panes.open, None, "Esc closes it first");
+    assert_eq!(app.selected, vec![0], "and only it");
+    // over the chat the buttons and the panel are hidden
+    app.set_pane(Some(Pane::Tasks));
+    app.chat_open = true;
+    pane_frame(&mut app, &ctx, vec![]);
+    assert_eq!((app.panes.buttons, app.pane_width()), (None, 0.0));
+}
+
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn the_buttons_are_no_place_to_move_the_window() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    settle(&mut app, &ctx);
+    let at = app.pane_button(SCREEN.x, 2).center();
+    let mut raw = egui::RawInput {
+        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SCREEN)),
+        events: vec![egui::Event::PointerMoved(at), button(at, true)],
+        ..Default::default()
+    };
+    app.caption_drag(&ctx, &mut raw);
+    assert_eq!(raw.events.len(), 2, "the press stays the button's");
+}
+
+#[test]
+fn a_task_is_made_for_an_agent_and_concluded_with_its_box() {
+    let (ctx, mut app, shown) = opened(Pane::Tasks);
+    let mut terminal = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+    terminal.terminal = Some(TerminalSpec { name: "Revisor".into(), command: "claude".into(), ..Default::default() });
+    let agent = terminal.id.clone();
+    app.scene.elements.push(terminal);
+    assert!(texts(&shown).iter().any(|t| t == "Nenhuma tarefa aberta."));
+    // typed in the field, for the agent picked, with Enter
+    let field = find(&shown, Role::TextInput, "").unwrap();
+    pane_click(&mut app, &ctx, field.center());
+    app.panes.task_owner = agent.clone();
+    pane_frame(&mut app, &ctx, vec![egui::Event::Text("Revisar o login".into())]);
+    pane_frame(&mut app, &ctx, vec![key_press(Key::Enter)]);
+    let task = app.tasks.list.last().cloned().expect("a task");
+    assert_eq!((task.title.as_str(), task.owner.as_str(), task.requester.as_str()), ("Revisar o login", agent.as_str(), "você"));
+    assert!(app.panes.task_draft.is_empty());
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+    assert!(texts(&shown).iter().any(|t| t == "Revisar o login"), "{:?}", texts(&shown));
+    assert!(texts(&shown).iter().any(|t| t.starts_with("Revisor · Pendente")));
+    // a second one with the button
+    app.panes.task_draft = "Escrever os testes".into();
+    pane_click(&mut app, &ctx, find(&shown, Role::Button, "Criar").unwrap().center());
+    assert_eq!(app.tasks.list.len(), 2);
+    // the box concludes it: it leaves Abertas for Feitas
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+    let boxes: Vec<Rect> = shown.iter().filter(|(r, ..)| *r == Role::CheckBox).map(|(.., rect)| *rect).collect();
+    assert_eq!(boxes.len(), 2);
+    pane_click(&mut app, &ctx, boxes[0].center());
+    let done: Vec<String> = app.tasks.list.iter().filter(|t| t.state.is_final()).map(|t| t.title.clone()).collect();
+    assert_eq!(done.len(), 1);
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+    assert!(!texts(&shown).iter().any(|t| *t == done[0]), "no longer among the open ones");
+    let shown = pane_click(&mut app, &ctx, find(&shown, Role::Button, "Feitas 1").unwrap().center());
+    let shown = if texts(&shown).iter().any(|t| *t == done[0]) { shown } else { pane_frame(&mut app, &ctx, vec![]) };
+    assert!(texts(&shown).iter().any(|t| *t == done[0]), "{:?}", texts(&shown));
+    // unchecked, it reopens
+    let check = find(&shown, Role::CheckBox, "").unwrap();
+    pane_click(&mut app, &ctx, check.center());
+    assert!(app.tasks.list.iter().all(|t| !t.state.is_final()));
+}
+
+#[test]
+fn the_timeline_shows_the_newest_first_filters_by_agent_and_takes_the_canvas_to_it() {
+    let (ctx, mut app, _) = opened(Pane::Timeline);
+    let mut ids = Vec::new();
+    for (k, name) in ["Revisor", "Front"].iter().enumerate() {
+        let mut terminal = app.new_element(ElementKind::Rectangle { x: k as f32 * 600.0, y: 0.0, width: 400.0, height: 300.0 });
+        terminal.terminal = Some(TerminalSpec { name: name.to_string(), command: "claude".into(), ..Default::default() });
+        ids.push(terminal.id.clone());
+        app.scene.elements.push(terminal);
+    }
+    let event = |at: i64, id: &str, name: &str, what: &str| AgentEvent { at, ..AgentEvent::new(id, name, EventKind::ToolStarted, what) };
+    app.agent_events.push_back(event(1_000, &ids[0], "Revisor", "Bash: cargo test"));
+    app.agent_events.push_back(event(2_000, &ids[1], "Front", "Edit: tela.rs"));
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+    let all = texts(&shown);
+    let (newer, older) = (all.iter().position(|t| t == "Edit: tela.rs").unwrap(), all.iter().position(|t| t == "Bash: cargo test").unwrap());
+    assert!(newer < older, "the newest first: {all:?}");
+    // the agent's chip leaves only its events
+    let shown = pane_click(&mut app, &ctx, find(&shown, Role::Button, "Revisor").unwrap().center());
+    assert_eq!(app.panes.timeline_agent.as_deref(), Some(ids[0].as_str()));
+    let shown = if texts(&shown).iter().any(|t| t == "Edit: tela.rs") { pane_frame(&mut app, &ctx, vec![]) } else { shown };
+    assert!(!texts(&shown).iter().any(|t| t == "Edit: tela.rs") && texts(&shown).iter().any(|t| t == "Bash: cargo test"));
+    // a click on the row: the canvas goes to the agent's card
+    pane_click(&mut app, &ctx, find(&shown, Role::Label, "Bash: cargo test").unwrap().center());
+    assert_eq!(app.terminal_focus.as_deref(), Some(ids[0].as_str()));
+    assert_eq!(app.selected, vec![0]);
+    // Todos brings them all back
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+    pane_click(&mut app, &ctx, find(&shown, Role::Button, "Todos").unwrap().center());
+    assert_eq!(app.panes.timeline_agent, None);
+}
+
+#[test]
+fn a_changed_file_shows_its_lines_and_diff_and_opens_in_the_tree() {
+    if crate::editor::command("git").arg("--version").output().is_err() {
+        return;
+    }
+    let dir = temp("panes-changes");
+    git(&dir, &["init", "-q"]);
+    git(&dir, &["config", "user.email", "t@example.com"]);
+    git(&dir, &["config", "user.name", "t"]);
+    fs::write(dir.join("kept.txt"), "um\ndois\ntrês\n").unwrap();
+    git(&dir, &["add", "."]);
+    git(&dir, &["commit", "-qm", "first"]);
+    fs::write(dir.join("kept.txt"), "um\n2\ntrês\nquatro\n").unwrap();
+    let (ctx, mut app, _) = opened(Pane::Changes);
+    let id = tree_on(&mut app, &dir);
+    app.filetrees.views.get_mut(&id).unwrap().git = crate::app::filetree::view::TreeGit::read(&dir);
+    assert_eq!(app.changed_file_count(), 1, "the badge's count");
+    // the lines are counted away from the frame
+    let mut shown = pane_frame(&mut app, &ctx, vec![]);
+    for _ in 0..300 {
+        if app.change_line_counts(&dir.join("kept.txt")).is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        shown = pane_frame(&mut app, &ctx, vec![]);
+    }
+    assert_eq!(app.change_line_counts(&dir.join("kept.txt")), Some((2, 1)));
+    let row = find(&shown, Role::Button, "kept.txt").expect("the file's row");
+    pane_click(&mut app, &ctx, row.center());
+    let diff = &app.panes.changes.diff;
+    assert!(diff.contains(&('-', "dois".into())) && diff.contains(&('+', "2".into())) && diff.contains(&('+', "quatro".into())), "{diff:?}");
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+    assert!(find(&shown, Role::Button, "Descartar").is_none(), "no such action in the app");
+    pane_click(&mut app, &ctx, find(&shown, Role::Button, "Abrir na Árvore").unwrap().center());
+    assert_eq!(app.terminal_elevated.as_deref(), Some(id.as_str()), "the tree enlarged");
+    assert!(app.filetrees.editors[&id].tabs.iter().any(|t| t.path.to_string_lossy().contains("HEAD ↔ kept.txt")));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_binder_turns_its_pages_makes_a_note_and_puts_one_on_the_canvas() {
+    let base = std::env::temp_dir().join(format!("magoagent-panes-binder-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&base);
+    let folder = base.join("fichario");
+    for (name, text) in [("Decisões", "# Decisões\npagamento pelo Pix"), ("Pendências", "# Pendências\nfalta o login")] {
+        crate::app::maestro::binder::write(&folder, name, text, false).unwrap();
+    }
+    let ctx = Context::default();
+    let mut app = DrawingApp { autosave: Some(base.join("autosave.mago")), ..Default::default() };
+    settle(&mut app, &ctx);
+    press_pane(&mut app, &ctx, 3);
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+    assert!(texts(&shown).iter().any(|t| t == "1 de 2"), "{:?}", texts(&shown));
+    let next = find(&shown, Role::Button, "›").unwrap();
+    let shown = pane_click(&mut app, &ctx, next.center());
+    assert_eq!(app.panes.binder.page, 1);
+    assert!(texts(&shown).iter().any(|t| t == "2 de 2") || texts(&pane_frame(&mut app, &ctx, vec![])).iter().any(|t| t == "2 de 2"));
+    // round the pile
+    pane_click(&mut app, &ctx, next.center());
+    assert_eq!(app.panes.binder.page, 0);
+    let previous = find(&shown, Role::Button, "‹").unwrap();
+    pane_click(&mut app, &ctx, previous.center());
+    assert_eq!(app.panes.binder.page, 1);
+    // the note on top onto the canvas
+    let before = app.scene.elements.len();
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+    pane_click(&mut app, &ctx, find(&shown, Role::Button, "Pôr no canvas").unwrap().center());
+    assert_eq!(app.scene.elements.len(), before + 2, "a sticky note and its text");
+    assert!(app.note_text(before).contains("falta o login"));
+    // a new note: its first line is its name, a name taken gets a number
+    app.panes.binder.draft = "Decisões\nfrete grátis".into();
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+    pane_click(&mut app, &ctx, find(&shown, Role::Button, "Nova nota").unwrap().center());
+    assert!(folder.join("decisoes-2.md").exists());
+    assert_eq!(app.panes.binder.notes.len(), 3);
+    assert_eq!(app.panes.binder.notes[app.panes.binder.page].0, "decisoes-2", "the new one on top");
+    assert!(app.panes.binder.draft.is_empty());
+    let _ = fs::remove_dir_all(&base);
+}

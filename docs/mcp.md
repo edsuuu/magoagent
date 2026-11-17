@@ -2,7 +2,7 @@
 
 <!-- gerado por docs/mcp.py a partir do tools/list do app: não edite à mão -->
 
-O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.23) e tem **99 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
+O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.23) e tem **102 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
 
 ## Ligar
 
@@ -121,6 +121,15 @@ A lateral dos espaços, como a pessoa a usa: `next` vai ao próximo agente que p
 | Parâmetro | Tipo | O que é |
 |---|---|---|
 | `action` (obrigatório) | string: `status`, `next`, `agents_open`, `agents_close`, `usage_open`, `usage_close` |  |
+
+### `panel`
+
+Os painéis à direita da janela (os botões na barra de título): tasks (Tarefas: criar, filtrar Abertas/Feitas, concluir), timeline (Linha do tempo: os eventos dos agentes, do mais novo ao mais antigo), changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff) e binder (Fichário: as notas do fichário em pilha). Um aberto por vez, ao lado do canvas. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto.
+
+| Parâmetro | Tipo | O que é |
+|---|---|---|
+| `name` | string: `tasks`, `timeline`, `changes`, `binder` |  |
+| `open` | boolean |  |
 
 ### `history`
 

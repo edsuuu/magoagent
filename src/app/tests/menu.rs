@@ -147,9 +147,9 @@ fn the_title_bar_holds_the_top_buttons_and_moves_the_window() {
     sent.extend(press(&mut app, &ctx, &mut time, Pos2::new(600.0, 28.0), true));
     assert!(sent.is_empty(), "{sent:?}");
     time += 1.0;
-    let mut sent = press(&mut app, &ctx, &mut time, Pos2::new(900.0, 28.0), true);
+    let mut sent = press(&mut app, &ctx, &mut time, Pos2::new(840.0, 28.0), true);
     time -= 0.05;
-    sent.extend(press(&mut app, &ctx, &mut time, Pos2::new(900.0, 28.0), true));
+    sent.extend(press(&mut app, &ctx, &mut time, Pos2::new(840.0, 28.0), true));
     assert!(sent.contains(&egui::ViewportCommand::Maximized(true)), "{sent:?}");
     // the caption buttons: close is the last 46 of the bar, minimize two to its left
     let sent = press(&mut app, &ctx, &mut time, Pos2::new(1200.0 - 23.0, 10.0), true);

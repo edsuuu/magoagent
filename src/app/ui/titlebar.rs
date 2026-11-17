@@ -28,6 +28,14 @@ impl DrawingApp {
         Rect::from_min_size(Pos2::new(left, TOP_ROW_Y - TOP_BUTTON / 2.0), Vec2::splat(TOP_BUTTON))
     }
 
+    /// Where the right panels' button `k` (panes/: 0 Tarefas … 3 Fichário) sits in a window
+    /// `width` wide: 12 before the window's buttons (the window's edge on the Mac), on the top row.
+    pub(crate) fn pane_button(&self, width: f32, k: usize) -> Rect {
+        let captions = if TITLE_BAR > 0.0 { 3.0 * CAPTION_WIDTH } else { 0.0 };
+        let right = width - captions - 12.0 - (3 - k) as f32 * (TOP_BUTTON + TOP_GAP);
+        Rect::from_min_size(Pos2::new(right - TOP_BUTTON, TOP_ROW_Y - TOP_BUTTON / 2.0), Vec2::splat(TOP_BUTTON))
+    }
+
     /// The canvas's top-left buttons, as in the reference app: ☰ folds and opens the sidebar, the
     /// chat's beside it and, with the sidebar folded, the space in use by name (a click opens the
     /// sidebar, where Ajustes is). Gives where they end.
@@ -136,6 +144,7 @@ impl DrawingApp {
             self.title_buttons = Rect::from_min_max(first.min, Pos2::new(end, first.bottom()));
         });
         side("title_bar_right", right, width, &mut |ui, bar| {
+            self.pane_buttons(ui);
             let p = ui.painter().clone();
             p.rect_filled(Rect::from_min_max(Pos2::new(bar.right() - 3.0 * CAPTION_WIDTH, 0.0), Pos2::new(bar.right(), CAPTION_HEIGHT)), 0, ground);
             // right to left: close, maximize / restore, minimize
@@ -162,7 +171,9 @@ impl DrawingApp {
         #[cfg(windows)]
         {
             let stretch = |from: f32, to: f32| Rect::from_min_max(Pos2::new(from, EDGE), Pos2::new(to, TITLE_BAR));
-            let bare = [stretch(self.title_buttons.right() + 4.0, left), stretch(right, width - 3.0 * CAPTION_WIDTH)];
+            // up to the panels' buttons when they show
+            let end = self.panes.buttons.map_or(width - 3.0 * CAPTION_WIDTH, |buttons| buttons.left() - 4.0);
+            let bare = [stretch(self.title_buttons.right() + 4.0, left), stretch(right, end)];
             native_caption::set(&bare, ctx.pixels_per_point());
         }
     }
@@ -193,7 +204,7 @@ impl DrawingApp {
     pub(crate) fn caption_drag(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
         let (Some(screen), time) = (raw.screen_rect, raw.time.unwrap_or(0.0)) else { return };
         let maximized = raw.viewport().maximized == Some(true);
-        let buttons = self.title_buttons;
+        let (buttons, panes) = (self.title_buttons, self.panes.buttons);
         let empty = |pos: Pos2| {
             let bar = [egui::Id::unique("title_bar"), egui::Id::unique("title_bar_right")];
             let on_bar = match ctx.layer_id_at(pos) {
@@ -203,7 +214,11 @@ impl DrawingApp {
                 }
                 _ => false,
             };
-            pos.y < TITLE_BAR && on_bar && !buttons.contains(pos) && pos.x < screen.right() - 3.0 * CAPTION_WIDTH
+            pos.y < TITLE_BAR
+                && on_bar
+                && !buttons.contains(pos)
+                && !panes.is_some_and(|rect| rect.expand(4.0).contains(pos))
+                && pos.x < screen.right() - 3.0 * CAPTION_WIDTH
         };
         raw.events.retain(|e| {
             let egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, .. } = e else { return true };
