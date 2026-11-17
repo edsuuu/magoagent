@@ -228,7 +228,7 @@ pub(crate) fn mago_poke(id: &str, time: f64) {
 }
 
 fn motion_key(id: &str) -> u64 {
-    id.bytes().fold(0xcbf29ce484222325u64, |hash, byte| (hash ^ byte as u64).wrapping_mul(0x100000001b3))
+    fnv1a(id)
 }
 
 /// `paint_mago_for` with the eyes looking at `pointer` (in the painter's own coordinates; none: ahead): for a place whose

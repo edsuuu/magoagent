@@ -147,8 +147,7 @@ pub(crate) fn size_text(width: f32, height: f32) -> String {
 pub(crate) fn store_id(name: &str) -> [u8; 16] {
     let mut out = [0u8; 16];
     for (half, seed) in out.chunks_mut(8).zip([0xcbf29ce484222325u64, 0x84222325cbf29ce4]) {
-        let hash = name.bytes().fold(seed, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
-        half.copy_from_slice(&hash.to_le_bytes());
+        half.copy_from_slice(&fnv1a_from(seed, name).to_le_bytes());
     }
     out
 }

@@ -2,12 +2,22 @@
 
 use crate::prelude::*;
 
+/// FNV-1a of 64 bits: the same number for the same text on every run and every system.
+pub(crate) fn fnv1a(text: &str) -> u64 {
+    fnv1a_from(0xcbf29ce484222325, text)
+}
+
+/// `fnv1a` started from `seed` instead of FNV's own offset.
+pub(crate) fn fnv1a_from(seed: u64, text: &str) -> u64 {
+    text.bytes().fold(seed, |hash, byte| (hash ^ byte as u64).wrapping_mul(0x100000001b3))
+}
+
 /// Deterministic jitter seeded by element id, so the sketch doesn't wobble between frames.
 pub(crate) struct Rng(pub(crate) u64);
 
 impl Rng {
     pub(crate) fn new(seed: &str, pass: u64) -> Self {
-        let hash = seed.bytes().fold(0xcbf29ce484222325_u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
+        let hash = fnv1a(seed);
         Self((hash ^ pass.wrapping_mul(0x9e3779b97f4a7c15)) | 1)
     }
 

@@ -181,8 +181,7 @@ pub(crate) const PILL_PALETTE: [u32; 10] = [0xf5f6f8, 0xf4505e, 0xf29b38, 0xfacc
 
 /// Where in the palette a project's pill starts: a project keeps its colour from one run to the next.
 fn palette_index(cwd: &str) -> usize {
-    let hash = cwd.bytes().fold(0xcbf29ce484222325u64, |hash, byte| (hash ^ byte as u64).wrapping_mul(0x100000001b3));
-    (hash % PILL_PALETTE.len() as u64) as usize
+    (fnv1a(cwd) % PILL_PALETTE.len() as u64) as usize
 }
 
 /// A Claude Code project's colour among the pills there are (`taken`): its own, or the palette's next one no other pill
