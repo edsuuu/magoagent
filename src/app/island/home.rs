@@ -24,6 +24,31 @@ fn hairline() -> Stroke {
     Stroke::new(1.0, Color32::from_white_alpha(9))
 }
 
+/// What an empty page says: its title and what to do, by the tab; Claude Code's knows whether its hooks are in
+/// (asked: "se os hooks estão instalados aqui precisa saber").
+pub(crate) fn empty_words(tab: Tab, hooks: bool) -> (&'static str, &'static str) {
+    match tab {
+        Tab::Claude if hooks => ("Nenhuma sessão do Claude Code fora do app", "Os hooks estão instalados: as sessões aparecem aqui quando começarem"),
+        Tab::Claude => ("Nenhuma sessão do Claude Code fora do app", "Instale os hooks em Ajustes › Integrações"),
+        Tab::GitHub => ("O GitHub está desligado", "Ligue em Ajustes › Integrações"),
+        Tab::Music => ("Nada tocando agora", "Ligue o Spotify em Ajustes › Integrações"),
+        _ => ("Nenhum agente ainda", "Crie um chat em  +"),
+    }
+}
+
+/// Whether Claude Code's settings have our hooks (any version), read again every 3 s while asked: it is a file.
+fn hooks_installed(ui: &egui::Ui, time: f64) -> bool {
+    let id = egui::Id::unique("island_claude_hooks_installed");
+    if let Some((at, installed)) = ui.ctx().data(|data| data.get_temp::<(f64, bool)>(id))
+        && (0.0..3.0).contains(&(time - at))
+    {
+        return installed;
+    }
+    let installed = crate::app::maestro::claude_hooks::settings_path().is_some_and(|path| crate::app::maestro::claude_hooks::installed_at(&path));
+    ui.ctx().data_mut(|data| data.insert_temp(id, (time, installed)));
+    installed
+}
+
 /// The two cards the page is made of, by what the agent does.
 fn halves(page: Rect, editing: bool) -> (Rect, Rect) {
     let width = if editing { 150.0 } else { 322.0 };
@@ -87,12 +112,8 @@ impl DrawingApp {
             (Some(line), None) => self.idle_card(ui, left, line, out),
             (None, _) => {
                 let text_x = left.left() + 106.0;
-                let (title, hint) = match view.tab {
-                    Tab::Claude => ("Nenhuma sessão do Claude Code fora do app", "Instale os hooks em Ajustes › Integrações"),
-                    Tab::GitHub => ("O GitHub está desligado", "Ligue em Ajustes › Integrações"),
-                    Tab::Music => ("Nada tocando agora", "Ligue o Spotify em Ajustes › Integrações"),
-                    _ => ("Nenhum agente ainda", "Crie um chat em  +"),
-                };
+                let hooks = view.tab == Tab::Claude && hooks_installed(ui, time);
+                let (title, hint) = empty_words(view.tab, hooks);
                 // on the wizard's middle line, as the wizard
                 ui.painter().text(Pos2::new(text_x, left.center().y - 10.0), egui::Align2::LEFT_CENTER, title, font(13.0), INK);
                 ui.painter().text(Pos2::new(text_x, left.center().y + 10.0), egui::Align2::LEFT_CENTER, hint, font(11.5), DIM);

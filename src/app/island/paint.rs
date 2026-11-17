@@ -343,11 +343,12 @@ impl DrawingApp {
             let center = rect.min + at;
             let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
             // while the music plays and no agent wants the person, she dances to it, open too (asked: "ali a Luna não
-            // reage à música"); open and paused, she does not nap there
+            // reage à música"); open and paused, she does not nap there. An agent at work does not stop her (asked:
+            // "tem momento que a Luna fica parada como se nada estivesse tocando")
             let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.playing);
-            let calm = matches!(wanted.state, MagoState::Idle | MagoState::Sleeping) && (view.shape != Shape::Open || playing);
+            let calm = dances_through(wanted.state) && (view.shape != Shape::Open || playing);
             match self.luna_groove().filter(|_| calm) {
-                Some(groove) => paint_mago_dancing(&painter, "island-main-dance", center, size, LUME, &groove, time),
+                Some(groove) => paint_mago_dancing(&painter, "island-main-dance", center, size, self.luna_colour(LUME), &groove, time),
                 None => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),
             }
         }
@@ -370,13 +371,13 @@ impl DrawingApp {
         if !compact {
             let center = Pos2::new(rect.center().x, rect.center().y + 1.0);
             // while the music plays and no agent wants the person, she dances to it (asked: "a luna dançando")
-            let calm = matches!(state, MagoState::Idle | MagoState::Sleeping);
+            let calm = dances_through(state);
             match self.luna_groove().filter(|_| calm) {
-                Some(groove) => paint_mago_dancing(ui.painter(), "island-main-dance", center, 22.0, LUME, &groove, time),
+                Some(groove) => paint_mago_dancing(ui.painter(), "island-main-dance", center, 22.0, self.luna_colour(LUME), &groove, time),
                 None => paint_mago_toward(ui.painter(), "island-main", center, 22.0, state, time, view.pointer),
             }
             if let Some(now) = now {
-                self.island_playing(ui, rect, now, None, groove.as_ref(), time);
+                self.island_playing(ui, rect, now, None, groove.as_ref(), time, out);
             }
             return;
         }
@@ -403,14 +404,16 @@ impl DrawingApp {
             crate::app::voice::paint_bars(ui.painter(), Pos2::new(rect.center().x, rect.center().y), bars, INK);
         }
         if let Some(now) = now {
-            self.island_playing(ui, rect, now, Some(grid), groove.as_ref(), time);
+            self.island_playing(ui, rect, now, Some(grid), groove.as_ref(), time, out);
         }
     }
 
     /// The song's cover and the sound's bars in the pill while it plays, spread with the wizard and the minis (`pill.rs`).
-    fn island_playing(&self, ui: &egui::Ui, rect: Rect, now: &Now, compact: Option<Option<Rect>>, groove: Option<&Groove>, time: f64) {
+    fn island_playing(&self, ui: &egui::Ui, rect: Rect, now: &Now, compact: Option<Option<Rect>>, groove: Option<&Groove>, time: f64, out: &mut Out) {
         let cover = self.integrations.spotify.cover.as_ref().map(egui::TextureHandle::id);
-        super::pill::spotify(ui, rect, cover, self.integrations.spotify.tint, &now.track.title, now.playing, compact, groove, time);
+        if super::pill::spotify(ui, rect, cover, self.integrations.spotify.tint, &now.track.title, now.playing, compact, groove, time) {
+            (out.tab, out.wake, out.picked) = (Some(Tab::Music), true, true);
+        }
     }
 
     /// The open island: the header and the page under it.
@@ -920,4 +923,10 @@ pub(super) fn wash_with(painter: &Painter, card: Rect, color: Color32, strength:
     for step in 0..24 {
         painter.circle_filled(center, 150.0 * (1.0 - step as f32 / 24.0 * 0.9), color.gamma_multiply(strength * 0.055));
     }
+}
+
+/// Whether Luna keeps dancing to the song in `state`: only what needs the person (a question, a permission, an error)
+/// stops her; an agent at work or done does not.
+pub(crate) fn dances_through(state: MagoState) -> bool {
+    matches!(state, MagoState::Idle | MagoState::Sleeping | MagoState::Working | MagoState::Done)
 }

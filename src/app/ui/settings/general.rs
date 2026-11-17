@@ -37,15 +37,15 @@ impl DrawingApp {
         if let Some(i) = row(ui, k, "Abrir o app em", "", |ui| choice(ui, k, "Abrir o app em", &["Canvas", "Chat"], now)) {
             self.prefs.start_in_chat = i == 1;
         }
-        if cfg!(windows) {
-            let was_enabled = self.prefs.run_at_login;
-            toggle(ui, k, "Iniciar com o Windows", "Abre o MagoAgent ao entrar na sua conta do Windows.", &mut self.prefs.run_at_login);
-            if self.prefs.run_at_login != was_enabled
-                && let Err(error) = crate::app::system::run_at_login::set_run_at_login(self.prefs.run_at_login)
-            {
-                self.prefs.run_at_login = was_enabled;
-                self.toast(error);
-            }
+        let was_enabled = self.prefs.run_at_login;
+        let system = crate::app::system::run_at_login::system_name();
+        let (label, hint) = (format!("Iniciar com o {system}"), format!("Abre o MagoAgent ao entrar na sua conta do {system}."));
+        toggle(ui, k, &label, &hint, &mut self.prefs.run_at_login);
+        if self.prefs.run_at_login != was_enabled
+            && let Err(error) = crate::app::system::run_at_login::set_run_at_login(self.prefs.run_at_login)
+        {
+            self.prefs.run_at_login = was_enabled;
+            self.toast(error);
         }
         let hint = "Fechar a janela deixa o MagoAgent rodando, com os terminais e os agentes. Ele volta pelo ícone perto do relógio; Ctrl+Q sai de verdade.";
         toggle(ui, k, "Fechar mantém em segundo plano", hint, &mut self.prefs.close_to_background);

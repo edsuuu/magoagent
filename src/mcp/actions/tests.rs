@@ -120,6 +120,10 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
     app.act("set_setting", &json!({ "name": "island_compact_after", "value": "0" })).unwrap();
     assert_eq!(app.prefs.island_compact_after, 0, "the compact island never shrinks");
     assert!(app.act("set_setting", &json!({ "name": "island_compact_after", "value": "45" })).is_err());
+    app.act("set_setting", &json!({ "name": "run_at_login", "value": "on" })).unwrap();
+    assert!(app.prefs.run_at_login, "the app opens at login");
+    app.act("set_setting", &json!({ "name": "run_at_login", "value": "off" })).unwrap();
+    assert!(!app.prefs.run_at_login);
     assert!(app.act("set_setting", &json!({ "name": "island_color", "value": "pink" })).is_err());
     assert!(!app.prefs.island);
     assert!(app.act("set_setting", &json!({ "name": "island", "value": "talvez" })).is_err());

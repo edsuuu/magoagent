@@ -129,6 +129,48 @@ fn the_pill_asks_for_frames_while_the_song_plays_and_not_paused() {
     assert_eq!(paused, frame_delay(&mut app, &ctx, 2.4), "paused, the pill asks for no frame, as with no song");
 }
 
+/// Asked ("se eu clicar na música ele me leva para a tab da música"): a click on the cover in the notch opens the
+/// island on Música.
+#[test]
+fn a_click_on_the_songs_cover_opens_the_island_on_the_music() {
+    use crate::app::integrations::spotify::{Now, Track};
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    app.prefs.integrations.spotify = true;
+    app.integrations.spotify.now = Some(Now { track: Track::new("505", "Arctic Monkeys", "", "").unwrap(), playing: false, ..Default::default() });
+    run(&mut app, &ctx, 1.0, 1.3, vec![]);
+    assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H), "the notch");
+    // the cover sits 4 from the notch's left, 16 wide
+    let cover = Pos2::new(SIZE.x / 2.0 - CLOSED_W / 2.0 + 12.0, CLOSED_H / 2.0);
+    let press = |pressed| egui::Event::PointerButton { pos: cover, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    frame_at(&mut app, &ctx, 1.4, vec![egui::Event::PointerMoved(cover), press(true)]);
+    frame_at(&mut app, &ctx, 1.45, vec![press(false)]);
+    run(&mut app, &ctx, 1.5, 3.5, vec![egui::Event::PointerMoved(cover)]);
+    assert_eq!((app.island.size().x, app.island.tab()), (EXPANDED_W, Tab::Music), "open on Música");
+}
+
+/// Asked ("tem momento que a Luna fica parada como se nada estivesse tocando"): an agent at work or done does not stop
+/// her dance; what needs the person does.
+#[test]
+fn luna_dances_through_the_agents_work_and_stops_for_the_person() {
+    use crate::app::island::paint::dances_through;
+    use crate::app::mascot::mago::MagoState;
+    for state in [MagoState::Idle, MagoState::Sleeping, MagoState::Working, MagoState::Done] {
+        assert!(dances_through(state), "{state:?}");
+    }
+    for state in [MagoState::NeedsYou, MagoState::Asking, MagoState::Error] {
+        assert!(!dances_through(state), "{state:?}");
+    }
+}
+
+/// Asked ("se os hooks estão instalados aqui precisa saber"): the empty Claude Code page says so when they are in.
+#[test]
+fn the_empty_claude_page_knows_whether_the_hooks_are_in() {
+    use crate::app::island::home::empty_words;
+    assert!(empty_words(Tab::Claude, false).1.starts_with("Instale os hooks"));
+    assert!(empty_words(Tab::Claude, true).1.starts_with("Os hooks estão instalados"));
+}
+
 #[test]
 fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() {
     let ctx = Context::default();
