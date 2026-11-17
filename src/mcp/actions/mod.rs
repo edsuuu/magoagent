@@ -11,6 +11,7 @@ mod email;
 mod files;
 mod integrations;
 mod settings;
+mod sidebar;
 mod spotify;
 #[cfg(test)]
 mod tests;
@@ -174,6 +175,7 @@ impl DrawingApp {
                 self.prefs.minimap = args["open"].as_bool().unwrap_or(!self.prefs.minimap);
                 Ok(if self.prefs.minimap { "Minimapa aberto." } else { "Minimapa fechado." }.into())
             }
+            "sidebar" => self.act_sidebar(&text("action")),
             "file_tree" => self.act_file_tree(args),
             "tasks" => self.act_tasks(args),
             "flow" => self.act_flow(args),
