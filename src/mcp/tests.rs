@@ -201,6 +201,7 @@ fn every_app_action_is_a_tool_once() {
         "flow",
         "binder",
         "minimap",
+        "sidebar",
         "terminal_menu",
         "terminal_find",
         "terminal_look",

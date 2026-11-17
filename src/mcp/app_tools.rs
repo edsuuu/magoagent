@@ -338,7 +338,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "usage_refresh",
-            "description": "Lê de novo o uso dos planos (o botão Atualizar do popover Uso dos Agentes): pergunta ao Claude Code e ao Codex quanto da sessão e da semana já foi. O app já faz isso a cada 5 minutos; use quando o número estiver velho. A resposta vem em alguns segundos: depois consulte `usage`.",
+            "description": "Lê de novo o uso dos planos (o botão Atualizar do detalhe Uso dos agentes, no rodapé da lateral): pergunta ao Claude Code e ao Codex quanto da sessão e da semana já foi. O app já faz isso a cada 5 minutos; use quando o número estiver velho. A resposta vem em alguns segundos: depois consulte `usage`.",
             "inputSchema": { "type": "object", "properties": {} },
         }),
         json!({
@@ -360,6 +360,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "name": "minimap",
             "description": "Abre ou fecha o minimapa do canvas (o painel no canto de baixo à direita). Sem `open`, alterna.",
             "inputSchema": { "type": "object", "properties": { "open": { "type": "boolean" } } },
+        }),
+        json!({
+            "name": "sidebar",
+            "description": "A lateral dos espaços, como a pessoa a usa: `next` vai ao próximo agente que precisa dela (o botão \"Ir para o próximo\" do cartão Precisa de você, o mesmo que Ctrl+Shift+A: troca de espaço se preciso e centraliza o cartão dele); `agents_open` e `agents_close` abrem ou recolhem a seção Agentes deste espaço (fica salvo); `usage_open` e `usage_close` abrem ou fecham o detalhe do uso dos planos no rodapé; `status` diz quantos agentes precisam da pessoa (em todos os espaços) e lista os agentes deste espaço com o estado. Para centralizar um agente da lista, use `focus_canvas`.",
+            "inputSchema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["status", "next", "agents_open", "agents_close", "usage_open", "usage_close"] } }, "required": ["action"] },
         }),
         json!({
             "name": "file_tree",
