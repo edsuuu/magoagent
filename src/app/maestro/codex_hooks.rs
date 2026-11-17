@@ -1,5 +1,7 @@
 //! Ajustes › Integrações: instalação explícita dos hooks externos no `~/.codex/hooks.json`.
 
+pub(crate) use super::claude_hooks::installed_at;
+use super::claude_hooks::{ours, write_with_backup};
 use crate::prelude::*;
 use std::path::Path;
 
@@ -28,19 +30,8 @@ pub(crate) fn codex_settings_path() -> Option<PathBuf> {
     Some(folder.join("hooks.json"))
 }
 
-fn ours(entry: &Value) -> bool {
-    entry["hooks"].as_array().is_some_and(|hooks| {
-        hooks.iter().any(|hook| hook["command"].as_str().is_some_and(|command| command.contains("magoagent") && command.contains(" hook external")))
-    })
-}
-
 fn read(path: &Path) -> Result<Value, String> {
-    match fs::read_to_string(path) {
-        Ok(text) if text.trim().is_empty() => Ok(Value::Null),
-        Ok(text) => serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| format!("hooks.json não é um JSON válido ({e}): não mexi nele.")),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Value::Null),
-        Err(error) => Err(format!("Não consegui ler {}: {error}", path.display())),
-    }
+    super::claude_hooks::read_named(path, "hooks.json")
 }
 
 fn without_ours(existing: &Value) -> Result<Value, String> {
@@ -88,30 +79,9 @@ fn merged(existing: &Value, exe: &str) -> Result<Value, String> {
     Ok(Value::Object(root))
 }
 
-fn write_with_backup(path: &Path, value: &Value) -> Result<(), String> {
-    if path.is_file() {
-        let stamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |time| time.as_millis());
-        let backup = path.with_file_name(format!("hooks.json.magoagent-{stamp}.bak"));
-        fs::copy(path, backup).map_err(|error| format!("Sem backup, não mexi no hooks.json ({error})."))?;
-    }
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| format!("Não consegui criar {}: {error}", parent.display()))?;
-    }
-    let text = serde_json::to_string_pretty(value).map_err(|error| error.to_string())?;
-    let temporary = path.with_extension("json.new");
-    fs::write(&temporary, text).and_then(|_| fs::rename(&temporary, path)).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
-        format!("Não consegui gravar {}: {error}", path.display())
-    })
-}
-
-pub(crate) fn installed_at(path: &Path) -> bool {
-    read(path).ok().and_then(|root| root["hooks"].as_object().cloned()).is_some_and(|hooks| hooks.values().filter_map(Value::as_array).flatten().any(ours))
-}
-
 fn install_at(path: &Path, exe: &str) -> Result<String, String> {
     let merged = merged(&read(path)?, exe)?;
-    write_with_backup(path, &merged)?;
+    write_with_backup(path, "hooks.json", &merged)?;
     Ok(format!("Hooks do Codex instalados em {}: as sessões novas passam a avisar a ilha.", path.display()))
 }
 
@@ -119,7 +89,7 @@ fn remove_at(path: &Path) -> Result<String, String> {
     if !installed_at(path) {
         return Ok("Os hooks do MagoAgent não estavam instalados no Codex.".into());
     }
-    write_with_backup(path, &without_ours(&read(path)?)?)?;
+    write_with_backup(path, "hooks.json", &without_ours(&read(path)?)?)?;
     Ok(format!("Hooks removidos de {}: o resto do arquivo ficou como estava.", path.display()))
 }
 
