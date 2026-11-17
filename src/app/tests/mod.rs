@@ -36,6 +36,7 @@ mod persist;
 mod props;
 mod session;
 mod shapes;
+mod sidebar;
 mod terminals;
 mod tools;
 mod typing;
