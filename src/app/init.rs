@@ -135,6 +135,7 @@ impl Default for DrawingApp {
             chat_titles: Default::default(),
             chats: Vec::new(),
             chat_runs: Default::default(),
+            chat_ended: Default::default(),
             chat_asks: Vec::new(),
             chat_starts: Vec::new(),
             chat_nodes_read: 0.0,

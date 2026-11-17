@@ -4,7 +4,7 @@
 
 use super::marquee::marquee;
 use super::minis::mini_cells;
-use super::stage::{self, Activity, Phase};
+use super::stage::{self, Activity};
 use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, main_state};
 use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::integrations::spotify::Now;
@@ -179,10 +179,11 @@ impl DrawingApp {
                 let program = row.spec.command.split_whitespace().next().unwrap_or_default().to_lowercase();
                 let working = matches!(row.state, AgentState::Working(_));
                 let activity = self.transcripts.get(&row.id).and_then(|t| stage::activity(&t.items, working, stage::recent(row.state, self.now) && !working));
-                let mut mago = MagoState::from_agent(row.state, self.now);
-                if activity.as_ref().is_some_and(|activity| activity.phase == Phase::Failed) && row.state != AgentState::Waiting {
-                    mago = MagoState::Error;
-                }
+                // as the chat's band shows it: talking while it writes, the error of a step
+                let mago = self
+                    .transcripts
+                    .get(&row.id)
+                    .map_or(MagoState::from_agent(row.state, self.now), |transcript| MagoState::in_turn(row.state, &transcript.items, self.now));
                 activities.extend(activity.map(|activity| (row.id.clone(), activity)));
                 Line {
                     id: row.id.clone(),

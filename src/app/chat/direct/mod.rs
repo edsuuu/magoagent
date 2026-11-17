@@ -268,14 +268,14 @@ impl DrawingApp {
         AgentRow { id: chat.id.clone(), spec, state: self.chat_state(&chat.id).unwrap_or(AgentState::Idle(None)), mission: None, space: String::new() }
     }
 
-    /// Working while a message is being answered; None for what isn't a chat.
+    /// Working while a message is being answered, then idle since its answer ended; None for what isn't a chat.
     pub(crate) fn chat_state(&self, id: &str) -> Option<AgentState> {
         if self.person_asked(id) {
             return Some(AgentState::Waiting);
         }
         self.is_chat(id).then(|| match self.chat_runs.get(id).map(|r| r.since).or_else(|| self.chat_cmds.get(id).map(|r| r.since)) {
             Some(since) => AgentState::Working(since),
-            None => AgentState::Idle(None),
+            None => AgentState::Idle(self.chat_ended.get(id).copied()),
         })
     }
 

@@ -17,6 +17,7 @@ pub(crate) use motion::{MagoMotion, gaze_toward};
 use crate::app::maestro::avatar::AvatarState;
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
+use crate::transcript::ChatItem;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -52,6 +53,20 @@ impl MagoState {
             AgentState::Idle(Some(since)) if now - since < CELEBRATE_FOR => Self::Done,
             AgentState::Idle(_) | AgentState::Active(_) => Self::Idle,
             AgentState::Ended => Self::Sleeping,
+        }
+    }
+
+    /// The same in the turn its conversation tells (`items`): a step that failed in the turn at work or just over shows
+    /// (as the island's cards had it), and at work, while its words are the last thing in the turn, it talks.
+    pub(crate) fn in_turn(state: AgentState, items: &[ChatItem], now: f64) -> Self {
+        let base = Self::from_agent(state, now);
+        let turn = &items[items.iter().rposition(|item| matches!(item, ChatItem::User(_))).map_or(0, |at| at + 1)..];
+        let last_step = turn.iter().rev().find_map(|item| if let ChatItem::Tool(step) = item { Some(step) } else { None });
+        let error_after = turn.iter().rev().take_while(|item| !matches!(item, ChatItem::Tool(_))).any(|item| matches!(item, ChatItem::Error(_)));
+        match base {
+            Self::Working | Self::Done if last_step.is_some_and(|step| step.failed) || error_after => Self::Error,
+            Self::Working if matches!(turn.last(), Some(ChatItem::Agent(_))) => Self::Speaking,
+            _ => base,
         }
     }
 

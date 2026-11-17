@@ -778,6 +778,47 @@ mod tests {
         assert_eq!(main_state(Mood::Ready, false), MagoState::Idle);
     }
 
+    fn chat(id: &str) -> crate::app::chat::direct::Chat {
+        crate::app::chat::direct::Chat {
+            id: id.into(),
+            agent: "claude".into(),
+            name: "Claude Code · loja".into(),
+            cwd: "C:/p".into(),
+            session: None,
+            mode: 0,
+            model: String::new(),
+            effort: String::new(),
+            recruit: false,
+            named: false,
+            draft: false,
+        }
+    }
+
+    /// Asked ("enquanto ela trabalha, aqui na ilha ela pega o mesmo comportamento"): a chat of the app is on the island
+    /// as its band shows it, working, talking while it writes, and done when its answer ends.
+    #[test]
+    fn a_chat_of_the_app_is_on_the_island_as_its_band_shows_it() {
+        use crate::transcript::{ChatItem, Transcript};
+        let mut app = DrawingApp::default();
+        app.chats = vec![chat("a")];
+        let mut transcript = Transcript::new(PathBuf::new());
+        transcript.items = vec![ChatItem::User("oi".into()), ChatItem::Agent("Já vejo".into())];
+        app.transcripts.insert("a".into(), transcript);
+        let mut row = app.agent_rows().into_iter().find(|row| row.id == "a").expect("the chat is one of the island's rows");
+        assert_eq!(row.state, AgentState::Idle(None), "never answered");
+        row.state = AgentState::Working(0.0);
+        let view = app.island_view(vec![row], Vec::new(), Mood::Working(1), 1.0);
+        assert_eq!(view.lines[0].mago, MagoState::Speaking, "writing its answer");
+        assert_eq!(main_state(view.mood, false), MagoState::Working, "the island's own wizard works");
+        // the answer ended: done, as a terminal's agent is when its turn ends
+        app.now = 10.0;
+        app.chat_ended.insert("a".into(), 9.0);
+        let row = app.agent_rows().into_iter().find(|row| row.id == "a").unwrap();
+        assert_eq!(row.state, AgentState::Idle(Some(9.0)));
+        let view = app.island_view(vec![row], Vec::new(), Mood::Ready, 10.0);
+        assert_eq!(view.lines[0].mago, MagoState::Done);
+    }
+
     #[test]
     fn the_wizard_loops_at_every_frame_compact_or_open_but_not_closed() {
         assert!(Shape::Compact.animates_every_frame() && Shape::Open.animates_every_frame());

@@ -440,3 +440,24 @@ fn a_small_luna_has_bigger_eyes_up_to_a_minis() {
     assert!(grow > 1.4 && grow < 1.8 && spread > 1.1 && spread < 1.3, "{grow} {spread}");
     assert_eq!(draw::small_eyes(10.0), (1.8, 1.3));
 }
+
+/// Asked ("por que as expressões dela não mudam aqui?"): the chat's band showed one face for the whole turn.
+#[test]
+fn in_its_turn_the_agent_talks_while_it_writes_and_shows_the_error_of_a_step() {
+    use crate::transcript::{ChatItem, Step};
+    let (working, now) = (AgentState::Working(990.0), 1000.0);
+    let user = ChatItem::User("oi".into());
+    let step = |failed| ChatItem::Tool(Step { name: "Bash".into(), failed, ..Default::default() });
+    let state = |agent, items: &[ChatItem]| MagoState::in_turn(agent, items, now);
+    assert_eq!(state(working, std::slice::from_ref(&user)), MagoState::Working, "thinking");
+    assert_eq!(state(working, &[user.clone(), step(false)]), MagoState::Working, "on a tool");
+    assert_eq!(state(working, &[user.clone(), step(false), ChatItem::Agent("Pronto".into())]), MagoState::Speaking, "writing");
+    assert_eq!(state(working, &[user.clone(), step(true)]), MagoState::Error);
+    assert_eq!(state(working, &[user.clone(), ChatItem::Error("falhou".into())]), MagoState::Error);
+    // a failure of an earlier turn is over; the end of the turn celebrates, unless it failed; waiting wins
+    assert_eq!(state(working, &[step(true), user.clone()]), MagoState::Working);
+    assert_eq!(state(AgentState::Idle(Some(998.0)), &[user.clone(), ChatItem::Agent("ok".into())]), MagoState::Done);
+    assert_eq!(state(AgentState::Idle(Some(998.0)), &[user.clone(), step(true)]), MagoState::Error);
+    assert_eq!(state(AgentState::Idle(Some(100.0)), &[user.clone(), step(true)]), MagoState::Sleeping, "long over");
+    assert_eq!(state(AgentState::Waiting, &[user, step(true)]), MagoState::NeedsYou);
+}
