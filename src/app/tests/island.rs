@@ -267,14 +267,7 @@ fn a_question_takes_the_island_over() {
 
 /// An app on a drawing of its own in a fresh folder, with an agent installed.
 fn app_in(name: &str) -> (DrawingApp, PathBuf, Vec<Preset>) {
-    let dir = std::env::temp_dir().join(format!("mago-ilha-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    // today's drawing already there: with none, it is a first run and there is no space yet
-    fs::write(dir.join("autosave.mago"), r#"{"version":1,"elements":[]}"#).unwrap();
-    let mut app = DrawingApp { autosave: Some(dir.join("autosave.mago")), ..Default::default() };
-    app.load_spaces();
-    app.load_autosave();
+    let (app, dir) = app_in_folder(&format!("ilha-{name}"));
     (app, dir, vec![Preset::new("Claude Code", "claude")])
 }
 

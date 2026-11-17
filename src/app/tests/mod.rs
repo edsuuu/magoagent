@@ -116,6 +116,19 @@ fn key_press(key: Key) -> egui::Event {
     egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }
 }
 
+/// The app on a drawing of its own in a fresh folder `mago-<name>-<pid>` of the temp dir, with its spaces loaded; the folder.
+pub(crate) fn app_in_folder(name: &str) -> (DrawingApp, PathBuf) {
+    let dir = std::env::temp_dir().join(format!("mago-{name}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    // today's drawing already there: with none, it is a first run and there is no space yet
+    fs::write(dir.join("autosave.mago"), r#"{"version":1,"elements":[]}"#).unwrap();
+    let mut app = DrawingApp { autosave: Some(dir.join("autosave.mago")), ..Default::default() };
+    app.load_spaces();
+    app.load_autosave();
+    (app, dir)
+}
+
 /// The screen the island's tests run it on.
 const ISLAND_SCREEN: Vec2 = Vec2::new(1200.0, 800.0);
 
