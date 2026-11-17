@@ -5,7 +5,7 @@
 //! Code's settings.json, Codex's config.toml) until the chat picks others; Codex's models are
 //! the ones its own cache lists.
 
-use crate::app::chat::direct::{CHAT_MODES, Chat, folder_label};
+use crate::app::chat::direct::{CHAT_MODES, Chat, chat_name, folder_label, no_folder};
 use crate::app::chat::list::{CHECK, DOWN, Look, glyph};
 use crate::prelude::*;
 use std::sync::OnceLock;
@@ -402,6 +402,12 @@ fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Fo
 }
 
 /// Whether two paths are the same folder, whatever their slashes, a trailing one and (off Linux) their case.
+/// The folder chip's words: "Nenhuma pasta" for the app's own, not its name (asked: "no chat fica .magoagent, não é para
+/// ter, é para ficar Nenhuma pasta").
+pub(crate) fn chip_folder(cwd: &str) -> String {
+    if no_folder(cwd) { "Nenhuma pasta".into() } else { folder_label(cwd) }
+}
+
 fn same_folder(a: &str, b: &str) -> bool {
     let norm = |p: &str| {
         let p = p.trim().replace('\\', "/").trim_end_matches('/').to_string();
@@ -462,7 +468,7 @@ impl DrawingApp {
         let mut chips = vec![("model", tuning, "", true, Rect::from_min_max(Pos2::new(row_rect.right() - tuning_w, row_rect.top()), row_rect.max))];
         let end = chips[0].4.left() - 6.0;
         let mut x = row_rect.left();
-        for (what, text, hint, enabled) in [("folder", folder_label(&chat.cwd), "", !fixed), ("mode", mode, "", true)] {
+        for (what, text, hint, enabled) in [("folder", chip_folder(&chat.cwd), "", !fixed), ("mode", mode, "", true)] {
             let w = width(&text, 10.0 + 13.0 + 6.0 + 10.0);
             if x + w > end {
                 break;
@@ -589,10 +595,10 @@ impl DrawingApp {
         // a name the person gave stays
         if !chat.named {
             let agent = chat.name.split(" · ").next().unwrap_or(&chat.agent).to_string();
-            chat.name = format!("{agent} · {}", folder_label(&chat.cwd));
+            chat.name = chat_name(&agent, &chat.cwd);
         }
         // the app's own folder ("Nenhuma pasta") is not one of the person's recent ones
-        if !crate::file::projects_dir().is_some_and(|d| same_folder(dir, &d.display().to_string())) {
+        if !no_folder(dir) {
             self.prefs.folders.remember(dir);
         }
         self.save_chats();
@@ -652,5 +658,15 @@ mod tests {
         app.chats[0].session = Some("s1".into());
         app.chat_set_folder("~/outra");
         assert_eq!(app.chats[0].cwd, "C:\\trabalho\\loja", "fixed once the session exists");
+    }
+
+    #[test]
+    fn a_chat_without_a_folder_says_nenhuma_pasta_not_the_apps_own() {
+        let own = crate::file::projects_dir().unwrap().display().to_string();
+        assert_eq!(chip_folder(&own), "Nenhuma pasta");
+        assert_eq!(chip_folder(&format!("{own}/")), "Nenhuma pasta");
+        assert_eq!(chat_name("Claude Code", &own), "Claude Code");
+        assert_eq!(chip_folder("C:/trabalho/loja"), "loja");
+        assert_eq!(chat_name("Claude Code", "C:/trabalho/loja"), "Claude Code · loja");
     }
 }
