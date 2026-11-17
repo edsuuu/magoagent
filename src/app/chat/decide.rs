@@ -3,7 +3,7 @@
 //! a permission it needs (Permitir / Negar). The chat's `claude -p` waits on the app's MCP tool `ask_person` (its
 //! `--permission-prompt-tool`, chat/tools.rs) until the answer goes back over the bridge.
 
-use crate::app::chat::list::{AMBER, Look, bold, pulse_dot};
+use crate::app::chat::list::{AMBER, AmberCard, Look, bold, pulse_dot};
 use crate::app::maestro::outside::{ASK_PREFIX, Source};
 use crate::prelude::*;
 use std::sync::mpsc::Sender;
@@ -266,9 +266,8 @@ impl DrawingApp {
         }
         let Some(index) = asks.iter().position(|ask| ask.chat == chat) else { return };
         let name = self.chats.iter().find(|item| item.id == chat).map(|item| item.name.clone()).unwrap_or_default();
-        let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
-        let (fill, edge, title) = if look.dark { (hex(0x2a2213), hex(0x7a5a22), hex(0xf6c46f)) } else { (hex(0xfdf3e1), hex(0xe6b866), hex(0x8a5a00)) };
-        let (well, well_edge) = if look.dark { (hex(0x17130b), hex(0x3d2f14)) } else { (hex(0xfffaf0), hex(0xefd3a0)) };
+        let card = AmberCard::new(look.dark);
+        let AmberCard { edge, title, well, well_edge, .. } = card;
         let mut decided: Option<bool> = None;
         let mut terminal = false;
         let ask = &mut asks[index];
@@ -276,7 +275,7 @@ impl DrawingApp {
         let name = outside.as_ref().map_or(name, |(label, _)| label.clone());
         let guarded = ask.guarded(time);
         let before = (ask.picked.clone(), ask.other.clone(), ask.step);
-        egui::Frame::new().fill(fill).stroke(Stroke::new(1.0, edge)).corner_radius(12).inner_margin(12).show(ui, |ui| {
+        card.frame().show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 6.0;
             let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
@@ -291,13 +290,10 @@ impl DrawingApp {
             if ask.questions.is_empty() {
                 // a permission: what it is about, Permitir / Negar
                 let summary = ask.summary();
-                egui::Frame::new().fill(well).stroke(Stroke::new(1.0, well_edge)).corner_radius(8).inner_margin(egui::Margin::symmetric(12, 8)).show(
-                    ui,
-                    |ui| {
-                        ui.set_width(ui.available_width());
-                        ui.add(egui::Label::new(egui::RichText::new(summary).monospace().size(13.0).color(look.text)).wrap());
-                    },
-                );
+                card.well_frame().inner_margin(egui::Margin::symmetric(12, 8)).show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.add(egui::Label::new(egui::RichText::new(summary).monospace().size(13.0).color(look.text)).wrap());
+                });
                 ui.horizontal(|ui| {
                     if pill(ui, "Permitir", true, look, edge).clicked() {
                         decided = Some(true);
@@ -363,17 +359,14 @@ impl DrawingApp {
             // another answer, written (a hook takes only the options' labels)
             if outside.is_none() {
                 let other = &mut ask.other[step];
-                egui::Frame::new().fill(well).stroke(Stroke::new(1.0, well_edge)).corner_radius(8).inner_margin(egui::Margin::symmetric(10, 6)).show(
-                    ui,
-                    |ui| {
-                        let field = egui::TextEdit::singleline(other)
-                            .hint_text("Outra resposta…")
-                            .frame(egui::Frame::NONE)
-                            .text_color(look.text)
-                            .desired_width(f32::INFINITY);
-                        ui.add(field);
-                    },
-                );
+                card.well_frame().inner_margin(egui::Margin::symmetric(10, 6)).show(ui, |ui| {
+                    let field = egui::TextEdit::singleline(other)
+                        .hint_text("Outra resposta…")
+                        .frame(egui::Frame::NONE)
+                        .text_color(look.text)
+                        .desired_width(f32::INFINITY);
+                    ui.add(field);
+                });
             }
             ui.horizontal(|ui| {
                 let last = step + 1 == ask.questions.len();

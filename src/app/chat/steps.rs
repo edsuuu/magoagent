@@ -2,7 +2,9 @@
 //! folds into one line), the band over the box with the one running now, the amber card when it
 //! waits on its terminal, and the messages queued meanwhile.
 
-use crate::app::chat::list::{ACCENT, AMBER, CHECK, CROSS, DOWN, GREEN, Look, PROMPT, RED, RIGHT, bold, clipped, code_card, elapsed, glyph, pulse_dot};
+use crate::app::chat::list::{
+    ACCENT, AMBER, AmberCard, CHECK, CROSS, DOWN, GREEN, Look, PROMPT, RED, RIGHT, bold, clipped, code_card, elapsed, glyph, pulse_dot,
+};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::transcript::{ChatItem, Step, Transcript};
@@ -267,10 +269,8 @@ impl DrawingApp {
     /// buttons (its question over them) or, when the screen shows none, its last lines; and
     /// "Abrir terminal".
     pub(crate) fn waiting_card(&self, ui: &mut egui::Ui, row: &AgentRow, look: &Look, narrow: bool, t: f64) -> Option<CardClick> {
-        let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
-        let (fill, edge, title, note) =
-            if look.dark { (hex(0x2a2213), hex(0x7a5a22), hex(0xf6c46f), hex(0xd8c7a6)) } else { (hex(0xfdf3e1), hex(0xe6b866), hex(0x8a5a00), hex(0x6b5a3a)) };
-        let (well, well_edge) = if look.dark { (hex(0x17130b), hex(0x3d2f14)) } else { (hex(0xfffaf0), hex(0xefd3a0)) };
+        let card = AmberCard::new(look.dark);
+        let AmberCard { edge, title, note, well, well_edge, .. } = card;
         let screen = self.terminals.get(&row.id).and_then(|s| s.as_ref().ok()).map(|s| s.handle.screen_text()).unwrap_or_default();
         let menu = menu_choices(&screen);
         let why = match (self.agent_sessions.get(&row.id).and_then(|s| s.waiting_for.as_deref()), &menu) {
@@ -286,7 +286,7 @@ impl DrawingApp {
         };
         let size = if narrow { 13.5 } else { 14.0 };
         let mut click = None;
-        egui::Frame::new().fill(fill).stroke(Stroke::new(1.0, edge)).corner_radius(12).inner_margin(12).show(ui, |ui| {
+        card.frame().show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 6.0;
             // the head: the dot, who and why, and the terminal a click away
@@ -311,14 +311,11 @@ impl DrawingApp {
                 // no menu to read: its last lines
                 let lines: Vec<&str> = screen.lines().collect();
                 let end = lines.iter().rposition(|l| !l.trim().is_empty()).map_or(0, |i| i + 1);
-                egui::Frame::new().fill(well).stroke(Stroke::new(1.0, well_edge)).corner_radius(8).inner_margin(egui::Margin::symmetric(12, 8)).show(
-                    ui,
-                    |ui| {
-                        ui.set_width(ui.available_width());
-                        let tail = lines[end.saturating_sub(8)..end].join("\n");
-                        ui.add(egui::Label::new(egui::RichText::new(tail).monospace().size(13.0).color(look.text)).extend());
-                    },
-                );
+                card.well_frame().inner_margin(egui::Margin::symmetric(12, 8)).show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    let tail = lines[end.saturating_sub(8)..end].join("\n");
+                    ui.add(egui::Label::new(egui::RichText::new(tail).monospace().size(13.0).color(look.text)).extend());
+                });
                 return;
             };
             if !menu.question.is_empty() {

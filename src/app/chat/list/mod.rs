@@ -25,6 +25,37 @@ pub(crate) const AMBER: Color32 = Color32::from_rgb(0xf0, 0xa7, 0x3a);
 pub(crate) const RED: Color32 = Color32::from_rgb(0xf8, 0x51, 0x49);
 pub(crate) const ACCENT: Color32 = Color32::from_rgb(0x0a, 0x84, 0xff);
 
+/// The amber card of an agent that needs the person (`waiting_card`, `decide_card`): its ground, edge, title and note,
+/// and the well inside it (what is asked, the screen's lines, the options).
+pub(crate) struct AmberCard {
+    pub(crate) fill: Color32,
+    pub(crate) edge: Color32,
+    pub(crate) title: Color32,
+    pub(crate) note: Color32,
+    pub(crate) well: Color32,
+    pub(crate) well_edge: Color32,
+}
+
+impl AmberCard {
+    pub(crate) fn new(dark: bool) -> AmberCard {
+        let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
+        let [fill, edge, title, note, well, well_edge] =
+            if dark { [0x2a2213, 0x7a5a22, 0xf6c46f, 0xd8c7a6, 0x17130b, 0x3d2f14] } else { [0xfdf3e1, 0xe6b866, 0x8a5a00, 0x6b5a3a, 0xfffaf0, 0xefd3a0] }
+                .map(hex);
+        AmberCard { fill, edge, title, note, well, well_edge }
+    }
+
+    /// The card's frame.
+    pub(crate) fn frame(&self) -> egui::Frame {
+        egui::Frame::new().fill(self.fill).stroke(Stroke::new(1.0, self.edge)).corner_radius(12).inner_margin(12)
+    }
+
+    /// The well's frame, its margin left to the caller.
+    pub(crate) fn well_frame(&self) -> egui::Frame {
+        egui::Frame::new().fill(self.well).stroke(Stroke::new(1.0, self.well_edge)).corner_radius(8)
+    }
+}
+
 /// The chat's colors, neutral greys (no purple cast) on both looks: the label ramp of the design is
 /// white at 85% (text), 55% (secondary) and 25% (tertiary) over the ground, black at 85/50/26 on light.
 pub(crate) mod ink {
