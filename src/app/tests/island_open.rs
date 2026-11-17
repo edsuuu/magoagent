@@ -80,6 +80,18 @@ fn second_pill(app: &DrawingApp) -> Pos2 {
     Pos2::new(inner.left() + width + 4.0 + width / 2.0, inner.center().y)
 }
 
+/// The first row of the feed list in Início (the right card, after the summary card).
+fn first_row(app: &DrawingApp) -> Pos2 {
+    let rect = island_rect(app);
+    let page = Rect::from_min_max(Pos2::new(rect.left() + 10.0, rect.top() + 32.0), rect.max - Vec2::new(10.0, 10.0));
+    // left card (summary) width + 10 gap
+    let left_w = 236.0 + 10.0;
+    let card = Rect::from_min_max(Pos2::new(page.left() + left_w, page.top()), page.max);
+    let inner = card.shrink2(Vec2::new(8.0, 7.0));
+    // first row center
+    Pos2::new(inner.center().x, inner.top() + 19.0) // ROW_H / 2 = 38 / 2 = 19
+}
+
 #[test]
 fn a_click_on_a_mini_of_the_compact_island_opens_it_on_that_agent() {
     let (mut app, ctx, mut time) = compact();
@@ -107,6 +119,33 @@ fn the_click_on_the_pill_already_in_the_card_opens_its_agent() {
     // the second, on the one in the card, is its Abrir: a chat opens in the island's conversation
     click(&mut app, &ctx, &mut time, pill);
     assert_eq!((app.island.tab(), app.chat_agent.as_deref()), (Tab::Chat, Some("b")));
+}
+
+#[test]
+fn a_click_on_inicios_line_of_a_session_outside_opens_its_conversation_at_once() {
+    let dir = std::env::temp_dir().join(format!("magoagent-island-feed-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("ilha-inicio.jsonl");
+    fs::write(&file, said("user", "arrume o login") + &said("assistant", "Vou olhar o formulário.")).unwrap();
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.prefs.island = true;
+    let hook = |event: &str| json!({ "hook_event_name": event, "session_id": "ilha-inicio", "cwd": "/tmp/loja", "transcript_path": file.display().to_string(), "prompt": "arrume o login" });
+    app.take_outside_hook(&hook("UserPromptSubmit"), None);
+    let id = app.outside_pills()[0].id.clone();
+    let mut time = 1.0;
+    rest(&mut app, &ctx, &mut time, Pos2::new(SIZE.x / 2.0, 10.0), 1.0);
+    let middle = island_rect(&app).center();
+    click(&mut app, &ctx, &mut time, middle);
+    assert_eq!(app.island.tab(), Tab::Home);
+    // asked ("clicar numa linha que é um chat ou sessão precisa abrir a conversa dela na hora"): one click, and its
+    // conversation is there with what the terminal said
+    let row_pos = first_row(&app);
+    let texts = click(&mut app, &ctx, &mut time, row_pos);
+    assert_eq!((app.island.tab(), app.island.focus()), (Tab::Chat, Some(id.as_str())), "{texts:?}");
+    assert!(texts.iter().any(|text| text == "arrume o login"), "{texts:?}");
+    let _ = fs::remove_dir_all(dir);
 }
 
 /// A line of Claude Code's conversation file.

@@ -163,12 +163,18 @@ fn rate_limited(message: &str) -> bool {
 
 /// The pill of a session: (key, name, colour). Claude Desktop is told by the hook (`CLAUDE_CODE_ENTRYPOINT`).
 fn origin(payload: &Value) -> (String, String, Color32) {
+    let cwd = payload["cwd"].as_str().unwrap_or_default();
     match payload["mago_origin"].as_str().unwrap_or_default() {
-        "claude-desktop" => ("claude-desktop".into(), "Claude Desktop".into(), hex(0xd97757)),
-        "cursor" => ("cursor".into(), "Cursor".into(), hex(0xc0c4cc)),
+        "claude-desktop" => {
+            let name = if cwd.is_empty() { "Claude Desktop".to_string() } else { format!("Claude Desktop · {}", folder_label(cwd)) };
+            ("claude-desktop".into(), name, hex(0xd97757))
+        }
+        "cursor" => {
+            let name = if cwd.is_empty() { "Cursor".to_string() } else { format!("Cursor · {}", folder_label(cwd)) };
+            ("cursor".into(), name, hex(0xc0c4cc))
+        }
         "hermes" => ("hermes".into(), "Hermes".into(), hex(0xc084fc)),
         _ => {
-            let cwd = payload["cwd"].as_str().unwrap_or_default();
             let name = if cwd.is_empty() { "Claude Code".to_string() } else { format!("Claude Code · {}", folder_label(cwd)) };
             (format!("code:{cwd}"), name, hex(PILL_PALETTE[palette_index(cwd)]))
         }

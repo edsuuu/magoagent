@@ -110,7 +110,8 @@ pub(crate) enum Tab {
     Chats,
     Chat,
     New,
-    /// The sessions outside the app (Claude Code in a terminal, Claude Desktop, Hermes): the hooks' pills.
+    /// Claude Code: the app's agents and chats running it, and the sessions outside (Claude Desktop, another
+    /// terminal): the hooks' pills.
     Claude,
     GitHub,
     /// Spotify.
@@ -130,6 +131,12 @@ impl Tab {
             Some(_) => Tab::Home,
             None => Tab::Chats,
         }
+    }
+
+    /// Whether this page shows `line`: its own, and Claude Code's the app's agents and chats running it too (they live
+    /// on Chats).
+    pub(super) fn shows(self, line: &Line) -> bool {
+        Tab::of(&line.id) == self || (self == Tab::Claude && line.kind.starts_with("Claude Code"))
     }
 
     /// The grid this page shows the focus of: its own, the conversation's and the new chat's the agents'.
