@@ -129,11 +129,11 @@ fn a_question_from_claude_desktop_reaches_the_island_and_the_answer_goes_back() 
         let asks = app.person_asks.borrow();
         assert_eq!(asks.len(), 1);
         let source = asks[0].source.as_ref().unwrap();
-        assert_eq!((source.label.as_str(), source.event.as_str(), source.session.as_str()), ("Claude Desktop", "PreToolUse", "s1"));
+        assert_eq!((source.label.as_str(), source.event.as_str(), source.session.as_str()), ("Claude Desktop · loja", "PreToolUse", "s1"));
         assert_eq!(asks[0].questions.len(), 2);
     }
     let pills = app.outside_pills();
-    assert_eq!((pills[0].name.as_str(), pills[0].color), ("Claude Desktop", Color32::from_rgb(0xd9, 0x77, 0x57)));
+    assert_eq!((pills[0].name.as_str(), pills[0].color), ("Claude Desktop · loja", Color32::from_rgb(0xd9, 0x77, 0x57)));
     assert_eq!(pills[0].badge, Some(Badge::Approval), "the dot while something waits");
     assert_eq!(pills[0].state, crate::app::ui::agents::AgentState::Waiting);
     assert!(output.recv_timeout(Duration::from_millis(200)).is_err(), "the hook waits");
