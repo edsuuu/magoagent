@@ -286,6 +286,9 @@ pub(crate) fn paint_mago_dancing(painter: &Painter, id: &str, center: Pos2, size
     MOTIONS.with(|motions| {
         let mut motions = motions.borrow_mut();
         let motion = motions.entry(key).or_insert_with(|| MagoMotion::seeded(key));
+        // the song's face on top of the state's, eased there by the motion (asked: "a Luna precisa ter mais
+        // expressões nas músicas")
+        motion.dance_face = (groove.dance != Dance::Nap).then(|| draw::dance_expression(groove));
         motion.advance(state, time, None);
         draw::paint_dancer(painter, center, size, color, motion, &pose, time);
     });

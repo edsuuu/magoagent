@@ -265,7 +265,8 @@ impl DrawingApp {
             let char_w = p.layout_no_wrap("M".into(), mono.clone(), look.soft).size().x.max(1.0);
             let at = dot.right() + 8.0;
             let fits = ((x + room - at) / char_w).floor().max(0.0) as usize;
-            let shown = short_path(&folder, &home, fits);
+            // the app's own folder is no folder (asked: "no chat fica .magoagent, é para ficar Nenhuma pasta")
+            let shown = if crate::app::chat::direct::no_folder(&folder) { "Nenhuma pasta".to_string() } else { short_path(&folder, &home, fits) };
             if fits > 1 {
                 let g = p.layout_no_wrap(shown.clone(), mono.clone(), look.soft);
                 let rect = Rect::from_min_size(Pos2::new(at, line1 - g.size().y / 2.0), g.size());

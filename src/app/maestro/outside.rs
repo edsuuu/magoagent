@@ -1,6 +1,6 @@
 //! Claude Code sessions outside the app's terminals (Claude Desktop's Code tab, VS Code, any terminal): the person's
 //! own `~/.claude/settings.json` runs `magoagent hook external` (claude_hooks.rs), which finds the app by the fixed
-//! `bridge.json` and relays the event (relay.rs). Here is the app's side: a pill per origin (name, colour, the badge), and the
+//! `bridge.json` and relays the event (relay.rs). Here is the app's side: a pill per origin and folder (name, colour, the badge), and the
 //! permissions and AskUserQuestions as `PersonAsk`s the island shows, in the order they came (at most `MAX_ASKS`).
 //! The hook waits for the answer up to `WAIT`; with none, or "Responder no terminal", it prints nothing and the
 //! CLI asks in its own terminal as if the app were not there.
@@ -161,18 +161,18 @@ fn rate_limited(message: &str) -> bool {
     ["rate limit", "usage limit", "limite de"].iter().any(|mark| message.contains(mark))
 }
 
-/// The pill of a session: (key, name, colour). Claude Desktop is told by the hook (`CLAUDE_CODE_ENTRYPOINT`).
+/// The pill of a session: (key, name, colour), one per program and folder. Claude Desktop is told by the hook (relay.rs
+/// `origin`); only Claude Code's pills ("code:") take messages from the app (message.rs).
 fn origin(payload: &Value) -> (String, String, Color32) {
-    match payload["mago_origin"].as_str().unwrap_or_default() {
-        "claude-desktop" => ("claude-desktop".into(), "Claude Desktop".into(), hex(0xd97757)),
-        "cursor" => ("cursor".into(), "Cursor".into(), hex(0xc0c4cc)),
-        "hermes" => ("hermes".into(), "Hermes".into(), hex(0xc084fc)),
-        _ => {
-            let cwd = payload["cwd"].as_str().unwrap_or_default();
-            let name = if cwd.is_empty() { "Claude Code".to_string() } else { format!("Claude Code · {}", folder_label(cwd)) };
-            (format!("code:{cwd}"), name, hex(PILL_PALETTE[palette_index(cwd)]))
-        }
-    }
+    let cwd = payload["cwd"].as_str().unwrap_or_default();
+    let (prefix, program, color) = match payload["mago_origin"].as_str().unwrap_or_default() {
+        "hermes" => return ("hermes".into(), "Hermes".into(), hex(0xc084fc)),
+        "claude-desktop" => ("desktop", "Claude Desktop", hex(0xd97757)),
+        "cursor" => ("cursor", "Cursor", hex(0xc0c4cc)),
+        _ => ("code", "Claude Code", hex(PILL_PALETTE[palette_index(cwd)])),
+    };
+    let name = if cwd.is_empty() { program.to_string() } else { format!("{program} · {}", folder_label(cwd)) };
+    (format!("{prefix}:{cwd}"), name, color)
 }
 
 fn hex(value: u32) -> Color32 {
@@ -242,7 +242,7 @@ impl DrawingApp {
             source.session == session && (TURN_OVER.contains(&event.as_str()) || (event.starts_with("PostToolUse") && same_call(ask)))
         });
         if event == "SessionEnd" {
-            // ponytail: a pill per origin, not per session: one session ending takes the pill of its sibling too until its next event
+            // ponytail: a pill per program and folder, not per session: one session ending takes the pill of a sibling in its folder too until its next event
             self.outside.pills.retain(|pill| pill.key != key);
         } else if !event.is_empty() {
             let index = self.outside.pills.iter().position(|pill| pill.key == key).unwrap_or_else(|| {

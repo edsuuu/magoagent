@@ -8,7 +8,7 @@ use super::stage::{self, Activity, Phase};
 use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, main_state};
 use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::integrations::spotify::Now;
-use crate::app::integrations::spotify::groove::Groove;
+use crate::app::integrations::spotify::groove::{Dance, Groove};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
 use crate::app::mascot::mago::{LUME, MagoState, mago_pokes, paint_mago_dancing, paint_mago_toward, paint_mini};
@@ -194,15 +194,16 @@ impl DrawingApp {
                     chat: self.is_chat(&row.id),
                     canvas: self.scene.elements.iter().any(|element| element.id == row.id) || self.away.contains_key(&row.id),
                     badge: None,
-                    kind: stage::program_name(&program),
+                    // where it is: the two kinds of session Claude Code's page shows
+                    kind: if program == "claude" { format!("{} · no canvas", stage::program_name(&program)) } else { stage::program_name(&program) },
                     at: 0,
                     asleep: false,
                 }
             })
             .collect();
-        // the sessions outside the app, one pill per origin
+        // the sessions outside the app, one pill per origin and folder: the name says which ("Claude Desktop · loja"), the kind where
         lines.extend(self.outside_pills().into_iter().map(|pill| Line {
-            kind: if pill.name == "Hermes" { "Hermes Agent" } else { "Claude Code" }.into(),
+            kind: if pill.name == "Hermes" { "Hermes Agent" } else { "fora do app" }.into(),
             mago: if pill.asleep { MagoState::Sleeping } else { MagoState::from_agent(pill.state, self.now) },
             at: pill.at,
             asleep: pill.asleep,
@@ -227,7 +228,7 @@ impl DrawingApp {
             super::feed::feed_lines(&lines, &Default::default()).0.iter().map(|line| (line.id.clone(), super::feed::signature(line))).collect();
         let island = &self.island;
         let grid = island.tab.grid();
-        let in_grid = |line: &&Line| Tab::of(&line.id) == grid;
+        let in_grid = |line: &&Line| grid.shows(line);
         let focus = island
             .focus
             .clone()
@@ -350,7 +351,9 @@ impl DrawingApp {
             // "tem momento que a Luna fica parada como se nada estivesse tocando")
             let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.playing);
             let calm = dances_through(wanted.state) && (view.shape != Shape::Open || playing);
-            match self.luna_groove().filter(|_| calm) {
+            // the island open, she is awake and can be poked: no nap there when the song isn't heard here (asked: "se eu
+            // abro a ilha ela tem que acordar")
+            match self.luna_groove().filter(|groove| calm && !(view.shape == Shape::Open && groove.dance == Dance::Nap)) {
                 Some(groove) => paint_mago_dancing(&painter, "island-main-dance", center, size, self.luna_colour(LUME), &groove, time),
                 None => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),
             }
@@ -386,7 +389,7 @@ impl DrawingApp {
             }
             return;
         }
-        aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 30.0, state);
+        aim(view, Pos2::new(rect.left() + super::COMPACT_SIDE, rect.center().y + 1.0), 30.0, state);
         // the green mini of Spotify is the cover and the bars then, spread between the wizard and the other minis
         let spotify = |line: &Line| line.id.strip_prefix(crate::app::integrations::ITEM_PREFIX) == Some("spotify");
         let lines: Vec<&Line> = view.lines.iter().filter(|line| now.is_none() || !spotify(line)).collect();
@@ -601,7 +604,7 @@ impl DrawingApp {
         let on = ui.ctx().animate_bool_with_time(response.id, view.sound_on, 0.18);
         ui.painter().rect_filled(switch, 9, Color32::from_white_alpha(38).lerp_to_gamma(GREEN, on));
         ui.painter().circle_filled(Pos2::new(switch.left() + 9.0 + 14.0 * on, switch.center().y), 7.0, Color32::WHITE);
-        out.sound = response.clicked();
+        out.sound |= response.clicked();
         let label = ui.painter().text(Pos2::new(switch.right() + 10.0, centers[0]), egui::Align2::LEFT_CENTER, "Som", row_font.clone(), ROW_INK);
         let track = Rect::from_min_size(Pos2::new(label.right() + 10.0, centers[0] - 6.0), Vec2::new(72.0, 12.0));
         let response = ui.interact(track, ui.scope_id().with("island_volume"), Sense::click_and_drag()).on_hover_cursor(CursorIcon::PointingHand);
@@ -677,7 +680,7 @@ pub(super) fn header_tabs(lines: &[Line]) -> Vec<(Tab, crate::editor::icons::Svg
         (Tab::Home, icons::HOUSE, 17.0, "Início: o resumo"),
         (Tab::Chat, icons::BUBBLE, 19.0, "Chat atual"),
         (Tab::Chats, icons::LIST, 17.0, "Conversas: os agentes do app"),
-        (Tab::Claude, icons::CLAUDE, 16.0, "Claude Code: as sessões fora do app"),
+        (Tab::Claude, icons::CLAUDE, 16.0, "Claude Code: as sessões no canvas e fora do app"),
     ];
     if on("github") {
         tabs.push((Tab::GitHub, icons::PULL, 18.0, "GitHub: os pull requests"));

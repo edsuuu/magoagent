@@ -8,7 +8,7 @@
 
 use super::forms;
 use super::log::said;
-use super::paint::{CARD, DIM, DIM_3, INK, Out, View, aim, font, wash_with};
+use super::paint::{CARD, DIM, DIM_3, INK, Out, View, aim, font};
 use crate::app::chat::list::{clipped, glyph};
 use crate::app::mascot::mago::MagoState;
 use crate::app::ui::agents::AgentState;
@@ -78,7 +78,6 @@ impl DrawingApp {
         let state = line.map_or(AgentState::Ended, |line| line.state);
         let painter = ui.painter().with_clip_rect(page);
         painter.rect(page, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
-        wash_with(&painter, page, Color32::from_rgb(0x63, 0x66, 0xf1), 0.5, 0.0);
         // the wizard where the app's conversation has it (`island_prompt`)
         let origin = view.origin.get();
         let height = page.bottom() + 10.0 - origin.y;

@@ -229,6 +229,7 @@ mod dancing {
     use super::*;
     use crate::app::integrations::spotify::groove::{Dance, Groove};
     use dance::{Place, pose};
+    use draw::dance_expression;
 
     const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
 
@@ -337,6 +338,60 @@ mod dancing {
             assert!(!motions.contains_key(&motion_key("luna-nada")));
         });
     }
+
+    #[test]
+    fn low_energy_gives_happy_eyes() {
+        let groove = groove(Dance::Clap, 0.5, 0.1);
+        let (eye, _curve, _open) = dance_expression(&groove);
+        assert_eq!(eye, EyeKind::Happy, "low energy while dancing should give happy eyes");
+    }
+
+    #[test]
+    fn high_energy_gives_wide_eyes() {
+        let groove = groove(Dance::Clap, 0.5, 0.9);
+        let (eye, _curve, _open) = dance_expression(&groove);
+        assert_eq!(eye, EyeKind::Wide, "high energy peak should give wide eyes");
+    }
+
+    #[test]
+    fn normal_energy_gives_round_eyes() {
+        let groove = groove(Dance::Sway, 0.5, 0.5);
+        let (eye, _curve, _open) = dance_expression(&groove);
+        assert_eq!(eye, EyeKind::Round, "normal energy should give round eyes");
+    }
+
+    #[test]
+    fn high_bass_near_beat_gives_open_smile() {
+        // bass > 0.7 and near phase 0 (phase = 0.02 → near_beat = 0.02)
+        let groove = Groove { bpm: 120.0, phase: 0.02, energy: 0.5, bass: 0.85, bands: None, dance: Dance::Clap, beat: 10.02, since: 0.0 };
+        let (_eye, curve, open) = dance_expression(&groove);
+        assert!(curve > 0.05, "high bass near beat should give a wider smile curve: {}", curve);
+        assert!(open > 0.02, "high bass very near beat should open mouth: {}", open);
+    }
+
+    #[test]
+    fn low_bass_gives_neutral_mouth() {
+        let groove = groove(Dance::Sway, 0.5, 0.5);
+        let (_eye, curve, open) = dance_expression(&groove);
+        assert!(close(curve, 0.03), "low bass should give default mouth curve: {}", curve);
+        assert!(close(open, 0.0), "low bass should give neutral (closed) mouth: {}", open);
+    }
+
+    #[test]
+    fn high_bass_not_near_beat_gives_smile_no_open() {
+        // phase = 0.5 → near_beat = 0.5 (not near beat)
+        let groove = Groove { bpm: 120.0, phase: 0.5, energy: 0.5, bass: 0.9, bands: None, dance: Dance::Clap, beat: 10.5, since: 0.0 };
+        let (_eye, curve, open) = dance_expression(&groove);
+        assert!(close(curve, 0.03), "high bass far from beat should keep default curve");
+        assert!(close(open, 0.0), "high bass far from beat should not open mouth");
+    }
+
+    #[test]
+    fn nap_gives_sleepy_eyes() {
+        let groove = Groove { bpm: 40.0, phase: 0.5, energy: 0.1, bass: 0.1, bands: None, dance: Dance::Nap, beat: 1.0, since: 0.0 };
+        let (eye, _curve, _open) = dance_expression(&groove);
+        assert_eq!(eye, EyeKind::Sleepy, "nap should give sleepy eyes regardless of energy");
+    }
 }
 
 /// Speaking, the mouth sits under the eyes and between them, wherever she looks (asked: "a boca da luna nessa intro
@@ -352,4 +407,27 @@ fn the_mouth_follows_the_eyes() {
         assert!((mouth.at.x - between).abs() < 0.03, "{look}: mouth {} eyes {between}", mouth.at.x);
         assert!(mouth.at.y > left.at.y.max(right.at.y) + 0.05, "{look}: under the eyes");
     }
+}
+
+/// The song's face (`dance_face`) is a target: the eyes change, and the mouth eases there instead of jumping on each
+/// beat.
+#[test]
+fn the_songs_face_eases_in_over_the_states() {
+    let mut motion = MagoMotion::default();
+    motion.advance(MagoState::Idle, 0.0, None);
+    let rest = motion.mouth_curve.value;
+    motion.dance_face = Some((EyeKind::Wide, 0.06, 0.035));
+    motion.advance(MagoState::Idle, 0.016, None);
+    assert_eq!(motion.look.eye, EyeKind::Wide);
+    let early = motion.mouth_curve.value;
+    assert!(early > rest && early < 0.06, "on its way: {rest} → {early}");
+    let mut time = 0.016;
+    while time < 2.0 {
+        time += 0.016;
+        motion.advance(MagoState::Idle, time, None);
+    }
+    assert!((motion.mouth_curve.value - 0.06).abs() < 0.002 && (motion.mouth_open.value - 0.035).abs() < 0.002);
+    motion.dance_face = None;
+    motion.advance(MagoState::Idle, time + 0.016, None);
+    assert_eq!(motion.look.eye, Look::of(MagoState::Idle).eye, "the song over: the state's face again");
 }

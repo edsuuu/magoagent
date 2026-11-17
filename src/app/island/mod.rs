@@ -42,7 +42,15 @@ pub(crate) mod x11;
 pub(crate) use window::*;
 
 /// The sizes of Coucou's island (core/layout.ts): the closed one, the open one and their corners.
-pub(crate) const COMPACT_W: f32 = 264.0;
+// asked: "entre a capa e a Luna, e entre a frequência e os mini mascotes, tem um espaço muito grande": about 15 each
+// with two minis
+pub(crate) const COMPACT_W: f32 = 188.0;
+/// How far the middle of the wizard (30 wide) is from the compact island's left side: 12 of room to the edge, as the
+/// minis have at the right (asked: "coloca um padding na esquerda da Luna, ela ficou muito colada").
+pub(crate) const COMPACT_SIDE: f32 = 27.0;
+/// The same for the minis' grid at the right, which keeps 12 of room to the edge (asked: "os mini mascotes, coloca um
+/// padding na direita").
+pub(crate) const MINIS_SIDE: f32 = 27.0;
 // asked: "essa barra da ilha está muito grande, diminui uns 1,5 px"
 pub(crate) const COMPACT_H: f32 = 38.5;
 pub(crate) const EXPANDED_W: f32 = 760.0;
@@ -110,7 +118,8 @@ pub(crate) enum Tab {
     Chats,
     Chat,
     New,
-    /// The sessions outside the app (Claude Code in a terminal, Claude Desktop, Hermes): the hooks' pills.
+    /// Claude Code: the app's agents and chats running it, and the sessions outside (Claude Desktop, another
+    /// terminal): the hooks' pills.
     Claude,
     GitHub,
     /// Spotify.
@@ -130,6 +139,12 @@ impl Tab {
             Some(_) => Tab::Home,
             None => Tab::Chats,
         }
+    }
+
+    /// Whether this page shows `line`: its own, and Claude Code's the app's agents and chats running it too (they live
+    /// on Chats).
+    pub(super) fn shows(self, line: &Line) -> bool {
+        Tab::of(&line.id) == self || (self == Tab::Claude && line.kind.starts_with("Claude Code"))
     }
 
     /// The grid this page shows the focus of: its own, the conversation's and the new chat's the agents'.
@@ -174,7 +189,7 @@ impl Shape {
 
 /// The island's size and corner for its `shape`; open, for what `tab` shows (`pinned`: a question waits, whose card is
 /// `body` tall; `tall`: an edit's change needs room on Home; `chat`: the conversation's size).
-pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, tall: bool, body: f32, chat: Vec2) -> (Vec2, f32) {
+pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, settings: bool, tall: bool, body: f32, chat: Vec2) -> (Vec2, f32) {
     match shape {
         Shape::Closed => return (Vec2::new(CLOSED_W, CLOSED_H), CLOSED_CORNER),
         Shape::Compact => return (Vec2::new(COMPACT_W, COMPACT_H), COMPACT_CORNER),
@@ -182,6 +197,9 @@ pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, tall: bool, body: f32
     }
     match (pinned, tab) {
         (true, _) => (Vec2::new(EXPANDED_W, 42.0 + body + 10.0), EXPANDED_CORNER),
+        // its settings are a short page of their own, whatever tab is under them (asked: "clico nas configurações e ela
+        // não se adapta, fica com o mesmo tamanho da maior")
+        _ if settings => (Vec2::new(EXPANDED_W, HOME_H), EXPANDED_CORNER),
         (_, Tab::Home) => (Vec2::new(EXPANDED_W, FEED_H), EXPANDED_CORNER),
         (_, Tab::GitHub) => (Vec2::new(EXPANDED_W, github::HEIGHT), EXPANDED_CORNER),
         (_, Tab::Music) => (Vec2::new(EXPANDED_W, music::HEIGHT), EXPANDED_CORNER),
@@ -552,7 +570,10 @@ impl DrawingApp {
                 Some(session) => session.said(),
                 None => self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map_or(0, |transcript| log::said(&transcript.items).count()),
             };
-            talk_size(self.island.pulled.or(self.prefs.island_talk), said, work)
+            // the size the person pulled it to is the open conversation's; with none open, the page is its plain small
+            // self (asked: "se não tiver chat aberto, ele não é para manter")
+            let open = self.island.session.is_some() || self.chat_agent.as_ref().is_some_and(|id| self.chats.iter().any(|chat| &chat.id == id));
+            talk_size(self.island.pulled.or(self.prefs.island_talk).filter(|_| open), said, work)
         };
         self.island.dock = self.island.anchor.map_or(window::Dock::Top, |anchor| window::Dock::of(anchor, work));
         self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
@@ -609,7 +630,7 @@ impl DrawingApp {
             (Some(Shape::Open), Shape::Open) if asks.len() > asked_before => tones.push(sounds::ASK),
             _ => {}
         }
-        let (aim, radius) = target(shape, island.tab, !asks.is_empty(), island.tall, island.body, chat);
+        let (aim, radius) = target(shape, island.tab, !asks.is_empty(), island.settings, island.tall, island.body, chat);
         // it grows on Coucou's spring (it overshoots a little and settles) and shrinks along its curve in 340 ms, with no
         // overshoot (`spring.rs`); pulled by an edge it follows the pointer at once
         if island.resizing {
@@ -744,16 +765,22 @@ mod tests {
     #[test]
     fn closed_it_is_a_small_notch_then_coucous_compact_island_and_the_open_panel() {
         let chat = Vec2::new(640.0, 360.0);
-        assert_eq!(target(Shape::Closed, Tab::Chat, false, false, 0.0, chat), (Vec2::new(80.0, 24.0), 10.0));
-        assert_eq!(target(Shape::Compact, Tab::Chat, false, false, 0.0, chat), (Vec2::new(264.0, 38.5), 18.0));
-        assert_eq!(target(Shape::Open, Tab::Home, false, false, 0.0, chat), (Vec2::new(760.0, 270.0), 22.0), "Início: the summary and the list");
-        assert_eq!(target(Shape::Open, Tab::Claude, false, false, 0.0, chat), (Vec2::new(760.0, 160.0), 22.0), "a page of pills");
-        assert_eq!(target(Shape::Open, Tab::Chat, false, false, 0.0, Vec2::new(900.0, 500.0)).0, Vec2::new(900.0, 500.0), "the conversation: its own size");
+        assert_eq!(target(Shape::Closed, Tab::Chat, false, false, false, 0.0, chat), (Vec2::new(80.0, 24.0), 10.0));
+        assert_eq!(target(Shape::Compact, Tab::Chat, false, false, false, 0.0, chat), (Vec2::new(188.0, 38.5), 18.0));
+        assert_eq!(target(Shape::Open, Tab::Home, false, false, false, 0.0, chat), (Vec2::new(760.0, 270.0), 22.0), "Início: the summary and the list");
+        assert_eq!(target(Shape::Open, Tab::Music, false, true, false, 0.0, chat).0.y, 160.0, "its settings: short, whatever the tab");
+        assert_eq!(target(Shape::Open, Tab::Home, false, true, false, 0.0, chat).0.y, 160.0);
+        assert_eq!(target(Shape::Open, Tab::Claude, false, false, false, 0.0, chat), (Vec2::new(760.0, 160.0), 22.0), "a page of pills");
+        assert_eq!(
+            target(Shape::Open, Tab::Chat, false, false, false, 0.0, Vec2::new(900.0, 500.0)).0,
+            Vec2::new(900.0, 500.0),
+            "the conversation: its own size"
+        );
         // a question takes the island over at its card's height: 200 with options to pick, 160 for a permission
-        assert_eq!(target(Shape::Open, Tab::Home, true, false, ask::QUESTION_H - 52.0, chat).0.y, 200.0);
-        assert_eq!(target(Shape::Open, Tab::Home, true, false, ask::APPROVAL_H - 52.0, chat).0.y, 160.0);
+        assert_eq!(target(Shape::Open, Tab::Home, true, false, false, ask::QUESTION_H - 52.0, chat).0.y, 200.0);
+        assert_eq!(target(Shape::Open, Tab::Home, true, false, false, ask::APPROVAL_H - 52.0, chat).0.y, 160.0);
         // an edit in progress makes a page of pills taller, for its change
-        assert_eq!(target(Shape::Open, Tab::Claude, false, true, 0.0, chat).0.y, 290.0);
+        assert_eq!(target(Shape::Open, Tab::Claude, false, false, true, 0.0, chat).0.y, 290.0);
     }
 
     #[test]
