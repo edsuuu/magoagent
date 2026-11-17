@@ -5,7 +5,7 @@
 
 use super::NewForm;
 use super::paint::{DIM, DIM_3, INK, Out, View, aim, font, wash_with};
-use crate::app::chat::direct::folder_label;
+use crate::app::chat::footer::chip_folder;
 use crate::app::chat::list::clipped;
 use crate::prelude::*;
 
@@ -53,7 +53,7 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
     let top = body.center().y - height / 2.0;
     let head = Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width(), 22.0));
     // the project at the right of the title, the worktree before it
-    let label = if form.folder.is_empty() { "Escolha um projeto".to_string() } else { folder_label(&form.folder) };
+    let label = if form.folder.is_empty() { "Escolha um projeto".to_string() } else { chip_folder(&form.folder) };
     let name = clipped(ui.painter(), label, font(11.0), INK, 160.0);
     let project = Rect::from_min_size(Pos2::new(head.right() - name.size().x - 34.0, head.top()), Vec2::new(name.size().x + 34.0, 22.0));
     let response = ui.interact(project, ui.scope_id().with("launch_project"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
@@ -168,7 +168,7 @@ fn projects_menu(ui: &mut egui::Ui, full: Rect, drop: Rect, form: &mut NewForm, 
             };
             for path in form.projects.clone() {
                 let on = path.eq_ignore_ascii_case(&form.folder);
-                if row(ui, folder_label(&path), on).on_hover_text(&path).clicked() {
+                if row(ui, chip_folder(&path), on).on_hover_text(&path).clicked() {
                     (form.folder, form.choosing) = (path, false);
                 }
             }
