@@ -6,6 +6,8 @@ pub(crate) mod orb;
 #[cfg(not(target_os = "linux"))]
 pub(crate) mod page;
 pub(crate) mod popup;
+#[cfg(target_os = "macos")]
+pub(crate) mod plain_macos;
 
 use crate::app::chat::list::Look;
 use crate::app::maestro::avatar::AvatarState;

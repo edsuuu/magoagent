@@ -49,6 +49,9 @@ pub(crate) struct Avatar {
     /// Its window already lost the border and the rounded frame Windows 11 gives every window.
     #[cfg(windows)]
     plain: bool,
+    /// Its window already configured on macOS (transparent, no shadow, above menu bar).
+    #[cfg(target_os = "macos")]
+    plain: bool,
 }
 
 impl Avatar {
@@ -251,6 +254,10 @@ impl DrawingApp {
         });
         // a square frame around the bar's rounded shape, with its shadow: the bar goes without it
         #[cfg(windows)]
+        if !self.avatar.plain && !cfg!(test) {
+            self.avatar.plain = crate::app::voice::popup::plain::strip("Avatar");
+        }
+        #[cfg(target_os = "macos")]
         if !self.avatar.plain && !cfg!(test) {
             self.avatar.plain = crate::app::voice::popup::plain::strip("Avatar");
         }

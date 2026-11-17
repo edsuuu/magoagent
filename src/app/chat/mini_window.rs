@@ -101,6 +101,11 @@ impl DrawingApp {
             crate::app::voice::popup::plain::reveal("Mini chat", &mut self.mini.plain);
             ctx.request_repaint();
         }
+        #[cfg(target_os = "macos")]
+        if self.mini.plain < 3 {
+            crate::app::voice::popup::plain::reveal("Mini chat", &mut self.mini.plain);
+            ctx.request_repaint();
+        }
         // nothing of it lies over the canvas
         self.mini.rect = None;
         if close {

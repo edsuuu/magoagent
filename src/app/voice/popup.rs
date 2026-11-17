@@ -7,6 +7,19 @@ use crate::app::voice::orb::{DOT, launch_size, paint_orb};
 use crate::prelude::*;
 use std::sync::atomic::Ordering;
 
+#[cfg(target_os = "macos")]
+pub(crate) mod plain {
+    pub(crate) use crate::app::voice::plain_macos::*;
+}
+
+#[cfg(target_os = "linux")]
+mod plain {
+    pub(crate) fn strip(_title: &str) -> bool { false }
+    pub(crate) fn reveal(_title: &str, _stage: &mut u8) {}
+    pub(crate) fn click_through(_title: &str, _through: bool) {}
+    pub(crate) fn work_area(_x: i32, _y: i32) -> Option<[i32; 4]> { None }
+}
+
 pub(crate) const POPUP_SIZE: Vec2 = Vec2::new(236.0, 60.0);
 const FILL: Color32 = Color32::from_rgb(0x26, 0x26, 0x28);
 const EDGE: Color32 = Color32::from_rgb(0x3a, 0x3a, 0x3d);
@@ -196,7 +209,7 @@ impl DrawingApp {
 /// Windows 11 draws a border and rounds the corners of every window, the popup's too: a square
 /// around its disc and pill (and around the Maestro's bar). Those windows go without them.
 #[cfg(windows)]
-pub(crate) mod plain {
+mod plain {
     #[link(name = "user32")]
     unsafe extern "system" {
         fn FindWindowExW(parent: isize, after: isize, class: *const u16, title: *const u16) -> isize;

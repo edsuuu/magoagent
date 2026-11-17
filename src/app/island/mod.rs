@@ -11,7 +11,7 @@ use crate::prelude::*;
 
 mod actions;
 mod ask;
-mod cursor;
+pub(crate) mod cursor;
 mod entry;
 pub(super) mod feed;
 mod forms;
@@ -394,6 +394,9 @@ pub(crate) struct Island {
     /// The island's room on the screen, for the thread that reads the cursor (`cursor::watch`).
     #[cfg(windows)]
     room: Option<std::sync::Arc<std::sync::Mutex<Option<Rect>>>>,
+    /// macOS: fingerprint of the screen layout to detect notch/monitor changes.
+    #[cfg(target_os = "macos")]
+    screens_fingerprint: u64,
     pass: u64,
     /// When the conversations of the agents at work were last read, and what the card in focus tells (`stage.rs`): the
     /// step it is on, since when, and the glimpse of the file read.
@@ -676,7 +679,8 @@ impl DrawingApp {
         } else if moving {
             ctx.request_repaint_after(std::time::Duration::from_millis(33));
         }
-        if cfg!(windows) && !ctx.embed_viewports() {
+        // Windows and macOS: periodic repaint to read the global cursor when the island's window ignores mouse events.
+        if (cfg!(windows) || cfg!(target_os = "macos")) && !ctx.embed_viewports() {
             ctx.request_repaint_after(std::time::Duration::from_millis(if self.island.pointer.is_some() { 33 } else { 250 }));
         }
         // the clicks of the buttons; the pointer over a pill makes no sound, as in Coucou

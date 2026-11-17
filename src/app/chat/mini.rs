@@ -355,6 +355,11 @@ impl DrawingApp {
             crate::app::voice::popup::plain::reveal("Mini chat · pílula", &mut self.mini.pill_plain);
             ctx.request_repaint();
         }
+        #[cfg(target_os = "macos")]
+        if self.mini.pill_plain < 3 {
+            crate::app::voice::popup::plain::reveal("Mini chat · pílula", &mut self.mini.pill_plain);
+            ctx.request_repaint();
+        }
         self.mini.pill_size = Some(pill_size);
         if let Some(p) = placed.filter(|p| self.prefs.mini_pill_window != Some([p.x, p.y])) {
             self.prefs.mini_pill_window = Some([p.x, p.y]);
@@ -632,10 +637,16 @@ pub(crate) fn panel_place(pill: Rect, size: Vec2, work: Rect) -> Rect {
 }
 
 /// The usable part of the screen around `at` (points): the monitor's work area on Windows, the desktop's less its
-/// panels on X11 (on the monitor), else the monitor's size from the origin; unknown, anywhere.
+/// panels on X11 (on the monitor), `NSScreen.visibleFrame` on macOS (less the menu bar and Dock), else the monitor's
+/// size from the origin; unknown, anywhere.
 pub(crate) fn screen_work(ctx: &Context, at: Pos2) -> Rect {
     let scale = ctx.input(|i| i.viewport().native_pixels_per_point).unwrap_or(1.0);
     #[cfg(windows)]
+    if let Some([l, t, r, b]) = crate::app::voice::popup::plain::work_area((at.x * scale) as i32, (at.y * scale) as i32) {
+        return Rect::from_min_max(Pos2::new(l as f32, t as f32) / scale, Pos2::new(r as f32, b as f32) / scale);
+    }
+    // macOS: NSScreen.visibleFrame (origin top-left in points), less the menu bar and Dock.
+    #[cfg(target_os = "macos")]
     if let Some([l, t, r, b]) = crate::app::voice::popup::plain::work_area((at.x * scale) as i32, (at.y * scale) as i32) {
         return Rect::from_min_max(Pos2::new(l as f32, t as f32) / scale, Pos2::new(r as f32, b as f32) / scale);
     }

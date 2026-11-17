@@ -21,9 +21,10 @@ pub(crate) fn captures(cursor: Option<Pos2>, island: Rect, holding: bool) -> boo
 }
 
 /// `captures` for the cursor `read` gives now (on the screen, in pixels), `scale` and `origin` taking it to the window's
-/// points. Off Windows the window never passes the click through (`MousePassthrough` is the egui way there).
+/// points. Off Windows and macOS the window never passes the click through (`MousePassthrough` is the egui way there).
 pub(crate) fn takes_click(read: impl Fn() -> Option<Pos2>, scale: f32, origin: Pos2, island: Rect, holding: bool) -> bool {
-    !cfg!(windows) || captures(read().map(|at| Pos2::new(at.x / scale - origin.x, at.y / scale - origin.y)), island, holding)
+    !cfg!(any(windows, target_os = "macos"))
+        || captures(read().map(|at| Pos2::new(at.x / scale - origin.x, at.y / scale - origin.y)), island, holding)
 }
 
 /// "x,y" as a place on the screen, in pixels.
@@ -32,7 +33,43 @@ pub(crate) fn parse_cursor(text: &str) -> Option<Pos2> {
     Some(Pos2::new(x.trim().parse().ok()?, y.trim().parse().ok()?))
 }
 
-/// The cursor on the screen, in pixels (Windows; elsewhere the egui pointer is all there is). In a test scene
+/// An AppKit point (`[x, y]`, origin bottom-left, in points) to top-left screen pixels: `desktop_top` is the highest
+/// `frame.maxY` among the screens, `scale` the backing scale of the screen that holds the point.
+pub(crate) fn cocoa_to_screen_pixels(point: [f32; 2], desktop_top: f32, scale: f32) -> Pos2 {
+    Pos2::new(point[0] * scale, (desktop_top - point[1]) * scale)
+}
+
+/// Whether `point` (AppKit, bottom-left) lies in `frame` `[x, y, width, height]`.
+pub(crate) fn cocoa_contains(point: [f32; 2], frame: [f32; 4]) -> bool {
+    let [x, y, width, height] = frame;
+    point[0] >= x && point[0] < x + width && point[1] >= y && point[1] < y + height
+}
+
+/// Of `frames` `[x, y, width, height]` (AppKit), the one that holds `point`, else the nearest by centre.
+pub(crate) fn cocoa_screen_at(point: [f32; 2], frames: &[[f32; 4]]) -> Option<[f32; 4]> {
+    frames.iter().copied().find(|frame| cocoa_contains(point, *frame)).or_else(|| {
+        frames.iter().copied().min_by(|a, b| {
+            let dist = |frame: [f32; 4]| {
+                let centre = [frame[0] + frame[2] / 2.0, frame[1] + frame[3] / 2.0];
+                (centre[0] - point[0]).hypot(centre[1] - point[1])
+            };
+            dist(*a).total_cmp(&dist(*b))
+        })
+    })
+}
+
+/// An AppKit frame `[x, y, width, height]` to a top-left `[left, top, right, bottom]` in pixels (`desktop_top` and
+/// `scale` as in `cocoa_to_screen_pixels`).
+pub(crate) fn cocoa_frame_pixels(frame: [f32; 4], desktop_top: f32, scale: f32) -> [i32; 4] {
+    let [x, y, width, height] = frame;
+    let left = (x * scale).round() as i32;
+    let top = ((desktop_top - (y + height)) * scale).round() as i32;
+    let right = ((x + width) * scale).round() as i32;
+    let bottom = ((desktop_top - y) * scale).round() as i32;
+    [left, top, right, bottom]
+}
+
+/// The cursor on the screen, in pixels (Windows and macOS; elsewhere the egui pointer is all there is). In a test scene
 /// (`MAGOAGENT_SCENE`), `MAGOAGENT_FAKE_CURSOR=x,y` stands in for it: the eyes and the hover are seen without the mouse.
 pub(crate) fn screen_cursor() -> Option<Pos2> {
     screen_cursor_fake().or_else(system_cursor)
@@ -66,7 +103,27 @@ fn system_cursor() -> Option<Pos2> {
     (unsafe { GetCursorPos(&mut point) } != 0).then(|| Pos2::new(point[0] as f32, point[1] as f32))
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+fn system_cursor() -> Option<Pos2> {
+    let mtm = objc2::MainThreadMarker::new()?;
+    let point = objc2_app_kit::NSEvent::mouseLocation();
+    let point = [point.x as f32, point.y as f32];
+    let screens = objc2_app_kit::NSScreen::screens(mtm);
+    let mut desktop_top = 0.0f32;
+    let mut frames = Vec::with_capacity(screens.len());
+    for screen in screens.iter() {
+        let frame = screen.frame();
+        let rect = [frame.origin.x as f32, frame.origin.y as f32, frame.size.width as f32, frame.size.height as f32];
+        desktop_top = desktop_top.max(rect[1] + rect[3]);
+        frames.push((rect, screen.backingScaleFactor() as f32));
+    }
+    let scale = cocoa_screen_at(point, &frames.iter().map(|(rect, _)| *rect).collect::<Vec<_>>())
+        .and_then(|want| frames.iter().find(|(rect, _)| *rect == want).map(|(_, scale)| *scale))
+        .or_else(|| frames.first().map(|(_, scale)| *scale))?;
+    Some(cocoa_to_screen_pixels(point, desktop_top, scale))
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 fn system_cursor() -> Option<Pos2> {
     None
 }
@@ -111,7 +168,7 @@ mod tests {
         assert!(captures(Some(Pos2::new(300.0, 300.0)), island, true), "a press held on it is kept, wherever the cursor goes");
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     #[test]
     fn the_click_is_asked_again_at_the_end_of_the_frame_for_the_cursor_that_came_in_meanwhile() {
         let island = Rect::from_min_size(Pos2::new(180.0, 1.0), Vec2::new(288.0, 32.0));
@@ -135,5 +192,21 @@ mod tests {
         assert_eq!(parse_cursor("1200, 300"), Some(Pos2::new(1200.0, 300.0)));
         assert_eq!(parse_cursor("-40,8.5"), Some(Pos2::new(-40.0, 8.5)));
         assert_eq!(parse_cursor("aqui"), None);
+    }
+
+    #[test]
+    fn cocoa_points_become_top_left_pixels_on_the_screen_that_holds_them() {
+        // primary 1920×1080 @2x, origin bottom-left: a point 40 from the top edge, 100 from the left
+        let primary = [0.0, 0.0, 1920.0, 1080.0];
+        assert_eq!(cocoa_to_screen_pixels([100.0, 1040.0], 1080.0, 2.0), Pos2::new(200.0, 80.0));
+        assert_eq!(cocoa_frame_pixels(primary, 1080.0, 2.0), [0, 0, 3840, 2160]);
+        // a second monitor to the right, same height
+        let second = [1920.0, 0.0, 1920.0, 1080.0];
+        assert_eq!(cocoa_screen_at([2000.0, 500.0], &[primary, second]), Some(second));
+        assert_eq!(cocoa_frame_pixels(second, 1080.0, 1.0), [1920, 0, 3840, 1080]);
+        assert_eq!(cocoa_to_screen_pixels([2000.0, 500.0], 1080.0, 1.0), Pos2::new(2000.0, 580.0));
+        // off every frame: the nearest centre
+        assert_eq!(cocoa_screen_at([-100.0, 500.0], &[primary, second]), Some(primary));
+        assert!(!cocoa_contains([1920.0, 500.0], primary), "the right edge belongs to the next screen");
     }
 }

@@ -183,6 +183,7 @@ pub(crate) fn menus(ctx: &Context) -> Option<Rect> {
 }
 
 /// Whether the island's window can let the clicks through all of it but the island: Windows, and Linux on X11.
+/// On macOS the window uses `setIgnoresMouseEvents` instead.
 fn clicks_through_part() -> bool {
     #[cfg(target_os = "linux")]
     return crate::app::island::x11::active();
@@ -192,7 +193,7 @@ fn clicks_through_part() -> bool {
 
 impl DrawingApp {
     /// Where the island hangs from: as it was left, kept on a monitor that is there; the first time, the top centre of
-    /// the screen the app is on.
+    /// the screen the app is on. On macOS with a notch, the island anchors to the notch when on the top edge.
     pub(super) fn island_anchor(&mut self, ctx: &Context) -> [f32; 2] {
         if let Some(place) = self.island.place_ask.take() {
             let anchor = self.island_anchor(ctx);
@@ -201,9 +202,29 @@ impl DrawingApp {
             (self.island.anchor, self.prefs.island_at) = (Some(anchor), Some(anchor));
             // the window goes where the anchor now is
             self.island.built = Vec2::ZERO;
+            #[cfg(target_os = "macos")]
+            {
+                self.island.screens_fingerprint = crate::app::voice::popup::plain::screens_fingerprint();
+            }
             return anchor;
         }
         if let Some(anchor) = self.island.anchor {
+            // macOS: if screen layout changed (notch appeared/disappeared, monitor added/removed), recalculate.
+            #[cfg(target_os = "macos")]
+            {
+                let fp = crate::app::voice::popup::plain::screens_fingerprint();
+                if fp != 0 && fp != self.island.screens_fingerprint {
+                    self.island.screens_fingerprint = fp;
+                    let work = crate::app::chat::mini::screen_work(ctx, probe(anchor));
+                    let kept = keep_on_screen(anchor, work);
+                    if kept != anchor {
+                        self.island.anchor = Some(kept);
+                        self.prefs.island_at = Some(kept);
+                        self.island.built = Vec2::ZERO;
+                        return kept;
+                    }
+                }
+            }
             return anchor;
         }
         let work_of = |at: Pos2| crate::app::chat::mini::screen_work(ctx, at);
@@ -212,10 +233,23 @@ impl DrawingApp {
             None => {
                 let app = ctx.input(|input| input.viewport().outer_rect).unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)));
                 let work = work_of(app.center());
+                // macOS: if the primary screen has a notch, anchor the island to it.
+                #[cfg(target_os = "macos")]
+                {
+                    let screen_work = work;
+                    if let Some(notch) = crate::app::voice::popup::plain::notch_at(screen_work.center().x, screen_work.top()) {
+                        self.island.screens_fingerprint = crate::app::voice::popup::plain::screens_fingerprint();
+                        return notch;
+                    }
+                }
                 [work.center().x.round(), work.top()]
             }
         };
         self.island.anchor = Some(anchor);
+        #[cfg(target_os = "macos")]
+        {
+            self.island.screens_fingerprint = crate::app::voice::popup::plain::screens_fingerprint();
+        }
         anchor
     }
 
@@ -355,6 +389,17 @@ impl DrawingApp {
         // answer from before the frame would put it back for as long as the frame takes
         #[cfg(windows)]
         crate::app::voice::popup::plain::click_through(TITLE, !cursor::takes_click(cursor::screen_cursor, scale, origin, hit, holding));
+        // macOS: click-through via `setIgnoresMouseEvents` (only when `capture` changes; `send_capture` above).
+        #[cfg(target_os = "macos")]
+        if send_capture {
+            crate::app::voice::popup::plain::click_through(TITLE, !capture);
+        }
+        // macOS: strip once (transparent, no shadow, above menu bar, all spaces).
+        #[cfg(target_os = "macos")]
+        if self.island.plain < 3 {
+            crate::app::voice::popup::plain::reveal(TITLE, &mut self.island.plain);
+            ctx.request_repaint();
+        }
         self.island_moved(ctx, placed, size, time);
         out
     }
