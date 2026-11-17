@@ -530,6 +530,7 @@ impl MagoMotion {
 
 impl MagoMotion {
     /// A hand's two ends on the figure (near end, far end): the capsule points out and up from the pivot.
+    #[cfg(test)]
     pub(crate) fn hand_ends(&self, index: usize) -> (Vec2, Vec2) {
         let side = if index == 0 { -1.0 } else { 1.0 };
         let angle = self.hand_angle[index];
