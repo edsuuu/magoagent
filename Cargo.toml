@@ -59,8 +59,18 @@ raw-window-handle = "0.6"
 # Fechar mantém em segundo plano: the icon by the clock (app/system/tray.rs)
 [target.'cfg(windows)'.dependencies]
 tray-icon = "0.21"
-# Ajustes › Integrações › Spotify: what plays, by the system's media controls (already in the tree through wry)
-windows = { version = "0.62", features = ["Media_Control", "Storage_Streams", "Foundation_Collections"] }
+# Ajustes › Integrações › Spotify: what plays, by the system's media controls (already in the tree through wry), and
+# the volume by the Windows mixer (Core Audio, the session of Spotify.exe)
+windows = { version = "0.62", features = [
+    "Media_Control",
+    "Storage_Streams",
+    "Foundation_Collections",
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Threading",
+] }
 
 # the island over every window: the X11 backend (XWayland in a Wayland session), the island's input shape, the cursor
 # and the work area (app/island/x11.rs); both already in the tree through winit

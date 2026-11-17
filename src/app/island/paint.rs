@@ -303,7 +303,10 @@ impl DrawingApp {
         let grip = ui.interact(rect, ui.scope_id().with("island_grip"), Sense::click_and_drag());
         out.drag = grip.drag_started();
         out.holding = ui.input(|input| input.pointer.any_down()) && out.hovered;
-        out.wake = grip.clicked() && anim.x < EXPANDED_W - 40.0;
+        let opens = anim.x < EXPANDED_W - 40.0;
+        // what opens by the click shows the hand (asked: "precisa ter o cursor pointer")
+        let grip = if opens { grip.on_hover_cursor(CursorIcon::PointingHand) } else { grip };
+        out.wake = grip.clicked() && opens;
         // each content comes and goes on its own transition (`Layers`); the page that shows says where the wizard goes
         view.origin.set(rect.min);
         let [face, compact, open, _] = view.layers;
@@ -369,12 +372,14 @@ impl DrawingApp {
         // the bars hear the song whether or not Luna dances to it (`Dancer::groove` asks for the listening)
         let groove = now.filter(|now| now.playing).map(|now| self.integrations.spotify.dancer.groove(now.playing));
         if !compact {
-            let center = Pos2::new(rect.center().x, rect.center().y + 1.0);
+            let center = rect.center();
             // while the music plays and no agent wants the person, she dances to it (asked: "a luna dançando")
             let calm = dances_through(state);
+            // the notch is 24 tall: she keeps 3 above and below (asked: "a Luna está quase colada, diminui um pouco")
+            const LUNA: f32 = 18.0;
             match self.luna_groove().filter(|_| calm) {
-                Some(groove) => paint_mago_dancing(ui.painter(), "island-main-dance", center, 22.0, self.luna_colour(LUME), &groove, time),
-                None => paint_mago_toward(ui.painter(), "island-main", center, 22.0, state, time, view.pointer),
+                Some(groove) => paint_mago_dancing(ui.painter(), "island-main-dance", center, LUNA, self.luna_colour(LUME), &groove, time),
+                None => paint_mago_toward(ui.painter(), "island-main", center, LUNA, state, time, view.pointer),
             }
             if let Some(now) = now {
                 self.island_playing(ui, rect, now, None, groove.as_ref(), time, out);

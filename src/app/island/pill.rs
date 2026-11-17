@@ -6,6 +6,7 @@ use crate::prelude::*;
 
 use super::music::{GREEN, picture};
 
+use crate::app::integrations::spotify::CoverFade;
 use crate::app::integrations::spotify::groove::Groove;
 
 /// The side of the cover and its corner on the compact island.
@@ -81,8 +82,11 @@ pub(crate) fn bars(groove: Option<&Groove>, time: f64) -> [f32; BARS] {
 /// None without agents; spread by `spread`) or of the closed notch (`minis` is not asked: the cover at the left, the
 /// bars at the right, the wizard between). `cover` is the song's picture (its placeholder without one); `groove` is what
 /// Luna dances to, None while she doesn't. A click on the cover or the bars is true: the island opens on the music's
-/// tab (asked: "se eu clicar na música ele me leva para a tab da música"); `tint` is the cover's colour (`spotify::accent`), the bars' as the Dynamic
-/// Island paints them (Spotify's green until the cover comes). While they move, the next frame is asked for.
+/// tab (asked: "se eu clicar na música ele me leva para a tab da música"). The bars take the cover's two liveliest
+/// colours, from the left one to the right one (`spotify::accents`), and go from the colours before to the new ones and
+/// the cover of the song before fades under the new one (`CoverFade`, asked: "a transição entre músicas está ruim na
+/// ilha, e as cores podem ter um degradê"); `tint` is the first colour, for when the tick has not run (Spotify's green
+/// until the cover comes). While they move, the next frame is asked for.
 pub(super) fn spotify(
     ui: &egui::Ui,
     rect: Rect,
@@ -107,21 +111,45 @@ pub(super) fn spotify(
         None => (rect.left() + COVER_LEFT_SMALL, rect.right() - BARS_RIGHT_SMALL - total / 2.0),
     };
     let art = Rect::from_min_size(Pos2::new(cover_left, rect.center().y - side / 2.0), Vec2::splat(side));
-    picture(painter, art, corner, cover, title);
+    // the cover of the song before stays while the new one is still to come, and goes under it as it fades in
+    let fade = CoverFade::read(ui.ctx());
+    let progress = fade.progress(time);
+    let before = fade.previous.filter(|_| progress < 1.0);
+    if let Some(before) = before {
+        picture(painter, art, corner, Some(before), title);
+    }
+    match cover {
+        Some(cover) => picture_over(painter, art, corner, cover, title, if before.is_some() { progress } else { 1.0 }),
+        // the cover still to come: the one before is what shows; with none, the placeholder
+        None if before.is_none() => picture(painter, art, corner, None, title),
+        None => {}
+    }
     // paused, the dots rest (as the Dynamic Island's), and nothing moves; the closed notch is small: its bars are the
     // bands two by two
     let levels = if playing { bars(groove, time) } else { [0.0; BARS] };
     let levels: Vec<f32> = if compact.is_some() { levels.to_vec() } else { levels.chunks(2).map(|pair| pair.iter().copied().fold(0.0, f32::max)).collect() };
+    let colours = fade.colours_at(time).unwrap_or_else(|| (tint.unwrap_or(GREEN), tint.unwrap_or(GREEN)));
     for (index, level) in levels.into_iter().enumerate() {
         let x = bars_left + index as f32 * (bar + gap) + bar / 2.0;
         // a round dot at rest, the tallest at its highest, from the middle line up and down
         let height = bar + (tall - bar) * level.clamp(0.0, 1.0);
         let rise = Rect::from_center_size(Pos2::new(x, rect.center().y), Vec2::new(bar, height));
-        painter.rect_filled(rise, bar / 2.0, tint.unwrap_or(GREEN));
+        // the first bar takes the first colour, the last the second, and the ones between them a bit of each
+        let along = if count > 1 { index as f32 / (count - 1) as f32 } else { 0.0 };
+        painter.rect_filled(rise, bar / 2.0, colours.0.lerp_to_gamma(colours.1, along));
     }
-    if playing {
+    if playing || fade.fading(time) {
         ui.ctx().request_repaint_after(crate::app::update::frame_spacing());
     }
     let music = art.union(Rect::from_min_size(Pos2::new(bars_left, rect.center().y - tall / 2.0), Vec2::new(total, tall)));
     ui.interact(music.expand(3.0), ui.scope_id().with("island_pill_music"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked()
+}
+
+/// A picture in `rect`, `alpha` of the way in over the one before it (0 to 1): the fade from a song's cover to the next.
+fn picture_over(painter: &Painter, rect: Rect, corner: u8, texture: egui::TextureId, name: &str, alpha: f32) {
+    if alpha >= 1.0 {
+        return picture(painter, rect, corner, Some(texture), name);
+    }
+    let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+    painter.add(egui::epaint::RectShape::filled(rect, corner, Color32::WHITE.gamma_multiply(alpha)).with_texture(texture, uv));
 }

@@ -54,6 +54,11 @@ const SETTLE: std::time::Duration = std::time::Duration::from_millis(350);
 pub(crate) const COVER_LIMIT: usize = 3 * 1024 * 1024;
 const COVER_TRIES: u8 = 4;
 const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
+/// How long the cover now takes to replace the one before it on the island's pill (asked: the change between songs was
+/// abrupt), and how long that one is kept while the new cover is still to come (past it, a song without a cover shows
+/// the placeholder, as it always did).
+const FADE: f64 = 0.3;
+const COVER_WAIT: f64 = 4.0;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Track {
@@ -272,30 +277,93 @@ fn watch(asks: Receiver<Ask>, messages: Sender<Message>, ctx: Context, sources: 
     }
 }
 
+/// The wheel cut in this many hues, each 30°: the pixels are gathered by them, and the two colours of the bars are the
+/// two that weigh most.
+const HUE_BUCKETS: usize = 12;
+/// The grey of a cover with no colour to give, as the Dynamic Island's dots are for it.
+const GREY: Color32 = Color32::from_gray(0xa8);
+
 /// The liveliest colour of a cover (its RGBA pixels), made bright enough for the black island: each pixel weighs by how
-/// vivid and how light it is; a grey cover gives grey, as the Dynamic Island's dots are for it.
+/// vivid and how light it is, and the liveliest hue's own colour wins; a grey cover gives grey, as the Dynamic Island's
+/// dots are for it. It is the first of the pair `accents` gives (the bars start with it and Luna takes it, through
+/// `tint`), kept for whoever reads one colour at a time — the tests today.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn accent(rgba: &[u8]) -> Color32 {
-    let (mut sum, mut weight) = ([0.0f32; 3], 0.0f32);
+    accents(rgba).0
+}
+
+/// The two liveliest colours of a cover, left to right for the island's bars: the liveliest hue (what `accent` gives)
+/// and the liveliest one at least 60° from it — a lighter tone of the first when the cover has only one colour to give.
+pub(crate) fn accents(rgba: &[u8]) -> (Color32, Color32) {
+    let (mut weight, mut sums, mut weights) = (0.0f32, [[0.0f32; 3]; HUE_BUCKETS], [0.0f32; HUE_BUCKETS]);
     for pixel in rgba.as_chunks::<4>().0 {
-        let [red, green, blue] = [pixel[0], pixel[1], pixel[2]].map(f32::from);
-        let (most, least) = (red.max(green).max(blue), red.min(green).min(blue));
-        if most < 1.0 {
-            continue;
-        }
-        let vivid = (most - least) / most;
-        let each = vivid * vivid * (most / 255.0) * f32::from(pixel[3]) / 255.0;
-        for (total, channel) in sum.iter_mut().zip([red, green, blue]) {
+        let colour = [pixel[0], pixel[1], pixel[2]].map(f32::from);
+        let Some(each) = vividness(colour, pixel[3]) else { continue };
+        let around = (hue(colour) / (360.0 / HUE_BUCKETS as f32)) as usize % HUE_BUCKETS;
+        for (total, channel) in sums[around].iter_mut().zip(colour) {
             *total += channel * each;
         }
-        weight += each;
+        (weight, weights[around]) = (weight + each, weights[around] + each);
     }
     if weight < 0.02 * (rgba.len() / 4).max(1) as f32 {
-        return Color32::from_gray(0xa8);
+        return (GREY, lighter(GREY));
     }
-    let mean = sum.map(|total| total / weight);
+    let mean = |around: usize| lifted(sums[around].map(|channel| channel / weights[around]));
+    let liveliest = (0..HUE_BUCKETS).max_by(|one, other| weights[*one].total_cmp(&weights[*other])).unwrap_or(0);
+    let first = mean(liveliest);
+    let first_hue = hue(sums[liveliest]);
+    // another colour: a hue with some presence in the cover, at least 60° from the first one's
+    let second = (0..HUE_BUCKETS)
+        .filter(|around| weights[*around] >= 0.05 * weight && apart(*around, first_hue))
+        .max_by(|one, other| weights[*one].total_cmp(&weights[*other]))
+        .map(mean);
+    (first, second.unwrap_or_else(|| lighter(first)))
+}
+
+/// How much a pixel counts for its colour: by how vivid it is, how light and how opaque; None for a pixel too dark or
+/// too grey to tell a colour.
+fn vividness([red, green, blue]: [f32; 3], alpha: u8) -> Option<f32> {
+    let (most, least) = (red.max(green).max(blue), red.min(green).min(blue));
+    (most >= 1.0).then(|| {
+        let vivid = (most - least) / most;
+        vivid * vivid * (most / 255.0) * f32::from(alpha) / 255.0
+    })
+}
+
+/// Where a colour sits on the wheel, in degrees, 0 to 360.
+fn hue([red, green, blue]: [f32; 3]) -> f32 {
+    let (most, least) = (red.max(green).max(blue), red.min(green).min(blue));
+    let span = most - least;
+    if span <= 0.0 {
+        return 0.0;
+    }
+    let turn = if most == red {
+        ((green - blue) / span).rem_euclid(6.0)
+    } else if most == green {
+        (blue - red) / span + 2.0
+    } else {
+        (red - green) / span + 4.0
+    };
+    turn * 60.0
+}
+
+/// Whether the `around`-th hue of the wheel is at least 60° from `degrees`: another colour, not a shade of that one.
+fn apart(around: usize, degrees: f32) -> bool {
+    let middle = (around as f32 + 0.5) * (360.0 / HUE_BUCKETS as f32);
+    let angle = (middle - degrees).abs().rem_euclid(360.0);
+    angle.min(360.0 - angle) >= 60.0
+}
+
+/// A colour made bright enough for the black island: its channels lifted so its brightest comes to 235.
+fn lifted(mean: [f32; 3]) -> Color32 {
     let lift = 235.0 / mean.iter().copied().fold(1.0, f32::max);
     let [red, green, blue] = mean.map(|channel| (channel * lift).clamp(0.0, 255.0) as u8);
     Color32::from_rgb(red, green, blue)
+}
+
+/// A lighter tone of `colour`, for a cover with a single colour to give.
+fn lighter(colour: Color32) -> Color32 {
+    colour.lerp_to_gamma(Color32::WHITE, 0.45)
 }
 
 /// Where each system puts the app: Windows (installer or Store), macOS (.app), Linux (PATH, snap, Flatpak).
@@ -340,6 +408,16 @@ pub(crate) struct Spotify {
     pub(crate) cover: Option<egui::TextureHandle>,
     /// The cover's liveliest colour (`accent`), for the island's bars as the Dynamic Island colours them.
     pub(crate) tint: Option<Color32>,
+    /// The cover's two liveliest colours (`accents`), left to right for the island's bars.
+    pub(crate) colours: Option<(Color32, Color32)>,
+    /// The cover of the song before and its colours: they stay while the new song's cover is still to come, and go
+    /// under it while it fades in (`fade`, `island/pill.rs`).
+    previous: Option<egui::TextureHandle>,
+    before: Option<(Color32, Color32)>,
+    /// When the cover now came, and when the song changed: the fade runs from the first, and the cover before it is let
+    /// go `COVER_WAIT` after the second when the new one never comes.
+    replaced_at: f64,
+    waiting_since: Option<f64>,
     /// The Spotify app (or Spotifast) and Soloist are not installed here: looked once, when the integration turned on.
     pub(crate) missing: bool,
     pub(crate) soloist_missing: bool,
@@ -359,6 +437,55 @@ pub(crate) struct Spotify {
     pub(crate) asked: Vec<Command>,
 }
 
+/// What the island's pill (`island/pill.rs`) draws of the cover beyond what the island hands it (the cover and the
+/// first colour): the cover of the song before, under the new one while it fades in, the bars' two colours and the pair
+/// they replace, and when the new one came. `spotify_tick` leaves it in the context every frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct CoverFade {
+    /// The cover of the song before: drawn while the new one is still to come, and under it as it fades in.
+    pub(crate) previous: Option<egui::TextureId>,
+    /// The bars' two colours (`accents`), left to right; None while the cover is still to come.
+    pub(crate) colours: Option<(Color32, Color32)>,
+    /// The colours of the song before, and the instant the new ones came: the bars go from one pair to the other.
+    pub(crate) before: Option<(Color32, Color32)>,
+    pub(crate) at: f64,
+}
+
+impl CoverFade {
+    /// Where the tick leaves it for the pill.
+    fn slot() -> egui::Id {
+        egui::Id::unique("spotify-cover-fade")
+    }
+
+    /// What the tick left for the pill; the default (no cover, no colours) before it runs.
+    pub(crate) fn read(ctx: &Context) -> CoverFade {
+        ctx.data(|data| data.get_temp(Self::slot())).unwrap_or_default()
+    }
+
+    /// How far the cover now is in, 0 to 1 at `time` (the island's clock); 0 while it is still to come.
+    pub(crate) fn progress(&self, time: f64) -> f32 {
+        match (self.colours, self.before) {
+            (None, _) => 0.0,
+            (Some(_), None) => 1.0,
+            (Some(_), Some(_)) => ((time - self.at) / FADE).clamp(0.0, 1.0) as f32,
+        }
+    }
+
+    /// Whether the cover and its colours are still coming in at `time`: the pill asks for frames meanwhile.
+    pub(crate) fn fading(&self, time: f64) -> bool {
+        self.colours.is_some() && self.before.is_some() && self.progress(time) < 1.0
+    }
+
+    /// The bars' two colours at `time`: the ones before while the new cover is still to come, and then the new pair, on
+    /// its way from the old one while it fades in.
+    pub(crate) fn colours_at(&self, time: f64) -> Option<(Color32, Color32)> {
+        let Some(colours) = self.colours else { return self.before };
+        let Some(before) = self.before else { return Some(colours) };
+        let progress = self.progress(time);
+        Some((before.0.lerp_to_gamma(colours.0, progress), before.1.lerp_to_gamma(colours.1, progress)))
+    }
+}
+
 impl Spotify {
     /// The integration turned off (or its players changed): the thread ends and nothing of what played stays; the
     /// account stays linked.
@@ -367,11 +494,35 @@ impl Spotify {
         *self = Spotify { account, ..Default::default() };
     }
 
+    /// What the pill draws of the cover: the one before, under the new one while it fades in, and the two colours of the
+    /// bars with the pair they replace.
+    pub(crate) fn fade(&self) -> CoverFade {
+        CoverFade { previous: self.previous.as_ref().map(egui::TextureHandle::id), colours: self.colours, before: self.before, at: self.replaced_at }
+    }
+
+    /// Nothing of a cover stays: the placeholder and Spotify's green, as with a song that never had one.
+    fn cover_gone(&mut self) {
+        (self.cover, self.tint, self.colours, self.previous, self.before, self.waiting_since) = (None, None, None, None, None, None);
+    }
+
     fn take(&mut self, message: Message, ctx: &Context) {
         match message {
             Message::Now(now) => {
-                if now.as_ref().map(|now| &now.track) != self.now.as_ref().map(|now| &now.track) {
-                    (self.cover, self.tint) = (None, None);
+                let changed = now.as_ref().map(|now| &now.track) != self.now.as_ref().map(|now| &now.track);
+                if changed {
+                    self.dancer.new_song();
+                }
+                match &now {
+                    // closed: nothing of the cover stays
+                    None => self.cover_gone(),
+                    // another song: the cover and the colours before stay, under the new song's once it comes (asked:
+                    // the change between songs was abrupt)
+                    Some(_) if changed => {
+                        (self.previous, self.before) = (self.cover.take(), self.colours.take());
+                        // Luna keeps the colour before too, until the new cover gives hers
+                        self.waiting_since = Some(ctx.input(|input| input.time));
+                    }
+                    Some(_) => {}
                 }
                 self.now = now;
                 self.enrich();
@@ -383,13 +534,33 @@ impl Spotify {
                 if let Ok(picture) = image::load_from_memory(&bytes) {
                     let picture = picture.thumbnail(96, 96).into_rgba8();
                     let size = [picture.width() as usize, picture.height() as usize];
-                    self.tint = Some(accent(&picture));
+                    let colours = accents(&picture);
+                    // the cover that was showing goes under the new one, and the fade starts here
+                    if let Some(cover) = self.cover.take() {
+                        (self.previous, self.before) = (Some(cover), self.colours);
+                    }
+                    (self.tint, self.colours) = (Some(colours.0), Some(colours));
                     self.cover =
                         Some(ctx.load_texture("spotify-cover", egui::ColorImage::from_rgba_unmultiplied(size, &picture), egui::TextureOptions::LINEAR));
+                    (self.replaced_at, self.waiting_since) = (ctx.input(|input| input.time), None);
                 }
             }
             Message::Cover(..) => {}
         }
+    }
+
+    /// Leaves the pill what it draws of the cover (`CoverFade`), letting go of the cover before it once the fade is
+    /// over, or once the new one has taken too long to come.
+    fn publish(&mut self, ctx: &Context) {
+        let time = ctx.input(|input| input.time);
+        if self.waiting_since.is_some_and(|since| time - since >= COVER_WAIT) {
+            self.cover_gone();
+        }
+        if self.colours.is_some() && self.before.is_some() && time - self.replaced_at >= FADE {
+            (self.previous, self.before) = (None, None);
+        }
+        let fade = self.fade();
+        ctx.data_mut(|data| data.insert_temp(CoverFade::slot(), fade));
     }
 
     /// "Tocando: Título — Artista", for the MCP and Ajustes.
@@ -466,8 +637,15 @@ impl DrawingApp {
     }
 
     /// Each frame: on, the thread that asks the players runs and its news are taken; off, it ends and nothing stays. A
-    /// switch turned on or off starts it again, asking the players that are on.
+    /// switch turned on or off starts it again, asking the players that are on. What the pill draws of the cover is
+    /// left in the context for it (`CoverFade`, `island/pill.rs`).
     pub(crate) fn spotify_tick(&mut self, ctx: &Context) {
+        self.spotify_ask(ctx);
+        self.integrations.spotify.publish(ctx);
+    }
+
+    /// The players asked, and what they said.
+    fn spotify_ask(&mut self, ctx: &Context) {
         let sources = self.spotify_sources();
         let spotify = &mut self.integrations.spotify;
         if sources == Sources::default() || (spotify.thread.is_some() && spotify.sources != sources) {

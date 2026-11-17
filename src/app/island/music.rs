@@ -155,6 +155,7 @@ impl DrawingApp {
         if ui.ctx().data_mut(|data| data.remove_temp::<bool>(settings_asked())).unwrap_or(false) {
             self.open_settings_at("Integrações");
             self.raise_window = true;
+            self.island.machine.force_petit(time);
         }
         for words in pressed {
             self.spotify_press(&words);

@@ -212,7 +212,7 @@ fn each_control_goes_to_the_player_the_account_or_nowhere() {
     // the app: by the account when linked, else its own controls where the system has them
     assert_eq!(to(linux, Some(Player::App), false, true, Volume(10)), Route::Web);
     assert_eq!(to(linux, Some(Player::App), false, false, Volume(10)), Route::Player);
-    assert!(matches!(to(windows, Some(Player::App), false, false, Volume(10)), Route::No(_)));
+    assert_eq!(to(windows, Some(Player::App), false, false, Volume(10)), Route::Player);
     assert_eq!(to(windows, Some(Player::App), false, false, Seek(1000)), Route::Player);
     assert!(matches!(to(mac, Some(Player::App), false, false, Command::Repeat(Repeat::Track)), Route::No(_)));
     assert_eq!(to(mac, Some(Player::App), false, false, Command::Repeat(Repeat::Context)), Route::Player);
@@ -222,6 +222,20 @@ fn each_control_goes_to_the_player_the_account_or_nowhere() {
     assert_eq!(to(linux, Some(Player::Spotifast), false, false, PlayUri(track())), Route::Player);
     // Liked Songs is the account's own context, even on Soloist
     assert_eq!(to(linux, Some(Player::Soloist), false, true, PlayUri("spotify:user:ana:collection".into())), Route::Web);
+}
+
+/// The media session has no volume on Windows, but the Windows mixer does: Spotify's own session there, turned by the
+/// player's thread (and by the account when there is one).
+#[test]
+fn on_windows_the_volume_goes_by_the_player_through_the_windows_mixer() {
+    use Command::Volume;
+    let to = |linked: bool, percent: u8| route(System::Windows, Some(Player::App), false, linked, &Volume(percent));
+    assert_eq!(to(false, 10), Route::Player);
+    assert_eq!((to(false, 0), to(false, 100)), (Route::Player, Route::Player), "silence and the top too");
+    assert_eq!(to(true, 40), Route::Web, "the account reaches the app's volume as well");
+    // a Spotify with no sound has no session in the mixer: the page says where the volume is (the refused control)
+    #[cfg(windows)]
+    assert_eq!(super::super::controls::refused(&Volume(40)), "O Spotify não está tocando som agora: o volume dele aparece quando ele toca.");
 }
 
 #[test]
@@ -259,4 +273,69 @@ fn the_bars_take_the_covers_liveliest_colour() {
     assert!(red.r() > 200 && red.g() < 80 && red.b() < 80, "{red:?}");
     let grey = super::super::accent(&cover(&[[90, 90, 90, 255], [120, 120, 120, 255]]));
     assert_eq!(grey, Color32::from_gray(0xa8), "a grey cover: grey dots, as the Dynamic Island's");
+}
+
+/// Asked ("as cores podem ter um degradê"): the bars go from the cover's liveliest colour to another one of it, and a
+/// cover of a single colour goes to a lighter tone of it.
+#[test]
+fn the_bars_take_two_colours_of_the_cover() {
+    let cover = |pixels: &[[u8; 4]]| pixels.iter().flatten().copied().collect::<Vec<u8>>();
+    // mostly red, with a blue patch: the two colours of the bars
+    let two = cover(&[[200, 20, 20, 255], [200, 20, 20, 255], [200, 20, 20, 255], [20, 20, 200, 255]]);
+    let (red, blue) = super::super::accents(&two);
+    assert!(red.r() > 200 && red.g() < 80 && red.b() < 80, "the liveliest first: {red:?}");
+    assert!(blue.b() > 200 && blue.r() < 80 && blue.g() < 80, "another colour after it: {blue:?}");
+    assert_eq!(super::super::accent(&two), red, "the first one is what Luna takes");
+    // one colour only: a lighter tone of it
+    let (red, light) = super::super::accents(&cover(&[[200, 20, 20, 255], [150, 30, 30, 255]]));
+    assert!(light.r() >= red.r() && light.g() >= red.g() && light.b() >= red.b() && light != red, "{red:?} → {light:?}");
+    // a grey cover: two greys, as the Dynamic Island's dots
+    let (grey, lighter) = super::super::accents(&cover(&[[90, 90, 90, 255], [120, 120, 120, 255]]));
+    assert_eq!(grey, Color32::from_gray(0xa8));
+    assert!(lighter.g() > grey.g(), "a lighter grey after it: {lighter:?}");
+}
+
+/// Asked ("a transição entre músicas está ruim na ilha"): the bars' colour goes from the pair before to the new one in
+/// the middle of the fade, and the cover before stays until the new one comes.
+#[test]
+fn the_bars_colour_goes_from_the_old_one_to_the_new_one() {
+    use crate::app::integrations::spotify::{CoverFade, FADE};
+    let old = Color32::from_rgb(220, 40, 40);
+    let new = Color32::from_rgb(40, 60, 200);
+    let fade = CoverFade { colours: Some((new, new)), before: Some((old, old)), at: 10.0, ..Default::default() };
+    assert_eq!(fade.colours_at(10.0), Some((old, old)), "at once: the old one");
+    assert_eq!(fade.colours_at(10.0 + FADE), Some((new, new)), "at the end: the new one");
+    assert!(fade.fading(10.0 + FADE / 2.0) && !fade.fading(10.0 + FADE), "frames only while it comes in");
+    let (middle, _) = fade.colours_at(10.0 + FADE / 2.0).unwrap();
+    assert!(middle.r() < old.r() && middle.r() > new.r(), "between the two: {middle:?}");
+    assert!(middle.b() > old.b() && middle.b() < new.b(), "between the two: {middle:?}");
+    // the new cover still to come: the colours before are the ones showing
+    let waiting = CoverFade { colours: None, before: Some((old, old)), previous: None, at: 20.0 };
+    assert_eq!(waiting.progress(20.0), 0.0);
+    assert_eq!(waiting.colours_at(20.0), Some((old, old)), "no flash while the cover comes");
+}
+
+/// A new song's cover goes over the one before it, which stays until the new one comes; the tick leaves both for the
+/// pill (`CoverFade`).
+#[test]
+fn a_new_songs_cover_fades_in_over_the_one_before_it() {
+    use crate::app::integrations::spotify::CoverFade;
+    let ctx = Context::default();
+    let mut spotify = Spotify::default();
+    spotify.take(Message::Now(playing("A")), &ctx);
+    spotify.take(Message::Cover(track("A"), picture()), &ctx);
+    let first = spotify.fade();
+    let colours = first.colours.expect("the cover's two colours");
+    assert!(first.previous.is_none() && colours.0 != colours.1, "the first cover: no fade, its own two colours");
+    spotify.take(Message::Now(playing("B")), &ctx);
+    let waiting = spotify.fade();
+    assert!(spotify.cover.is_none() && waiting.colours.is_none(), "the new song's cover is still to come");
+    assert!(waiting.previous.is_some(), "the one before stays");
+    assert_eq!(waiting.colours_at(0.0), Some(colours), "with its colours, so the bars do not flash");
+    spotify.take(Message::Cover(track("B"), picture()), &ctx);
+    let fading = spotify.fade();
+    assert!(fading.previous.is_some() && fading.colours.is_some() && fading.before == Some(colours), "it comes over it");
+    assert_eq!(fading.progress(0.0), 0.0, "from the start");
+    spotify.publish(&ctx);
+    assert_eq!(CoverFade::read(&ctx), fading, "the pill reads what the tick left");
 }

@@ -196,6 +196,9 @@ pub(super) fn listen(shared: Arc<Shared>) {
                         downsample.feed(&piece, &mut resampled);
                         std::mem::take(&mut resampled)
                     };
+                    if shared.new_song.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                        analyzer = Analyzer::default();
+                    }
                     analyzer.feed(&piece);
                     shared.publish(analyzer.groove());
                 }
