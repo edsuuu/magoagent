@@ -84,6 +84,21 @@ fn ir_para_o_proximo_goes_round_the_ones_that_need_you() {
     assert!(app.act("sidebar", &json!({ "action": "next" })).unwrap_err().contains("Nenhum agente"));
 }
 
+/// Asked: "precisa ter uma opção x para ocultar ou remover". The green notice's × hides it for good; somebody waiting
+/// still shows the amber card; the MCP brings it back.
+#[test]
+fn the_green_notice_closes_by_its_x() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    press(&mut app, &ctx, "×");
+    assert!(app.prefs.sidebar_clear_hidden, "kept in the preferences");
+    assert!(found(&side(&mut app, &ctx, vec![]), "Nada esperando por você").is_none());
+    app.act("sidebar", &json!({ "action": "notice_show" })).unwrap();
+    assert!(found(&side(&mut app, &ctx, vec![]), "Nada esperando por você").is_some());
+    app.act("sidebar", &json!({ "action": "notice_hide" })).unwrap();
+    assert!(app.prefs.sidebar_clear_hidden);
+}
+
 #[test]
 fn the_agents_of_the_space_fold_to_their_count_and_a_row_selects_its_card() {
     let ctx = Context::default();

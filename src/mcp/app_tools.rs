@@ -379,8 +379,8 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "sidebar",
-            "description": "A lateral dos espaços, como a pessoa a usa: `next` vai ao próximo agente que precisa dela (o botão \"Ir para o próximo\" do cartão Precisa de você, o mesmo que Ctrl+Shift+A: troca de espaço se preciso e centraliza o cartão dele); `agents_open` e `agents_close` abrem ou recolhem a seção Agentes deste espaço (fica salvo); `usage_open` e `usage_close` abrem ou fecham o detalhe do uso dos planos no rodapé; `status` diz quantos agentes precisam da pessoa (em todos os espaços) e lista os agentes deste espaço com o estado. Para centralizar um agente da lista, use `focus_canvas`.",
-            "inputSchema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["status", "next", "agents_open", "agents_close", "usage_open", "usage_close"] } }, "required": ["action"] },
+            "description": "A lateral dos espaços, como a pessoa a usa: `next` vai ao próximo agente que precisa dela (o botão \"Ir para o próximo\" do cartão Precisa de você, o mesmo que Ctrl+Shift+A: troca de espaço se preciso e centraliza o cartão dele); `agents_open` e `agents_close` abrem ou recolhem a seção Agentes deste espaço (fica salvo); `notice_hide` e `notice_show` ocultam ou trazem de volta o aviso verde \"Nada esperando por você\" (o × dele; fica salvo, e o cartão de quem espera aparece mesmo assim); `usage_open` e `usage_close` abrem ou fecham o detalhe do uso dos planos no rodapé; `status` diz quantos agentes precisam da pessoa (em todos os espaços) e lista os agentes deste espaço com o estado. Para centralizar um agente da lista, use `focus_canvas`.",
+            "inputSchema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["status", "next", "agents_open", "agents_close", "notice_hide", "notice_show", "usage_open", "usage_close"] } }, "required": ["action"] },
         }),
         json!({
             "name": "panel",
