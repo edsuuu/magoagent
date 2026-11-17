@@ -1,6 +1,7 @@
 //! The sidebar's list: Fixados, the loose spaces, then the groups (Novo grupo) each with its heading
 //! and the spaces under it, and the menus of a space and of a group (sidebar.rs draws the frame).
 
+use crate::app::ui::attention::{Attention, chevron};
 use crate::app::ui::menu_look::{context_menu, dots_menu};
 use crate::app::ui::sidebar::Tones;
 use crate::app::workspaces::{SpaceDialog, SpaceGroup, Workspace, space_colors};
@@ -39,6 +40,8 @@ pub(crate) struct Picks {
     pub(crate) action: Option<(String, SpaceMenu)>,
     pub(crate) renamed: Option<bool>,
     pub(crate) group: Option<(String, GroupMenu)>,
+    /// The card and the agents over the spaces (ui/attention.rs).
+    pub(crate) attention: Option<Attention>,
 }
 
 /// A space's menu: Fixar, Mover para…, Copiar Caminho, Renomear, its colors, Duplicar, Exportar…,
@@ -129,7 +132,7 @@ fn group_menu(ui: &mut egui::Ui, c: &UiColors) -> Option<GroupMenu> {
     picked
 }
 
-/// A small uppercase title over a stretch of the list (Fixados).
+/// A small uppercase title over a stretch of the list (Espaços de trabalho, Fixados).
 fn title(ui: &mut egui::Ui, t: &Tones, width: f32, text: &str) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 20.0), Sense::hover());
     ui.painter().text(Pos2::new(rect.left() + 8.0, rect.center().y), egui::Align2::LEFT_CENTER, text, FontId::proportional(12.0), t.muted);
@@ -153,6 +156,8 @@ impl DrawingApp {
         ui.scope_builder(egui::UiBuilder::new().max_rect(list), |ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
             egui::ScrollArea::vertical().max_height(list.height()).show(ui, |ui| {
+                out.attention = self.attention_ui(ui, t);
+                title(ui, t, width, "ESPAÇOS DE TRABALHO");
                 if spaces.is_empty() {
                     ui.add_space(8.0);
                     ui.label(egui::RichText::new("Nenhum espaço de trabalho corresponde à busca.").size(13.0).color(t.muted));
@@ -194,13 +199,7 @@ impl DrawingApp {
         if over {
             p.rect_filled(rect, 6, t.hover);
         }
-        let (x, y) = (rect.left() + 14.5, rect.center().y);
-        let chevron = if open {
-            [Pos2::new(x - 3.5, y - 1.5), Pos2::new(x, y + 2.0), Pos2::new(x + 3.5, y - 1.5)]
-        } else {
-            [Pos2::new(x - 1.5, y - 3.5), Pos2::new(x + 2.0, y), Pos2::new(x - 1.5, y + 3.5)]
-        };
-        p.add(egui::Shape::line(chevron.to_vec(), Stroke::new(1.3, t.muted)));
+        chevron(&p, Pos2::new(rect.left() + 14.5, rect.center().y), open, t.muted);
         let name = Rect::from_min_max(Pos2::new(rect.left() + 27.0, rect.top()), Pos2::new(rect.right() - 28.0, rect.bottom()));
         p.with_clip_rect(name).text(name.left_center(), egui::Align2::LEFT_CENTER, group.name.to_uppercase(), FontId::proportional(12.0), t.muted);
         let more = Rect::from_center_size(Pos2::new(rect.right() - 13.0, rect.center().y), Vec2::splat(22.0));

@@ -1,6 +1,7 @@
 //! The workspaces' sidebar, the window's left column in the reference app's look: Filtrar and +
-//! (a new space), then each space with its color, its name and its agents (running, needing
-//! you), and Ajustes' gear at the foot. A click switches; ⋯ or a right click renames, recolors or
+//! (a new space), Precisa de você and the agents of the space (ui/attention.rs), then each space with
+//! its color, its name and its agents (running, needing you), and at the foot the plans' use
+//! (usage/foot.rs) and Ajustes' gear. A click switches; ⋯ or a right click renames, recolors or
 //! removes. ☰ in the window's top row folds it and brings it back (ui/titlebar.rs).
 
 use crate::app::workspaces::SpaceDialog;
@@ -9,7 +10,7 @@ use crate::prelude::*;
 
 /// What the open sidebar takes from the canvas's left.
 pub(crate) const SIDEBAR: f32 = 260.0;
-/// Its foot: a line, and Ajustes' gear at the right.
+/// Its foot's last row: Novo grupo, and Ajustes' gear at the right.
 const FOOT: f32 = 30.0;
 
 /// How far along the sidebar is `t` seconds after it started to open or fold: the reference
@@ -123,12 +124,14 @@ impl DrawingApp {
             }
             paint_icon_scaled(&p, Icon::Plus, plus.center(), if button.hovered() { t.text } else { t.text.gamma_multiply(0.7) }, GLASS_ICON, 0.0);
             new = button.tip("Novo espaço de trabalho").clicked();
-            p.text(Pos2::new(left + 13.0, top + 48.0), egui::Align2::LEFT_TOP, "ESPAÇOS DE TRABALHO", FontId::proportional(12.0), t.muted);
-            // the spaces, down to the foot
-            let list = Rect::from_min_max(Pos2::new(left + 5.0, top + 71.0), Pos2::new(left + SIDEBAR - 5.0, height - FOOT - 4.0));
+            // the foot: the plans' use over Novo grupo and Ajustes' gear
+            let usage = crate::app::usage::foot::usage_height(self.usage_ui.probe.shown().len());
+            let foot = height - FOOT - usage;
+            // Precisa de você, the agents of the space and the spaces, down to the foot
+            let list = Rect::from_min_max(Pos2::new(left + 5.0, top + 44.0), Pos2::new(left + SIDEBAR - 5.0, foot - 4.0));
             picks = self.sidebar_list(ui, ctx, c, &t, list, &spaces);
-            // the foot: a line, and Ajustes' gear
-            p.hline(panel.x_range(), height - FOOT + 0.5, Stroke::new(1.0, t.line));
+            p.hline(panel.x_range(), foot + 0.5, Stroke::new(1.0, t.line));
+            self.usage_foot(ui, &t, Rect::from_min_max(Pos2::new(left, foot), Pos2::new(left + SIDEBAR, height - FOOT)));
             let group = Rect::from_min_size(Pos2::new(left + 8.0, height - 24.0), Vec2::new(75.0, 17.0));
             let button = ui.interact(group, egui::Id::unique("space_new_group"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
             let ink = if button.hovered() { t.text } else { t.muted };
@@ -153,7 +156,10 @@ impl DrawingApp {
         if new_group {
             self.space_dialog = Some(SpaceDialog::NewGroup { name: self.new_group_name() });
         }
-        let Picks { pick, action, renamed, group } = picks;
+        let Picks { pick, action, renamed, group, attention } = picks;
+        if let Some(picked) = attention {
+            self.attention_act(picked);
+        }
         if let Some(Err(error)) = pick.map(|id| self.switch_space(&id)) {
             self.toast(error);
         }
