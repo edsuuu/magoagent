@@ -24,9 +24,10 @@ const COVER_LEFT_SMALL: f32 = 4.0;
 /// The bars: how many, the side of each one and the room between them, how far their middle is from the right edge,
 /// and the tallest one.
 const BARS: usize = crate::app::integrations::spotify::groove::BANDS;
-const BAR: f32 = 2.5;
+// asked: "os palitinhos da frequência estão muito grossos, daria para deixar mais finos"
+const BAR: f32 = 1.5;
 const BAR_GAP: f32 = 3.0;
-const BAR_SMALL: f32 = 1.5;
+const BAR_SMALL: f32 = 1.0;
 const BAR_GAP_SMALL: f32 = 1.5;
 const BARS_RIGHT_SMALL: f32 = 12.0;
 const BARS_TALL: f32 = 16.0;
