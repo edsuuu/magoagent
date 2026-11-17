@@ -28,10 +28,22 @@ pub(crate) fn mini_cells(island: Rect, count: usize) -> Vec<Rect> {
         .collect()
 }
 
+/// Standing up on a side of the screen (`COMPACT_TALL` tall): the wizard's centre this far from the top, the grid's from
+/// the bottom.
+pub(crate) const UPRIGHT_INSET: f32 = 24.0;
+
+/// The same cells on the island standing up: row by row, the grid at its bottom, in the middle of its width.
+pub(crate) fn upright_cells(island: Rect, count: usize) -> Vec<Rect> {
+    let corner = Pos2::new(island.center().x, island.bottom() - UPRIGHT_INSET) - Vec2::splat(GRID / 2.0);
+    (0..count.min(MOST))
+        .map(|index| Rect::from_min_size(corner + Vec2::new((index % 2) as f32, (index / 2) as f32) * (BODY + GAP), Vec2::splat(BODY)))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::island::{COMPACT_H, COMPACT_W};
+    use crate::app::island::{COMPACT_H, COMPACT_TALL, COMPACT_W};
 
     #[test]
     fn minis_fill_a_two_by_two_grid_mirroring_the_wizard() {
@@ -55,5 +67,14 @@ mod tests {
         let two = mini_cells(island, 2);
         assert!(two[1].right() == COMPACT_W - 12.0 && two[0].center().y == two[1].center().y && two[0].right() < two[1].left());
         assert_eq!(mini_cells(island, 6).len(), 4, "four at the most");
+    }
+
+    #[test]
+    fn standing_up_on_a_side_the_minis_go_under_the_wizard() {
+        let upright = Rect::from_min_size(Pos2::ZERO, Vec2::new(COMPACT_H, COMPACT_TALL));
+        let grid = upright_cells(upright, 4).iter().fold(Rect::NOTHING, |grid, cell| grid.union(*cell));
+        assert_eq!(grid.center(), Pos2::new(COMPACT_H / 2.0, COMPACT_TALL - UPRIGHT_INSET));
+        assert!(upright.contains_rect(grid.expand(4.0)), "room around it: {grid:?}");
+        assert_eq!(upright_cells(upright, 6).len(), 4, "four at the most");
     }
 }
