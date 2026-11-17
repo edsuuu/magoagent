@@ -9,7 +9,7 @@ use crate::app::integrations::spotify::playback::{NEEDS_ACCOUNT, PlayContext, Pl
 use crate::app::integrations::spotify::queue::QueueItem;
 use crate::app::integrations::spotify::web::{
     Failure, Profile, liked_songs_uri, parse_contains, parse_devices, parse_player, parse_playlists, parse_profile, parse_queue, parse_saved, parse_search,
-    play_body, read_answer,
+    play_body, play_in_body, read_answer,
 };
 
 fn fixture(text: &str) -> Value {
@@ -234,6 +234,26 @@ fn the_controls_go_to_soloist_or_to_the_account() {
     assert!(app.integrations.spotify.asked.is_empty(), "nothing to Soloist");
     app.spotify_search("").unwrap();
     assert!(!app.integrations.spotify.library.searching && app.integrations.spotify.library.found.is_none(), "an empty search clears it");
+}
+
+#[test]
+fn a_song_of_the_queue_plays_at_once_in_what_plays() {
+    // the Web API starts it in the playlist (the list goes on after it), not by skipping to it
+    let playlist = "spotify:playlist:1aaaaaaaaaaaaaaaaaaaaa";
+    assert_eq!(play_in_body(TRACK, playlist), json!({ "context_uri": playlist, "offset": { "uri": TRACK } }));
+    let mut app = app_with(Player::App, true);
+    assert_eq!(app.integrations.spotify.play_context(), None, "nothing says where it plays");
+    app.integrations.spotify.now.as_mut().unwrap().playback.context = Some(PlayContext { uri: playlist.into(), name: String::new() });
+    assert_eq!(app.integrations.spotify.play_context().as_deref(), Some(playlist));
+    app.integrations.spotify.now.as_mut().unwrap().playback.context = Some(PlayContext { uri: "spotify:collection".into(), name: String::new() });
+    assert_eq!(app.integrations.spotify.play_context(), Some(liked_songs_uri("ana")), "Liked Songs as the account's own");
+    app.spotify_press(&format!("jump {TRACK}"));
+    assert_eq!(app.integrations.spotify.library.web_asked, ["control"], "one call");
+    assert!(app.integrations.spotify.asked.is_empty(), "no next");
+    // without the account the player plays it
+    let mut soloist = app_with(Player::Soloist, false);
+    soloist.spotify_press(&format!("jump {TRACK}"));
+    assert_eq!(soloist.integrations.spotify.asked, [Command::PlayUri(TRACK.into())]);
 }
 
 #[test]

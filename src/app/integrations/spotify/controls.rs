@@ -40,6 +40,14 @@ pub(crate) fn refused(command: &Command) -> String {
 }
 
 impl Spotify {
+    /// What plays as the Web API takes it for a song of the queue (Liked Songs as the account's own uri); None when
+    /// nothing says.
+    pub(crate) fn play_context(&self) -> Option<String> {
+        let context = self.now.as_ref()?.playback.context.as_ref()?.uri.trim();
+        let context = if is_liked_songs(context) { web::liked_songs_uri(&self.account.user_id) } else { context.to_string() };
+        uri_allowed(&context).then_some(context)
+    }
+
     /// The page shows a control's change before the player answers.
     fn show_change(&mut self, command: &Command) {
         let Some(now) = self.now.as_mut() else { return };
@@ -137,6 +145,18 @@ impl DrawingApp {
         self.spotify_do(Command::PlayUri(uri.to_string()))
     }
 
+    /// A song of the queue (A seguir), now: with the account by the Web API in what plays from it, not skipping to it;
+    /// without, as any `play`.
+    pub(crate) fn spotify_jump(&mut self, uri: &str) -> Result<(), String> {
+        let uri = uri.trim().to_string();
+        if !self.integrations.spotify.account.linked() || !is_track(&uri) || super::fake::active() || self.spotify_sources() == Sources::default() {
+            return self.spotify_play_uri(&uri);
+        }
+        let context = self.integrations.spotify.play_context();
+        self.integrations.spotify.spawn_web("control", move |shared| Reply::Done(web::play_in(shared, &uri, context.as_deref())));
+        Ok(())
+    }
+
     /// A track to the queue (Soloist's own, else the account's).
     pub(crate) fn spotify_add_to_queue(&mut self, uri: &str) -> Result<(), String> {
         let uri = uri.trim();
@@ -197,7 +217,7 @@ impl DrawingApp {
 
     /// What a press on the island's Spotify page does (written down as "spotify <words>"): a control ("shuffle on",
     /// "repeat track", "volume 40", "seek 61000", "play <uri>", "enqueue <uri>", "playpause"…), "like" or "unlike" (the
-    /// track playing, or a uri after it), "search <words>", "device <id>". What fails shows on the page.
+    /// track playing, or a uri after it), "search <words>", "device <id>", "jump <uri>" (a song of the queue). What fails shows on the page.
     pub(crate) fn spotify_press(&mut self, words: &str) {
         let words = words.trim();
         let (name, rest) = words.split_once(' ').map_or((words, ""), |(name, rest)| (name, rest.trim()));
@@ -205,6 +225,7 @@ impl DrawingApp {
             "like" | "unlike" => self.spotify_set_liked(rest, name == "like"),
             "search" => self.spotify_search(rest),
             "device" => self.spotify_transfer(rest),
+            "jump" => self.spotify_jump(rest),
             "play" if rest == LIKED_SONGS => self.spotify_play_uri(rest),
             _ => match Command::parse(words) {
                 Some(command) => self.spotify_do(command),
