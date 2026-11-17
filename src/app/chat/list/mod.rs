@@ -1,5 +1,6 @@
-//! The chat's frame: its colors, the conversations down the left (grouped by date, with a search;
-//! the agent's mark, title, folder and state) or, narrow or folded, a column of their initials. Also
+//! The chat's frame: its colors, everything running down the left (running.rs: grouped by space, with the filter
+//! chips and a search; the mini wizard, name, state, last line and the answers) or, narrow or folded, a column of
+//! their initials. Also
 //! the code card with its header, a message's Copiar / Citar menu and ⌘F's search.
 
 use crate::app::chat::tint;
@@ -7,13 +8,15 @@ use crate::app::ui::agents::{AgentRow, AgentState, ago};
 use crate::app::ui::menu_look::{context_menu, dots_menu, menu_row};
 use crate::prelude::*;
 use crate::transcript::ChatItem;
+pub(crate) mod running;
 mod view;
+pub(crate) use running::{Answer, Show};
 
 /// The whole list's width and the folded column's.
-pub(crate) const LIST: f32 = 248.0;
+pub(crate) const LIST: f32 = 320.0;
 pub(crate) const COLUMN: f32 = 52.0;
 /// Narrower than this the list is a column of initials and opens over the conversation.
-pub(crate) const NARROW: f32 = 760.0;
+pub(crate) const NARROW: f32 = 832.0;
 /// Where the window buttons end, which macOS puts over the list (`place_window_buttons`); 0 elsewhere.
 const LIGHTS_BOTTOM: f32 = if cfg!(target_os = "macos") { LIGHTS_Y + 8.0 } else { 0.0 };
 
@@ -198,54 +201,21 @@ pub(crate) struct ListAction {
     pub(crate) on_canvas: Option<String>,
     /// Renomear on a row.
     pub(crate) rename: Option<String>,
+    /// A row answered right there (running.rs).
+    pub(crate) answer: Option<(String, Answer)>,
+    /// A session outside the app picked: its conversation is the island's.
+    pub(crate) outside: Option<String>,
 }
 
-/// The list's search, and when each chat last changed (`chat_when`) with when that was looked up.
+/// The list's search and chip, and when each chat last changed (`chat_when`) with when that was looked up.
 #[derive(Default)]
 pub(crate) struct ListState {
     pub(crate) filter: String,
+    pub(crate) show: Show,
     dates: std::cell::RefCell<std::collections::HashMap<String, (f64, Option<i64>)>>,
-    /// The Maestros whose agents are folded away under their accordion (list/view.rs).
-    pub(crate) folded: std::cell::RefCell<std::collections::HashSet<String>>,
     /// The chat being renamed and the name typed so far, and its row on screen (the balloon hangs from it).
     pub(crate) renaming: Option<(String, String)>,
     pub(crate) renaming_at: std::cell::Cell<Option<Rect>>,
-}
-
-/// The group of a chat that last changed at `when`, `now` being now (Unix seconds) and `offset`
-/// the local zone's seconds from UTC: by the local calendar day.
-pub(crate) fn date_group(when: i64, now: i64, offset: i64) -> &'static str {
-    let day = |s: i64| (s + offset).div_euclid(86_400);
-    match day(now) - day(when) {
-        ..=0 => "Hoje",
-        1 => "Ontem",
-        2..=7 => "Últimos 7 dias",
-        _ => "Mais antigas",
-    }
-}
-
-/// The list's groups over items (when each changed, whether it is a chat), each with its items'
-/// indexes, newest first: by date, or all under Conversas when no chat has one (a chat without one
-/// is new: Hoje); terminals under Terminais, at the end.
-pub(crate) fn date_groups(items: &[(Option<i64>, bool)], now: i64, offset: i64) -> Vec<(&'static str, Vec<usize>)> {
-    let dated = items.iter().any(|(when, chat)| *chat && when.is_some());
-    let mut order: Vec<usize> = (0..items.len()).collect();
-    order.sort_by_key(|&i| std::cmp::Reverse(items[i].0.unwrap_or(i64::MAX)));
-    let mut groups: Vec<(&'static str, Vec<usize>)> = Vec::new();
-    for i in order {
-        let name = match items[i] {
-            (_, false) => "Terminais",
-            _ if !dated => "Conversas",
-            (None, _) => "Hoje",
-            (Some(when), _) => date_group(when, now, offset),
-        };
-        match groups.iter_mut().find(|(n, _)| *n == name) {
-            Some((_, members)) => members.push(i),
-            None => groups.push((name, vec![i])),
-        }
-    }
-    groups.sort_by_key(|(name, _)| *name == "Terminais");
-    groups
 }
 
 /// The Maestro's subchats: for each row that is not a Maestro (`maestro[i]` false) but is roped to
@@ -372,23 +342,8 @@ mod tests {
     #[test]
     fn a_maestros_agents_are_its_subchats() {
         let links = std::collections::HashMap::from([("r1".to_string(), vec!["m".to_string()]), ("t".to_string(), vec!["x".to_string()])]);
-        let parents = super::subchat_parents(&["m", "r1", "t", "x"], &[true, false, false, false], &links);
+        let parents = subchat_parents(&["m", "r1", "t", "x"], &[true, false, false, false], &links);
         // r1 is roped to the Maestro m; t is roped only to another agent: both stay apart otherwise
         assert_eq!(parents, [None, Some(0), None, None]);
-    }
-
-    #[test]
-    fn the_chats_group_by_their_local_day_and_the_terminals_go_last() {
-        // 2026-11-11 12:00 UTC, in a zone three hours behind (09:00 there)
-        let (now, zone, hour) = (1_794_398_400, -3 * 3600, 3600);
-        assert_eq!(date_group(now - hour, now, zone), "Hoje");
-        // 20:00 local the evening before
-        assert_eq!(date_group(now - 13 * hour, now, zone), "Ontem");
-        assert_eq!(date_group(now - 3 * 24 * hour, now, zone), "Últimos 7 dias");
-        assert_eq!(date_group(now - 30 * 24 * hour, now, zone), "Mais antigas");
-        let items = [(Some(now - 30 * 24 * hour), true), (None, false), (Some(now - hour), true), (None, true)];
-        assert_eq!(date_groups(&items, now, zone), [("Hoje", vec![3, 2]), ("Mais antigas", vec![0]), ("Terminais", vec![1])]);
-        // no dates at all: one group, in the list's order
-        assert_eq!(date_groups(&[(None, true), (None, true)], now, zone), [("Conversas", vec![0, 1])]);
     }
 }
