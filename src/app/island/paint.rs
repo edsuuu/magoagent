@@ -7,6 +7,8 @@ use super::minis::mini_cells;
 use super::stage::{self, Activity, Phase};
 use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, main_state};
 use crate::app::chat::list::{Look, clipped, glyph};
+use crate::app::integrations::spotify::Now;
+use crate::app::integrations::spotify::groove::Groove;
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
 use crate::app::mascot::mago::{LUME, MagoState, mago_pokes, paint_mago_dancing, paint_mago_toward, paint_mini};
@@ -354,9 +356,13 @@ impl DrawingApp {
     /// The closed notch: only the wizard's face, in the middle, its eyes on the cursor (asked: "ele não acompanha o
     /// cursor"; the reference's looks around by itself there), and around by itself while the cursor is not known. The
     /// compact island: the wizard at the left, its eyes on the cursor, and a mini one per agent
-    /// in a grid at the right (`mini_cells`), in its colour, with a badge on the ones that wait.
+    /// in a grid at the right (`mini_cells`), in its colour, with a badge on the ones that wait. While a song plays,
+    /// Spotify's pill gives its place to the song's cover and to the sound's bars (`pill.rs`).
     fn island_small(&self, ui: &mut egui::Ui, rect: Rect, view: &View, compact: bool, time: f64, out: &mut Out) {
         let state = main_state(view.mood, view.celebrating);
+        // while a song plays, its cover and the sound's bars fill the pill (asked: "como a Dynamic Island do iPhone")
+        let now = self.integrations.spotify.now.as_ref().filter(|now| now.playing);
+        let groove = now.and_then(|_| self.luna_groove());
         if !compact {
             let center = Pos2::new(rect.center().x, rect.center().y + 1.0);
             // while the music plays and no agent wants the person, she dances to it (asked: "a luna dançando")
@@ -365,10 +371,19 @@ impl DrawingApp {
                 Some(groove) => paint_mago_dancing(ui.painter(), "island-main-dance", center, 22.0, LUME, &groove, time),
                 None => paint_mago_toward(ui.painter(), "island-main", center, 22.0, state, time, view.pointer),
             }
+            if let Some(now) = now {
+                self.island_playing(ui, rect, now, false, groove.as_ref(), time);
+            }
             return;
         }
         aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 30.0, state);
-        for (line, cell) in view.lines.iter().zip(mini_cells(rect, view.lines.len())) {
+        // the green mini of Spotify is the cover and the bars then, and the other ones make room at the right
+        let spotify = |line: &Line| line.id.strip_prefix(crate::app::integrations::ITEM_PREFIX) == Some("spotify");
+        let lines: Vec<&Line> = view.lines.iter().filter(|line| now.is_none() || !spotify(line)).collect();
+        let cells = mini_cells(rect, lines.len());
+        let shift = Vec2::new(if now.is_some() { -super::pill::MINIS_LEFT } else { 0.0 }, 0.0);
+        for (line, cell) in lines.into_iter().zip(cells) {
+            let cell = cell.translate(shift);
             line.paint_mini(ui.painter(), &format!("island-mini-{}", line.id), cell.center(), cell.width(), time);
             mini_badge(ui.painter(), cell.center(), cell.width(), line, time);
             // a click on a mini opens the island on it: its page (Início or Conversas) with it in the card
@@ -384,6 +399,15 @@ impl DrawingApp {
             let bars = crate::app::voice::call_bars(view.voice_state, view.mic, time);
             crate::app::voice::paint_bars(ui.painter(), Pos2::new(rect.center().x, rect.center().y), bars, INK);
         }
+        if let Some(now) = now {
+            self.island_playing(ui, rect, now, true, groove.as_ref(), time);
+        }
+    }
+
+    /// The song's cover beside the wizard and the sound's bars at the right, in the pill, while it plays (`pill.rs`).
+    fn island_playing(&self, ui: &egui::Ui, rect: Rect, now: &Now, compact: bool, groove: Option<&Groove>, time: f64) {
+        let cover = self.integrations.spotify.cover.as_ref().map(egui::TextureHandle::id);
+        super::pill::spotify(ui, rect, cover, &now.track.title, compact, groove, time);
     }
 
     /// The open island: the header and the page under it.

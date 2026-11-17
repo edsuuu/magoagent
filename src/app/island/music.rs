@@ -21,7 +21,7 @@ const COVER: f32 = 112.0;
 /// What the song's name leaves for the heart at its end.
 const HEART_ROOM: f32 = 26.0;
 const ROW_H: f32 = 36.0;
-const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
+pub(super) const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
 const RED: Color32 = Color32::from_rgb(0xf8, 0x51, 0x49);
 const HOVER: Color32 = Color32::from_rgb(0x1b, 0x1d, 0x21);
 const TRACK: Color32 = Color32::from_rgb(0x2b, 0x2e, 0x33);
@@ -96,7 +96,7 @@ fn placeholder(name: &str) -> (Color32, Color32) {
 }
 
 /// A picture in `rect`, or its placeholder: a diagonal of two colours.
-fn picture(painter: &Painter, rect: Rect, round: u8, texture: Option<egui::TextureId>, name: &str) {
+pub(super) fn picture(painter: &Painter, rect: Rect, round: u8, texture: Option<egui::TextureId>, name: &str) {
     if let Some(texture) = texture {
         let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
         painter.add(egui::epaint::RectShape::filled(rect, round, Color32::WHITE).with_texture(texture, uv));
