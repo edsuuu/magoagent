@@ -5,6 +5,7 @@
 use crate::prelude::*;
 
 use super::music::{GREEN, picture};
+
 use crate::app::integrations::spotify::groove::Groove;
 
 /// The side of the cover and its corner on the compact island.
@@ -22,9 +23,9 @@ const COVER_LEFT_SMALL: f32 = 4.0;
 /// The bars: how many, the side of each one and the room between them, how far their middle is from the right edge,
 /// and the tallest one.
 const BARS: usize = crate::app::integrations::spotify::groove::BANDS;
-const BAR: f32 = 3.0;
-const BAR_GAP: f32 = 2.5;
-const BAR_SMALL: f32 = 2.0;
+const BAR: f32 = 2.0;
+const BAR_GAP: f32 = 2.0;
+const BAR_SMALL: f32 = 1.5;
 const BAR_GAP_SMALL: f32 = 1.5;
 const BARS_RIGHT_SMALL: f32 = 12.0;
 const BARS_TALL: f32 = 18.0;
@@ -53,7 +54,8 @@ pub(crate) fn spread(rect: Rect, minis: Option<Rect>) -> (f32, f32) {
 pub(crate) fn bars(groove: Option<&Groove>, time: f64) -> [f32; BARS] {
     // the song heard: each bar is its own band, low to high (asked: "de acordo com a música no Spotify")
     if let Some(bands) = groove.and_then(|groove| groove.bands) {
-        return bands.map(|level| 0.08 + 0.92 * level);
+        // a curve, so only the loud parts reach the top (asked: "a sensibilidade está muito alta")
+        return bands.map(|level| 0.08 + 0.92 * level.powf(1.6));
     }
     let mut heights = [0.0; BARS];
     for (index, height) in heights.iter_mut().enumerate() {
@@ -78,11 +80,13 @@ pub(crate) fn bars(groove: Option<&Groove>, time: f64) -> [f32; BARS] {
 /// The song's cover and the sound's bars in the `rect` of the compact island (`minis`: Some, with the agents' grid, or
 /// None without agents; spread by `spread`) or of the closed notch (`minis` is not asked: the cover at the left, the
 /// bars at the right, the wizard between). `cover` is the song's picture (its placeholder without one); `groove` is what
-/// Luna dances to, None while she doesn't. While they move, the next frame is asked for.
+/// Luna dances to, None while she doesn't; `tint` is the cover's colour (`spotify::accent`), the bars' as the Dynamic
+/// Island paints them (Spotify's green until the cover comes). While they move, the next frame is asked for.
 pub(super) fn spotify(
     ui: &egui::Ui,
     rect: Rect,
     cover: Option<egui::TextureId>,
+    tint: Option<Color32>,
     title: &str,
     compact: Option<Option<Rect>>,
     groove: Option<&Groove>,
@@ -106,7 +110,7 @@ pub(super) fn spotify(
         // a dot at its lowest, the tallest at its highest
         let height = (tall * (0.18 + 0.82 * level)).max(bar);
         let rise = Rect::from_center_size(Pos2::new(x, rect.center().y), Vec2::new(bar, height));
-        painter.rect_filled(rise, bar / 2.0, GREEN);
+        painter.rect_filled(rise, bar / 2.0, tint.unwrap_or(GREEN));
     }
     ui.ctx().request_repaint_after(crate::app::update::frame_spacing());
 }

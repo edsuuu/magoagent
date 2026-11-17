@@ -248,3 +248,15 @@ fn soloists_queue_is_read_from_its_json_and_from_its_text() {
     assert_eq!(from_soloist_queue_text(include_str!("../../fixtures/spotify_soloist_queue.txt"), 1).len(), 1);
     assert!(from_soloist_queue_text("Error: not logged in\n", 10).is_empty());
 }
+
+/// The bars take the cover's liveliest colour, bright enough on black, as the Dynamic Island's; a grey cover gives a
+/// light grey.
+#[test]
+fn the_bars_take_the_covers_liveliest_colour() {
+    let cover = |pixels: &[[u8; 4]]| pixels.iter().flatten().copied().collect::<Vec<u8>>();
+    // mostly dark grey with a red patch: the red wins, lifted
+    let red = super::super::accent(&cover(&[[30, 30, 30, 255], [30, 30, 30, 255], [30, 30, 30, 255], [150, 20, 20, 255]]));
+    assert!(red.r() > 200 && red.g() < 80 && red.b() < 80, "{red:?}");
+    let grey = super::super::accent(&cover(&[[90, 90, 90, 255], [120, 120, 120, 255]]));
+    assert_eq!(grey, Color32::from_gray(0xe8));
+}
