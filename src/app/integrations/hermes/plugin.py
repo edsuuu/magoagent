@@ -63,6 +63,10 @@ def register(ctx):
         # Hermes asks in its own window; the island only shows that it waits
         _send("Notification", message="O Hermes pede a sua aprovação: " + _text(kwargs.get("description"), 160) + "?")
 
+    def post_approval_response(**kwargs):
+        # answered (allowed or denied): the turn goes on, so the island stops asking
+        _send("PostToolUse", tool_name="approval")
+
     def on_session_end(**kwargs):
         # despite its name, Hermes calls this at the end of every turn
         failed = kwargs.get("failed") or not (kwargs.get("completed") or kwargs.get("interrupted"))
@@ -74,6 +78,7 @@ def register(ctx):
         "pre_tool_call": pre_tool_call,
         "post_tool_call": post_tool_call,
         "pre_approval_request": pre_approval_request,
+        "post_approval_response": post_approval_response,
         "on_session_end": on_session_end,
     }
     for name, hook in hooks.items():
