@@ -372,9 +372,10 @@ impl DrawingApp {
         // while a song plays, its cover and the sound's bars fill the pill (asked: "como a Dynamic Island do iPhone")
         // playing or paused, as the Dynamic Island keeps the song while it pauses (its bars then rest as dots)
         // paused for a while, the song leaves the pill (`Spotify::shown`)
-        // standing up on a side of the screen it is too narrow for the cover and the bars: the song stays its green mini
+        // standing up on a side of the screen the closed notch is too narrow for the cover and the bars (the song stays its
+        // green mini); the compact one has them one under the other
         let upright = view.dock.upright();
-        let now = self.integrations.spotify.shown(time).filter(|_| !upright);
+        let now = self.integrations.spotify.shown(time).filter(|_| compact || !upright);
         // the bars hear the song whether or not Luna dances to it (`Dancer::groove` asks for the listening)
         let groove = now.filter(|now| now.playing).map(|now| self.integrations.spotify.dancer.groove(now.playing));
         if !compact {
@@ -388,7 +389,7 @@ impl DrawingApp {
                 None => paint_mago_toward(ui.painter(), "island-main", center, LUNA, state, time, view.pointer),
             }
             if let Some(now) = now {
-                self.island_playing(ui, rect, now, None, groove.as_ref(), time, out);
+                self.island_playing(ui, rect, now, None, false, groove.as_ref(), time, out);
             }
             return;
         }
@@ -421,14 +422,24 @@ impl DrawingApp {
             crate::app::voice::paint_bars(ui.painter(), Pos2::new(rect.center().x, rect.center().y), bars, INK);
         }
         if let Some(now) = now {
-            self.island_playing(ui, rect, now, Some(grid), groove.as_ref(), time, out);
+            self.island_playing(ui, rect, now, Some(grid), upright, groove.as_ref(), time, out);
         }
     }
 
     /// The song's cover and the sound's bars in the pill while it plays, spread with the wizard and the minis (`pill.rs`).
-    fn island_playing(&self, ui: &egui::Ui, rect: Rect, now: &Now, compact: Option<Option<Rect>>, groove: Option<&Groove>, time: f64, out: &mut Out) {
+    fn island_playing(
+        &self,
+        ui: &egui::Ui,
+        rect: Rect,
+        now: &Now,
+        compact: Option<Option<Rect>>,
+        upright: bool,
+        groove: Option<&Groove>,
+        time: f64,
+        out: &mut Out,
+    ) {
         let cover = self.integrations.spotify.cover.as_ref().map(egui::TextureHandle::id);
-        if super::pill::spotify(ui, rect, cover, self.integrations.spotify.tint, &now.track.title, now.playing, compact, groove, time) {
+        if super::pill::spotify(ui, rect, cover, self.integrations.spotify.tint, &now.track.title, now.playing, compact, upright, groove, time) {
             (out.tab, out.wake, out.picked) = (Some(Tab::Music), true, true);
         }
     }
