@@ -264,6 +264,7 @@ impl DrawingApp {
             }
         });
         ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, id));
+        super::titlebar::raise_window_buttons(ctx, egui::LayerId::new(egui::Order::Foreground, id));
         // the keys: Esc skips, the arrows walk, Enter goes on
         let (escape, left, right, enter) = ctx.input_mut(|i| {
             let mut take = |key| i.consume_key(Modifiers::NONE, key);

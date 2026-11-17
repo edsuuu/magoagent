@@ -253,6 +253,7 @@ impl DrawingApp {
             }
         });
         ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, id));
+        crate::app::ui::titlebar::raise_window_buttons(ctx, egui::LayerId::new(egui::Order::Foreground, id));
         ctx.request_repaint();
         // the arrows walk the slides (not inside a field), Enter goes on
         let typing = ctx.egui_wants_keyboard_input();
