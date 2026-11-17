@@ -37,9 +37,13 @@ pub(crate) fn remember(text: &str) -> Result<String, String> {
 
 /// The MCP servers the chat's agent runs: this app's own, and on Windows the Windows MCP when the
 /// person's Claude Code doesn't already have it (then `claude -p` loads it by itself).
-pub(crate) fn mcp_servers(prefs: &Prefs) -> Value {
-    let exe = std::env::current_exe().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_else(|_| "magoagent".into());
-    let mut servers = json!({ "magoagent": { "command": exe, "args": ["mcp"] } });
+pub(crate) fn mcp_servers(prefs: &Prefs, wsl: bool) -> Value {
+    let mut servers = json!({ "magoagent": { "command": mcp_exe(wsl), "args": ["mcp"] } });
+    // ponytail: an agent in WSL gets only the app's server (the Windows MCP and the e-mail's run on Windows); bring
+    // them by interop when someone asks
+    if wsl {
+        return servers;
+    }
     if cfg!(windows) && !claude_has("windows-mcp") && crate::editor::lsp::which("uvx").is_some() {
         servers["windows-mcp"] = json!({ "command": "uvx", "args": ["windows-mcp", "serve"] });
     }
@@ -56,10 +60,10 @@ fn claude_has(server: &str) -> bool {
 }
 
 /// The MCP config file for `claude --mcp-config`, written fresh (the app may have moved).
-pub(crate) fn mcp_config(prefs: &Prefs) -> Option<PathBuf> {
-    let path = data_dir()?.join("chat-mcp.json");
+pub(crate) fn mcp_config(prefs: &Prefs, wsl: bool) -> Option<PathBuf> {
+    let path = data_dir()?.join(if wsl { "chat-mcp-wsl.json" } else { "chat-mcp.json" });
     let _ = fs::create_dir_all(path.parent()?);
-    write_atomic(&path, json!({ "mcpServers": mcp_servers(prefs) }).to_string()).ok()?;
+    write_atomic(&path, json!({ "mcpServers": mcp_servers(prefs, wsl) }).to_string()).ok()?;
     Some(path)
 }
 
@@ -148,9 +152,16 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
 
 /// The agent's flags for the Maestro's hands: Claude Code takes the MCP config and the system
 /// prompt; Codex only the MCP (its instructions go in front of the first message).
-pub(crate) fn maestro_args(agent: &str, prefs: &Prefs, chat: &Chat) -> Vec<String> {
+/// This exe as the agent runs it: by its `/mnt/c/…` path from WSL (system/wsl.rs).
+pub(crate) fn mcp_exe(wsl: bool) -> String {
+    let exe = std::env::current_exe().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_else(|_| "magoagent".into());
+    if wsl { linux_path(&exe) } else { exe }
+}
+
+/// `wsl`: the agent runs inside WSL (system/wsl.rs).
+pub(crate) fn maestro_args(agent: &str, prefs: &Prefs, chat: &Chat, wsl: bool) -> Vec<String> {
     if agent == "codex" {
-        let exe = std::env::current_exe().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_else(|_| "magoagent".into());
+        let exe = mcp_exe(wsl);
         // the app's own tools need no one's approval: the chat and the call have no one to ask
         let mut args = vec![
             "-c".into(),
@@ -160,11 +171,13 @@ pub(crate) fn maestro_args(agent: &str, prefs: &Prefs, chat: &Chat) -> Vec<Strin
             "-c".into(),
             "mcp_servers.magoagent.default_tools_approval_mode=\"approve\"".into(),
         ];
-        args.extend(prefs.email.codex_args());
+        if !wsl {
+            args.extend(prefs.email.codex_args());
+        }
         return args;
     }
     let mut args = Vec::new();
-    if let Some(config) = mcp_config(prefs) {
+    if let Some(config) = mcp_config(prefs, wsl) {
         args.extend(["--mcp-config".to_string(), config.to_string_lossy().into()]);
         // its questions (AskUserQuestion) and the permissions it needs come to the chat as options (chat/decide.rs)
         args.extend(["--permission-prompt-tool".to_string(), crate::app::chat::decide::PROMPT_TOOL.into()]);
@@ -362,16 +375,22 @@ mod tests {
         assert!(prompt.contains("no idioma em que a pessoa fala"));
         prefs.language = 2;
         assert!(system_prompt(&prefs, &chat("x")).contains("Always speak English"));
-        let args = maestro_args("codex", &prefs, &chat("x"));
+        let args = maestro_args("codex", &prefs, &chat("x"), false);
         assert_eq!(args[0], "-c");
         assert!(args[1].starts_with("mcp_servers.magoagent.command="));
         assert_eq!(args[5], "mcp_servers.magoagent.default_tools_approval_mode=\"approve\"");
-        let servers = mcp_servers(&Prefs::default());
+        let servers = mcp_servers(&Prefs::default(), false);
         assert_eq!(servers["magoagent"]["args"], json!(["mcp"]));
         assert!(servers.get("email").is_none(), "the mail bridge is off until the MCP's `email` turns it on");
         prefs.email = crate::app::chat::email::EmailPrefs { on: true, command: "npx".into(), args: "-y pacote".into() };
-        assert_eq!(mcp_servers(&prefs)["email"]["args"], json!(["-y", "pacote"]));
-        assert_eq!(maestro_args("codex", &prefs, &chat("x")).len(), 10);
+        assert_eq!(mcp_servers(&prefs, false)["email"]["args"], json!(["-y", "pacote"]));
+        assert_eq!(maestro_args("codex", &prefs, &chat("x"), false).len(), 10);
+        // an agent in WSL runs the exe by its Linux path and gets only the app's server (system/wsl.rs)
+        let wsl = mcp_servers(&prefs, true);
+        assert_eq!(wsl["magoagent"]["command"], json!(linux_path(&mcp_exe(false))));
+        assert!(wsl.get("email").is_none() && wsl.get("windows-mcp").is_none());
+        let codex = maestro_args("codex", &prefs, &chat("x"), true);
+        assert_eq!((codex.len(), codex[1].clone()), (6, format!("mcp_servers.magoagent.command=\"{}\"", linux_path(&mcp_exe(false)))));
     }
 
     #[test]
