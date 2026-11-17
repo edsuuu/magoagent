@@ -90,6 +90,7 @@ impl DrawingApp {
         });
         ctx.move_to_top(veil.response.layer_id);
         ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, id));
+        super::titlebar::raise_window_buttons(ctx, egui::LayerId::new(egui::Order::Foreground, id));
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
             choice = Some(if confirming { ChangelogChoice::Cancel } else { ChangelogChoice::Later });
         }

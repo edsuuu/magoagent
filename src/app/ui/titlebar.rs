@@ -151,6 +151,21 @@ impl DrawingApp {
     }
 }
 
+/// What covers the whole window, the drawn bar too: Ajustes' veil, the welcome, the tour and the changelog's veil.
+/// The bar's stretches under them still move the window, and its buttons go back over them (`raise_window_buttons`).
+fn covers_the_bar(id: egui::Id) -> bool {
+    [crate::app::ui::settings::settings_veil(), egui::Id::unique("welcome"), egui::Id::unique("tour"), egui::Id::unique("changelog").with("veil")].contains(&id)
+}
+
+/// Minimize, maximize and close over a screen that covers the whole window (the welcome, the tour, the changelog): the
+/// bar's right side, where they are, goes right over `cover` (a sublayer: two layers that both ask to be on top keep
+/// their old order). On the Mac they are the system's, always over the app.
+pub(crate) fn raise_window_buttons(ctx: &Context, cover: egui::LayerId) {
+    if TITLE_BAR > 0.0 {
+        ctx.set_sublayer(cover, egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("title_bar_right")));
+    }
+}
+
 impl DrawingApp {
     /// A press on an empty stretch of the bar moves the window right away, as a native title bar
     /// does, and a second one soon after maximizes (or restores). Runs on the raw input like
@@ -166,7 +181,7 @@ impl DrawingApp {
             let bar = [egui::Id::unique("title_bar"), egui::Id::unique("title_bar_right")];
             let on_bar = match ctx.layer_id_at(pos) {
                 Some(layer) if bar.contains(&layer.id) => true,
-                Some(layer) if layer.id == crate::app::ui::settings::settings_veil() => {
+                Some(layer) if covers_the_bar(layer.id) => {
                     bar.iter().any(|id| ctx.memory(|memory| memory.area_rect(*id)).is_some_and(|rect| rect.contains(pos)))
                 }
                 _ => false,
