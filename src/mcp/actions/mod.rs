@@ -174,6 +174,7 @@ impl DrawingApp {
                 self.prefs.minimap = args["open"].as_bool().unwrap_or(!self.prefs.minimap);
                 Ok(if self.prefs.minimap { "Minimapa aberto." } else { "Minimapa fechado." }.into())
             }
+            "panel" => self.act_panel(args),
             "file_tree" => self.act_file_tree(args),
             "tasks" => self.act_tasks(args),
             "flow" => self.act_flow(args),
