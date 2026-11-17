@@ -109,6 +109,22 @@ fn the_chat_reads_claude_code_files() {
     let pairs = assign(&[("t".to_string(), "/macropad".to_string(), 0, 20)], &[moved, other], tree);
     assert_eq!(pairs.iter().map(|(t, s)| (t.as_str(), s.id.as_str())).collect::<Vec<_>>(), [("t", "retomada")]);
     assert!(crate::transcript::parents().contains_key(&std::process::id()), "this test's own process is listed");
+    // a Claude Code in WSL: its sessions in the distro's folder, the folder in Linux's name and a Linux pid; the
+    // terminal (folder in Windows' name) takes it by the folder, never by a Windows process of the same pid
+    let wsl = dir.join("wsl-claude");
+    std::fs::create_dir_all(wsl.join("sessions")).unwrap();
+    let file = serde_json::json!({ "sessionId": "linux", "cwd": "/mnt/c/proj", "startedAt": 7, "pid": 0, "entrypoint": "cli" });
+    std::fs::write(wsl.join("sessions").join("0.json"), file.to_string()).unwrap();
+    let found = crate::transcript::wsl_sessions(&wsl, "Ubuntu");
+    assert_eq!(
+        (found[0].cwd.as_str(), found[0].transcript(std::path::Path::new("x"))),
+        (r"C:\proj", wsl.join("projects").join("-mnt-c-proj").join("linux.jsonl"))
+    );
+    assert_eq!(crate::transcript::all_sessions(None, Some(&(wsl.clone(), "Ubuntu".into()))), found);
+    let pairs = assign(&[("t".to_string(), r"C:\proj".to_string(), 0, 0)], &found, std::collections::HashMap::new);
+    assert_eq!(pairs.iter().map(|(t, s)| (t.as_str(), s.id.as_str())).collect::<Vec<_>>(), [("t", "linux")]);
+    let kin = Session { pid: 30, ..found[0].clone() };
+    assert!(assign(&[("t".to_string(), "/outra".to_string(), 0, 20)], &[kin], tree).is_empty());
 
     // read from where it stopped; an unfinished line waits for the rest, even cut inside a character
     let file = dir.join("t.jsonl");

@@ -162,6 +162,12 @@ impl DrawingApp {
             .collect()
     }
 
+    /// A terminal running a WSL shell, on Windows.
+    fn wsl_terminals(&self) -> bool {
+        cfg!(windows)
+            && self.terminal_specs().into_iter().any(|(id, spec)| self.terminals.contains_key(id) && is_wsl_shell(self.prefs.terminal.resolve(&spec.look).2))
+    }
+
     /// Twice a second at most: which Claude Code session each terminal runs (its file says whether
     /// it works, rests or waits on a question), which terminals wait on one, and what may be typed
     /// into each (`TermHandle::ready`). Maps of terminals that went are pruned.
@@ -172,20 +178,23 @@ impl DrawingApp {
         self.waiting_checked = self.now;
         let claude = self.claude_terminals();
         let dir = crate::transcript::claude_dir();
+        // a WSL terminal's Claude Code files its sessions in the distro (system/wsl.rs)
+        let wsl = self.wsl_terminals().then(wsl_distro_in_use).flatten().map(|distro| (wsl_claude_dir(&distro), distro.name));
         if cfg!(test) {
             // a test reads what it just wrote: here, at once
-            self.agent_sessions = match &dir {
-                Some(dir) if !claude.is_empty() => {
-                    crate::transcript::assign(&claude, &crate::transcript::sessions(&dir.join("sessions")), crate::transcript::parents).into_iter().collect()
-                }
-                _ => Default::default(),
+            self.agent_sessions = if claude.is_empty() {
+                Default::default()
+            } else {
+                crate::transcript::assign(&claude, &crate::transcript::all_sessions(dir.as_deref(), wsl.as_ref()), crate::transcript::parents)
+                    .into_iter()
+                    .collect()
             };
         } else if claude.is_empty() {
             self.agent_sessions.clear();
         } else {
             // the files and the process list are read off this thread (transcript/watch.rs): what
             // it found last stays until it finds again, at most a check behind
-            self.session_watch.ask(claude, dir.clone());
+            self.session_watch.ask(claude, dir.clone(), wsl);
             if let Some(found) = self.session_watch.take() {
                 self.agent_sessions = found.into_iter().collect();
             }

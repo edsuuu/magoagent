@@ -45,6 +45,8 @@ struct State {
     running: bool,
     distro: Option<WslDistro>,
     distros: Vec<String>,
+    /// Whether Windows has an agent, looked at most once a minute (`windows_has_agent` scans the PATH).
+    windows: Option<(std::time::Instant, bool)>,
 }
 
 fn state() -> std::sync::MutexGuard<'static, State> {
@@ -62,18 +64,25 @@ pub(crate) fn wsl_choose(choice: &str) {
 
 /// The distros WSL has, as the last probe listed them.
 pub(crate) fn wsl_distros() -> Vec<String> {
-    probe_soon();
+    probe_soon(false);
     state().distros.clone()
 }
 
 /// The distro the agents run in, as the last probe found it; None off Windows, with WSL off or not found. A probe older
 /// than a minute is done again in the background (an agent installed meanwhile shows up).
 pub(crate) fn wsl_distro() -> Option<WslDistro> {
-    probe_soon();
+    probe_soon(false);
     state().distro.clone()
 }
 
-fn probe_soon() {
+/// `wsl_distro` for a WSL terminal that is open: automatic looks there even with the agents on Windows (the distro already
+/// runs), for the Claude Code the person started in it.
+pub(crate) fn wsl_distro_in_use() -> Option<WslDistro> {
+    probe_soon(true);
+    state().distro.clone()
+}
+
+fn probe_soon(in_use: bool) {
     if cfg!(test) || !cfg!(windows) {
         return;
     }
@@ -82,10 +91,19 @@ fn probe_soon() {
         if state.choice == WSL_OFF || state.running || state.at.is_some_and(|at| at.elapsed().as_secs() < 60) {
             return;
         }
-        // automatic, with an agent on Windows: no distro is started (looked at again in a minute)
-        if state.choice.is_empty() && windows_has_agent() {
-            (state.at, state.distro) = (Some(std::time::Instant::now()), None);
-            return;
+        // automatic, with an agent on Windows: no distro is started for it (a WSL terminal open has one running)
+        if state.choice.is_empty() && !in_use {
+            let has = match state.windows {
+                Some((at, has)) if at.elapsed().as_secs() < 60 => has,
+                _ => {
+                    let has = windows_has_agent();
+                    state.windows = Some((std::time::Instant::now(), has));
+                    has
+                }
+            };
+            if has {
+                return;
+            }
         }
         state.running = true;
         state.choice.clone()
