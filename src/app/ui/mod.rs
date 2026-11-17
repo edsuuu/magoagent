@@ -256,8 +256,8 @@ impl UiColors {
     pub(crate) fn new(dark: bool) -> Self {
         if dark {
             Self {
-                island: Color32::from_rgb(0x23, 0x23, 0x29),
-                // lifted above the island (#232329) so buttons and toggles stay visible
+                island: Color32::from_rgb(0x24, 0x24, 0x24),
+                // lifted above the island (#242424) so buttons and toggles stay visible
                 surface_low: Color32::from_rgb(0x30, 0x30, 0x33),
                 surface_high: Color32::from_rgb(0x3c, 0x3c, 0x40),
                 selected: Color32::from_rgb(0x1c, 0x3d, 0x66),
