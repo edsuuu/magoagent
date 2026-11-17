@@ -182,6 +182,11 @@ impl DrawingApp {
                 .map(|group| group.id.clone())
                 .ok_or(format!("Nenhum grupo se chama {}.", text("group")))
         };
+        // `elements` by id or name
+        let chosen = |app: &DrawingApp| -> Result<Vec<usize>, String> {
+            let names = args["elements"].as_array().into_iter().flatten().filter_map(|entry| entry.as_str());
+            names.map(|name| app.scene.elements.iter().position(|element| element.id == name.trim()).map_or_else(|| app.node_named(name), Ok)).collect()
+        };
         match text("action").as_str() {
             "list" => {
                 let lines: Vec<String> = self
@@ -203,24 +208,14 @@ impl DrawingApp {
                 Ok(if lines.is_empty() { "Nenhum grupo.".into() } else { lines.join("\n") })
             }
             "create" => {
-                let mut chosen = Vec::new();
-                for element_name in args["elements"].as_array().into_iter().flatten().filter_map(|entry| entry.as_str()) {
-                    chosen.push(
-                        self.scene.elements.iter().position(|element| element.id == element_name.trim()).map_or_else(|| self.node_named(element_name), Ok)?,
-                    );
-                }
+                let chosen = chosen(self)?;
                 let name = if text("name").is_empty() { DEFAULT_NAME.to_string() } else { text("name") };
                 let group_id = self.group_elements(&chosen, &name).ok_or("diga 2 ou mais elementos em `elements`")?;
                 Ok(format!("Grupo {name} criado ({group_id})."))
             }
             // Organizar (⇧Ctrl T): the elements chosen in a grid; again on the same ones, a row, then a column
             "tidy" => {
-                let mut chosen = Vec::new();
-                for element_name in args["elements"].as_array().into_iter().flatten().filter_map(|entry| entry.as_str()) {
-                    chosen.push(
-                        self.scene.elements.iter().position(|element| element.id == element_name.trim()).map_or_else(|| self.node_named(element_name), Ok)?,
-                    );
-                }
+                let chosen = chosen(self)?;
                 if chosen.len() < 2 {
                     return Err("diga 2 ou mais elementos em `elements`".into());
                 }
