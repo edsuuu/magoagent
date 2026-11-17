@@ -239,6 +239,15 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "chat": chat }, "required": ["chat"] },
         }),
         json!({
+            "name": "chats_view",
+            "description": "A área de Chats fora do canvas (o botão de chat da barra de título): tudo o que está rodando em todos os espaços (os chats do app, os terminais com Claude Code ou Codex e as sessões de fora do app), agrupado por espaço, com o estado (Trabalhando, Esperando, Pronto) e a última linha de cada um. `state` open (o padrão) abre a área e devolve a lista; close volta ao canvas. `filter` escolhe o chip: all (Todos), working (Trabalhando), waiting (Esperando) ou ready (Prontos); `query` busca nos nomes e nas últimas linhas (vazio limpa a busca).",
+            "inputSchema": { "type": "object", "properties": {
+                "state": { "type": "string", "enum": ["open", "close"] },
+                "filter": { "type": "string", "enum": ["all", "working", "waiting", "ready"] },
+                "query": { "type": "string" },
+            } },
+        }),
+        json!({
             "name": "chat_decide",
             "description": "Responde pela pessoa o que o agente de um chat espera decidir (as perguntas com opções do AskUserQuestion ou uma permissão), como o cartão acima da caixa do chat: `answers` leva cada pergunta (o texto dela) à resposta (o rótulo de uma opção, ou outro texto); `allow` false recusa.",
             "inputSchema": { "type": "object", "properties": {
