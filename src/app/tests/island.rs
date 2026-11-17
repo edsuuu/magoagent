@@ -528,9 +528,12 @@ fn the_islands_settings_link_opens_app_settings_closes_island_settings_and_folds
     let page_bottom = rect.bottom() - 10.0;
     let page_center_y = (page_top + page_bottom) / 2.0;
     // the three rows: 20, 24, 18 with 10 gap = 82 total, centered on page_center_y
-    // centers[2] = page_center_y - 41 + 20 + 10 + 24 + 10 + 9 = page_center_y + 32
+    // top = page_center_y - 41, centers[0] = top + 10 = page_center_y - 31
+    // centers[1] = top + 10 + 20 + 10 + 12 = page_center_y + 1
+    // centers[2] = top + 10 + 20 + 10 + 24 + 10 + 9 = page_center_y + 32
     let centers_2 = page_center_y + 32.0;
-    let link_at = Pos2::new(rect.right() - 26.0 - 60.0, centers_2 - 8.0); // right - 16 - text_width
+    let text_width = 55.0; // approximate width of "Ajustes…" in 11.5 font
+    let link_at = Pos2::new(rect.right() - 16.0 - text_width, centers_2 - 8.0);
     click(&mut app, &ctx, &mut time, link_at);
     // the app's settings window is now open
     assert!(app.settings_open, "app.settings_open is true");
