@@ -425,6 +425,9 @@ fn installed() -> bool {
         || install_places(|name| std::env::var(name).ok()).iter().any(|place| place.exists())
 }
 
+/// How long a paused song keeps its cover and bars on the island.
+const PAUSED_SHOWN: f64 = 30.0;
+
 #[derive(Default)]
 pub(crate) struct Spotify {
     /// What plays; None: Spotify is closed, or has nothing loaded.
@@ -443,6 +446,9 @@ pub(crate) struct Spotify {
     /// go `COVER_WAIT` after the second when the new one never comes.
     replaced_at: f64,
     waiting_since: Option<f64>,
+    /// When what plays was paused (the context's clock), while it stays paused: the island lets the song go after
+    /// `PAUSED_SHOWN` (`Spotify::shown`).
+    paused_since: Option<f64>,
     /// The Spotify app (or Spotifast) and Soloist are not installed here: looked once, when the integration turned on.
     pub(crate) missing: bool,
     pub(crate) soloist_missing: bool,
@@ -525,6 +531,12 @@ impl Spotify {
         CoverFade { previous: self.previous.as_ref().map(egui::TextureHandle::id), colours: self.colours, before: self.before, at: self.replaced_at }
     }
 
+    /// What the island shows of the song at `time` (the context's clock): playing, or paused for less than
+    /// `PAUSED_SHOWN` (asked: "se a música não está tocando por 30 segundos, a capa e a frequência somem").
+    pub(crate) fn shown(&self, time: f64) -> Option<&Now> {
+        self.now.as_ref().filter(|now| now.playing || self.paused_since.is_none_or(|since| time - since < PAUSED_SHOWN))
+    }
+
     /// Nothing of a cover stays: the placeholder and Spotify's green, as with a song that never had one.
     fn cover_gone(&mut self) {
         (self.cover, self.tint, self.colours, self.previous, self.before, self.waiting_since) = (None, None, None, None, None, None);
@@ -549,6 +561,11 @@ impl Spotify {
                     }
                     Some(_) => {}
                 }
+                let paused = self.now.as_ref().is_some_and(|now| !now.playing) || self.now.is_none();
+                self.paused_since = match &now {
+                    Some(now) if !now.playing => self.paused_since.filter(|_| paused && !changed).or(Some(ctx.input(|input| input.time))),
+                    _ => None,
+                };
                 self.now = now;
                 self.enrich();
             }
