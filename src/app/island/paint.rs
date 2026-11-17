@@ -599,7 +599,9 @@ impl DrawingApp {
         }
         let row_font = font(12.5);
         // 1: the sound, its volume, and the colours
-        let switch = Rect::from_min_size(Pos2::new(left, centers[0] - 9.0), Vec2::new(32.0, 18.0));
+        // on whole pixels and a point lower, on the line of the "Som" letters (asked: "o toggle de som está muito para cima")
+        let switch =
+            egui::emath::GuiRounding::round_to_pixels(Rect::from_min_size(Pos2::new(left, centers[0] - 8.0), Vec2::new(32.0, 18.0)), ui.pixels_per_point());
         let response = ui.interact(switch, ui.scope_id().with("island_settings_sound"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
         let on = ui.ctx().animate_bool_with_time(response.id, view.sound_on, 0.18);
         ui.painter().rect_filled(switch, 9, Color32::from_white_alpha(38).lerp_to_gamma(GREEN, on));
