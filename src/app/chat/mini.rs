@@ -574,8 +574,8 @@ impl DrawingApp {
         if crate::app::chat::commands::take_retry_ask(ctx) && self.is_chat(&id) {
             self.chat_retry(ctx, &id);
         }
-        if attach && let Some(paths) = rfd::FileDialog::new().set_title("Anexar imagem").add_filter("Imagens", &IMAGE_EXTENSIONS).pick_files() {
-            self.chat_add_files(ctx, paths, false);
+        if attach {
+            self.chat_attach_pick(ctx);
         }
         if interrupt {
             self.interrupt_agent();

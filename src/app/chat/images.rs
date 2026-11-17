@@ -119,6 +119,13 @@ impl DrawingApp {
         image_names(items).into_iter().map(|(k, name)| (&items[k], name)).collect()
     }
 
+    /// The chat's + (the screen's, the card's, the mini's): the pictures picked go in as `chat_add_files`.
+    pub(crate) fn chat_attach_pick(&mut self, ctx: &Context) {
+        if let Some(paths) = rfd::FileDialog::new().set_title("Anexar imagem").add_filter("Imagens", &IMAGE_EXTENSIONS).pick_files() {
+            self.chat_add_files(ctx, paths, false);
+        }
+    }
+
     /// Files for the chat's box (dropped, pasted, picked): pictures wait above the words as
     /// previews, anything else goes in as its path; the box takes the keys.
     pub(crate) fn chat_add_files(&mut self, ctx: &Context, paths: Vec<PathBuf>, pasted: bool) {
@@ -231,7 +238,7 @@ pub(crate) fn image_names(items: &[ChatItem]) -> Vec<(usize, String)> {
                     (files, run) = (Vec::new(), 0);
                 }
                 let name = step.what.rsplit(['/', '\\']).next().unwrap_or_default();
-                if name.rsplit_once('.').is_some_and(|(_, ext)| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str())) {
+                if crate::app::chat::segments::is_picture(name) {
                     files.push(name.to_string());
                 }
             }
