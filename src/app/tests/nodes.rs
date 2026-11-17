@@ -116,7 +116,8 @@ fn connect_mode_joins_the_node_clicked_and_cancels_elsewhere() {
     frame(&mut app, &ctx, vec![esc]);
     assert!(app.connecting.is_none());
     app.connecting = Some(a_id.clone());
-    let empty = app.to_screen(Pos2::new(300.0, 500.0));
+    // above the corners' pills (Desfazer sits at the bottom left)
+    let empty = app.to_screen(Pos2::new(300.0, 400.0));
     click(&mut app, &ctx, empty);
     assert!(app.connecting.is_none());
     app.connecting = Some(a_id.clone());
