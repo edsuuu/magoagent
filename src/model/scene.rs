@@ -128,6 +128,9 @@ pub(crate) struct Prefs {
     pub(crate) recruit_model: String,
     /// How the agents the Maestro recruits run: in a terminal (Claude Code whole) or as a light chat of the app.
     pub(crate) agent_mode: AgentMode,
+    /// Ajustes › Agentes › WSL (app/system/wsl.rs): "" looks in the default distro when Windows has no agent, "off"
+    /// never, a distro's name runs the agents there.
+    pub(crate) wsl: String,
     pub(crate) chat_mode: usize,
     /// The day (since 1970) the app last looked for a newer release: once a day when it opens.
     pub(crate) update_checked_day: u64,
@@ -253,6 +256,7 @@ impl Default for Prefs {
             // the recruits run on Sonnet unless Ajustes says otherwise ("cli" goes back to the CLI's own)
             recruit_model: "sonnet".into(),
             agent_mode: AgentMode::Terminal,
+            wsl: String::new(),
             chat_mode: 0,
             update_checked_day: 0,
             chat_panel: false,
