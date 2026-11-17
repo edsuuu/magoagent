@@ -117,6 +117,57 @@ fn a_hook_sends_its_origin_and_not_the_weight() {
     assert_eq!(plain["mago_origin"], "");
 }
 
+/// The pills' names after `events`, each (session, folder, what the hook's environment says of the entrypoint).
+fn pill_names(events: &[(&str, &str, &str)]) -> Vec<String> {
+    let mut app = island_app();
+    for (session, cwd, entrypoint) in events {
+        let mut payload = json!({ "hook_event_name": "UserPromptSubmit", "session_id": session, "cwd": cwd, "prompt": "oi" });
+        relay::tag(&mut payload, &|name| (name == "CLAUDE_CODE_ENTRYPOINT").then(|| entrypoint.to_string()));
+        app.take_hook(&format!("ext:{session}"), &payload, None);
+    }
+    app.outside_pills().into_iter().map(|pill| pill.name).collect()
+}
+
+#[test]
+fn claude_desktop_and_the_cli_are_told_apart_one_pill_per_folder() {
+    // asked: "ele não está fazendo a diferenciação entre o Claude Code Desktop e o Claude Code CLI"
+    assert_eq!(pill_names(&[("s1", "C:/Users/eu/loja", "claude-desktop"), ("s2", "C:/Users/eu/loja", "cli")]), ["Claude Desktop · loja", "Claude Code · loja"]);
+    // two sessions of the Desktop in two folders are two pills, as the CLI's are; one folder, one pill
+    assert_eq!(
+        pill_names(&[("s1", "C:/Users/eu/loja", "claude-desktop"), ("s2", "C:/Users/eu/site", "claude-desktop"), ("s3", "C:/Users/eu/loja", "claude-desktop")]),
+        ["Claude Desktop · loja", "Claude Desktop · site"]
+    );
+    assert_eq!(pill_names(&[("s1", "C:/Users/eu/loja", "cli"), ("s2", "C:/Users/eu/site", "cli")]), ["Claude Code · loja", "Claude Code · site"]);
+    // the Desktop's pills keep its colour and take no messages from the app (it is answered in its window)
+    let mut app = island_app();
+    for (session, cwd) in [("s1", "/a"), ("s2", "/b")] {
+        let mut payload = json!({ "hook_event_name": "UserPromptSubmit", "session_id": session, "cwd": cwd });
+        payload["mago_origin"] = "claude-desktop".into();
+        app.take_hook(&format!("ext:{session}"), &payload, None);
+    }
+    let pills = app.outside_pills();
+    assert_eq!(pills.iter().map(|pill| pill.id.as_str()).collect::<Vec<_>>(), ["pill:desktop:/a", "pill:desktop:/b"]);
+    assert!(pills.iter().all(|pill| pill.color == Color32::from_rgb(0xd9, 0x77, 0x57) && !app.outside_takes_messages(&pill.id)));
+}
+
+#[test]
+fn a_hook_without_the_entrypoint_asks_the_sessions_file() {
+    let dir = std::env::temp_dir().join(format!("mago-entrypoint-{}", new_id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let write = |name: &str, value: Value| std::fs::write(dir.join(name), value.to_string()).unwrap();
+    write("10.json", json!({ "sessionId": "mesa", "cwd": "/p", "entrypoint": "claude-desktop" }));
+    write("11.json", json!({ "sessionId": "term", "cwd": "/p", "entrypoint": "cli" }));
+    std::fs::write(dir.join("10.abc.key"), [0u8, 159, 146, 150]).unwrap();
+    let session = |id: &str| json!({ "session_id": id });
+    let none = |_: &str| None;
+    assert_eq!(relay::origin(&session("mesa"), &none, Some(&dir)), "claude-desktop", "the Desktop's file says so");
+    assert_eq!(relay::origin(&session("term"), &none, Some(&dir)), "");
+    assert_eq!(relay::origin(&session("sumiu"), &none, Some(&dir)), "", "no file: Claude Code");
+    assert_eq!(relay::origin(&session("mesa"), &|name| (name == "CLAUDE_CODE_ENTRYPOINT").then(|| "cli".into()), Some(&dir)), "", "the environment first");
+    assert_eq!(relay::origin(&session("mesa"), &none, None), "");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn a_question_from_claude_desktop_reaches_the_island_and_the_answer_goes_back() {
     let bridge = Bridge::start(None).unwrap();
