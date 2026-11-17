@@ -40,6 +40,16 @@ pub(crate) struct PlaylistItem {
     pub(crate) total: Option<u64>,
 }
 
+/// A playlist opened on the page: its songs as far as they came, 50 a page, as the list is scrolled down.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct Opened {
+    pub(crate) playlist: PlaylistItem,
+    pub(crate) songs: Vec<QueueItem>,
+    /// More follow; a page is on its way.
+    pub(crate) more: bool,
+    pub(crate) loading: bool,
+}
+
 /// What a search found.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Found {
@@ -64,6 +74,8 @@ pub(crate) enum Reply {
     Queue(Result<Vec<QueueItem>, Failure>),
     Playlists(Result<Vec<PlaylistItem>, Failure>),
     Liked(Result<Vec<QueueItem>, Failure>),
+    /// A page of an opened playlist's songs: its uri, from where, and the page with whether more follow.
+    Songs(String, usize, Result<(Vec<QueueItem>, bool), Failure>),
     Found(Result<Found, Failure>),
     Contains(String, Result<bool, Failure>),
     Saved(String, bool, Result<(), Failure>),
@@ -97,6 +109,8 @@ pub(crate) struct Library {
     /// The account's playlists and Liked Songs (the last 50 each).
     pub(crate) playlists: Vec<PlaylistItem>,
     pub(crate) liked: Vec<QueueItem>,
+    /// The playlist opened on the page, in place of the lists.
+    pub(crate) opened: Option<Opened>,
     /// Why Playlists, Curtidas and the search are empty: no account.
     pub(crate) lists_note: Option<String>,
     /// What the last search found, and whether one is out.
@@ -148,7 +162,7 @@ impl Library {
         (self.playlists, self.liked, self.found, self.devices, self.web_player) = (Vec::new(), Vec::new(), None, Vec::new(), None);
         (self.hearts, self.context_names, self.searching) = (HashMap::new(), HashMap::new(), false);
         self.busy.clear();
-        (self.next_page, self.next_lists) = (0, 0);
+        (self.next_page, self.next_lists, self.opened) = (0, 0, None);
     }
 
     /// Soloist's queue, from the player's thread (None: it gave none).
@@ -174,7 +188,7 @@ impl Spotify {
     /// A Web API call on a thread of its own, unless one of its `kind` is out; never in a test (it is written down).
     pub(super) fn spawn_web(&mut self, kind: &'static str, work: impl FnOnce(&Shared) -> Reply + Send + 'static) {
         // a control, a heart and a search go every time (an older search's answer is dropped); a poll once at a time
-        let polled = !matches!(kind, "control" | "save" | "search");
+        let polled = !matches!(kind, "control" | "save" | "search" | "songs");
         if polled && !self.library.busy.insert(kind) {
             return;
         }
@@ -266,6 +280,22 @@ impl Spotify {
                         library.liked = liked;
                     }
                     Err(failure) => failed = Some(failure),
+                }
+            }
+            Reply::Songs(uri, offset, result) => {
+                // an answer for a list closed since, or for a page already in, is dropped
+                if let Some(opened) = library.opened.as_mut().filter(|opened| opened.playlist.uri == uri && opened.songs.len() == offset) {
+                    opened.loading = false;
+                    match result {
+                        Ok((songs, more)) => {
+                            opened.more = more && !songs.is_empty();
+                            opened.songs.extend(songs);
+                        }
+                        Err(failure) => {
+                            opened.more = false;
+                            failed = Some(failure);
+                        }
+                    }
                 }
             }
             Reply::Found(result) => {
@@ -451,6 +481,35 @@ impl DrawingApp {
 }
 
 impl Spotify {
+    /// Opens the playlist of `uri` (one of the lists, of the search, or Liked Songs) on the page and asks its first
+    /// songs; None when it is not one of them.
+    pub(crate) fn open_list(&mut self, uri: &str) -> Option<()> {
+        let library = &self.library;
+        let liked = || PlaylistItem { uri: super::controls::LIKED_SONGS.into(), name: "Músicas curtidas".into(), ..Default::default() };
+        let found = library.found.iter().flat_map(|found| &found.playlists);
+        let playlist =
+            library.playlists.iter().chain(found).find(|playlist| playlist.uri == uri).cloned().or_else(|| playback::is_liked_songs(uri).then(liked))?;
+        self.library.opened = Some(Opened { playlist, more: true, ..Default::default() });
+        self.more_songs();
+        Some(())
+    }
+
+    /// The opened playlist's next page of songs, unless one is on its way or none follow.
+    pub(crate) fn more_songs(&mut self) {
+        let Some(opened) = self.library.opened.as_mut().filter(|opened| opened.more && !opened.loading) else { return };
+        opened.loading = true;
+        let (uri, offset) = (opened.playlist.uri.clone(), opened.songs.len());
+        if super::fake::active() {
+            let page = super::fake::songs(&opened.playlist, offset);
+            self.take_reply(Reply::Songs(uri, offset, Ok(page)), now_ms());
+            return;
+        }
+        self.spawn_web("songs", move |shared| {
+            let page = web::songs(shared, &uri, offset);
+            Reply::Songs(uri, offset, page)
+        });
+    }
+
     /// The page's poll: the queue (Soloist's, else the account's), and with the account the player, the devices, the
     /// heart of the track and the name of where it comes from.
     pub(super) fn poll_page(&mut self, linked: bool) {

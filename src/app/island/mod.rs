@@ -27,7 +27,7 @@ mod keys;
 mod log;
 mod marquee;
 pub(crate) mod minis;
-mod music;
+pub(crate) mod music;
 pub(crate) mod paint;
 mod picture;
 pub(crate) mod pill;
