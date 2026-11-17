@@ -342,8 +342,10 @@ impl DrawingApp {
             let (at, size) = view.bot.unwrap_or((wanted.at, wanted.size));
             let center = rect.min + at;
             let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
-            // folded, while the music plays and no agent wants the person, she dances to it
-            let calm = view.shape != Shape::Open && matches!(wanted.state, MagoState::Idle | MagoState::Sleeping);
+            // while the music plays and no agent wants the person, she dances to it, open too (asked: "ali a Luna não
+            // reage à música"); open and paused, she does not nap there
+            let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.playing);
+            let calm = matches!(wanted.state, MagoState::Idle | MagoState::Sleeping) && (view.shape != Shape::Open || playing);
             match self.luna_groove().filter(|_| calm) {
                 Some(groove) => paint_mago_dancing(&painter, "island-main-dance", center, size, LUME, &groove, time),
                 None => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),

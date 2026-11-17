@@ -584,6 +584,7 @@ impl DrawingApp {
         if (pinned || island.form.is_some()) && island.machine.stage() != fsm::Stage::Home {
             island.machine.force_home(time);
         }
+        island.machine.set_compact_after(self.prefs.island_compact_after);
         island.machine.step(time, island.hovered, island.holding || pinned || island.form.is_some(), close_after, false);
         let was_open = island.open;
         let stage = island.machine.stage();

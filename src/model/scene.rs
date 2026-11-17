@@ -154,6 +154,8 @@ pub(crate) struct Prefs {
     pub(crate) island_volume: f32,
     /// Seconds before the open island folds after the pointer leaves.
     pub(crate) island_close_after: u8,
+    /// Seconds before the compact island shrinks to the closed notch after the pointer leaves; 0, never.
+    pub(crate) island_compact_after: u16,
     /// Frames a second of the island and the animations (Ajustes › Geral › Quadros por segundo): one of `FRAME_RATES`.
     pub(crate) frame_rate: u16,
     /// Background colour of the island, RGB.
@@ -260,6 +262,7 @@ impl Default for Prefs {
             island_projects: Vec::new(),
             island_volume: 0.1,
             island_close_after: 15,
+            island_compact_after: 60,
             frame_rate: 60,
             island_color: [0, 0, 0],
             shortcuts: Default::default(),

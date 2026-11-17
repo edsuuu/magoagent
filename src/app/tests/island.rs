@@ -91,6 +91,22 @@ fn the_cover_and_the_bars_sit_in_the_middle_or_at_the_right() {
     assert!(bars + 52.0 < grid.left(), "clear of the minis");
 }
 
+/// Asked ("ali a Luna não reage à música"): open on Início, while the song plays she dances too, and her dance asks for
+/// the listening; paused, nothing asks for it.
+#[test]
+fn open_on_home_luna_dances_to_the_song() {
+    use crate::app::integrations::spotify::{Now, Track};
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    app.prefs.integrations.spotify = true;
+    app.integrations.spotify.now = Some(Now { track: Track::new("505", "Arctic Monkeys", "", "").unwrap(), playing: true, ..Default::default() });
+    app.island_show_page(Tab::Home);
+    run(&mut app, &ctx, 1.0, 1.4, vec![]);
+    assert_eq!(app.island.size().x, EXPANDED_W, "open");
+    app.integrations_tick(&ctx);
+    assert_eq!(app.integrations.spotify.dancer.starts, u32::from(!cfg!(target_os = "macos")), "her dance asks to hear the song");
+}
+
 /// While the song plays the pill is alive and keeps asking for frames; paused, it asks for none.
 #[test]
 fn the_pill_asks_for_frames_while_the_song_plays_and_not_paused() {

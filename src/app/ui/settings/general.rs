@@ -6,6 +6,8 @@ use crate::prelude::*;
 
 /// The seconds the island's "Fechar sozinho" offers (the same as the island's own chips and `set_setting`).
 const CLOSE_AFTER: [u8; 4] = [5, 10, 15, 30];
+/// How long the compact island waits before it shrinks to the notch, in seconds; 0 is never.
+const COMPACT_AFTER: [u16; 5] = [15, 30, 60, 300, 0];
 
 impl DrawingApp {
     pub(super) fn settings_general(&mut self, ui: &mut egui::Ui, k: &K) {
@@ -71,6 +73,12 @@ impl DrawingApp {
         let hint = "Quanto a ilha aberta espera depois que o mouse sai.";
         if let Some(i) = row(ui, k, "Fechar sozinho", hint, |ui| choice(ui, k, "Fechar sozinho", &["5 s", "10 s", "15 s", "30 s"], now)) {
             self.prefs.island_close_after = CLOSE_AFTER[i];
+        }
+        let now = COMPACT_AFTER.iter().position(|seconds| *seconds == self.prefs.island_compact_after).unwrap_or(2);
+        let hint = "Quanto a ilha compacta (a pílula com a Luna, a música e os agentes) espera, depois que o mouse sai, até virar o notch pequeno.";
+        let labels = ["15 s", "30 s", "1 min", "5 min", "Nunca"];
+        if let Some(i) = row(ui, k, "Encolher para o notch", hint, |ui| choice(ui, k, "Encolher para o notch", &labels, now)) {
+            self.prefs.island_compact_after = COMPACT_AFTER[i];
         }
 
         title(ui, k, "CANVAS");
