@@ -85,12 +85,7 @@ impl DrawingApp {
                         let mut selected = false;
                         if *focus {
                             response.request_focus();
-                            if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), response.id) {
-                                let end = egui::text::CCursor::new(address.chars().count());
-                                state.cursor.set_char_range(Some(egui::text_selection::CCursorRange::two(egui::text::CCursor::new(0), end)));
-                                state.store(ui.ctx(), response.id);
-                                selected = true;
-                            }
+                            selected = select_all_text(ui.ctx(), response.id, address.chars().count());
                         }
                         if response.has_focus() && ui.input(|i| i.key_pressed(Key::Escape)) {
                             next_edit = Some(None);

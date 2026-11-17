@@ -389,6 +389,15 @@ pub(crate) const ZOOM_TEXT: f32 = 48.0;
 /// The bottom left pill's: Desfazer and Refazer.
 pub(crate) const HISTORY_WIDTH: f32 = 2.0 * CORNER_BUTTON + GLASS_GAP + 2.0 * GLASS_END;
 
+/// The whole text of field `id` (`chars` long) selected, as a field that opens on what it holds; false while the
+/// field has no state yet.
+pub(crate) fn select_all_text(ctx: &Context, id: egui::Id, chars: usize) -> bool {
+    let Some(mut state) = egui::TextEdit::load_state(ctx, id) else { return false };
+    state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(chars))));
+    state.store(ctx, id);
+    true
+}
+
 pub(crate) fn group_frame(c: &UiColors) -> egui::Frame {
     egui::Frame::new().fill(c.surface_low).corner_radius(8)
 }

@@ -440,11 +440,7 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
                     let response = ui.put(rect.shrink2(Vec2::new(8.0, 4.0)), edit).tip(field);
                     if first {
                         response.request_focus();
-                        if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), response.id) {
-                            let end = egui::text::CCursor::new(text.chars().count());
-                            state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(0), end)));
-                            state.store(ui.ctx(), response.id);
-                        }
+                        select_all_text(ui.ctx(), response.id, text.chars().count());
                     }
                     // the field is the only thing the popover has to focus: its ring stays
                     ui.painter().rect_stroke(rect, 6, Stroke::new(1.5, accent), StrokeKind::Inside);
