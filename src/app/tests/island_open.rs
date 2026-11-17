@@ -95,10 +95,8 @@ fn first_row(app: &DrawingApp) -> Pos2 {
 #[test]
 fn a_click_on_a_mini_of_the_compact_island_opens_it_on_that_agent() {
     let (mut app, ctx, mut time) = compact();
-    // the minis: a 2×2 grid of 11 with 2 between, centred 40 from the right; "b" is the second, right of the first
-    let rect = island_rect(&app);
-    let corner = Pos2::new(rect.right() - 40.0 - 12.0, rect.center().y - 12.0);
-    let second = corner + Vec2::new(11.0 + 2.0 + 5.5, 5.5);
+    // the minis where the compact island puts them (two: side by side on the middle line); "b" is the second
+    let second = crate::app::island::minis::mini_cells(island_rect(&app), 2)[1].center();
     click(&mut app, &ctx, &mut time, second);
     assert!((app.island.size().x - EXPANDED_W).abs() < 1.0, "open: {}", app.island.size().x);
     assert_eq!((app.island.tab(), app.island.focus()), (Tab::Chats, Some("b")), "on the agents' page, b in the card");
