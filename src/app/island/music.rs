@@ -440,7 +440,7 @@ impl DrawingApp {
         match list {
             List::Next => {
                 for item in &library.queue {
-                    if self.music_song(ui, item, false, pressed).clicked() {
+                    if self.music_song(ui, item, false, format!("jump {}", item.uri), pressed).clicked() {
                         pressed.push(format!("jump {}", item.uri));
                     }
                 }
@@ -463,7 +463,7 @@ impl DrawingApp {
             }
             List::Liked => {
                 for item in &library.liked {
-                    self.music_song(ui, item, true, pressed);
+                    self.music_song(ui, item, true, format!("play {}", item.uri), pressed);
                 }
                 if library.liked.is_empty() {
                     needs(ui, library.lists_note.as_deref().unwrap_or("Nenhuma música curtida ainda."));
@@ -502,8 +502,9 @@ impl DrawingApp {
     /// page is asked (50 at a time, as Spotify gives them).
     fn music_opened(&self, ui: &mut egui::Ui, opened: &Opened, pressed: &mut Vec<String>) {
         for item in &opened.songs {
-            if self.music_song(ui, item, true, pressed).clicked() && !item.uri.is_empty() {
-                pressed.push(format!("playin {} {}", opened.playlist.uri, item.uri));
+            let play = format!("playin {} {}", opened.playlist.uri, item.uri);
+            if self.music_song(ui, item, true, play.clone(), pressed).clicked() && !item.uri.is_empty() {
+                pressed.push(play);
             }
         }
         // the end of the list: in sight, or nearly, it asks the next page
@@ -530,7 +531,7 @@ impl DrawingApp {
                 if !found.tracks.is_empty() {
                     section(ui, "Músicas");
                     for item in &found.tracks {
-                        self.music_song(ui, item, true, pressed);
+                        self.music_song(ui, item, true, format!("play {}", item.uri), pressed);
                     }
                 }
                 if !found.playlists.is_empty() {
@@ -568,9 +569,10 @@ impl DrawingApp {
         }
     }
 
-    /// A song's row: the cover, the title and the artist, the time; on hover Tocar and + Fila when `actions`. Its
-    /// response (a press on the row itself).
-    fn music_song(&self, ui: &mut egui::Ui, item: &QueueItem, actions: bool, pressed: &mut Vec<String>) -> egui::Response {
+    /// A song's row: the cover, the title and the artist, the time; on hover Tocar and + Fila when `actions`, and a play
+    /// button over the cover that sends `play` (asked: "na listagem de música na capa precisa ter o botão de play quando
+    /// passa o mouse em cima"). Its response (a press on the row itself).
+    fn music_song(&self, ui: &mut egui::Ui, item: &QueueItem, actions: bool, play: String, pressed: &mut Vec<String>) -> egui::Response {
         let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::click());
         let response = response.on_hover_cursor(CursorIcon::PointingHand);
         let hovered = ui.rect_contains_pointer(rect);
@@ -580,6 +582,14 @@ impl DrawingApp {
         let art = Rect::from_min_size(Pos2::new(rect.left() + 6.0, rect.center().y - 15.0), Vec2::splat(30.0));
         let texture = (!item.cover_url.is_empty()).then(|| self.spotify_thumbnail(&item.cover_url)).flatten();
         picture(ui.painter(), art, 5, texture, &item.title);
+        if hovered && !item.uri.is_empty() {
+            let button = ui.interact(art, ui.scope_id().with(("island_music_cover_play", &item.uri)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+            ui.painter().rect_filled(art, 5, Color32::from_black_alpha(if button.hovered() { 160 } else { 115 }));
+            icons::paint(ui.painter(), icons::PLAY, art.center(), 14.0, INK);
+            if button.clicked() {
+                pressed.push(play);
+            }
+        }
         let mut right = rect.right() - 8.0;
         if actions && hovered {
             for (label, words) in [("+ Fila", format!("enqueue {}", item.uri)), ("Tocar", format!("play {}", item.uri))] {
