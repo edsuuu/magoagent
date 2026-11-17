@@ -15,18 +15,37 @@ pub(crate) mod whatsapp;
 pub(crate) const ITEM_PREFIX: &str = "integration:";
 
 /// What Ajustes keeps of the integrations: the switches and what is not secret.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub(crate) struct IntegrationPrefs {
     pub(crate) github: bool,
     pub(crate) spotify: bool,
     /// Spotify's Soloist (Linux): what it plays shows on the island as the Spotify app's does.
     pub(crate) soloist: bool,
+    /// The Client ID of the person's own Spotify app (not a secret: PKCE has none), for the Spotify account.
+    pub(crate) spotify_client_id: String,
     /// Hermes Agent's sessions show on the island (its plugin is installed apart, by a button).
     pub(crate) hermes: bool,
     pub(crate) whatsapp: bool,
     #[serde(default = "whatsapp::default_base")]
     pub(crate) whatsapp_base: String,
+    /// Luna dances to what Spotify plays on the island, by the beat heard in the computer's sound (on by default).
+    pub(crate) luna_dances: bool,
+}
+
+impl Default for IntegrationPrefs {
+    fn default() -> Self {
+        Self {
+            github: false,
+            spotify: false,
+            soloist: false,
+            hermes: false,
+            whatsapp: false,
+            whatsapp_base: String::new(),
+            spotify_client_id: String::new(),
+            luna_dances: true,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -38,6 +57,8 @@ pub(crate) struct Integrations {
     pub(crate) token_field: String,
     /// Ajustes' "Instalar…" of Hermes was pressed: what it will write is shown, waiting for the yes.
     pub(crate) hermes_confirm: bool,
+    /// Soloist's Configurar (Linux): its steps, the key's field and the work running.
+    pub(crate) soloist_setup: spotify::setup::Setup,
     /// What was pressed on the island's cards (they are drawn where the app is only read): done by the next tick.
     pub(crate) pressed: std::cell::RefCell<Vec<String>>,
 }
@@ -79,7 +100,7 @@ const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
 
 /// The pages a card or a button of the integrations may open: the services' own, never an address an answer made up.
 pub(crate) fn page_allowed(url: &str) -> bool {
-    ["https://github.com/"].iter().any(|start| url.starts_with(start)) && !url.chars().any(|letter| letter.is_control() || letter == ' ')
+    (url.starts_with("https://github.com/") || url == spotify::setup::DASHBOARD) && !url.chars().any(|letter| letter.is_control() || letter == ' ')
 }
 
 /// Opens one of the integrations' pages in the system's browser; never in a test.
@@ -97,20 +118,18 @@ impl DrawingApp {
         }
         self.github_tick(ctx);
         self.spotify_tick(ctx);
+        self.soloist_setup_tick(ctx);
         self.whatsapp_tick(ctx);
     }
 
     /// What a press on a card of the island does: "open <address>" (only a page of the services themselves), "seen
-    /// <integration>" (its card was shown) and "spotify <command>".
+    /// <integration>" (its card was shown) and "spotify <words>" (the pill's buttons and the Spotify page's, see
+    /// `DrawingApp::spotify_press`).
     fn integration_press(&mut self, action: &str) {
         match action.split_once(' ') {
             Some(("open", url)) => open_page(url),
             Some(("seen", "github")) => self.github_seen(),
-            Some(("spotify", command)) => {
-                if let Some(command) = spotify::Command::parse(command) {
-                    self.spotify_control(command);
-                }
-            }
+            Some(("spotify", words)) => self.spotify_press(words),
             _ => {}
         }
     }
@@ -174,10 +193,10 @@ impl DrawingApp {
             (_, Some(error)) => rows.push(ItemRow { text: error.clone(), color: RED, action: None }),
             (None, None) => rows.push(ItemRow { text: "Buscando os seus pull requests…".into(), color: DIM, action: None }),
             (Some(pulse), None) => {
-                if pulse.mine.is_empty() && pulse.to_review.is_empty() {
+                if pulse.open().next().is_none() && pulse.to_review.is_empty() {
                     rows.push(ItemRow { text: "Nenhum PR aberto nem revisão pedida.".into(), color: DIM, action: None });
                 }
-                for request in &pulse.mine {
+                for request in pulse.open() {
                     let color = match request.ci {
                         github::CiState::Failure => RED,
                         github::CiState::Success => GREEN,
@@ -232,12 +251,18 @@ mod tests {
 
     #[test]
     fn only_the_services_own_pages_open() {
-        for good in ["https://github.com/ana-dev/loja/pull/42", github::TOKENS_PAGE, github::PULLS_PAGE] {
+        for good in ["https://github.com/ana-dev/loja/pull/42", github::TOKENS_PAGE, github::PULLS_PAGE, spotify::setup::DASHBOARD] {
             assert!(page_allowed(good), "{good}");
         }
-        for bad in
-            ["file:///C:/Windows/System32/calc.exe", "http://github.com/a", "https://github.com.evil.example/a", "https://github.com/a b", "calc.exe", ""]
-        {
+        for bad in [
+            "file:///C:/Windows/System32/calc.exe",
+            "http://github.com/a",
+            "https://github.com.evil.example/a",
+            "https://github.com/a b",
+            "calc.exe",
+            "",
+            "https://developer.spotify.com/dashboard/soloist.evil.example",
+        ] {
             assert!(!page_allowed(bad), "{bad}");
         }
     }

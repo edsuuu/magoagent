@@ -180,6 +180,7 @@ mod tests {
             effort: String::new(),
             recruit: false,
             named: false,
+            draft: false,
         }
     }
 
@@ -225,23 +226,24 @@ mod tests {
         assert_eq!(asks.len(), 1);
         let view = app.island_view(vec![], asks, crate::app::island::Mood::Needs(1), 1.0);
         assert!(
-            view.lines.iter().any(|line| line.kind == "Claude Code" && line.id.starts_with("pill:")),
+            view.lines.iter().any(|line| line.kind == "fora do app" && line.id.starts_with("pill:")),
             "{:?}",
             view.lines.iter().map(|line| &line.id).collect::<Vec<_>>()
         );
-        assert!(app.ask_line(&view).is_some_and(|line| line.kind == "Claude Code"), "the card is of the session's pill");
+        assert!(app.ask_line(&view).is_some_and(|line| line.kind == "fora do app"), "the card is of the session's pill");
     }
     #[test]
     fn a_session_from_a_terminal_is_on_home_when_the_island_opens() {
-        // the compact island shows its mini: opened, Início has it in focus and in its grid, not "no tool"
+        // the compact island shows its mini: opened, Início's list has it, and its pill lives on Claude Code's page
         let (mut app, _ctx, _time) = island();
         let payload = json!({ "hook_event_name": "UserPromptSubmit", "session_id": "s1", "cwd": "C:/proj", "prompt": "oi" });
         app.take_outside_hook(&payload, None);
         let view = app.island_view(vec![], vec![], crate::app::island::Mood::Working(1), 1.0);
         assert_eq!(app.island.tab(), Tab::Home);
         let pill = view.lines.iter().find(|line| line.id.starts_with(crate::app::maestro::outside::PILL_PREFIX)).expect("the session's pill");
-        assert_eq!(view.focus.as_deref(), Some(pill.id.as_str()), "Início opens on the session");
-        assert_eq!(Tab::of(&pill.id), Tab::Home);
+        let (listed, _) = crate::app::island::feed::feed_lines(&view.lines, &Default::default());
+        assert!(listed.iter().any(|line| line.id == pill.id), "Início lists the session");
+        assert_eq!(Tab::of(&pill.id), Tab::Claude);
     }
     #[test]
     fn each_project_of_claude_code_has_a_mini_of_its_own_colour() {

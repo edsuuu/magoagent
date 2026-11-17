@@ -145,10 +145,10 @@ pub(crate) fn may_build(scene: &Scene, caller: Option<&str>, items: &[Value]) ->
     // `start: {id}` or the file format's `startBinding: {elementId}`, which goes in as it is
     let links = |i: &Value| [&i["start"]["id"], &i["end"]["id"], &i["startBinding"]["elementId"], &i["endBinding"]["elementId"]].into_iter().any(is_terminal);
     if items.iter().any(|i| i["type"] == "terminal") {
-        return Err("Só um terminal Maestro pode criar terminais".into());
+        return Err("Só um terminal da Luna pode criar terminais".into());
     }
     if items.iter().any(links) {
-        return Err("Só um terminal Maestro pode conectar".into());
+        return Err("Só um terminal da Luna pode conectar".into());
     }
     Ok(())
 }

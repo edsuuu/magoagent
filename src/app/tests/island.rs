@@ -2,14 +2,14 @@
 
 use super::*;
 use crate::app::chat::decide::PersonAsk;
-use crate::app::island::{CLOSED_H, CLOSED_W, COMPACT_H, COMPACT_W, EXPANDED_W};
+use crate::app::island::{CLOSED_H, CLOSED_W, COMPACT_H, COMPACT_W, EXPANDED_W, Tab};
 
 const SIZE: Vec2 = Vec2::new(1200.0, 800.0);
 
-fn chat(id: &str, name: &str) -> crate::app::chat::direct::Chat {
+fn chat(id: &str, agent: &str, name: &str) -> crate::app::chat::direct::Chat {
     crate::app::chat::direct::Chat {
         id: id.into(),
-        agent: "claude".into(),
+        agent: agent.into(),
         name: name.into(),
         cwd: "C:/p".into(),
         session: None,
@@ -18,13 +18,14 @@ fn chat(id: &str, name: &str) -> crate::app::chat::direct::Chat {
         effort: String::new(),
         recruit: false,
         named: false,
+        draft: false,
     }
 }
 
 fn app_with_island() -> DrawingApp {
     let mut app = DrawingApp::default();
     app.prefs.island = true;
-    app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
+    app.chats = vec![chat("a", "claude", "Claude Code · loja"), chat("b", "codex", "Codex · site")];
     app
 }
 
@@ -43,6 +44,167 @@ fn run(app: &mut DrawingApp, ctx: &Context, from: f64, to: f64, events: Vec<egui
     }
 }
 
+/// One frame of the island; the texts it painted.
+fn painted(app: &mut DrawingApp, ctx: &Context, time: f64) -> Vec<String> {
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(time), events: vec![], ..Default::default() };
+    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
+    output.textures_delta.clear();
+    output.shapes.iter().filter_map(|shape| if let egui::Shape::Text(text) = &shape.shape { Some(text.galley.text().to_string()) } else { None }).collect()
+}
+
+/// One frame of the island, and the time it asked before the next one.
+fn frame_delay(app: &mut DrawingApp, ctx: &Context, time: f64) -> std::time::Duration {
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(time), events: vec![], ..Default::default() };
+    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
+    output.textures_delta.clear();
+    output.viewport_output.get(&egui::ViewportId::ROOT).map_or(std::time::Duration::MAX, |viewport| viewport.repaint_delay)
+}
+
+/// Asked ("como a Dynamic Island do iPhone quando toca música"): the pill's bars follow the bands heard, each its own;
+/// with nothing heard here (the song on another device, the listening off), they rest, nothing made up (asked: "se a
+/// música não está tocando nesse dispositivo, a frequência precisa ficar parada").
+#[test]
+fn the_pills_bars_follow_what_is_heard_and_rest_without_it() {
+    use crate::app::integrations::spotify::groove::{BANDS, Dance, Groove};
+    use crate::app::island::pill::bars;
+    let groove = |bands| Groove { bpm: 120.0, phase: 0.25, energy: 0.9, bass: 0.7, bands, dance: Dance::Sway, beat: 0.5, since: 0.0 };
+    let mut heard = [0.0; BANDS];
+    heard[0] = 1.0;
+    heard[5] = 0.5;
+    let heights = bars(Some(&groove(Some(heard))));
+    assert_eq!(heights[0], 1.0, "the loudest band at the top");
+    assert!(heights[5] > 0.0 && heights[5] < 0.5, "the curve keeps the middle low: {}", heights[5]);
+    assert_eq!(heights[9], 0.0, "a silent band rests");
+    // the clock's groove (nothing heard) and no groove at all: every bar at rest
+    assert_eq!(bars(Some(&groove(None))), [0.0; BANDS]);
+    assert_eq!(bars(None), [0.0; BANDS]);
+}
+
+/// Asked ("Luna à esquerda, capa e frequência no meio, os mini agentes à direita; sem mini agentes, à direita"): the
+/// cover and the bars go together, in the middle between the wizard and the minis, or at the right without minis.
+#[test]
+fn the_cover_and_the_bars_sit_in_the_middle_or_at_the_right() {
+    use crate::app::island::minis::mini_cells;
+    use crate::app::island::pill::spread;
+    let pill = Rect::from_min_size(Pos2::ZERO, Vec2::new(288.0, 40.0));
+    // the bars take 42 (ten of 1.5 with 3 between); no agents: the pair ends 12 from the right, the minis' room
+    let (cover, bars) = spread(pill, None);
+    assert!(bars > cover + 22.0, "the bars after the cover");
+    assert!((bars + 42.0 - (288.0 - 12.0)).abs() < 1.0, "at the right: the bars end at {}", bars + 42.0);
+    // with agents: the pair's middle halfway between the wizard (42) and the minis' grid
+    let grid = mini_cells(pill, 2).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
+    let (cover, bars) = spread(pill, Some(grid));
+    let middle = (cover + bars + 42.0) / 2.0;
+    assert!((middle - (42.0 + grid.left()) / 2.0).abs() < 1.0, "in the middle: {middle} between 42 and {}", grid.left());
+    assert!(bars + 42.0 < grid.left(), "clear of the minis");
+    // the compact island as it is: Luna (her right at 42) and the minis by the sides, the song in the middle between them
+    let pill = Rect::from_min_size(Pos2::ZERO, Vec2::new(crate::app::island::COMPACT_W, crate::app::island::COMPACT_H));
+    let grid = mini_cells(pill, 1).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
+    let (cover, bars) = spread(pill, Some(grid));
+    let (before, after) = (cover - 42.0, grid.left() - (bars + 42.0));
+    assert!((before - after).abs() < 1.0 && before > 10.0, "the gaps: {before} and {after}");
+    // two minis side by side: still some room, not the wide gaps (asked: "diminuir mais um pouco esse espaço")
+    let grid = mini_cells(pill, 2).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
+    let (cover, bars) = spread(pill, Some(grid));
+    let (before, after) = (cover - 42.0, grid.left() - (bars + 42.0));
+    assert!((10.0..=20.0).contains(&before) && (before - after).abs() < 1.0, "the gaps: {before} and {after}");
+}
+
+/// Asked ("ali a Luna não reage à música"): open on Início, while the song plays she dances too, and her dance asks for
+/// the listening; paused, nothing asks for it.
+#[test]
+fn open_on_home_luna_dances_to_the_song() {
+    use crate::app::integrations::spotify::{Now, Track};
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    app.prefs.integrations.spotify = true;
+    app.integrations.spotify.now = Some(Now { track: Track::new("505", "Arctic Monkeys", "", "").unwrap(), playing: true, ..Default::default() });
+    app.island_show_page(Tab::Home);
+    run(&mut app, &ctx, 1.0, 1.4, vec![]);
+    assert_eq!(app.island.size().x, EXPANDED_W, "open");
+    app.integrations_tick(&ctx);
+    assert_eq!(app.integrations.spotify.dancer.starts, u32::from(!cfg!(target_os = "macos")), "her dance asks to hear the song");
+}
+
+/// While the song plays the pill is alive and keeps asking for frames; paused, it asks for none.
+#[test]
+fn the_pill_asks_for_frames_while_the_song_plays_and_not_paused() {
+    use crate::app::integrations::spotify::{Now, Track};
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    // with no dance, the frames while it plays are the bars'
+    app.prefs.integrations.luna_dances = false;
+    run(&mut app, &ctx, 1.0, 1.3, vec![]);
+    assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H), "the notch, with nothing waiting");
+    let mut now = Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, ..Default::default() };
+    app.integrations.spotify.now = Some(now.clone());
+    let playing = frame_delay(&mut app, &ctx, 2.0);
+    assert!(playing <= std::time::Duration::from_millis(33), "the bars are moving: a frame at the island's rate ({playing:?})");
+    now.playing = false;
+    app.integrations.spotify.now = Some(now);
+    let paused = frame_delay(&mut app, &ctx, 2.2);
+    assert!(paused >= std::time::Duration::from_millis(60), "paused: only the wizard's slow blink ({paused:?})");
+    app.integrations.spotify.now = None;
+    assert_eq!(paused, frame_delay(&mut app, &ctx, 2.4), "paused, the pill asks for no frame, as with no song");
+}
+
+/// Asked ("se eu clicar na música ele me leva para a tab da música"): a click on the cover in the notch opens the
+/// island on Música.
+#[test]
+fn a_click_on_the_songs_cover_opens_the_island_on_the_music() {
+    use crate::app::integrations::spotify::{Now, Track};
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    app.prefs.integrations.spotify = true;
+    app.integrations.spotify.now = Some(Now { track: Track::new("505", "Arctic Monkeys", "", "").unwrap(), playing: false, ..Default::default() });
+    run(&mut app, &ctx, 1.0, 1.3, vec![]);
+    assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H), "the notch");
+    // the cover sits 4 from the notch's left, 16 wide
+    let cover = Pos2::new(SIZE.x / 2.0 - CLOSED_W / 2.0 + 12.0, CLOSED_H / 2.0);
+    let press = |pressed| egui::Event::PointerButton { pos: cover, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    frame_at(&mut app, &ctx, 1.4, vec![egui::Event::PointerMoved(cover), press(true)]);
+    frame_at(&mut app, &ctx, 1.45, vec![press(false)]);
+    run(&mut app, &ctx, 1.5, 3.5, vec![egui::Event::PointerMoved(cover)]);
+    assert_eq!((app.island.size().x, app.island.tab()), (EXPANDED_W, Tab::Music), "open on Música");
+}
+
+/// Asked ("tem momento que a Luna fica parada como se nada estivesse tocando"): an agent at work or done does not stop
+/// her dance; what needs the person does.
+#[test]
+fn luna_dances_through_the_agents_work_and_stops_for_the_person() {
+    use crate::app::island::paint::dances_through;
+    use crate::app::mascot::mago::MagoState;
+    for state in [MagoState::Idle, MagoState::Sleeping, MagoState::Working, MagoState::Done] {
+        assert!(dances_through(state), "{state:?}");
+    }
+    for state in [MagoState::NeedsYou, MagoState::Asking, MagoState::Error] {
+        assert!(!dances_through(state), "{state:?}");
+    }
+}
+
+/// Asked ("o dono quer as duas: as do canvas (terminais do app rodando Claude Code e chats do app com agente claude) e
+/// as de fora"): Claude Code's page shows the app's Claude agents, each saying it is on the canvas, and not the others.
+#[test]
+fn the_claude_page_has_the_apps_agents_on_the_canvas() {
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    app.island_show_page(Tab::Claude);
+    run(&mut app, &ctx, 1.0, 1.4, vec![]);
+    assert_eq!(app.island.size().x, EXPANDED_W, "open on Claude Code");
+    let texts = painted(&mut app, &ctx, 1.5);
+    assert!(texts.iter().any(|text| text == "Claude Code · no canvas"), "{texts:?}");
+    assert!(texts.iter().any(|text| text == "loja"), "the chat's name in the grid: {texts:?}");
+    assert!(!texts.iter().any(|text| text.contains("site")), "the app's Codex is no Claude Code session ({:?}): {texts:?}", app.island.tab());
+}
+
+/// Asked ("se os hooks estão instalados aqui precisa saber"): the empty Claude Code page says so when they are in.
+#[test]
+fn the_empty_claude_page_knows_whether_the_hooks_are_in() {
+    use crate::app::island::home::empty_words;
+    assert!(empty_words(Tab::Claude, false).1.starts_with("Instale os hooks"));
+    assert!(empty_words(Tab::Claude, true).1.starts_with("Os hooks estão instalados"));
+}
+
 #[test]
 fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() {
     let ctx = Context::default();
@@ -58,7 +220,7 @@ fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() 
     frame_at(&mut app, &ctx, 2.65, vec![press(false)]);
     run(&mut app, &ctx, 2.7, 4.0, vec![egui::Event::PointerMoved(on_it)]);
     assert_eq!(app.island.size().x, EXPANDED_W, "open");
-    assert_eq!(app.island.size().y, 160.0);
+    assert_eq!(app.island.size().y, 270.0, "Início: the summary and the list");
     // the pointer left: it stays 15 s, then folds to compact
     frame_at(&mut app, &ctx, 4.05, vec![egui::Event::PointerGone]);
     run(&mut app, &ctx, 4.1, 18.0, vec![]);
@@ -266,4 +428,144 @@ fn no_canvas_on_the_card_brings_the_app_up_on_the_agents_card() {
     app.island_on_canvas("c");
     assert!(!app.chat_open && app.raise_window, "the canvas, with the app in front");
     assert_eq!((app.selected.clone(), app.terminal_focus.as_deref()), (vec![0], Some("c")));
+}
+
+/// Asked ("tem vezes q vai tudo para baixo, e a ilha some, precisa ter um botao nas configurações para voltar a ilha"):
+/// whatever was saved, it goes back to the top of the screen, through Ajustes and through the MCP.
+#[test]
+fn the_island_lost_off_the_screen_comes_back_to_where_it_starts() {
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    app.prefs.island_at = Some([9000.0, 4000.0]);
+    run(&mut app, &ctx, 0.0, 0.2, vec![]);
+    app.reset_island();
+    assert!(app.prefs.island_at.is_none(), "the saved place is forgotten");
+    run(&mut app, &ctx, 0.2, 0.4, vec![]);
+    assert_eq!(app.island_place(&ctx), None, "nothing saved yet: no place chosen in Ajustes");
+    app.prefs.island_at = Some([9000.0, 4000.0]);
+    let answer = app.act("set_setting", &serde_json::json!({ "name": "island_place", "value": "reset" }));
+    assert!(answer.is_ok(), "{answer:?}");
+    assert!(app.prefs.island_at.is_none());
+}
+
+/// Every page of the island and Início's "Ocultar tudo" / "Mostrar ocultos" through the MCP, as by the hand.
+#[test]
+fn the_mcp_opens_each_page_and_hides_the_summary() {
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    run(&mut app, &ctx, 0.0, 0.3, vec![]);
+    for (name, tab) in [("claude", Tab::Claude), ("github", Tab::GitHub), ("spotify", Tab::Music), ("chats", Tab::Chats), ("home", Tab::Home)] {
+        let answer = app.act("set_setting", &serde_json::json!({ "name": "island_page", "value": name }));
+        assert!(answer.is_ok(), "{name}: {answer:?}");
+        assert_eq!(app.island.tab(), tab, "{name}");
+    }
+    assert!(app.act("set_setting", &serde_json::json!({ "name": "island_page", "value": "nenhuma" })).is_err());
+    app.act("set_setting", &serde_json::json!({ "name": "island_feed", "value": "hide_all" })).unwrap();
+    app.act("set_setting", &serde_json::json!({ "name": "island_feed", "value": "show_hidden" })).unwrap();
+}
+
+/// The island as drawn: hung from the top centre.
+fn island_rect(app: &DrawingApp) -> Rect {
+    let size = app.island.size();
+    Rect::from_min_size(Pos2::new((SIZE.x / 2.0 - size.x / 2.0).round(), 0.0), size)
+}
+
+/// A header button, counted from the right: 0 the close, 1 the sound, 2 the settings, 3 the voice, 4 the size.
+fn right_button(app: &DrawingApp, index: usize) -> Pos2 {
+    let rect = island_rect(app);
+    Pos2::new(rect.right() - 25.0 - index as f32 * 32.0, rect.top() + 25.0)
+}
+
+/// A click as the hand makes it: the pointer comes, rests, presses, lets go; then a few frames for it to settle.
+fn click(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2) {
+    let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    for events in [vec![egui::Event::PointerMoved(at)], vec![egui::Event::PointerMoved(at)], vec![press(true)], vec![press(false)]] {
+        frame_at(app, ctx, *time, events);
+        *time += 0.05;
+    }
+    rest(app, ctx, time, at, 0.5);
+}
+
+/// The pointer still at `at` for `seconds`.
+fn rest(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2, seconds: f64) {
+    let end = *time + seconds;
+    while *time < end {
+        frame_at(app, ctx, *time, vec![egui::Event::PointerMoved(at)]);
+        *time += 0.05;
+    }
+}
+
+/// The app, its island opened by clicking on the compact pill, and the time it is at.
+fn opened() -> (DrawingApp, Context, f64) {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.prefs.island = true;
+    app.chats = vec![chat("a", "claude", "Claude Code · loja"), chat("b", "codex", "Codex · site")];
+    let mut time = 1.0;
+    let notch = Pos2::new(SIZE.x / 2.0, 10.0);
+    while time < 2.0 {
+        frame_at(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
+        time += 0.05;
+    }
+    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "compact on hover: {}", app.island.size().x);
+    let press = |pressed| egui::Event::PointerButton { pos: notch, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    frame_at(&mut app, &ctx, time, vec![press(true)]);
+    time += 0.05;
+    frame_at(&mut app, &ctx, time, vec![press(false)]);
+    time += 0.05;
+    while time < 3.0 {
+        frame_at(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
+        time += 0.05;
+    }
+    assert!((app.island.size().x - EXPANDED_W).abs() < 1.0, "clicked to open: {}", app.island.size().x);
+    (app, ctx, time)
+}
+
+/// Opening the app's Ajustes from the island's settings page sets app.settings_open true, closes the island's
+/// settings page, and folds the island back to compact.
+#[test]
+fn the_islands_settings_link_opens_app_settings_closes_island_settings_and_folds_to_compact() {
+    let (mut app, ctx, mut time) = opened();
+    // open the island's settings page via the gear button
+    let gear = right_button(&app, 2);
+    click(&mut app, &ctx, &mut time, gear);
+    assert!(app.island.settings_open(), "the gear opens the island's settings page");
+    assert_eq!(app.island.size().x, EXPANDED_W, "the island is expanded");
+    // find and click the "Ajustes…" link in the island's settings page
+    // the settings page is drawn inside the page area (PAGE_TOP = 42 from top, 10 from bottom)
+    // the link is on the third row (centers[2]) at the right side of the page
+    let rect = island_rect(&app);
+    let page_top = rect.top() + 42.0; // PAGE_TOP
+    let page_bottom = rect.bottom() - 10.0;
+    let page_center_y = (page_top + page_bottom) / 2.0;
+    // the three rows: 20, 24, 18 with 10 gap = 82 total, centered on page_center_y
+    // top = page_center_y - 41, centers[0] = top + 10 = page_center_y - 31
+    // centers[1] = top + 10 + 20 + 10 + 12 = page_center_y + 1
+    // centers[2] = top + 10 + 20 + 10 + 24 + 10 + 9 = page_center_y + 32
+    let centers_2 = page_center_y + 32.0;
+    let text_width = 55.0; // approximate width of "Ajustes…" in 11.5 font
+    let link_at = Pos2::new(rect.right() - 16.0 - text_width, centers_2 - 8.0);
+    click(&mut app, &ctx, &mut time, link_at);
+    // the app's settings window is now open
+    assert!(app.settings_open, "app.settings_open is true");
+    // the island's settings page is closed
+    assert!(!app.island.settings_open(), "the island's settings page is closed");
+    // the island has folded back to compact
+    rest(&mut app, &ctx, &mut time, link_at, 0.5);
+    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "the island folded to compact: {:?}", app.island.size());
+}
+
+/// Asked ("o chat atual abre um monte, salva a altura que deixei, mas se não tiver chat aberto não é para manter"): the
+/// size the conversation was pulled to is not the page's with no chat open.
+#[test]
+fn with_no_chat_open_the_chat_page_is_its_plain_size_not_the_pulled_one() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.prefs.island = true;
+    app.prefs.island_talk = Some([1100.0, 700.0]);
+    app.island_show_page(Tab::Chat);
+    run(&mut app, &ctx, 1.0, 2.5, vec![]);
+    assert_eq!(app.island.tab(), Tab::Chat);
+    assert_eq!(app.island.size().x, EXPANDED_W, "not the 1100 it was pulled to: {:?}", app.island.size());
+    assert!(app.island.size().y < 700.0, "{:?}", app.island.size());
 }

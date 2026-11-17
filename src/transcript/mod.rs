@@ -215,6 +215,15 @@ pub(crate) fn sessions(dir: &Path) -> Vec<Session> {
     std::fs::read_dir(dir).map(|d| d.flatten().filter_map(|e| read(e.path())).collect()).unwrap_or_default()
 }
 
+/// Who runs session `id` as its file in `dir` (~/.claude/sessions) says: "cli", "claude-desktop", "sdk-cli"…; None
+/// when no file names it or it says nothing.
+pub(crate) fn entrypoint(dir: &Path, id: &str) -> Option<String> {
+    std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
+        let session: Value = serde_json::from_str(&std::fs::read_to_string(entry.path()).ok()?).ok()?;
+        (session["sessionId"] == id).then(|| session["entrypoint"].as_str().map(str::to_string))?
+    })
+}
+
 /// Which session each terminal runs: `terminals` are (id, folder, started ms, shell pid) of the
 /// ones running Claude Code. Newest terminal first, each takes the newest session started in its
 /// folder since it opened that no newer terminal took. Folders are compared resolved: Claude Code

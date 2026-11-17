@@ -41,7 +41,7 @@ impl DrawingApp {
                 let names: Vec<&str> = voices.iter().map(|(_, name)| name.as_str()).collect();
                 let now = voices.iter().position(|(id, _)| *id == server.voice).unwrap_or(0);
                 if let Some(i) =
-                    row(ui, k, "Voz", "A voz com que o Maestro fala, da lista do servidor. Vale na próxima frase.", |ui| select(ui, k, "Voz", &names, now))
+                    row(ui, k, "Voz", "A voz com que a Luna fala, da lista do servidor. Vale na próxima frase.", |ui| select(ui, k, "Voz", &names, now))
                 {
                     self.prefs.voice_studio_voice = voices[i].0.clone();
                 }
@@ -53,7 +53,7 @@ impl DrawingApp {
         if row(ui, k, "Ouvir esta voz", "", |ui| button(ui, k, "▶ Ouvir").clicked()) {
             match &list {
                 StudioVoices::Failed(why) => self.toast(why.clone()),
-                _ => self.voice_sample = server.say("Olá! Eu sou o Maestro do MagoAgent."),
+                _ => self.voice_sample = server.say("Olá! Eu sou a Luna, a assistente do MagoAgent."),
             }
         }
         if row(ui, k, "Atualizar a lista", "Depois de criar ou clonar uma voz no VoiceStudio.", |ui| button(ui, k, "Atualizar").clicked()) {

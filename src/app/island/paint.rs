@@ -7,9 +7,11 @@ use super::minis::mini_cells;
 use super::stage::{self, Activity, Phase};
 use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, main_state};
 use crate::app::chat::list::{Look, clipped, glyph};
+use crate::app::integrations::spotify::Now;
+use crate::app::integrations::spotify::groove::{Dance, Groove};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
-use crate::app::mascot::mago::{MagoState, mago_pokes, paint_mago_toward, paint_mini};
+use crate::app::mascot::mago::{LUME, MagoState, mago_pokes, paint_mago_dancing, paint_mago_toward, paint_mini};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::voice::VoiceState;
@@ -22,6 +24,8 @@ pub(super) const DIM_3: Color32 = Color32::from_rgb(0x6b, 0x70, 0x79);
 pub(super) const CARD: Color32 = Color32::from_rgb(0x14, 0x15, 0x18);
 pub(super) const CARD_FLAT: Color32 = Color32::from_rgb(0x0e, 0x0f, 0x11);
 const TAB_ON: Color32 = Color32::from_rgb(0x1d, 0x1f, 0x23);
+/// The radius of the round mark under the tab shown (and the one under the pointer).
+const TAB_DOT: f32 = 14.0;
 pub(super) const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
 /// The header's height under the 8 above it: what the pages start under.
 pub(super) const PAGE_TOP: f32 = 42.0;
@@ -145,6 +149,10 @@ pub(crate) struct Out {
     pub(super) focus: Option<String>,
     /// The height of the page's content (for the pages that grow with it).
     pub(super) body: f32,
+    /// Início's lines hidden by their × (or "Ocultar tudo"), with what they were at.
+    pub(super) hide: Vec<(String, u64)>,
+    /// "Mostrar ocultos".
+    pub(super) show_hidden: bool,
 }
 
 impl DrawingApp {
@@ -186,14 +194,19 @@ impl DrawingApp {
                     chat: self.is_chat(&row.id),
                     canvas: self.scene.elements.iter().any(|element| element.id == row.id) || self.away.contains_key(&row.id),
                     badge: None,
-                    kind: stage::program_name(&program),
+                    // where it is: the two kinds of session Claude Code's page shows
+                    kind: if program == "claude" { format!("{} · no canvas", stage::program_name(&program)) } else { stage::program_name(&program) },
+                    at: 0,
+                    asleep: false,
                 }
             })
             .collect();
-        // the sessions outside the app, one pill per origin
+        // the sessions outside the app, one pill per origin and folder: the name says which ("Claude Desktop · loja"), the kind where
         lines.extend(self.outside_pills().into_iter().map(|pill| Line {
-            kind: if pill.name == "Hermes" { "Hermes Agent" } else { "Claude Code" }.into(),
-            mago: MagoState::from_agent(pill.state, self.now),
+            kind: if pill.name == "Hermes" { "Hermes Agent" } else { "fora do app" }.into(),
+            mago: if pill.asleep { MagoState::Sleeping } else { MagoState::from_agent(pill.state, self.now) },
+            at: pill.at,
+            asleep: pill.asleep,
             id: pill.id,
             name: pill.name,
             // what it is doing, as Coucou's step line (the prompt, the tool on what, how the turn ended); nothing yet: its state
@@ -211,9 +224,11 @@ impl DrawingApp {
             AgentState::Working(_) => 1,
             _ => 2,
         });
+        self.island.listed =
+            super::feed::feed_lines(&lines, &Default::default()).0.iter().map(|line| (line.id.clone(), super::feed::signature(line))).collect();
         let island = &self.island;
         let grid = island.tab.grid();
-        let in_grid = |line: &&Line| Tab::of(&line.id) == grid;
+        let in_grid = |line: &&Line| grid.shows(line);
         let focus = island
             .focus
             .clone()
@@ -289,7 +304,10 @@ impl DrawingApp {
         let grip = ui.interact(rect, ui.scope_id().with("island_grip"), Sense::click_and_drag());
         out.drag = grip.drag_started();
         out.holding = ui.input(|input| input.pointer.any_down()) && out.hovered;
-        out.wake = grip.clicked() && anim.x < EXPANDED_W - 40.0;
+        let opens = anim.x < EXPANDED_W - 40.0;
+        // what opens by the click shows the hand (asked: "precisa ter o cursor pointer")
+        let grip = if opens { grip.on_hover_cursor(CursorIcon::PointingHand) } else { grip };
+        out.wake = grip.clicked() && opens;
         // each content comes and goes on its own transition (`Layers`); the page that shows says where the wizard goes
         view.origin.set(rect.min);
         let [face, compact, open, _] = view.layers;
@@ -328,23 +346,56 @@ impl DrawingApp {
             let (at, size) = view.bot.unwrap_or((wanted.at, wanted.size));
             let center = rect.min + at;
             let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
-            mago(&painter, view.pointer, "island-main", center, size, wanted.state, time);
+            // while the music plays and no agent wants the person, she dances to it, open too (asked: "ali a Luna não
+            // reage à música"); open and paused, she does not nap there. An agent at work does not stop her (asked:
+            // "tem momento que a Luna fica parada como se nada estivesse tocando")
+            let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.playing);
+            let calm = dances_through(wanted.state) && (view.shape != Shape::Open || playing);
+            // the island open, she is awake and can be poked: no nap there when the song isn't heard here (asked: "se eu
+            // abro a ilha ela tem que acordar")
+            match self.luna_groove().filter(|groove| calm && !(view.shape == Shape::Open && groove.dance == Dance::Nap)) {
+                Some(groove) => paint_mago_dancing(&painter, "island-main-dance", center, size, self.luna_colour(LUME), &groove, time),
+                None => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),
+            }
         }
         self.island_keys(ui, view, &mut out);
         out
     }
 
-    /// The closed notch: only the wizard's face, in the middle, looking around by itself (the cursor is not followed
-    /// there, as in Coucou). The compact island: the wizard at the left, its eyes on the cursor, and a mini one per agent
-    /// in a grid at the right (`mini_cells`), in its colour, with a badge on the ones that wait.
+    /// The closed notch: only the wizard's face, in the middle, its eyes on the cursor (asked: "ele não acompanha o
+    /// cursor"; the reference's looks around by itself there), and around by itself while the cursor is not known. The
+    /// compact island: the wizard at the left, its eyes on the cursor, and a mini one per agent
+    /// in a grid at the right (`mini_cells`), in its colour, with a badge on the ones that wait. While a song plays,
+    /// Spotify's pill gives its place to the song's cover and to the sound's bars (`pill.rs`).
     fn island_small(&self, ui: &mut egui::Ui, rect: Rect, view: &View, compact: bool, time: f64, out: &mut Out) {
         let state = main_state(view.mood, view.celebrating);
+        // while a song plays, its cover and the sound's bars fill the pill (asked: "como a Dynamic Island do iPhone")
+        // playing or paused, as the Dynamic Island keeps the song while it pauses (its bars then rest as dots)
+        let now = self.integrations.spotify.now.as_ref();
+        // the bars hear the song whether or not Luna dances to it (`Dancer::groove` asks for the listening)
+        let groove = now.filter(|now| now.playing).map(|now| self.integrations.spotify.dancer.groove(now.playing));
         if !compact {
-            paint_mago_toward(ui.painter(), "island-main", Pos2::new(rect.center().x, rect.center().y + 1.0), 22.0, state, time, None);
+            let center = rect.center();
+            // while the music plays and no agent wants the person, she dances to it (asked: "a luna dançando")
+            let calm = dances_through(state);
+            // the notch is 24 tall: she keeps 3 above and below (asked: "a Luna está quase colada, diminui um pouco")
+            const LUNA: f32 = 18.0;
+            match self.luna_groove().filter(|_| calm) {
+                Some(groove) => paint_mago_dancing(ui.painter(), "island-main-dance", center, LUNA, self.luna_colour(LUME), &groove, time),
+                None => paint_mago_toward(ui.painter(), "island-main", center, LUNA, state, time, view.pointer),
+            }
+            if let Some(now) = now {
+                self.island_playing(ui, rect, now, None, groove.as_ref(), time, out);
+            }
             return;
         }
-        aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 30.0, state);
-        for (line, cell) in view.lines.iter().zip(mini_cells(rect, view.lines.len())) {
+        aim(view, Pos2::new(rect.left() + super::COMPACT_SIDE, rect.center().y + 1.0), 30.0, state);
+        // the green mini of Spotify is the cover and the bars then, spread between the wizard and the other minis
+        let spotify = |line: &Line| line.id.strip_prefix(crate::app::integrations::ITEM_PREFIX) == Some("spotify");
+        let lines: Vec<&Line> = view.lines.iter().filter(|line| now.is_none() || !spotify(line)).collect();
+        let cells = mini_cells(rect, lines.len());
+        let grid = cells.iter().copied().reduce(|grid, cell| grid.union(cell));
+        for (line, cell) in lines.into_iter().zip(cells) {
             line.paint_mini(ui.painter(), &format!("island-mini-{}", line.id), cell.center(), cell.width(), time);
             mini_badge(ui.painter(), cell.center(), cell.width(), line, time);
             // a click on a mini opens the island on it: its page (Início or Conversas) with it in the card
@@ -359,6 +410,17 @@ impl DrawingApp {
         if view.voice_on {
             let bars = crate::app::voice::call_bars(view.voice_state, view.mic, time);
             crate::app::voice::paint_bars(ui.painter(), Pos2::new(rect.center().x, rect.center().y), bars, INK);
+        }
+        if let Some(now) = now {
+            self.island_playing(ui, rect, now, Some(grid), groove.as_ref(), time, out);
+        }
+    }
+
+    /// The song's cover and the sound's bars in the pill while it plays, spread with the wizard and the minis (`pill.rs`).
+    fn island_playing(&self, ui: &egui::Ui, rect: Rect, now: &Now, compact: Option<Option<Rect>>, groove: Option<&Groove>, time: f64, out: &mut Out) {
+        let cover = self.integrations.spotify.cover.as_ref().map(egui::TextureHandle::id);
+        if super::pill::spotify(ui, rect, cover, self.integrations.spotify.tint, &now.track.title, now.playing, compact, groove, time) {
+            (out.tab, out.wake, out.picked) = (Some(Tab::Music), true, true);
         }
     }
 
@@ -413,7 +475,10 @@ impl DrawingApp {
             return;
         }
         match view.tab {
-            Tab::Home | Tab::Chats => self.island_home(ui, rect, page, view, time, out),
+            Tab::Home => self.island_feed(ui, page, view, time, out),
+            Tab::GitHub => self.island_github(ui, page, colors),
+            Tab::Music => self.island_music(ui, page, time),
+            Tab::Chats | Tab::Claude => self.island_home(ui, rect, page, view, time, out),
             Tab::Chat if view.session.is_some() => {
                 self.island_session(ui, page, view, time, out);
                 self.island_edges(ui, rect, out);
@@ -442,24 +507,22 @@ impl DrawingApp {
         }
     }
 
-    /// The tabs (Início, Chats, conversation, new chat) at the left; the voice, the settings and the close at the right.
+    /// The tabs at the left (Início, the conversation, Chats, Claude Code, GitHub and Spotify when they are on, the new
+    /// chat); the voice, the settings and the close at the right.
     fn island_header(&self, ui: &mut egui::Ui, rect: Rect, view: &View, out: &mut Out, time: f64) {
         let center_y = rect.top() + 8.0 + 17.0;
         let pinned = !view.asks.is_empty();
-        let tabs = [
-            (Tab::Home, icons::HOUSE, 17.0, "Início: as ferramentas"),
-            (Tab::Chat, icons::BUBBLE, 19.0, "Chat atual"),
-            (Tab::Chats, icons::LIST, 17.0, "Conversas: os agentes"),
-            (Tab::New, icons::PLUS, 16.0, "Chat novo num espaço novo"),
-        ];
+        let tabs = header_tabs(&view.lines);
+        let count = tabs.len();
         for (index, (tab, icon, size, tip)) in tabs.into_iter().enumerate() {
-            let area = Rect::from_center_size(Pos2::new(rect.left() + 14.0 + 15.0 + index as f32 * 35.0, center_y), Vec2::new(30.0, 22.0));
+            let area = Rect::from_center_size(Pos2::new(rect.left() + 14.0 + 15.0 + index as f32 * 35.0, center_y), Vec2::new(30.0, 28.0));
             let response = ui.interact(area, ui.scope_id().with(("island_tab", index)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
             let on = view.tab == tab && !pinned && !view.settings;
+            // a round mark under the icon, not a capsule (asked: "a aba ativa tá meia oval")
             if on {
-                ui.painter().rect_filled(area, 11, TAB_ON);
+                ui.painter().circle_filled(area.center(), TAB_DOT, TAB_ON);
             } else if response.hovered() {
-                ui.painter().rect_filled(area, 11, Color32::from_white_alpha(18));
+                ui.painter().circle_filled(area.center(), TAB_DOT, Color32::from_white_alpha(18));
             }
             let ink = if on {
                 INK
@@ -475,8 +538,9 @@ impl DrawingApp {
         }
         // the call's note between them
         if !view.voice_note.is_empty() {
-            let galley = clipped(ui.painter(), view.voice_note.clone(), font(11.0), DIM_3, rect.width() - 300.0);
-            ui.painter().galley(Pos2::new(rect.left() + 165.0, center_y - galley.size().y / 2.0), galley, DIM_3);
+            let left = rect.left() + 14.0 + count as f32 * 35.0 + 10.0;
+            let galley = clipped(ui.painter(), view.voice_note.clone(), font(11.0), DIM_3, rect.right() - 150.0 - left);
+            ui.painter().galley(Pos2::new(left, center_y - galley.size().y / 2.0), galley, DIM_3);
         }
         // right to left: close, settings, voice; dim, the ink when on (`.header-actions button.on`), 14 apart
         let mut x = rect.right() - 16.0 - 9.0;
@@ -540,7 +604,7 @@ impl DrawingApp {
         let on = ui.ctx().animate_bool_with_time(response.id, view.sound_on, 0.18);
         ui.painter().rect_filled(switch, 9, Color32::from_white_alpha(38).lerp_to_gamma(GREEN, on));
         ui.painter().circle_filled(Pos2::new(switch.left() + 9.0 + 14.0 * on, switch.center().y), 7.0, Color32::WHITE);
-        out.sound = response.clicked();
+        out.sound |= response.clicked();
         let label = ui.painter().text(Pos2::new(switch.right() + 10.0, centers[0]), egui::Align2::LEFT_CENTER, "Som", row_font.clone(), ROW_INK);
         let track = Rect::from_min_size(Pos2::new(label.right() + 10.0, centers[0] - 6.0), Vec2::new(72.0, 12.0));
         let response = ui.interact(track, ui.scope_id().with("island_volume"), Sense::click_and_drag()).on_hover_cursor(CursorIcon::PointingHand);
@@ -609,13 +673,37 @@ const PILL_MINI: f32 = 24.0;
 
 /// One pill of the grid, as Coucou's `buildPill`: its mini wizard and its name. The pointer over it only lights it in its
 /// colour (`mouseenter`); a click puts its agent in the card at the left (`setFocus`), where Abrir and Conversar are.
+/// The tabs of the header, in order: GitHub's and Spotify's only while their integration is on (its pill is there).
+pub(super) fn header_tabs(lines: &[Line]) -> Vec<(Tab, crate::editor::icons::Svg, f32, &'static str)> {
+    let on = |name: &str| lines.iter().any(|line| line.id.strip_prefix(crate::app::integrations::ITEM_PREFIX) == Some(name));
+    let mut tabs = vec![
+        (Tab::Home, icons::HOUSE, 17.0, "Início: o resumo"),
+        (Tab::Chat, icons::BUBBLE, 19.0, "Chat atual"),
+        (Tab::Chats, icons::LIST, 17.0, "Conversas: os agentes do app"),
+        (Tab::Claude, icons::CLAUDE, 16.0, "Claude Code: as sessões no canvas e fora do app"),
+    ];
+    if on("github") {
+        tabs.push((Tab::GitHub, icons::PULL, 18.0, "GitHub: os pull requests"));
+    }
+    if on("spotify") {
+        tabs.push((Tab::Music, icons::NOTE, 17.0, "Spotify"));
+    }
+    tabs.push((Tab::New, icons::PLUS, 16.0, "Chat novo num espaço novo"));
+    tabs
+}
+
 pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, opens: bool, time: f64, out: &mut Out) {
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, PILL_H), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let hovered = response.hovered();
     // it grows on hover as Coucou's (scale 1.04), within its own room: past it the scroll area would cut its edge
     let rect = if hovered { rect } else { rect.shrink(1.0) };
-    ui.painter().rect(rect, 14, CARD_FLAT, Stroke::new(1.0, with_alpha(line.color, if hovered { 0x8c } else { 0x24 })), StrokeKind::Inside);
+    let edge = match (hovered, line.asleep) {
+        (true, _) => 0x8c,
+        (false, true) => 0x1e,
+        (false, false) => 0x24,
+    };
+    ui.painter().rect(rect, 14, CARD_FLAT, Stroke::new(1.0, with_alpha(line.color, edge)), StrokeKind::Inside);
     if hovered {
         // `${color}2e` over the card, `0 2px 10px ${color}59` around it
         let shadow = egui::epaint::Shadow { offset: [0, 2], blur: 10, spread: 0, color: with_alpha(line.color, 0x59) };
@@ -634,10 +722,14 @@ pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, opens: bool, time
     let whole = ui.painter().layout_no_wrap(line.name.clone(), semi(10.0), ink).size().x;
     let left = if whole <= room.width() { room.center().x - whole / 2.0 } else { room.left() };
     marquee(ui, egui::Id::unique(("island_pill_name", &line.id)), &line.name, semi(10.0), ink, (left, room.center().y), room.width(), hovered);
-    mini_badge(ui.painter(), mini, PILL_MINI, line, time);
-    // `pillBadge`: only the sessions from outside carry one on the pill's corner
-    if line.badge.is_some() {
-        badge(ui.painter(), Pos2::new(rect.right() - 10.0, rect.top() + 2.0), line, 7.0);
+    if line.id.starts_with(crate::app::maestro::outside::PILL_PREFIX) {
+        shoulder_mark(ui.painter(), mini, PILL_MINI, line, time);
+    } else {
+        mini_badge(ui.painter(), mini, PILL_MINI, line, time);
+        // `pillBadge`: an integration's on the pill's corner (what failed there)
+        if line.badge.is_some() {
+            badge(ui.painter(), Pos2::new(rect.right() - 10.0, rect.top() + 2.0), line, 7.0);
+        }
     }
     // a click again on the one put in the card opens it, as its Abrir (`opens_on_click`)
     if response.clicked() {
@@ -693,6 +785,35 @@ fn badge(painter: &Painter, center: Pos2, line: &Line, radius: f32) {
     painter.circle_filled(center, radius - 1.0, color);
     if radius > 5.0 {
         painter.text(center, egui::Align2::CENTER_CENTER, mark, font(radius), Color32::BLACK);
+    }
+}
+
+/// What a session outside is at, on its mini's shoulder (asked: "se eles nao está trabalhando ou se ja terminou ele fica
+/// com a expressao zzz ou com o check ali"): `!` it waits on the person, `✓` its turn ended, `✕` it failed, a `z` that
+/// drifts up while it is stopped; working, its mini is awake and says it.
+pub(super) fn shoulder_mark(painter: &Painter, center: Pos2, body: f32, line: &Line, time: f64) {
+    let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
+    let at = center + Vec2::new(body * 0.42, -body * 0.4);
+    let mark = match (line.badge, line.state) {
+        (Some(Badge::Approval), _) | (_, AgentState::Waiting) => Some((AMBER, "!", hex(0x2b1a00))),
+        (Some(Badge::Finished), _) => Some((hex(0x34d399), "✓", hex(0x062b1d))),
+        (Some(Badge::Error), _) => Some((hex(0xf4505e), "✕", hex(0x2b0006))),
+        _ => None,
+    };
+    let radius = (body * 0.23).max(4.5);
+    if let Some((color, glyph, ink)) = mark {
+        // the ring of the card around it (`box-shadow: 0 0 0 2px`)
+        painter.circle_filled(at, radius + 2.0, CARD_FLAT);
+        painter.circle_filled(at, radius, color);
+        painter.text(at + Vec2::new(0.0, 0.5), egui::Align2::CENTER_CENTER, glyph, semi(radius * 1.55), ink);
+    } else if line.asleep {
+        for (delay, size) in [(0.0, radius * 1.6), (0.5, radius * 1.2)] {
+            let phase = ((time * 0.45 + delay) % 1.0) as f32;
+            let fade = (1.0 - phase) * (phase * 4.0).min(1.0);
+            let drift = Vec2::new(phase * 3.0, -phase * 7.0 - 1.0);
+            painter.text(at + drift, egui::Align2::CENTER_CENTER, "z", semi(size), with_alpha(DIM, (fade * 230.0) as u8));
+        }
+        painter.ctx().request_repaint_after(std::time::Duration::from_millis(66));
     }
 }
 
@@ -810,4 +931,10 @@ pub(super) fn wash_with(painter: &Painter, card: Rect, color: Color32, strength:
     for step in 0..24 {
         painter.circle_filled(center, 150.0 * (1.0 - step as f32 / 24.0 * 0.9), color.gamma_multiply(strength * 0.055));
     }
+}
+
+/// Whether Luna keeps dancing to the song in `state`: only what needs the person (a question, a permission, an error)
+/// stops her; an agent at work or done does not.
+pub(crate) fn dances_through(state: MagoState) -> bool {
+    matches!(state, MagoState::Idle | MagoState::Sleeping | MagoState::Working | MagoState::Done)
 }

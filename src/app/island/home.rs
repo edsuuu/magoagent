@@ -24,6 +24,31 @@ fn hairline() -> Stroke {
     Stroke::new(1.0, Color32::from_white_alpha(9))
 }
 
+/// What an empty page says: its title and what to do, by the tab; Claude Code's knows whether its hooks are in
+/// (asked: "se os hooks estão instalados aqui precisa saber").
+pub(crate) fn empty_words(tab: Tab, hooks: bool) -> (&'static str, &'static str) {
+    match tab {
+        Tab::Claude if hooks => ("Nenhuma sessão do Claude Code", "Os hooks estão instalados: as sessões aparecem aqui quando começarem"),
+        Tab::Claude => ("Nenhuma sessão do Claude Code", "Instale os hooks em Ajustes › Integrações"),
+        Tab::GitHub => ("O GitHub está desligado", "Ligue em Ajustes › Integrações"),
+        Tab::Music => ("Nada tocando agora", "Ligue o Spotify em Ajustes › Integrações"),
+        _ => ("Nenhum agente ainda", "Crie um chat em  +"),
+    }
+}
+
+/// Whether Claude Code's settings have our hooks (any version), read again every 3 s while asked: it is a file.
+fn hooks_installed(ui: &egui::Ui, time: f64) -> bool {
+    let id = egui::Id::unique("island_claude_hooks_installed");
+    if let Some((at, installed)) = ui.ctx().data(|data| data.get_temp::<(f64, bool)>(id))
+        && (0.0..3.0).contains(&(time - at))
+    {
+        return installed;
+    }
+    let installed = crate::app::maestro::claude_hooks::settings_path().is_some_and(|path| crate::app::maestro::claude_hooks::installed_at(&path));
+    ui.ctx().data_mut(|data| data.insert_temp(id, (time, installed)));
+    installed
+}
+
 /// The two cards the page is made of, by what the agent does.
 fn halves(page: Rect, editing: bool) -> (Rect, Rect) {
     let width = if editing { 150.0 } else { 322.0 };
@@ -65,7 +90,13 @@ impl DrawingApp {
 
     /// The focus card (and what is under it: its wash) and the grid of agents.
     fn home_cards(&self, ui: &mut egui::Ui, (left, right): (Rect, Rect), view: &View, focus: Option<&Line>, time: f64, out: &mut Out) {
-        for card in [left, right] {
+        // the grid: two columns of pills, a mini wizard and the name, the page's own (`Tab::shows`)
+        let grid = view.tab.grid();
+        let lines: Vec<&Line> = view.lines.iter().filter(|line| grid.shows(line)).collect();
+        // nothing to show: one card across, not an empty one beside it
+        let alone = focus.is_none() && lines.is_empty();
+        let left = if alone { left.union(right) } else { left };
+        for card in if alone { vec![left] } else { vec![left, right] } {
             ui.painter().rect(card, 20, CARD, hairline(), StrokeKind::Inside);
         }
         let activity = view.activity.as_ref();
@@ -82,17 +113,16 @@ impl DrawingApp {
             (Some(line), None) => self.idle_card(ui, left, line, out),
             (None, _) => {
                 let text_x = left.left() + 106.0;
-                let (title, hint) = if view.tab == Tab::Home {
-                    ("Nenhuma ferramenta ligada", "Ligue em Ajustes › Integrações")
-                } else {
-                    ("Nenhum agente ainda", "Crie um chat em  +")
-                };
-                ui.painter().text(Pos2::new(text_x, left.top() + 26.0), egui::Align2::LEFT_CENTER, title, font(13.0), INK);
-                ui.painter().text(Pos2::new(text_x, left.top() + 46.0), egui::Align2::LEFT_CENTER, hint, font(11.5), DIM);
+                let hooks = view.tab == Tab::Claude && hooks_installed(ui, time);
+                let (title, hint) = empty_words(view.tab, hooks);
+                // on the wizard's middle line, as the wizard
+                ui.painter().text(Pos2::new(text_x, left.center().y - 10.0), egui::Align2::LEFT_CENTER, title, font(13.0), INK);
+                ui.painter().text(Pos2::new(text_x, left.center().y + 10.0), egui::Align2::LEFT_CENTER, hint, font(11.5), DIM);
             }
         }
-        // the grid: two columns of pills, a mini wizard and the name; Início the tools', Chats the agents'
-        let lines: Vec<&Line> = view.lines.iter().filter(|line| Tab::of(&line.id) == view.tab.grid()).collect();
+        if alone {
+            return;
+        }
         let inner = right.shrink2(Vec2::new(8.0, 0.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
             ui.spacing_mut().item_spacing = Vec2::splat(4.0);
@@ -105,7 +135,7 @@ impl DrawingApp {
                 for pair in lines.chunks(2) {
                     ui.horizontal(|ui| {
                         for line in pair {
-                            pill(ui, line, width, self.opens_on_click(line), time, out);
+                            pill(ui, line, width, self.opens_on_click(line, view.tab), time, out);
                         }
                     });
                 }
@@ -113,10 +143,13 @@ impl DrawingApp {
         });
     }
 
-    /// Whether a click on `line`'s pill opens it, as its Abrir: when the person put it in the card already. Not a tool's:
-    /// its card has its own buttons, and its Abrir leaves the app (GitHub's page).
-    fn opens_on_click(&self, line: &Line) -> bool {
-        self.island.focus.as_deref() == Some(line.id.as_str()) && !line.id.starts_with(crate::app::integrations::ITEM_PREFIX)
+    /// Whether a click on `line`'s pill opens it, as its Abrir: when the person put it in the card already, and on Claude
+    /// Code's page for the app's own agents (a session of the canvas) at the first click. Not a tool's: its card has its
+    /// own buttons, and its Abrir leaves the app (GitHub's page).
+    fn opens_on_click(&self, line: &Line, tab: Tab) -> bool {
+        let tool = line.id.starts_with(crate::app::integrations::ITEM_PREFIX);
+        let canvas = tab == Tab::Claude && !line.id.starts_with(crate::app::maestro::outside::PILL_PREFIX);
+        (canvas || self.island.focus.as_deref() == Some(line.id.as_str())) && !tool
     }
 
     /// An agent with nothing to say of its turn: its name, its state and the buttons.

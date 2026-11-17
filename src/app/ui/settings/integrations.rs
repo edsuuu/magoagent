@@ -217,16 +217,252 @@ impl DrawingApp {
         head(ui, k, "Spotify", hint, playing, &mut self.prefs.integrations.spotify);
         if self.prefs.integrations.spotify {
             self.settings_player(ui, k, Player::App);
+            self.settings_luna(ui, k);
+            self.settings_spotify_account(ui, k);
         }
     }
 
-    /// Spotify's Soloist (Linux): its own switch, and what it plays with the same buttons.
+    /// "A Luna dança com a música": she dances on the island to the beat heard in the computer's sound (by the clock on
+    /// macOS, which has no way to hear it).
+    fn settings_luna(&mut self, ui: &mut egui::Ui, k: &K) {
+        let hint = if cfg!(target_os = "macos") {
+            "Na ilha, ao lado da música. No macOS ela balança no ritmo do relógio: o app não ouve o som do sistema."
+        } else {
+            "Na ilha, ao lado da música. Ela ouve o som do computador só para achar a batida, enquanto a música toca: nada é gravado nem enviado."
+        };
+        toggle(ui, k, "A Luna dança com a música", hint, &mut self.prefs.integrations.luna_dances);
+    }
+
+    /// Spotify's Soloist (Linux): its own switch, what it plays with the same buttons, and Configurar; the dance's
+    /// switch and the account here too while Spotify's own switch is off.
     fn settings_soloist(&mut self, ui: &mut egui::Ui, k: &K) {
         let hint = "O receptor do Spotify Connect para Linux: a música que você escolhe no celular ou no site toca aqui e aparece na ilha, com os botões. Sem conta e sem chave: fala com o Soloist aberto com a API local (-w 127.0.0.1:0) e com o que o Spotifast abre.";
         let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.on(Player::Soloist));
         head(ui, k, "Soloist", hint, playing, &mut self.prefs.integrations.soloist);
         if self.prefs.integrations.soloist {
             self.settings_player(ui, k, Player::Soloist);
+            // the dance's switch is under Spotify's card; with only Soloist on, here
+            if !self.prefs.integrations.spotify {
+                self.settings_luna(ui, k);
+                self.settings_spotify_account(ui, k);
+            }
+            self.settings_soloist_setup(ui, k);
+        } else if self.integrations.soloist_setup.open {
+            self.integrations.soloist_setup.close();
+        }
+    }
+
+    /// Configurar: Soloist's five steps (`integrations/spotify/setup`), each done, now or to do by what is found, with
+    /// the buttons that do what is missing; then the service's Status and Parar/Ligar. The key's field hides what is
+    /// pasted and is never kept.
+    fn settings_soloist_setup(&mut self, ui: &mut egui::Ui, k: &K) {
+        use crate::app::integrations::spotify::setup::{self, Job, KeyFile, Mark, Program, TITLES};
+        let mut press = "";
+        let open = self.integrations.soloist_setup.open;
+        let hint = "Baixa o Soloist do Spotify, guarda a chave e liga com o computador, passo a passo, sem outro programa. O que já está feito fica como está.";
+        row(ui, k, "Configurar o Soloist", hint, |ui| {
+            if button(ui, k, if open { "Fechar" } else { "Configurar" }).clicked() {
+                press = if open { "close" } else { "open" };
+            }
+        });
+        if open {
+            self.soloist_setup_watch(ui.ctx());
+        }
+        let setup = &mut self.integrations.soloist_setup;
+        match (open, setup.status.clone()) {
+            (false, _) => {}
+            (true, None) => note(ui, k, "Conferindo o que já está feito…"),
+            (true, Some(status)) => {
+                let typed = !setup.key_field.trim().is_empty();
+                let marks = setup::marks(&status, typed);
+                let hints = setup::hints(&status, typed, &setup.name_field);
+                let label = |index: usize| format!("{}{}. {}", if marks[index] == Mark::Done { "✓ " } else { "" }, index + 1, TITLES[index]);
+                let hint = |index: usize| {
+                    let word = marks[index].words();
+                    format!("{}{} · {}", word[..1].to_uppercase(), &word[1..], hints[index])
+                };
+                row(ui, k, &label(0), &hint(0), |ui| {
+                    let wanted = status.foreign.is_none() && !matches!(status.program, Program::Ready(_));
+                    let text = match status.program {
+                        Program::Expired => "Atualizar",
+                        Program::Broken(_) => "Baixar de novo",
+                        _ => "Baixar",
+                    };
+                    if wanted && button(ui, k, text).clicked() {
+                        press = "download";
+                    }
+                });
+                row(ui, k, &label(1), &hint(1), |ui| {
+                    if button(ui, k, "Abrir o painel").clicked() {
+                        press = "dashboard";
+                    }
+                });
+                let key_id = egui::Id::unique("settings_soloist_key");
+                row(ui, k, "Chave", "", |ui| {
+                    if button(ui, k, "Colar").clicked() {
+                        press = "paste";
+                    }
+                    input(ui, k, key_id, "Chave do Soloist", &mut setup.key_field, "spak_…", 250.0, true);
+                });
+                row(ui, k, &label(2), &hint(2), |ui| {
+                    input(ui, k, egui::Id::unique("settings_soloist_name"), "Nome do dispositivo", &mut setup.name_field, "Soloist", 200.0, false);
+                });
+                row(ui, k, &label(3), &hint(3), |ui| {
+                    let ready = matches!(status.program, Program::Ready(_)) && (typed || status.key != KeyFile::Missing);
+                    if ready && (marks[3] != Mark::Done || typed) && button(ui, k, if typed { "Salvar e ligar" } else { "Ligar" }).clicked() {
+                        press = "turn_on";
+                    }
+                });
+                row(ui, k, &label(4), &hint(4), |_| ());
+                if !status.vpn.is_empty() {
+                    note(ui, k, &setup::vpn_warning(&status.vpn));
+                }
+                if status.unit {
+                    let state = format!("{} · {}", status.active, if status.enabled { "abre sozinho ao entrar" } else { "não abre sozinho" });
+                    row(ui, k, "Serviço soloist.service", &state, |ui| {
+                        if button(ui, k, if status.running() { "Parar" } else { "Ligar" }).clicked() {
+                            press = if status.running() { "stop" } else { "start" };
+                        }
+                        if button(ui, k, "Status").clicked() {
+                            press = "details";
+                        }
+                    });
+                }
+                if let Some(busy) = setup.busy {
+                    note(ui, k, busy);
+                } else if let Some(Err(why)) = &setup.said {
+                    note(ui, k, &format!("Não deu: {why}"));
+                }
+                if let Some(details) = &setup.details {
+                    note(ui, k, details);
+                }
+                if press == "paste" {
+                    // the system's clipboard comes as a paste into the key's field, which takes the focus
+                    ui.memory_mut(|memory| memory.request_focus(key_id));
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+                }
+            }
+        }
+        let setup = &mut self.integrations.soloist_setup;
+        let job = match press {
+            "open" => {
+                setup.open();
+                None
+            }
+            "close" => {
+                setup.close();
+                None
+            }
+            "dashboard" => {
+                open_page(setup::DASHBOARD);
+                None
+            }
+            "download" => Some(Job::Download),
+            "turn_on" => {
+                let key = std::mem::take(&mut setup.key_field);
+                Some(Job::TurnOn { key: (!key.trim().is_empty()).then(|| setup::Secret::new(&key)), name: setup.name_field.clone() })
+            }
+            "start" => Some(Job::Start),
+            "stop" => Some(Job::Stop),
+            "details" => Some(Job::Details),
+            _ => None,
+        };
+        if let Some(job) = job
+            && let Err(why) = self.soloist_setup_run(job)
+        {
+            self.toast(format!("Soloist: {why}"));
+        }
+    }
+
+    /// Conta do Spotify: the Client ID of the person's own app, the Redirect URI to register there (with a copy
+    /// button), and Conectar / Desconectar. With it the island's page has the app's queue, Curtidas, the playlists, the
+    /// search and the heart.
+    fn settings_spotify_account(&mut self, ui: &mut egui::Ui, k: &K) {
+        use crate::app::integrations::spotify::account::{DASHBOARD, Link, REDIRECT_URI};
+        let account = &self.integrations.spotify.account;
+        let (status, detail) = match &account.link {
+            Link::Linked if account.name.is_empty() => ("Conta do Spotify conectada".to_string(), "O token fica no cofre do sistema.".to_string()),
+            Link::Linked => (format!("Conectada como {}", account.name), "O token fica no cofre do sistema.".to_string()),
+            Link::Waiting => ("Esperando o navegador…".to_string(), "Autorize no site do Spotify que abriu; depois volte aqui.".to_string()),
+            Link::Failed(why) => ("Conta do Spotify não conectada".to_string(), why.clone()),
+            Link::Off => (
+                "Conta do Spotify".to_string(),
+                "Opcional: traz a fila do app, as Curtidas, as suas playlists, a busca e o coração para a página do Spotify na ilha.".to_string(),
+            ),
+        };
+        let link = account.link.clone();
+        let mut action = "";
+        row(ui, k, &status, &detail, |ui| match link {
+            Link::Linked => {
+                if button(ui, k, "Desconectar").clicked() {
+                    action = "disconnect";
+                }
+            }
+            Link::Waiting => {
+                if button(ui, k, "Cancelar").clicked() {
+                    action = "cancel";
+                }
+            }
+            Link::Off | Link::Failed(_) => {
+                if button(ui, k, "Conectar").clicked() {
+                    action = "connect";
+                }
+            }
+        });
+        let hint = "O Client ID do seu app no painel do Spotify para desenvolvedores (sem segredo: o app usa PKCE). Sem app: Criar app, cole o Redirect URI abaixo, marque Web API e salve; o Client ID aparece na página dele.";
+        row(ui, k, "Client ID", hint, |ui| {
+            if button(ui, k, "Abrir painel…").clicked() {
+                action = "dashboard";
+            }
+            if button(ui, k, "Criar app…").clicked() {
+                action = "create";
+            }
+            input(
+                ui,
+                k,
+                egui::Id::unique("settings_spotify_client_id"),
+                "Client ID do app do Spotify",
+                &mut self.prefs.integrations.spotify_client_id,
+                "32 letras e números",
+                250.0,
+                false,
+            );
+        });
+        row(ui, k, REDIRECT_URI, "Redirect URI: cadastre este endereço exato no app do Spotify (Edit settings › Redirect URIs).", |ui| {
+            if button(ui, k, "Copiar").clicked() {
+                action = "copy";
+            }
+        });
+        note(
+            ui,
+            k,
+            "Já tem um Client ID do Spotifast (callback http://127.0.0.1:8989/login)? O mesmo serve: no painel, adicione também o Redirect URI acima ao app. Em Development Mode, a sua conta precisa estar na lista de usuários do app.",
+        );
+        match action {
+            "connect" => {
+                let said = self.spotify_connect().unwrap_or_else(|why| why);
+                self.toast(said);
+            }
+            "cancel" => self.spotify_cancel_login(),
+            "disconnect" => {
+                let said = self.spotify_disconnect().unwrap_or_else(|why| format!("A conta não foi desconectada: {why}"));
+                self.toast(said);
+            }
+            "create" => {
+                if !cfg!(test) {
+                    open_external(crate::app::integrations::spotify::account::CREATE_APP);
+                }
+            }
+            "dashboard" => {
+                if !cfg!(test) {
+                    open_external(DASHBOARD);
+                }
+            }
+            "copy" => {
+                ui.ctx().copy_text(REDIRECT_URI.to_string());
+                self.toast("Redirect URI copiado.");
+            }
+            _ => {}
         }
     }
 
@@ -256,7 +492,7 @@ impl DrawingApp {
             return;
         }
         let (mut save, mut test, mut remove) = (false, false, false);
-        let hint = "Clássico com o escopo repo, ou fine-grained só de leitura em Pull requests, Commit statuses e Actions.";
+        let hint = "Clássico com o escopo repo, ou fine-grained com leitura em Commit statuses e Actions e leitura e escrita em Pull requests (para salvar a descrição e comentar pela ilha).";
         row(ui, k, "Token pessoal", hint, |ui| {
             save = button(ui, k, "Salvar").clicked();
             if button(ui, k, "Criar token…").clicked() {
@@ -289,7 +525,7 @@ impl DrawingApp {
             note(ui, k, "Sem token: crie um, cole acima e salve. Ele vai para o cofre do sistema, nunca para um arquivo.");
         }
         if let Some(pulse) = &github.pulse {
-            for request in &pulse.mine {
+            for request in pulse.open() {
                 if link(ui, k, (request.ci.label().0, check_color(k, request.ci)), &format!("{}  {}", request.id, request.title), &request.state_words()) {
                     open_page(&request.url);
                 }

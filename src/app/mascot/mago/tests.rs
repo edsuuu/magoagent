@@ -224,3 +224,210 @@ fn a_gaze_that_is_not_a_number_does_not_blind_it() {
     });
     let _ = time;
 }
+
+mod dancing {
+    use super::*;
+    use crate::app::integrations::spotify::groove::{Dance, Groove};
+    use dance::{Place, pose};
+    use draw::dance_expression;
+
+    const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
+
+    fn groove(dance: Dance, beat: f64, energy: f32) -> Groove {
+        Groove { bpm: 120.0, phase: beat.fract() as f32, energy, bass: 0.3, bands: None, dance, beat, since: 0.0 }
+    }
+
+    fn close(one: f32, other: f32) -> bool {
+        (one - other).abs() < 0.01
+    }
+
+    /// The shapes a dancer leaves, painted alone.
+    fn shapes(groove: &Groove, size: f32) -> usize {
+        let ctx = Context::default();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            paint_mago_dancing(ui.painter(), &format!("luna-{:?}-{size}", groove.dance), Pos2::new(50.0, 50.0), size, GREEN, groove, 1.0);
+        });
+        output.textures_delta.clear();
+        output.shapes.len()
+    }
+
+    #[test]
+    fn only_palmas_maos_pro_alto_onda_and_giro_have_arms() {
+        let with_arms = [Dance::Clap, Dance::Pump, Dance::Wave, Dance::Spin];
+        let without = shapes(&groove(Dance::Sway, 0.3, 0.7), 22.0);
+        for dance in Dance::ALL {
+            let arms = with_arms.contains(&dance);
+            assert_eq!(dance.arms(), arms, "{dance:?}");
+            assert_eq!(pose(&groove(dance, 0.3, 0.7)).arms.is_some(), arms, "{dance:?}");
+            // two tubes more on the screen, at the island's sizes too
+            for size in [16.0, 22.0, 48.0] {
+                assert_eq!(shapes(&groove(dance, 0.3, 0.7), size), without + if arms { 2 } else { 0 }, "{dance:?} at {size}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_poses_are_the_previews_keyframes_and_the_hops_land_on_the_beat() {
+        // the sway: two beats at the clock's 76 BPM (the preview's 1.58 s), -7° on the beat and 7° a beat later
+        let sway = |beat| pose(&Groove { bpm: 76.0, ..groove(Dance::Sway, beat, 0.5) }).body;
+        assert!(close(sway(0.0).turn, -7.0) && close(sway(1.0).turn, 7.0) && close(sway(2.0).turn, -7.0));
+        // the step: to the left on one beat, up between, to the right on the next
+        let step = |beat| pose(&Groove { bpm: 100.0, ..groove(Dance::Step, beat, 0.5) }).body;
+        assert!(close(step(0.0).shift.x, -4.0) && close(step(0.5).shift.y, -3.0) && close(step(1.0).shift.x, 4.0));
+        // the hop lands on the beat, squashed (1.05, .95), and is 6 up at 40% of it
+        let hop = |beat| pose(&groove(Dance::Pump, beat, 0.5)).body;
+        assert!(close(hop(3.0).shift.y, 0.0) && close(hop(3.0).scale.x, 1.05) && close(hop(3.0).scale.y, 0.95));
+        assert!(close(hop(3.4).shift.y, -6.0) && close(hop(3.4).scale.y, 1.04));
+        // the nod is deepest on the beat, 13° forward
+        assert!(close(pose(&groove(Dance::Bang, 5.0, 0.5)).body.turn, 13.0));
+        assert!(close(pose(&groove(Dance::Bang, 5.55, 0.5)).body.turn, 0.0));
+        // asleep it only breathes, wider and lower
+        let nap = pose(&Groove { bpm: 40.0, ..groove(Dance::Nap, 1.0, 0.0) }).body;
+        assert!(close(nap.scale.x, 1.03) && close(nap.scale.y, 0.97) && nap.shift == Vec2::ZERO && nap.turn == 0.0);
+    }
+
+    #[test]
+    fn the_arms_clap_above_the_head_wider_the_louder_and_the_spin_happens_once() {
+        // Palmas at 108 BPM (a beat each): the two tubes meet over the head halfway through the beat, when it is loud
+        let clap = |energy| pose(&Groove { bpm: 108.0, ..groove(Dance::Clap, 2.5, energy) }).arms.unwrap();
+        let [left, right] = clap(1.0);
+        assert!(close(left.shift.x, 17.6) && close(left.shift.y, -5.0) && close(left.turn, 0.0), "{left:?}");
+        assert!(close(right.shift.x, 22.4) && close(right.shift.y, -5.0) && close(right.turn, 0.0), "{right:?}");
+        let [quiet, _] = clap(0.0);
+        assert!(quiet.shift.x > 6.0 && quiet.shift.x < 17.0, "quieter, they do not reach: {quiet:?}");
+        // on the beat they are open, as the preview's 0%
+        let [open, _] = pose(&Groove { bpm: 108.0, ..groove(Dance::Clap, 3.0, 1.0) }).arms.unwrap();
+        assert!(close(open.shift.x, 6.0) && close(open.turn, -28.0));
+        // the spin: from its beat (4), four beats at 120; mirrored at 45%, the arms straight out, landing at 75% (beat 7)
+        let spin = |beat| pose(&Groove { since: 4.0, ..groove(Dance::Spin, beat, 0.2) });
+        assert_eq!(spin(4.0).body, Place { shift: Vec2::ZERO, turn: 0.0, scale: Vec2::splat(1.0) });
+        assert!(close(spin(5.8).body.scale.x, -1.0) && close(spin(5.8).body.shift.y, -5.0));
+        let [left, right] = spin(6.0).arms.unwrap();
+        assert!(close(left.turn, 90.0) && close(right.turn, -90.0), "whole even when quiet: {left:?}");
+        assert!(close(spin(7.0).body.shift.y, 0.0) && close(spin(7.0).body.scale.x, 1.0));
+        assert_eq!(spin(30.0).body, spin(8.0).body, "once: it stays at rest after");
+    }
+
+    #[test]
+    fn a_new_dance_takes_over_in_a_moment_and_her_eyes_close_to_nap() {
+        let key = motion_key("luna-mistura");
+        let (sway, clap) = (pose(&groove(Dance::Sway, 0.0, 1.0)), pose(&groove(Dance::Clap, 0.0, 1.0)));
+        dance::blended(key, Dance::Sway, sway, 10.0);
+        let start = dance::blended(key, Dance::Clap, clap, 10.1);
+        assert!(start.body == sway.body && start.arms_alpha == 0.0, "it starts from the last pose: {start:?}");
+        let midway = dance::blended(key, Dance::Clap, clap, 10.2);
+        assert!(midway.arms_alpha > 0.0 && midway.arms_alpha < 1.0 && midway.body != clap.body, "{midway:?}");
+        assert_eq!(dance::blended(key, Dance::Clap, clap, 10.4), clap);
+
+        let ctx = Context::default();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            for (id, dance) in [("luna-cochila", Dance::Nap), ("luna-palmas", Dance::Clap)] {
+                for time in [1.0, 1.5] {
+                    paint_mago_dancing(ui.painter(), id, Pos2::new(40.0, 40.0), 22.0, GREEN, &groove(dance, time, 0.5), time);
+                }
+            }
+            // no size, or nothing that is a number: nothing drawn, nothing broken
+            paint_mago_dancing(ui.painter(), "luna-nada", Pos2::new(40.0, 40.0), 0.0, GREEN, &groove(Dance::Clap, 1.0, 0.5), 1.0);
+            paint_mago_dancing(ui.painter(), "luna-nada", Pos2::new(40.0, 40.0), 18.0, GREEN, &groove(Dance::Clap, f64::NAN, f32::NAN), 1.0);
+        });
+        output.textures_delta.clear();
+        MOTIONS.with(|motions| {
+            let motions = motions.borrow();
+            assert_eq!(motions[&motion_key("luna-cochila")].look.eye, EyeKind::Sleepy, "asleep: the eyes closed");
+            assert_eq!(motions[&motion_key("luna-palmas")].look.eye, EyeKind::Round, "dancing: the eyes as always");
+            assert!(!motions.contains_key(&motion_key("luna-nada")));
+        });
+    }
+
+    #[test]
+    fn low_energy_gives_happy_eyes() {
+        let groove = groove(Dance::Clap, 0.5, 0.1);
+        let (eye, _curve, _open) = dance_expression(&groove);
+        assert_eq!(eye, EyeKind::Happy, "low energy while dancing should give happy eyes");
+    }
+
+    #[test]
+    fn high_energy_gives_wide_eyes() {
+        let groove = groove(Dance::Clap, 0.5, 0.9);
+        let (eye, _curve, _open) = dance_expression(&groove);
+        assert_eq!(eye, EyeKind::Wide, "high energy peak should give wide eyes");
+    }
+
+    #[test]
+    fn normal_energy_gives_round_eyes() {
+        let groove = groove(Dance::Sway, 0.5, 0.5);
+        let (eye, _curve, _open) = dance_expression(&groove);
+        assert_eq!(eye, EyeKind::Round, "normal energy should give round eyes");
+    }
+
+    #[test]
+    fn high_bass_near_beat_gives_open_smile() {
+        // bass > 0.7 and near phase 0 (phase = 0.02 → near_beat = 0.02)
+        let groove = Groove { bpm: 120.0, phase: 0.02, energy: 0.5, bass: 0.85, bands: None, dance: Dance::Clap, beat: 10.02, since: 0.0 };
+        let (_eye, curve, open) = dance_expression(&groove);
+        assert!(curve > 0.05, "high bass near beat should give a wider smile curve: {}", curve);
+        assert!(open > 0.02, "high bass very near beat should open mouth: {}", open);
+    }
+
+    #[test]
+    fn low_bass_gives_neutral_mouth() {
+        let groove = groove(Dance::Sway, 0.5, 0.5);
+        let (_eye, curve, open) = dance_expression(&groove);
+        assert!(close(curve, 0.03), "low bass should give default mouth curve: {}", curve);
+        assert!(close(open, 0.0), "low bass should give neutral (closed) mouth: {}", open);
+    }
+
+    #[test]
+    fn high_bass_not_near_beat_gives_smile_no_open() {
+        // phase = 0.5 → near_beat = 0.5 (not near beat)
+        let groove = Groove { bpm: 120.0, phase: 0.5, energy: 0.5, bass: 0.9, bands: None, dance: Dance::Clap, beat: 10.5, since: 0.0 };
+        let (_eye, curve, open) = dance_expression(&groove);
+        assert!(close(curve, 0.03), "high bass far from beat should keep default curve");
+        assert!(close(open, 0.0), "high bass far from beat should not open mouth");
+    }
+
+    #[test]
+    fn nap_gives_sleepy_eyes() {
+        let groove = Groove { bpm: 40.0, phase: 0.5, energy: 0.1, bass: 0.1, bands: None, dance: Dance::Nap, beat: 1.0, since: 0.0 };
+        let (eye, _curve, _open) = dance_expression(&groove);
+        assert_eq!(eye, EyeKind::Sleepy, "nap should give sleepy eyes regardless of energy");
+    }
+}
+
+/// Speaking, the mouth sits under the eyes and between them, wherever she looks (asked: "a boca da luna nessa intro
+/// ficou horrível": a dash fixed in the middle showed under one eye while she looked at her bubble).
+#[test]
+fn the_mouth_follows_the_eyes() {
+    let mut motion = MagoMotion::default();
+    for look in [-0.8, 0.0, 0.8] {
+        motion.look_x = crate::app::mascot::mago::motion::Tween::new(look);
+        let [Some(left), Some(right)] = motion.eyes() else { panic!("both eyes at {look}") };
+        let mouth = motion.mouth().expect("a mouth facing ahead");
+        let between = (left.at.x + right.at.x) / 2.0;
+        assert!((mouth.at.x - between).abs() < 0.03, "{look}: mouth {} eyes {between}", mouth.at.x);
+        assert!(mouth.at.y > left.at.y.max(right.at.y) + 0.05, "{look}: under the eyes");
+    }
+}
+
+/// The song's face (`dance_face`) is a target: the eyes change, and the mouth eases there instead of jumping on each
+/// beat.
+#[test]
+fn the_songs_face_eases_in_over_the_states() {
+    let mut motion = MagoMotion::default();
+    motion.advance(MagoState::Idle, 0.0, None);
+    let rest = motion.mouth_curve.value;
+    motion.dance_face = Some((EyeKind::Wide, 0.06, 0.035));
+    motion.advance(MagoState::Idle, 0.016, None);
+    assert_eq!(motion.look.eye, EyeKind::Wide);
+    let early = motion.mouth_curve.value;
+    assert!(early > rest && early < 0.06, "on its way: {rest} → {early}");
+    let mut time = 0.016;
+    while time < 2.0 {
+        time += 0.016;
+        motion.advance(MagoState::Idle, time, None);
+    }
+    assert!((motion.mouth_curve.value - 0.06).abs() < 0.002 && (motion.mouth_open.value - 0.035).abs() < 0.002);
+    motion.dance_face = None;
+    motion.advance(MagoState::Idle, time + 0.016, None);
+    assert_eq!(motion.look.eye, Look::of(MagoState::Idle).eye, "the song over: the state's face again");
+}

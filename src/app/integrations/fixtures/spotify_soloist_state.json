@@ -1,0 +1,31 @@
+{
+  "type": "playback_state",
+  "status": "playing",
+  "item": {
+    "uri": "spotify:track:4uLU6hMCjMI75M1A2tKUQC",
+    "entity_type": "track",
+    "decorations": {
+      "identity": { "name": "Canção de Teste" },
+      "creators": [{ "entity": { "uri": "spotify:artist:1", "entity_type": "artist", "decorations": { "identity": { "name": "Banda Exemplo" } } } }],
+      "parent": { "entity": { "uri": "spotify:album:2", "entity_type": "album", "decorations": { "identity": { "name": "Disco de Teste" } } } },
+      "visual_identity": {
+        "cover": [
+          { "url": "https://i.scdn.co/image/pequena", "size": "small" },
+          { "url": "https://i.scdn.co/image/padrao", "size": "default" },
+          { "url": "https://i.scdn.co/image/grande", "size": "large" }
+        ]
+      },
+      "playback": { "duration_ms": 213573, "content_ratings": [] }
+    }
+  },
+  "context": {
+    "uri": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M",
+    "entity_type": "playlist",
+    "decorations": { "identity": { "name": "Lista de Domingo" } }
+  },
+  "position": { "position_ms": 45000, "timestamp_ms": 1747654321000, "speed": 1.0 },
+  "volume": 64,
+  "is_active": true,
+  "options": { "shuffle": true, "repeat": "context", "playback_speed": 1.0, "modes": { "context_enhancement": "NONE" } },
+  "available_actions": { "pause": true, "seek": true, "skip_next": true, "set_repeat": true }
+}

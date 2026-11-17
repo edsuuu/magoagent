@@ -40,6 +40,11 @@ pub(crate) struct Chat {
     /// Renamed by the person (Renomear on its row): `name` is its title, not the conversation's own.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) named: bool,
+    /// Opened by the chat screen and not talked to yet (asked: "só cria o chat se enviar a primeira mensagem"): only
+    /// that screen shows it, with no card on the canvas and nothing saved, and it goes when another chat is picked.
+    /// Its first message makes it a chat.
+    #[serde(skip)]
+    pub(crate) draft: bool,
 }
 
 /// What the agent may do on its own: Claude Code's auto and bypassPermissions modes; for Codex,
@@ -151,6 +156,18 @@ pub(crate) fn folder_label(cwd: &str) -> String {
     cwd.rsplit(['/', '\\']).next().filter(|s| !s.is_empty()).unwrap_or(cwd).to_string()
 }
 
+/// Whether `cwd` is the app's own folder, the one a chat runs in with no folder picked (`file::projects_dir`).
+pub(crate) fn no_folder(cwd: &str) -> bool {
+    let plain = |path: &str| path.trim().trim_end_matches(['/', '\\']).replace('\\', "/").to_lowercase();
+    crate::file::projects_dir().is_some_and(|dir| plain(cwd) == plain(&dir.display().to_string()))
+}
+
+/// A chat's name: its agent and its folder's, only the agent with no folder picked (asked: "no chat fica .magoagent,
+/// não é para ter, é para ficar Nenhuma pasta").
+pub(crate) fn chat_name(agent: &str, cwd: &str) -> String {
+    if no_folder(cwd) { agent.to_string() } else { format!("{agent} · {}", folder_label(cwd)) }
+}
+
 /// One of Codex's events (`codex exec --json`) into the conversation: its words, the commands it
 /// runs and the files it changes as steps, its errors.
 pub(crate) fn codex_event(transcript: &mut Transcript, event: &Value, now: f64) {
@@ -223,15 +240,25 @@ impl DrawingApp {
 
     /// The chats as rows of the agents list, ahead of the terminals'.
     pub(crate) fn chat_rows(&self) -> Vec<AgentRow> {
-        self.chats
-            .iter()
-            .map(|c| {
-                // a recruit is not a Maestro (the spec's default): it goes under the one that recruited it (list/view.rs)
-                let spec =
-                    TerminalSpec { name: c.name.clone(), cwd: c.cwd.clone(), command: c.agent.clone(), chat: true, maestro: !c.recruit, ..Default::default() };
-                AgentRow { id: c.id.clone(), spec, state: self.chat_state(&c.id).unwrap_or(AgentState::Idle(None)), mission: None, space: String::new() }
-            })
-            .collect()
+        self.chats.iter().filter(|c| !c.draft).map(|c| self.chat_row(c)).collect()
+    }
+
+    /// The draft the chat screen shows (none: a chat is talked to or none is open), as a row.
+    pub(crate) fn draft_rows(&self) -> Vec<AgentRow> {
+        self.chats.iter().filter(|c| c.draft).map(|c| self.chat_row(c)).collect()
+    }
+
+    fn chat_row(&self, chat: &Chat) -> AgentRow {
+        // a recruit is not a Maestro (the spec's default): it goes under the one that recruited it (list/view.rs)
+        let spec = TerminalSpec {
+            name: chat.name.clone(),
+            cwd: chat.cwd.clone(),
+            command: chat.agent.clone(),
+            chat: true,
+            maestro: !chat.recruit,
+            ..Default::default()
+        };
+        AgentRow { id: chat.id.clone(), spec, state: self.chat_state(&chat.id).unwrap_or(AgentState::Idle(None)), mission: None, space: String::new() }
     }
 
     /// Working while a message is being answered; None for what isn't a chat.
@@ -248,6 +275,15 @@ impl DrawingApp {
     /// A new chat right away, as Ajustes presets it (no form); false when no agent is installed,
     /// said out loud unless `quiet`.
     pub(crate) fn start_chat(&mut self, quiet: bool) -> bool {
+        self.start_chat_as(quiet, false)
+    }
+
+    /// `start_chat` as a draft (`Chat::draft`): the chat screen's, made a chat by its first message.
+    pub(crate) fn start_draft_chat(&mut self, quiet: bool) -> bool {
+        self.start_chat_as(quiet, true)
+    }
+
+    fn start_chat_as(&mut self, quiet: bool, draft: bool) -> bool {
         let installed = self.installed_agents();
         if installed.is_empty() {
             if !quiet {
@@ -255,16 +291,20 @@ impl DrawingApp {
             }
             return false;
         }
-        self.create_chat(&NewChat::from_prefs(&self.prefs, &installed), &installed);
+        self.create_chat_as(&NewChat::from_prefs(&self.prefs, &installed), &installed, draft);
         true
     }
 
     /// A chat from the form: named after its agent and folder, chosen in the chat.
     pub(crate) fn create_chat(&mut self, form: &NewChat, installed: &[Preset]) {
+        self.create_chat_as(form, installed, false);
+    }
+
+    fn create_chat_as(&mut self, form: &NewChat, installed: &[Preset], draft: bool) {
         let Some(preset) = installed.get(form.agent).or(installed.first()) else { return };
         let agent = preset.command.split_whitespace().next().unwrap_or("claude").to_string();
         let id = uuid::Uuid::new_v4().simple().to_string();
-        let name = format!("{} · {}", preset.name, folder_label(&form.cwd));
+        let name = chat_name(&preset.name, &form.cwd);
         self.chats.push(Chat {
             id: id.clone(),
             agent,
@@ -276,12 +316,16 @@ impl DrawingApp {
             effort: String::new(),
             recruit: false,
             named: false,
+            draft,
         });
+        self.chat_agent = Some(id.clone());
+        if draft {
+            return;
+        }
         // its card on the canvas shown, selected (chat/node.rs)
         if let Some(i) = self.add_chat_node(&id, None) {
             self.selected = vec![i];
         }
-        self.chat_agent = Some(id);
         self.save_chats();
     }
 
@@ -299,7 +343,7 @@ impl DrawingApp {
         chat.mode = mode;
         // a name the person gave stays
         if !chat.named {
-            chat.name = format!("{} · {}", preset.name, folder_label(&chat.cwd));
+            chat.name = chat_name(&preset.name, &chat.cwd);
         }
         chat.model.clear();
         chat.effort.clear();
@@ -386,6 +430,12 @@ impl DrawingApp {
                 return false;
             }
         };
+        // a draft becomes a chat with its first message: its card on the canvas, and it is kept
+        if self.chats[i].draft {
+            self.chats[i].draft = false;
+            self.add_chat_node(id, None);
+            self.save_chats();
+        }
         // the prompt, then its end: the agent reads stdin whole (Codex has no system prompt
         // flag: its instructions go in front of the first message)
         if let Some(mut stdin) = child.stdin.take() {

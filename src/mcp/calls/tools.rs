@@ -99,7 +99,7 @@ pub(crate) fn tools() -> Value {
         {
             "name": "list_agents",
             "description": "Lista os agentes (terminais e chats do canvas), notas e navegadores ligados a você por uma seta, com o estado \
-                de cada agente (trabalhando, parado, encerrado; um chat é o Maestro e diz que é chat). Fora de um terminal do MagoAgent, ou de um \
+                de cada agente (trabalhando, parado, encerrado; um chat é a Luna e diz que é chat). Fora de um terminal do MagoAgent, ou de um \
                 chat ainda sem corda, lista todos.",
             "inputSchema": { "type": "object", "properties": {} },
         },

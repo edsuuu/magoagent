@@ -10,3 +10,4 @@ pub(crate) mod tray;
 pub(crate) mod update_flow;
 pub(crate) mod updater;
 pub(crate) mod updates;
+pub(crate) mod wipe;

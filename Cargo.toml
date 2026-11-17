@@ -1,6 +1,6 @@
 [package]
 name = "magoagent"
-version = "0.0.19"
+version = "0.0.22"
 edition = "2024"
 authors = ["edsuuu"]
 description = "MagoAgent: quadro branco nativo em Rust"
@@ -59,14 +59,24 @@ raw-window-handle = "0.6"
 # Fechar mantém em segundo plano: the icon by the clock (app/system/tray.rs)
 [target.'cfg(windows)'.dependencies]
 tray-icon = "0.21"
-# Ajustes › Integrações › Spotify: what plays, by the system's media controls (already in the tree through wry)
-windows = { version = "0.62", features = ["Media_Control", "Storage_Streams", "Foundation_Collections"] }
+# Ajustes › Integrações › Spotify: what plays, by the system's media controls (already in the tree through wry), and
+# the volume by the Windows mixer (Core Audio, the session of Spotify.exe)
+windows = { version = "0.62", features = [
+    "Media_Control",
+    "Storage_Streams",
+    "Foundation_Collections",
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Threading",
+] }
 
 # the island over every window: the X11 backend (XWayland in a Wayland session), the island's input shape, the cursor
 # and the work area (app/island/x11.rs); both already in the tree through winit
 [target.'cfg(target_os = "linux")'.dependencies]
 winit = { version = "0.30", default-features = false }
-x11rb = { version = "0.13", default-features = false, features = ["shape", "sync"] }
+x11rb = { version = "0.13", default-features = false, features = ["randr", "shape", "sync"] }
 # whether the libraries winit's X11 opens are there, before asking for it (already in the tree through winit)
 libloading = "0.8"
 # Fechar mantém em segundo plano: the icon in the top bar, an AppIndicator (its library is opened at run time) that GTK

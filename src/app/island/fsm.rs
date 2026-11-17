@@ -5,7 +5,8 @@
 //! hides after a minute. With "Abrir ao passar o mouse" on, the pointer resting on the compact island opens it, and
 //! such an island folds soon after the pointer leaves, until a click inside makes it an ordinary open one.
 
-/// How long the compact island stays after the pointer left it, in seconds.
+/// How long the compact island stays after the pointer left it, in seconds, until the person sets it
+/// (`set_compact_after`).
 const PETIT_STAYS: f64 = 60.0;
 /// The greeting over, the island folds after this long; with the pointer on it, this long after it came.
 const GREETING_STAYS: f64 = 0.6;
@@ -36,12 +37,19 @@ pub(crate) struct Machine {
     /// Something waits on the person (a question, a form half typed): the clock does not close it.
     held: bool,
     close_after: f64,
+    /// How long the compact island stays (Ajustes › Geral › Encolher para o notch); None, `PETIT_STAYS`; 0, forever.
+    compact_after: Option<f64>,
     open_on_hover: bool,
 }
 
 impl Machine {
     pub(crate) fn stage(&self) -> Stage {
         self.stage
+    }
+
+    /// How long the compact island stays after the pointer left it, in seconds; 0, it stays until opened.
+    pub(crate) fn set_compact_after(&mut self, seconds: u16) {
+        self.compact_after = Some(f64::from(seconds));
     }
 
     /// The app started: the greeting.
@@ -159,7 +167,10 @@ impl Machine {
             return;
         }
         match self.stage {
-            Stage::Petit => self.due = Some(time + PETIT_STAYS),
+            Stage::Petit => {
+                let stays = self.compact_after.unwrap_or(PETIT_STAYS);
+                self.due = (stays > 0.0).then_some(time + stays);
+            }
             Stage::Home => self.due = Some(time + if self.by_hover { HOVER_CLOSES } else { self.close_after }),
             Stage::Hidden | Stage::Greeting => {}
         }
@@ -240,6 +251,24 @@ mod tests {
         assert_eq!(machine.stage(), Stage::Home, "still open before thirty seconds");
         run_with_close_after(&mut machine, 29.9, 30.2, false, 30.0);
         assert_eq!(machine.stage(), Stage::Petit, "folds at thirty seconds");
+    }
+
+    /// Asked ("tem um tempo para ele ficar menor? como eu deixo configurável"): the compact island shrinks to the notch
+    /// when the person set, and with 0 never.
+    #[test]
+    fn the_compact_island_shrinks_when_the_person_set_and_never_with_zero() {
+        for (seconds, shrinks) in [(15_u16, true), (0, false)] {
+            let mut machine = Machine::default();
+            machine.set_compact_after(seconds);
+            run(&mut machine, 0.0, 0.2, true, false);
+            assert_eq!(machine.stage(), Stage::Petit, "the pointer on the notch: compact");
+            run(&mut machine, 0.2, 14.9, false, false);
+            assert_eq!(machine.stage(), Stage::Petit, "{seconds}: still compact");
+            run(&mut machine, 14.9, 15.6, false, false);
+            assert_eq!(machine.stage() == Stage::Hidden, shrinks, "{seconds}: the notch at fifteen seconds, or never");
+            run(&mut machine, 15.6, 400.0, false, false);
+            assert_eq!(machine.stage(), if shrinks { Stage::Hidden } else { Stage::Petit });
+        }
     }
 
     fn run_with_close_after(machine: &mut Machine, from: f64, to: f64, inside: bool, close_after: f64) {

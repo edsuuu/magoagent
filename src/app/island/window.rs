@@ -8,7 +8,28 @@ use super::{NewForm, cursor, paint};
 use crate::prelude::*;
 
 /// How near an edge a drop sticks to it.
+/// The island window's title: the system finds the window by it (the input shape, the click-through, the reveal).
+pub(super) const TITLE: &str = "Ilha da Luna";
+
 const SNAP: f32 = 60.0;
+/// How long the moved window stays still before it counts as let go: where it is, and a while longer when sticking to
+/// an edge moves it (`settle_for`).
+const SETTLE: f64 = 0.3;
+const SNAP_SETTLE: f64 = 1.0;
+
+/// How long a window moved to `placed` waits still before the island hangs from there, its window put at `target`:
+/// longer when that moves it. The system moves the window while the button is held, and a pause in the middle of the
+/// drag looks the same as a drop: moved then, the window fights the system's move and the drag stops under the cursor.
+pub(crate) fn settle_for(target: Pos2, placed: Pos2) -> f64 {
+    if (target - placed).abs().max_elem() > 1.0 { SNAP_SETTLE } else { SETTLE }
+}
+/// X11: the window at the island's size since a drag began (`slim`) stays so while the island moves and until, let go,
+/// it grows past it (it opens): then the window takes its room back. In its room the system stops the window at the top
+/// bar with the island still below it, and the island went up by jumps, one each time it was let go.
+pub(crate) fn slim_kept(slim: Option<Vec2>, island: Vec2, moving: bool) -> Option<Vec2> {
+    slim.filter(|size| moving || (island.x <= size.x + 1.0 && island.y <= size.y + 1.0))
+}
+
 /// Windows hides the top row of a window without a frame (`plain::strip`): the window starts a row above the island.
 const TOP_PAD: f32 = if cfg!(windows) { 1.0 } else { 0.0 };
 /// The least room the window has for the island: Home, the questions and the forms fit in it.
@@ -209,6 +230,16 @@ impl DrawingApp {
         self.island.place_ask = Some(place);
     }
 
+    /// Back to where it starts the first time, whatever was saved (Ajustes › Trazer a ilha de volta, the MCP's
+    /// `island_place reset`): the middle of the top of the monitor the app's window is on, its window put there again.
+    pub(crate) fn reset_island(&mut self) {
+        self.prefs.island_at = None;
+        self.island.anchor = None;
+        self.island.slim = None;
+        self.island.moved = None;
+        self.island.built = Vec2::ZERO;
+    }
+
     /// The island in a window of its own, over every other: dragged by the system, out of the app's too.
     pub(super) fn island_window(
         &mut self,
@@ -225,7 +256,11 @@ impl DrawingApp {
         // is as big as the island is now, so no see-through room around the island swallows the clicks meant for what is
         // under it (while an edge is pulled it keeps the room it has, so that it does not fight the pull)
         let clicks_through_part = clicks_through_part();
-        let visible = if !clicks_through_part && self.island.anim != Vec2::ZERO && !self.island.resizing {
+        let moving = self.island.moved.is_some() || self.island.drag_next;
+        self.island.slim = slim_kept(self.island.slim, self.island.anim, moving);
+        let visible = if let Some(size) = self.island.slim {
+            size
+        } else if !clicks_through_part && self.island.anim != Vec2::ZERO && !self.island.resizing {
             self.island.anim.ceil()
         } else if self.island.cap == Vec2::ZERO {
             ROOM
@@ -244,7 +279,7 @@ impl DrawingApp {
         }
         let (origin, size) = (self.island.origin, window_size(visible));
         let builder = egui::ViewportBuilder::default()
-            .with_title("Ilha do Maestro")
+            .with_title(TITLE)
             // the main window's class: the island of the app in development is not the installed app's for the dock
             .with_app_id(crate::window_names().1)
             .with_transparent(true)
@@ -279,6 +314,11 @@ impl DrawingApp {
         }
         let send_capture = self.island.captured != Some(capture);
         self.island.captured = Some(capture);
+        // X11: the drag starts once the window is the island's size (the frame after the press moved), so the system
+        // takes the island to the top bar and not the room around it
+        let slims = cfg!(target_os = "linux") && clicks_through_part && !self.island.resizing;
+        let drag_now = std::mem::take(&mut self.island.drag_next);
+        let drag_later = slims && self.island.slim.is_none();
         let id = egui::ViewportId::from_hash_of("island_window");
         let (anim, radius) = (self.island.anim, self.island.radius);
         let out = ctx.show_viewport_immediate(id, builder, |ui, _| {
@@ -288,28 +328,33 @@ impl DrawingApp {
             if send_capture && !clicks_through_part {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::MousePassthrough(!capture));
             }
-            if out.drag {
+            if (out.drag && !drag_later) || drag_now {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
             (out, ui.ctx().input(|input| input.viewport().outer_rect), menus(ui.ctx()))
         });
         let (out, placed, menus) = out;
         self.island.menus = menus;
+        if out.drag && drag_later {
+            self.island.slim = Some(self.island.anim.ceil());
+            self.island.drag_next = true;
+            ctx.request_repaint();
+        }
         // X11: only the island (a margin around it) takes the clicks; all of the window while a press is held on it
         #[cfg(target_os = "linux")]
         if clicks_through_part {
             let area = if holding { Rect::from_min_size(Pos2::ZERO, size) } else { hit.expand(cursor::HIT_MARGIN) };
-            crate::app::island::x11::input_shape("Ilha do Maestro", area, scale);
+            crate::app::island::x11::input_shape(TITLE, area, scale);
         }
         #[cfg(windows)]
         if self.island.plain < 3 {
-            crate::app::voice::popup::plain::reveal("Ilha do Maestro", &mut self.island.plain);
+            crate::app::voice::popup::plain::reveal(TITLE, &mut self.island.plain);
             ctx.request_repaint();
         }
         // asked again: the thread of `cursor::watch` takes the click-through off the moment the cursor comes in, and the
         // answer from before the frame would put it back for as long as the frame takes
         #[cfg(windows)]
-        crate::app::voice::popup::plain::click_through("Ilha do Maestro", !cursor::takes_click(cursor::screen_cursor, scale, origin, hit, holding));
+        crate::app::voice::popup::plain::click_through(TITLE, !cursor::takes_click(cursor::screen_cursor, scale, origin, hit, holding));
         self.island_moved(ctx, placed, size, time);
         out
     }
@@ -324,15 +369,16 @@ impl DrawingApp {
         };
         match self.island.moved {
             Some((seen, since)) if seen == placed.min => {
-                if time - since > 0.3 {
-                    // the island moved with its window, where it is in it (pushed in near an edge, or against the edge it
-                    // was stuck to): it hangs from where it was let go, on the edge it is near
-                    let old = self.island.anchor.unwrap_or([origin.x + size.x / 2.0, origin.y + TOP_PAD]);
-                    let island = island_in(old, self.island.dock, origin, size, self.island.anim).translate(placed.min.to_vec2());
-                    let work = crate::app::chat::mini::screen_work(ctx, island.center());
-                    let anchor = keep_on_screen(dropped(island, work), work);
+                // the island moved with its window, where it is in it (pushed in near an edge, or against the edge it
+                // was stuck to): it hangs from where it was let go, on the edge it is near
+                let old = self.island.anchor.unwrap_or([origin.x + size.x / 2.0, origin.y + TOP_PAD]);
+                let island = island_in(old, self.island.dock, origin, size, self.island.anim).translate(placed.min.to_vec2());
+                let work = crate::app::chat::mini::screen_work(ctx, island.center());
+                let anchor = keep_on_screen(dropped(island, work), work);
+                let target = kept_origin(anchor, self.island.built, work);
+                if time - since > settle_for(target, placed.min) {
                     self.island.anchor = Some(anchor);
-                    self.island.origin = kept_origin(anchor, self.island.built, work);
+                    self.island.origin = target;
                     self.prefs.island_at = Some(anchor);
                     self.island.moved = None;
                 }
@@ -532,6 +578,46 @@ mod tests {
         assert_eq!(pulled_to(rect, Dock::Top, pointer, true, true), Vec2::new(840.0, 460.0), "centred: both sides");
         assert_eq!(pulled_to(rect, Dock::Bottom, Pos2::new(rect.center().x, rect.top() - 100.0), false, true), Vec2::new(640.0, 460.0), "up");
         assert_eq!(pulled_to(rect, Dock::Free, Pos2::new(rect.left() - 100.0, 0.0), true, false), Vec2::new(840.0, 360.0), "from the left: both sides");
+    }
+
+    /// Asked ("eu arrasto pra cima ele fica pulando ate o final"): the system stops a window at the top bar.
+    #[test]
+    fn a_dragged_island_has_a_window_of_its_size_until_it_opens_once_let_go() {
+        let closed = Vec2::new(288.0, 40.0);
+        let slim = Some(closed);
+        assert_eq!(slim_kept(slim, closed, true), slim, "while it moves");
+        assert_eq!(slim_kept(slim, Vec2::new(760.0, 420.0), true), slim, "growing while it moves: no resize under the drag");
+        assert_eq!(slim_kept(slim, closed, false), slim, "let go and closed: the window stays small");
+        assert_eq!(slim_kept(slim, Vec2::new(300.0, 40.0), false), None, "let go, it grows: the room comes back");
+        assert_eq!(slim_kept(None, closed, true), None);
+    }
+
+    /// Asked ("ele nao está identificando quando a ilha está em um monitor ou está em outro").
+    #[test]
+    fn the_island_goes_by_the_monitor_it_is_on() {
+        let first = Rect::from_min_max(Pos2::new(0.0, 32.0), Pos2::new(1920.0, 1017.0));
+        let second = Rect::from_min_max(Pos2::new(1920.0, 0.0), Pos2::new(3840.0, 1080.0));
+        let works = [first, second];
+        let work_at = crate::app::chat::mini::work_at;
+        assert_eq!(work_at(&works, Pos2::new(2800.0, 1060.0)), Some(second), "low on the second: its bottom is lower");
+        assert_eq!(work_at(&works, Pos2::new(900.0, 32.5)), Some(first));
+        assert_eq!(work_at(&works, Pos2::new(5200.0, 400.0)), Some(second), "off them all: the nearest");
+        assert_eq!(work_at(&works, Pos2::new(900.0, 10.0)), Some(first), "over the top bar");
+        assert_eq!(work_at(&[], Pos2::ZERO), None);
+        // let go near the second's bottom it sticks to it, not to the first's
+        let anchor = dropped(Rect::from_min_size(Pos2::new(2600.0, 1000.0), Vec2::new(288.0, 40.0)), second);
+        assert_eq!(anchor[1], 1079.0);
+        assert_eq!(keep_on_screen(anchor, second), [2744.0, 1079.0], "kept where it is, on the second monitor");
+    }
+
+    /// Asked ("tento pegar para arrastar ... ele trava, preciso soltar o click e fazer novamente"): a pause in the middle
+    /// of a drag must not move the window; sticking to an edge waits longer.
+    #[test]
+    fn a_pause_in_a_drag_does_not_move_the_window_until_it_has_been_still_a_while() {
+        let placed = Pos2::new(600.0, 90.0);
+        assert_eq!(settle_for(placed, placed), SETTLE, "it stays where it is: soon");
+        assert_eq!(settle_for(Pos2::new(600.0, 32.0), placed), SNAP_SETTLE, "it goes up to the top edge: later");
+        const { assert!(SNAP_SETTLE >= 1.0 && SETTLE < SNAP_SETTLE) };
     }
 
     #[test]

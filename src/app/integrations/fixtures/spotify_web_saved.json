@@ -1,0 +1,31 @@
+{
+  "href": "https://api.spotify.com/v1/me/tracks?offset=0&limit=50",
+  "limit": 50,
+  "offset": 0,
+  "total": 3,
+  "next": null,
+  "previous": null,
+  "items": [
+    {
+      "added_at": "2026-10-01T12:00:00Z",
+      "track": {
+        "uri": "spotify:track:4uLU6hMCjMI75M1A2tKUQC",
+        "name": "Canção de Teste",
+        "duration_ms": 213573,
+        "artists": [{ "name": "Banda Exemplo" }],
+        "album": { "name": "Disco de Teste", "images": [{ "url": "https://i.scdn.co/image/media", "width": 300, "height": 300 }] }
+      }
+    },
+    {
+      "added_at": "2026-09-01T12:00:00Z",
+      "item": {
+        "uri": "spotify:track:6cccccccccccccccccccccc",
+        "name": "Na Grafia Nova",
+        "duration_ms": 61000,
+        "artists": [{ "name": "Outra Banda" }],
+        "album": { "images": [] }
+      }
+    },
+    { "added_at": "2026-08-01T12:00:00Z", "track": null }
+  ]
+}

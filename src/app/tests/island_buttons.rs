@@ -19,6 +19,7 @@ fn chat(id: &str, name: &str) -> crate::app::chat::direct::Chat {
         effort: String::new(),
         recruit: false,
         named: false,
+        draft: false,
     }
 }
 
@@ -103,7 +104,10 @@ fn the_tabs_change_the_page() {
     assert_eq!(app.island.tab(), Tab::Chat, "the bubble: the current chat");
     let at = tab_button(&app, 3);
     click(&mut app, &ctx, &mut time, at);
-    assert_eq!(app.island.tab(), Tab::New, "the plus: the new chat");
+    assert_eq!(app.island.tab(), Tab::Claude, "Claude Code's spark: the sessions outside the app");
+    let at = tab_button(&app, 4);
+    click(&mut app, &ctx, &mut time, at);
+    assert_eq!(app.island.tab(), Tab::New, "the plus: the new chat (GitHub and Spotify off: no tab of theirs)");
     let at = tab_button(&app, 0);
     click(&mut app, &ctx, &mut time, at);
     assert_eq!(app.island.tab(), Tab::Home, "the house: back home");
@@ -118,6 +122,14 @@ fn the_sound_button_turns_the_sounds_off_and_on() {
     assert_eq!(app.prefs.island_sound, !before);
     click(&mut app, &ctx, &mut time, at);
     assert_eq!(app.prefs.island_sound, before);
+    // with the settings page open too: its own switch must not take the click away (asked: "clico na engrenagem e
+    // clico no ícone do som ali do lado, ele não funciona")
+    let gear = right_button(&app, 2);
+    click(&mut app, &ctx, &mut time, gear);
+    assert!(app.island.settings_open());
+    let at = right_button(&app, 1);
+    click(&mut app, &ctx, &mut time, at);
+    assert_eq!(app.prefs.island_sound, !before);
 }
 
 #[test]
@@ -399,22 +411,26 @@ fn closed_it_is_the_notch_again_after_the_pointer_leaves() {
     assert_eq!(app.island.size().x, CLOSED_W);
 }
 
+/// Asked: the integrations and the sessions outside each on a tab of their own (Claude Code, GitHub, Spotify).
 #[test]
-fn inicio_holds_only_the_tools_and_chats_only_the_agents() {
+fn spotify_has_its_tab_and_chats_only_the_agents() {
     let (mut app, ctx, mut time) = opened();
     app.prefs.integrations.spotify = true;
     let track = crate::app::integrations::spotify::Track::new("Música", "Banda", "Disco", "").unwrap();
     app.integrations.spotify.now = Some(crate::app::integrations::spotify::Now { track, playing: true, ..Default::default() });
+    assert_eq!(app.island.tab(), Tab::Home);
+    // Home, Chat, Chats, Claude Code, Spotify (GitHub is off), +
+    let at = tab_button(&app, 4);
+    click(&mut app, &ctx, &mut time, at);
+    assert_eq!(app.island.tab(), Tab::Music, "Spotify's tab: the player, not the chats");
+    let at = tab_button(&app, 2);
+    click(&mut app, &ctx, &mut time, at);
     // the first pill of the grid: the right card, 8 in from its sides, its one row in the middle
     let rect = island_rect(&app);
     let card = Rect::from_min_max(Pos2::new(rect.left() + 10.0 + 332.0, rect.top() + 42.0), rect.max - Vec2::new(10.0, 10.0));
     let inner = card.shrink2(Vec2::new(8.0, 0.0));
     let first = Pos2::new(inner.left() + (inner.width() - 4.0) / 4.0, inner.center().y);
     rest(&mut app, &ctx, &mut time, first, 0.3);
-    click(&mut app, &ctx, &mut time, first);
-    assert_eq!((app.island.tab(), app.island.focus()), (Tab::Home, Some("integration:spotify")), "Início: the tool, not the chats");
-    let at = tab_button(&app, 2);
-    click(&mut app, &ctx, &mut time, at);
     click(&mut app, &ctx, &mut time, first);
     assert_eq!((app.island.tab(), app.island.focus()), (Tab::Chats, Some("a")), "Chats: the agents, not the tool");
 }
@@ -430,10 +446,9 @@ fn checks_that_passed_and_a_review_asked_for_sound_on_the_island() {
         id: id.into(),
         title: "T".into(),
         url: "https://github.com/a/b/pull/1".into(),
-        draft: false,
         ci,
-        review: "",
         head: Some("s1".into()),
+        ..Default::default()
     };
     let pulse = |ci, to_review: Vec<PullRequest>| Pulse { login: "ana".into(), mine: vec![request("a/b#1", ci)], to_review, ..Default::default() };
     app.integrations.github.take_pulse(pulse(CiState::Pending, vec![]), now_ms());
@@ -445,4 +460,55 @@ fn checks_that_passed_and_a_review_asked_for_sound_on_the_island() {
         assert!(app.island.chimes() > before, "{what}: a sound");
         assert_eq!(app.integrations.github.ring, None, "{what}: sounded once");
     }
+}
+
+/// The GitHub tab: taller, it reads the first pull request when it opens and the one a click picks.
+#[test]
+fn the_github_tab_reads_the_pull_request_picked() {
+    use crate::app::integrations::github::{GitHub, Pulse};
+    let (mut app, ctx, mut time) = opened();
+    app.prefs.integrations.github = true;
+    app.integrations.github = GitHub::with_token("ghp_0123456789abcdefghijABCDEFGHIJ012345");
+    let recorded: Value = serde_json::from_str(include_str!("../integrations/fixtures/github_pulse.json")).unwrap();
+    app.integrations.github.pulse = Pulse::parse(&recorded);
+    app.island_show_page(Tab::GitHub);
+    let inside = island_rect(&app).center();
+    rest(&mut app, &ctx, &mut time, inside, 1.0);
+    assert_eq!(app.island.tab(), Tab::GitHub);
+    assert!((app.island.size().y - 404.0).abs() < 2.0, "room for the list and the description: {}", app.island.size().y);
+    assert!(app.github_detail_loading("ana-dev/loja#42"), "the last changed shows first, read once");
+    assert!(!app.github_detail_loading("time/api#310"));
+    // the second row: under the filters, a row and its gap down
+    let rect = island_rect(&app);
+    click(&mut app, &ctx, &mut time, Pos2::new(rect.left() + 80.0, rect.top() + 82.0 + 40.0 + 19.0));
+    assert!(app.github_detail_loading("time/api#310"), "the one clicked is read");
+    assert_eq!(app.island.tab(), Tab::GitHub, "a row picks, the tab stays");
+}
+
+/// The Spotify tab: its height, aleatório pressed, and a song of the queue reached by skipping to it.
+#[test]
+fn the_spotify_tab_plays_what_is_pressed() {
+    use crate::app::integrations::spotify::{Command, Now, Playback, Player, QueueItem, Track};
+    let (mut app, ctx, mut time) = opened();
+    // Soloist only counts on Linux: the Spotify switch keeps the integration on elsewhere
+    (app.prefs.integrations.soloist, app.prefs.integrations.spotify) = (true, true);
+    let playback = Playback { shuffle: Some(false), position_ms: Some(10_000), duration_ms: Some(200_000), ..Default::default() };
+    app.integrations.spotify.now =
+        Some(Now { track: Track::new("Canção", "Banda", "Disco", "").unwrap(), playing: true, player: Player::Soloist, playback, ..Default::default() });
+    let song = |index: u32| QueueItem::new(&format!("spotify:track:{index}"), &format!("Música {index}"), "Banda", "", Some(180_000)).unwrap();
+    app.integrations.spotify.library.queue = vec![song(1), song(2), song(3)];
+    app.island_show_page(Tab::Music);
+    let inside = island_rect(&app).center();
+    rest(&mut app, &ctx, &mut time, inside, 1.0);
+    assert_eq!(app.island.tab(), Tab::Music);
+    assert!((app.island.size().y - 318.0).abs() < 2.0, "the player's room: {}", app.island.size().y);
+    let page = Rect::from_min_max(island_rect(&app).min + Vec2::new(10.0, 42.0), island_rect(&app).max - Vec2::new(10.0, 10.0));
+    // the buttons' row: five in the player's card, aleatório the first and tocar in the middle
+    let (left, bottom) = (page.left() + 16.0, page.bottom() - 12.0);
+    click(&mut app, &ctx, &mut time, Pos2::new(left + 286.0 / 10.0, bottom - 48.0));
+    assert_eq!(app.integrations.spotify.asked, [Command::Shuffle(true)]);
+    // the second song of A seguir: the player skips two
+    let list_x = page.left() + 318.0 + 10.0 + 120.0;
+    click(&mut app, &ctx, &mut time, Pos2::new(list_x, page.top() + 80.0 + 36.0 + 1.0 + 18.0));
+    assert_eq!(app.integrations.spotify.asked, [Command::Shuffle(true), Command::Next, Command::Next]);
 }

@@ -639,16 +639,25 @@ pub(crate) fn screen_work(ctx: &Context, at: Pos2) -> Rect {
     if let Some([l, t, r, b]) = crate::app::voice::popup::plain::work_area((at.x * scale) as i32, (at.y * scale) as i32) {
         return Rect::from_min_max(Pos2::new(l as f32, t as f32) / scale, Pos2::new(r as f32, b as f32) / scale);
     }
-    let _ = at;
-    let monitor = ctx.input(|i| i.viewport().monitor_size).map_or(Rect::EVERYTHING, |s| Rect::from_min_size(Pos2::ZERO, s));
+    // X11: the monitor it is on (GNOME's top bar and dock only on theirs), not the first one's from the corner
     #[cfg(target_os = "linux")]
-    if crate::app::island::x11::active()
-        && let Some([l, t, r, b]) = crate::app::island::x11::work_area()
-    {
-        let work = Rect::from_min_max(Pos2::new(l as f32, t as f32) / scale, Pos2::new(r as f32, b as f32) / scale).intersect(monitor);
-        if work.is_positive() {
+    if crate::app::island::x11::active() {
+        let pixels = |value: i32| value as f32 / scale;
+        let works: Vec<Rect> = crate::app::island::x11::monitor_works()
+            .iter()
+            .map(|&[l, t, r, b]| Rect::from_min_max(Pos2::new(pixels(l), pixels(t)), Pos2::new(pixels(r), pixels(b))))
+            .collect();
+        if let Some(work) = work_at(&works, at) {
             return work;
         }
     }
-    monitor
+    let _ = (at, scale);
+    ctx.input(|i| i.viewport().monitor_size).map_or(Rect::EVERYTHING, |s| Rect::from_min_size(Pos2::ZERO, s))
+}
+
+/// Of the monitors' work areas (`works`), the one `at` is on, else the nearest: a place saved on a monitor that is gone,
+/// or off them all, comes back onto one. Only X11 lists the monitors' work areas (and the tests).
+#[cfg(any(target_os = "linux", test))]
+pub(crate) fn work_at(works: &[Rect], at: Pos2) -> Option<Rect> {
+    works.iter().copied().filter(|work| work.is_positive()).min_by(|a, b| a.distance_sq_to_pos(at).total_cmp(&b.distance_sq_to_pos(at)))
 }

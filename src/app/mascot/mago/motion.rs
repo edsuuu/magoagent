@@ -15,6 +15,8 @@ const EYE_SPREAD: f32 = 0.37;
 const EYE_PITCH: f32 = -0.12;
 const LOOK_YAW: f32 = 0.62;
 const LOOK_PITCH: f32 = 0.5;
+/// The mouth's place on the face, as the eyes' pitch: under them.
+const MOUTH_PITCH: f32 = -0.42;
 const LOOK_RATE: f32 = 5.99;
 /// How far the pointer is (points, across and down) for the gaze to be most of the way to it.
 const LOOK_FAR: (f32, f32) = (260.0, 200.0);
@@ -125,6 +127,9 @@ pub(crate) struct MagoMotion {
     pub(crate) particles: Vec<Particle>,
     /// The face now (the state's, or a reaction's) and the breathing.
     pub(crate) look: Look,
+    /// While she dances: the eyes and the mouth the song asks for (`draw::dance_expression`), on top of the state's
+    /// face; the mouth eases there as it does to any face.
+    pub(crate) dance_face: Option<(EyeKind, f32, f32)>,
     pub(crate) breath: f32,
     /// How much the mouth is open while it speaks (0..1).
     pub(crate) talk: f32,
@@ -176,6 +181,7 @@ impl Default for MagoMotion {
             seed: 0x9e37_79b9,
             particles: Vec::new(),
             look,
+            dance_face: None,
             breath: 0.0,
             talk: 1.0,
             badge: None,
@@ -312,7 +318,10 @@ impl MagoMotion {
         match self.reaction {
             Reaction::Annoyed => Look { eye: EyeKind::Focus, mouth_curve: -0.03, badge: None, ..look },
             Reaction::Dizzy => Look { eye: EyeKind::Spiral, mouth_curve: 0.0, mouth_open: 0.03, mouth_width: 0.05, badge: None, ..look },
-            Reaction::None => look,
+            Reaction::None => match self.dance_face {
+                Some((eye, mouth_curve, mouth_open)) => Look { eye, mouth_curve, mouth_open, ..look },
+                None => look,
+            },
         }
     }
 
@@ -502,6 +511,17 @@ impl MagoMotion {
                 at: Vec2::new(eye_yaw.sin() * upright * BODY_HALF.0, BODY_CENTER - eye_pitch.sin() * BODY_HALF.1),
                 flat: Vec2::new(across.max(0.18), upright.max(0.18)),
             })
+        })
+    }
+
+    /// Where the mouth is and how flat it shows: under the eyes, between them, turning with the look as they do; none
+    /// when the face is turned away.
+    pub(crate) fn mouth(&self) -> Option<Eye> {
+        let (yaw, pitch) = (self.look_x.value * LOOK_YAW, MOUTH_PITCH - self.look_y.value * LOOK_PITCH);
+        let (across, upright) = (yaw.cos(), pitch.cos());
+        (across * upright > 0.04).then(|| Eye {
+            at: Vec2::new(yaw.sin() * upright * BODY_HALF.0, BODY_CENTER - pitch.sin() * BODY_HALF.1),
+            flat: Vec2::new(across.max(0.18), upright.max(0.18)),
         })
     }
 

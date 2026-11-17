@@ -219,6 +219,7 @@ fn chat(app: &mut DrawingApp, name: &str) -> String {
         effort: String::new(),
         recruit: false,
         named: false,
+        draft: false,
     };
     app.chats.push(chat);
     name.to_lowercase()
@@ -482,4 +483,39 @@ fn a_long_chat_lays_out_only_what_is_on_screen() {
     assert!(painted(&texts, "mensagem 119").is_some(), "the end, in sight");
     assert!(painted(&texts, "mensagem 0").is_none(), "the top, far above, keeps its room unpainted");
     assert!(texts.iter().filter(|(t, _)| t.starts_with("mensagem")).count() < 60);
+}
+
+/// Asked: "só cria o chat se enviar a primeira mensagem". The chat screen with nothing to talk to opens a draft: no card
+/// on the canvas, nothing saved, not among the agents. Its first message makes it a chat; one never sent goes when
+/// another chat is picked.
+#[test]
+fn the_chat_screen_makes_a_chat_only_with_its_first_message() {
+    // an agent that starts and ends at once
+    if crate::editor::lsp::which("true").is_none() {
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("mago-rascunho-{}", uuid::Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let ctx = Context::default();
+    let mut app = DrawingApp { autosave: Some(dir.join("cena.mago")), ..Default::default() };
+    app.chat_installed = Some((app.now, vec![crate::model::Preset::new("Claude Code", "true")]));
+    app.prefs.chat_folder = dir.display().to_string();
+    app.chat_open = true;
+    chat_frame(&mut app, &ctx, Vec2::new(1200.0, 800.0), vec![]);
+    let id = app.chat_agent.clone().expect("a draft to write in");
+    assert!(app.chats[0].draft && app.chat_node(&id).is_none(), "no card on the canvas yet");
+    assert!(app.chat_rows().is_empty() && app.agent_rows().is_empty(), "not among the agents");
+    app.save_chats();
+    let saved = || std::fs::read_to_string(dir.join("chats.json")).unwrap_or_default();
+    assert!(!saved().contains(&id), "nothing saved: {}", saved());
+    assert!(app.chat_send(&ctx, &id, "oi"));
+    assert!(!app.chats[0].draft && app.chat_node(&id).is_some() && app.chat_rows().len() == 1, "the first message makes it a chat");
+    assert!(saved().contains(&id));
+    // Nova conversa, never sent: picking the chat drops it
+    app.start_draft_chat(true);
+    let draft = app.chat_agent.clone().unwrap();
+    app.chat_agent = Some(id.clone());
+    chat_frame(&mut app, &ctx, Vec2::new(1200.0, 800.0), vec![]);
+    assert!(!app.chats.iter().any(|chat| chat.id == draft) && app.chats.len() == 1);
+    let _ = std::fs::remove_dir_all(&dir);
 }

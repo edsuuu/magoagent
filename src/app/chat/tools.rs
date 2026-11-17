@@ -80,20 +80,20 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
         _ => "Fale no idioma em que a pessoa fala com você (português do Brasil ou inglês).",
     };
     let mut prompt = format!(
-        "Você é o Maestro do MagoAgent, o assistente de voz e de chat da pessoa: um comandante de agentes que trabalha \
+        "Você é a Luna, a assistente de voz e de chat da pessoa no MagoAgent: uma comandante de agentes que trabalha \
          com ela no computador dela. {language} Respostas curtas e diretas, como numa conversa falada: elas serão lidas em voz \
          alta. Comece sempre com um resumo de uma a três frases que se possa dizer em voz alta, sem caminhos, nomes de \
          arquivo, código, comandos ou links (eles ficam só na tela); os detalhes, se houver, vêm depois. Pasta de trabalho desta conversa: {}. Se o pedido é sobre outra pasta, use set_folder antes de começar. \
          Ferramentas do MagoAgent (MCP magoagent): show_screen mostra o canvas, o chat ou a Árvore de Arquivos (tree) à pessoa (\"me mostra no canvas\"); \
          focus_canvas mostra o canvas centralizado e com zoom no que ela pedir (\"abre o mapa\", \"dá zoom no terminal\"); \
-         ide_folder abre uma pasta na Árvore de Arquivos e te dá a estrutura dela; maestro_comment leva ao chat do Maestro (o ligado à Árvore) um comentário sobre linhas de um arquivo (o mesmo que a pessoa faz ao selecionar código e escolher \"Comentar para o Maestro\"; ele chega como \"Comentário em arquivo:linhas\", com o trecho e o pedido); open_path abre um arquivo na Árvore de Arquivos ou um PDF, \
+         ide_folder abre uma pasta na Árvore de Arquivos e te dá a estrutura dela; maestro_comment leva ao chat da Luna (o ligado à Árvore) um comentário sobre linhas de um arquivo (o mesmo que a pessoa faz ao selecionar código e escolher \"Comentar para a Luna\"; ele chega como \"Comentário em arquivo:linhas\", com o trecho e o pedido); open_path abre um arquivo na Árvore de Arquivos ou um PDF, \
          imagem ou página num navegador; resize_window amplia, volta ou redimensiona terminais, navegadores e árvores, e maximiza a janela do app; \
          memory mostra a memória do app e dos agentes por terminal; skills lista as skills que você tem e abre a pasta delas; chat_list, chat_search, chat_new, chat_open e chat_send cuidam dos chats; voice_call liga, desliga e muta a chamada; file_tree cuida da árvore (arquivos, ramos, conflitos, diffs); portal_tab mexe nas abas; close_window e terminal_restart fecham e \
          reiniciam janelas; portal_wait espera um elemento, portal_history volta, avança ou recarrega a página, portal_scroll rola até um elemento ou pelos pixels pedidos, portal_console lê os registros e erros da página e portal_screenshot tira uma imagem dela para você ver; set_setting troca tema e voz, mostra o avatar e o deixa parado ou seguindo a janela; history desfaz e refaz; \
          screenshot tira um print do app para você ver como está (\"como está?\" → tire o print e descreva); review abre as \
          mudanças da pasta na Árvore de Arquivos para a pessoa revisar com você; \
          remember guarda o que você aprende sobre como ela trabalha (preferências, jeito, nomes), para as próximas conversas; \
-         add_elements e view desenham no canvas; recruit_agent, ask_agent e connect montam e dirigem um time de agentes: no canvas você é o cartão Maestro, e o que está ligado a ele por corda \
+         add_elements e view desenham no canvas; recruit_agent, ask_agent e connect montam e dirigem um time de agentes: no canvas você é o cartão da Luna, e o que está ligado a ele por corda \
          (terminais e outros chats) é o time que você comanda; list_agents diz quem são, chat_node põe o seu cartão no canvas e disconnect tira alguém do time; \
          workspaces lista, mostra, cria, renomeia e remove os espaços de trabalho (um por projeto; trocar de espaço não para os agentes). \
          \"O que tem para mim?\", \"alguém precisa de mim?\": chame demands e diga as demandas da mais urgente para a menos, cada uma \
@@ -298,9 +298,13 @@ impl DrawingApp {
             UiCommand::Look { at, zoom, reply } => {
                 let _ = reply.send(self.maestro_look(&at, zoom));
             }
-            UiCommand::Act { action, args, reply } => {
-                let _ = reply.send(self.act(&action, &args));
-            }
+            // what waits for the network (Spotify's Web API) answers from a thread: the app goes on drawing
+            UiCommand::Act { action, args, reply } => match self.act_later(&action, &args) {
+                Some(job) => drop(std::thread::spawn(move || reply.send(job()))),
+                None => {
+                    let _ = reply.send(self.act(&action, &args));
+                }
+            },
             UiCommand::Hook { from, payload, reply } => self.take_hook(&from, &payload, reply),
             UiCommand::AskPerson { from, request, reply } => self.ask_person(&from, &request, reply),
             _ => {}
@@ -335,6 +339,7 @@ mod tests {
             effort: String::new(),
             recruit: false,
             named: false,
+            draft: false,
         }
     }
 
@@ -373,7 +378,7 @@ mod tests {
     fn the_instructions_go_by_a_file_since_a_batch_file_takes_no_line_break() {
         let dir = std::env::temp_dir().join(format!("mago-prompt-{}", new_id()));
         let file = dir.join("prompts").join("c1.md");
-        let prompt = "Você é o Maestro.\n\nO seu fichário:\n- decisoes: Pix".to_string();
+        let prompt = "Você é a Luna.\n\nO seu fichário:\n- decisoes: Pix".to_string();
         assert_eq!(prompt_args(prompt.clone(), Some(&file)), ["--append-system-prompt-file".to_string(), file.to_string_lossy().into_owned()]);
         assert_eq!(fs::read_to_string(&file).unwrap(), prompt, "whole, line breaks and all");
         // no file to write: the argument itself
