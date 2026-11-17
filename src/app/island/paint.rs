@@ -18,15 +18,15 @@ use crate::voice::VoiceState;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 
-pub(super) const INK: Color32 = Color32::from_rgb(0xf5, 0xf6, 0xf8);
-pub(super) const DIM: Color32 = Color32::from_rgb(0x8e, 0x93, 0x9c);
+pub(crate) const INK: Color32 = Color32::from_rgb(0xf5, 0xf6, 0xf8);
+pub(crate) const DIM: Color32 = Color32::from_rgb(0x8e, 0x93, 0x9c);
 pub(super) const DIM_3: Color32 = Color32::from_rgb(0x6b, 0x70, 0x79);
 pub(super) const CARD: Color32 = Color32::from_rgb(0x14, 0x15, 0x18);
 pub(super) const CARD_FLAT: Color32 = Color32::from_rgb(0x0e, 0x0f, 0x11);
 const TAB_ON: Color32 = Color32::from_rgb(0x1d, 0x1f, 0x23);
 /// The radius of the round mark under the tab shown (and the one under the pointer).
 const TAB_DOT: f32 = 14.0;
-pub(super) const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
+pub(crate) const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
 pub(super) const RED: Color32 = Color32::from_rgb(0xf4, 0x50, 0x5e);
 /// The island's black: the words and arrows on a white button, a badge's ring, a picture's backdrop.
 pub(super) const BLACK: Color32 = Color32::from_rgb(0x0b, 0x0c, 0x0e);

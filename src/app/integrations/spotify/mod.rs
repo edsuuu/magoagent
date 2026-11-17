@@ -9,6 +9,7 @@
 // ponytail: asked every two seconds instead of listening to the player's events; listen when the delay bothers.
 
 use super::{IslandItem, ItemRow};
+use crate::app::island::paint::{DIM, INK};
 use crate::prelude::*;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 
@@ -58,7 +59,8 @@ const QUICK_FOR: std::time::Duration = std::time::Duration::from_secs(5);
 /// The biggest cover read (Spotify's are 640 px JPEGs, about 100 KB), and how many polls a track's cover is asked for.
 pub(crate) const COVER_LIMIT: usize = 3 * 1024 * 1024;
 const COVER_TRIES: u8 = 20;
-const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
+/// Spotify's green (the island's music page too).
+pub(crate) const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
 /// How long the cover now takes to replace the one before it on the island's pill (asked: the change between songs was
 /// abrupt), and how long that one is kept while the new cover is still to come (past it, a song without a cover shows
 /// the placeholder, as it always did).
@@ -777,11 +779,9 @@ impl DrawingApp {
     /// Spotify's pill: the title, the artist, the cover and the three buttons. None while it is closed.
     pub(super) fn spotify_item(&self) -> Option<IslandItem> {
         let now = self.integrations.spotify.now.as_ref()?;
-        let ink = Color32::from_rgb(0xf5, 0xf6, 0xf8);
-        let dim = Color32::from_rgb(0x8e, 0x93, 0x9c);
-        let mut rows = vec![ItemRow { text: now.track.title.clone(), color: ink, action: None }];
+        let mut rows = vec![ItemRow { text: now.track.title.clone(), color: INK, action: None }];
         if !now.track.artist.is_empty() {
-            rows.push(ItemRow { text: now.track.artist.clone(), color: dim, action: None });
+            rows.push(ItemRow { text: now.track.artist.clone(), color: DIM, action: None });
         }
         Some(IslandItem {
             id: format!("{}spotify", super::ITEM_PREFIX),

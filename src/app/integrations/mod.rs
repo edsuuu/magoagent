@@ -2,6 +2,7 @@
 //! Each is off until its switch is turned on, and off it never reaches the network. What is secret (a
 //! token, a credential) lives in the system's keychain, never in `preferences.json`, a log or an address.
 
+use crate::app::island::paint::{AMBER, DIM, INK};
 use crate::app::maestro::outside::Badge;
 use crate::prelude::*;
 
@@ -90,15 +91,12 @@ pub(crate) struct IslandItem {
     pub(crate) cover: Option<egui::TextureId>,
 }
 
-const INK: Color32 = Color32::from_rgb(0xf5, 0xf6, 0xf8);
-const DIM: Color32 = Color32::from_rgb(0x8e, 0x93, 0x9c);
 const GREEN: Color32 = Color32::from_rgb(0x34, 0xd3, 0x99);
 const RED: Color32 = Color32::from_rgb(0xff, 0x8d, 0x97);
 /// Each service's mini in its own colour: GitHub red, WhatsApp its green (Spotify has
 /// its own, in spotify/).
 const GITHUB: Color32 = Color32::from_rgb(0xf4, 0x50, 0x5e);
 const WHATSAPP: Color32 = Color32::from_rgb(0x25, 0xd3, 0x66);
-const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
 
 /// The pages a card or a button of the integrations may open: the services' own, never an address an answer made up.
 pub(crate) fn page_allowed(url: &str) -> bool {
