@@ -519,7 +519,7 @@ impl Spotify {
                     // the change between songs was abrupt)
                     Some(_) if changed => {
                         (self.previous, self.before) = (self.cover.take(), self.colours.take());
-                        // Luna keeps the colour before too, until the new cover gives hers
+                        // the colour before stays too (the bars without the fade fall back to it), until the new cover gives its own
                         self.waiting_since = Some(ctx.input(|input| input.time));
                     }
                     Some(_) => {}
