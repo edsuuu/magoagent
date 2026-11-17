@@ -997,4 +997,4 @@ Abre na tela a apresentação do MagoAgent (a mesma de Ajustes › Geral › Ver
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `step` | integer | o passo em que começa (0 a 5); sem ele, o primeiro |
+| `step` | integer | o passo em que começa (0 a 6); sem ele, o primeiro |
