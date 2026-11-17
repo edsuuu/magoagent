@@ -161,6 +161,9 @@ impl DrawingApp {
         } else if pressed(AppAction::EditPoints) && self.single_line().is_some() {
             self.line_editor = self.single_line();
             self.selected_point = None;
+        } else if plain(Key::Escape) && self.panes.open.is_some() {
+            // the panel on the right goes first, as in Claude Code
+            self.set_pane(None);
         } else if plain(Key::Escape) {
             self.connecting = None;
             self.set_elevated(None);

@@ -208,6 +208,7 @@ impl Default for DrawingApp {
             returned_prompts: std::sync::mpsc::channel(),
             avatar: maestro::avatar::Avatar::default(),
             tasks: Default::default(),
+            panes: Default::default(),
             spaces: Default::default(),
             away: Default::default(),
             space_views: Default::default(),

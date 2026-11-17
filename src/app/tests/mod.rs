@@ -32,6 +32,7 @@ mod notes_rail;
 mod outside;
 mod outside_message;
 mod pages;
+mod panes;
 mod persist;
 mod props;
 mod session;
