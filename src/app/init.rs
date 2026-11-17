@@ -213,6 +213,8 @@ impl Default for DrawingApp {
             space_views: Default::default(),
             space_dialog: None,
             welcome: None,
+            tour: None,
+            changelog: None,
             space_rename: None,
             integrations: Default::default(),
         }

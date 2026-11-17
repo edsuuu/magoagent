@@ -2,6 +2,7 @@
 //! (changelog), o instalador baixado e conferido (download.rs) e o fluxo salvar → parar → atualizar →
 //! reiniciar (updater.rs). A rede vai por curl numa thread; a interface só lê o resultado (`poll_updates`).
 
+use crate::app::ui::changelog::Changelog;
 use crate::prelude::*;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, channel};
@@ -136,6 +137,22 @@ pub(crate) fn plain_notes(notes: &str) -> String {
     lines.join("\n").chars().take(4000).collect()
 }
 
+/// The local date of `ms` since 1970, in days: the day the first opening checks once.
+pub(crate) fn local_day(ms: i64) -> u64 {
+    (ms + crate::app::chat::viewer::local_offset(ms) * 1000).div_euclid(DAY_MS).max(0) as u64
+}
+
+/// Whether the opening on the local day `today` checks: the first of each day.
+pub(crate) fn checks_on_opening(checked_day: u64, today: u64) -> bool {
+    checked_day != today
+}
+
+/// Whether the changelog's card may open by itself: never under a roteiro (MAGOAGENT_SCRIPT), unless a test scene asks
+/// for it with MAGOAGENT_CHANGELOG (to see it in a `shot`).
+fn changelog_allowed(scripted: bool) -> bool {
+    !scripted || std::env::var_os("MAGOAGENT_SCENE").is_some() && std::env::var_os("MAGOAGENT_CHANGELOG").is_some()
+}
+
 /// A test feed: the answer of `releases/latest` read from this file instead of GitHub, with the installer a
 /// file on this computer. Only when `MAGOAGENT_SCENE` is also set (a test instance with a scene of its own).
 fn local_feed() -> Option<PathBuf> {
@@ -203,6 +220,8 @@ impl DrawingApp {
             return Ok(());
         }
         self.updates.confirming = false;
+        // saved with the work before the app closes: the new version shows them once (`show_whats_new`)
+        self.prefs.whats_new = Some((release.version.clone(), release.notes.clone()));
         let (sender, receiver) = channel();
         self.updates.receiver = Some(receiver);
         self.updates.state = UpdateState::Downloading(release.clone());
@@ -212,11 +231,16 @@ impl DrawingApp {
 
     /// Once per frame: the first check of the day when the app opens, and whatever the thread answered.
     pub(crate) fn poll_updates(&mut self) {
-        let today = (now_ms() / DAY_MS) as u64;
+        self.poll_updates_on(local_day(now_ms()));
+    }
+
+    /// The same on the local day `today`. A newer version found by the day's check opens the changelog's card
+    /// (ui/changelog.rs); Atualizar depois closes it, and the next check is the next day's.
+    pub(crate) fn poll_updates_on(&mut self, today: u64) {
         // never the network in a test
         if !self.updates.started && !cfg!(test) {
             self.updates.started = true;
-            if self.prefs.update_checked_day != today {
+            if checks_on_opening(self.prefs.update_checked_day, today) {
                 self.update_check(true);
             }
         }
@@ -226,7 +250,9 @@ impl DrawingApp {
             Msg::Checked(Ok(Some(release))) => {
                 self.prefs.update_checked_day = today;
                 if is_newer(&release.version, env!("CARGO_PKG_VERSION")) {
-                    if self.updates.automatic {
+                    if self.updates.automatic && changelog_allowed(self.script.is_some()) {
+                        self.changelog = Some(Changelog { version: release.version.clone(), notes: release.notes.clone(), installed: false });
+                    } else if self.updates.automatic {
                         self.toast(format!("Versão {} do MagoAgent disponível: veja em Ajustes › Sobre.", release.version));
                     }
                     self.updates.state = UpdateState::Available(release);
@@ -266,6 +292,19 @@ impl DrawingApp {
         }
     }
 
+    /// On opening: the notes kept when the app went to install `current` ("O que há de novo"), once. Notes of a later
+    /// version wait for it; those of an earlier one go.
+    pub(crate) fn show_whats_new(&mut self, current: &str) {
+        let Some((version, notes)) = self.prefs.whats_new.clone() else { return };
+        if is_newer(&version, current) {
+            return;
+        }
+        self.prefs.whats_new = None;
+        if version == current && changelog_allowed(self.script.is_some()) {
+            self.changelog = Some(Changelog { version, notes, installed: true });
+        }
+    }
+
     /// The `update` action of the MCP: asks for a check (or the install) and says where it stands. On Windows the
     /// install closes and reopens the app: without `confirmed` it only says so.
     pub(crate) fn act_update(&mut self, install: bool, confirmed: bool) -> Result<String, String> {
@@ -286,6 +325,14 @@ impl DrawingApp {
 }
 
 impl Updates {
+    /// What the check's thread would answer, without the network; `automatic`: the day's own check.
+    #[cfg(test)]
+    pub(crate) fn answer_for_test(&mut self, answer: Result<Option<Release>, String>, automatic: bool) {
+        let (sender, receiver) = channel();
+        sender.send(Msg::Checked(answer)).unwrap();
+        (self.receiver, self.automatic, self.started) = (Some(receiver), automatic, true);
+    }
+
     /// The state as a sentence.
     pub(crate) fn state_line(&self) -> String {
         let now = env!("CARGO_PKG_VERSION");

@@ -1,6 +1,7 @@
 use super::*;
 
 mod arrows;
+mod changelog;
 mod chat;
 mod chat_node;
 mod conflicts;
@@ -38,6 +39,7 @@ mod session;
 mod shapes;
 mod terminals;
 mod tools;
+mod tour;
 mod typing;
 mod windows;
 

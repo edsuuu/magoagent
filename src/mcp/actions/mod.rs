@@ -39,6 +39,14 @@ impl DrawingApp {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
         match action {
             "update" => self.act_update(args["install"].as_bool().unwrap_or(false), args["confirmed"].as_bool().unwrap_or(false)),
+            "tour" => {
+                let steps = crate::app::ui::tour::STEPS.len();
+                self.start_tour_at(args["step"].as_u64().map_or(0, |step| step as usize).min(steps - 1));
+                Ok(format!(
+                    "A apresentação abriu na tela, no passo {} de {steps}; a pessoa avança, volta ou pula.",
+                    self.tour.as_ref().map_or(1, |tour| tour.step + 1)
+                ))
+            }
             "memory" => Ok(crate::app::system::memory::format(&self.memory.snapshot())),
             "ide_folder" => self.act_ide_folder(&text("path")),
             "open_default" => self.act_open_default(&text("path")),
