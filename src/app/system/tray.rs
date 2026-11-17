@@ -213,7 +213,7 @@ impl DrawingApp {
         if std::mem::take(&mut self.raise_window) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            focus_window(ctx, &crate::window_names().0);
             #[cfg(target_os = "linux")]
             if crate::app::island::x11::active() {
                 self.raising = Some(ctx.input(|input| input.time) + RAISE_FOR);
@@ -243,6 +243,16 @@ impl DrawingApp {
 /// How long a window asked back is looked for (s): the window manager takes it in a few frames.
 #[cfg(target_os = "linux")]
 const RAISE_FOR: f64 = 3.0;
+
+/// The window `title` of `ctx` in front with the keyboard: on Windows without winit's made-up Alt (`plain::bring_forward`).
+pub(crate) fn focus_window(ctx: &Context, title: &str) {
+    #[cfg(windows)]
+    if crate::app::voice::popup::plain::bring_forward(title) {
+        return;
+    }
+    let _ = title;
+    ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+}
 
 #[cfg(test)]
 mod tests {

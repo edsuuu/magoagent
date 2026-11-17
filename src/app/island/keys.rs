@@ -89,7 +89,7 @@ impl DrawingApp {
         // once the panel shows (its box is there to take the typing)
         if self.hotkeys.take_keyboard && self.island.open && view.layers[2] > 0.0 {
             self.hotkeys.take_keyboard = false;
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
+            crate::app::system::tray::focus_window(ui.ctx(), super::window::TITLE);
             if view.asks.is_empty() && view.tab == Tab::Chat {
                 ui.memory_mut(|memory| memory.request_focus(egui::Id::unique("chat_draft")));
             }
