@@ -928,12 +928,20 @@ pub(super) fn wash(painter: &Painter, card: Rect, state: MagoState) {
     wash_with(painter, card, color, strength, 0.0);
 }
 
-/// A wash of `color`, `shift` points to the side of the card's middle.
+/// A wash of `color` over the whole card, strongest under its bottom middle, `shift` points to the side (asked: "esse
+/// blur seria melhor se tivesse no card todo"): an ellipse as wide as the card, in layers.
 pub(super) fn wash_with(painter: &Painter, card: Rect, color: Color32, strength: f32, shift: f32) {
-    let center = Pos2::new(card.center().x + shift, card.bottom() + card.height() * 0.3);
+    let center = Pos2::new(card.center().x + shift, card.bottom() + card.height() * 0.15);
+    let reach = wash_reach(card);
     for step in 0..24 {
-        painter.circle_filled(center, 150.0 * (1.0 - step as f32 / 24.0 * 0.9), color.gamma_multiply(strength * 0.055));
+        let share = 1.0 - step as f32 / 24.0 * 0.9;
+        painter.add(egui::Shape::ellipse_filled(center, reach * share, color.gamma_multiply(strength * 0.055)));
     }
+}
+
+/// How far the wash reaches from its middle: past the card's sides and up over its top.
+pub(crate) fn wash_reach(card: Rect) -> Vec2 {
+    Vec2::new((card.width() * 0.62).max(150.0), (card.height() * 1.2).max(150.0))
 }
 
 /// Whether Luna keeps dancing to the song in `state`: only what needs the person (a question, a permission, an error)

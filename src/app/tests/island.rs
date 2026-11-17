@@ -569,3 +569,21 @@ fn with_no_chat_open_the_chat_page_is_its_plain_size_not_the_pulled_one() {
     assert_eq!(app.island.size().x, EXPANDED_W, "not the 1100 it was pulled to: {:?}", app.island.size());
     assert!(app.island.size().y < 700.0, "{:?}", app.island.size());
 }
+
+#[test]
+fn the_wash_reaches_the_whole_card() {
+    let card = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::new(720.0, 106.0));
+    let reach = crate::app::island::paint::wash_reach(card);
+    assert!(reach.x >= card.width() / 2.0 && reach.y >= card.height(), "{reach:?}");
+}
+
+#[test]
+fn a_note_wears_tape_across_its_top_edge() {
+    let note = egui::Rect::from_min_size(egui::Pos2::new(10.0, 20.0), egui::Vec2::new(200.0, 150.0));
+    let tape = crate::render::tape(note);
+    let (top, bottom) = tape.iter().fold((f32::MAX, f32::MIN), |(top, bottom), point| (top.min(point.y), bottom.max(point.y)));
+    assert!(top < note.min.y && bottom > note.min.y, "across the edge: {tape:?}");
+    assert!(tape.iter().all(|point| point.x > note.min.x && point.x < note.max.x), "inside the note's width");
+    let small = crate::render::tape(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::new(40.0, 40.0)));
+    assert!(small.iter().all(|point| point.x > 0.0 && point.x < 40.0), "a small note keeps it inside: {small:?}");
+}
