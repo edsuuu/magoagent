@@ -469,7 +469,8 @@ impl DrawingApp {
             spotify.take(message, ctx);
         }
         let playing = spotify.now.as_ref().is_some_and(|now| now.playing);
-        spotify.dancer.tick(self.prefs.integrations.luna_dances, playing);
+        // the island's bars listen too, not only Luna's dance
+        spotify.dancer.tick(self.prefs.integrations.luna_dances || self.prefs.island, playing);
         self.spotify_account_tick();
         self.spotify_library_tick(ctx);
     }

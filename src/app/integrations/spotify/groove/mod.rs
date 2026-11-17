@@ -77,6 +77,9 @@ impl Dance {
     }
 }
 
+/// How many frequency bands the sound is cut in (the island's bars).
+pub(crate) const BANDS: usize = 5;
+
 /// What Luna dances to, now.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Groove {
@@ -88,6 +91,9 @@ pub(crate) struct Groove {
     pub(crate) energy: f32,
     /// How much of the sound is bass (under ~150 Hz), 0 to 1.
     pub(crate) bass: f32,
+    /// The sound by frequency, low to high (`analysis::BAND_EDGES`), each 0 to 1 against its own loud parts of late: the
+    /// island's bars. None when nothing is heard (the clock's sway, the nap, macOS).
+    pub(crate) bands: Option<[f32; BANDS]>,
     pub(crate) dance: Dance,
     /// The beats counted so far (`phase` is its fraction), and the beat the dance began on: the moves longer than a beat
     /// and the spin, which happens once, are timed by them.
@@ -99,7 +105,7 @@ impl Groove {
     /// Timed by the clock at `seconds`, at `bpm`.
     pub(crate) fn clock(seconds: f64, bpm: f32, dance: Dance) -> Groove {
         let beat = seconds * f64::from(bpm) / 60.0;
-        Groove { bpm, phase: beat.fract() as f32, energy: 0.5, bass: 0.0, dance, beat, since: 0.0 }
+        Groove { bpm, phase: beat.fract() as f32, energy: 0.5, bass: 0.0, bands: None, dance, beat, since: 0.0 }
     }
 
     /// The same, `seconds` later.

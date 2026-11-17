@@ -248,11 +248,11 @@ fn listening_starts_only_while_it_plays_and_a_dancer_asks() {
     assert_eq!(app.integrations.spotify.dancer.listening(), listens == 1);
     app.integrations_tick(&ctx);
     assert_eq!(app.integrations.spotify.dancer.starts, listens, "once");
-    // paused: it ends; the switch off: no dancer and no listening
+    // paused: it ends; the switch off and the island off (its bars listen too): no dancer and no listening
     app.integrations.spotify.now = Some(paused.clone());
     app.integrations_tick(&ctx);
     assert!(!app.integrations.spotify.dancer.listening());
-    app.prefs.integrations.luna_dances = false;
+    (app.prefs.integrations.luna_dances, app.prefs.island) = (false, false);
     app.integrations.spotify.now = Some(Now { playing: true, ..paused });
     assert!(app.luna_groove().is_none());
     app.integrations_tick(&ctx);
@@ -328,4 +328,20 @@ fn luna_listens_here() {
     let started = Instant::now();
     let analyzer = hear(&sound);
     println!("análise com batida: {:.2}% de um núcleo ({:.0} BPM)", started.elapsed().as_secs_f64() / 30.0 * 100.0, analyzer.groove().bpm);
+}
+
+/// The island's bars are the sound by frequency: a low tone lifts the first band over the last, a high one the last
+/// over the first, and silence lets them all fall.
+#[test]
+fn the_bands_follow_where_the_sound_is() {
+    let tone = |hertz: f64| -> Vec<f32> {
+        (0..(2.0 * f64::from(RATE)) as usize).map(|index| 0.5 * (index as f64 / f64::from(RATE) * hertz * std::f64::consts::TAU).sin() as f32).collect()
+    };
+    let low = hear(&tone(70.0)).groove().bands.unwrap();
+    assert!(low[0] > low[BANDS - 1] + 0.3, "a 70 Hz tone is bass: {low:?}");
+    let high = hear(&tone(3000.0)).groove().bands.unwrap();
+    assert!(high[BANDS - 1] > high[0] + 0.3, "a 3 kHz tone is treble: {high:?}");
+    let mut analyzer = hear(&tone(3000.0));
+    analyzer.feed(&vec![0.0; RATE as usize]);
+    assert!(analyzer.groove().bands.unwrap().iter().all(|level| *level < 0.05), "silence: {:?}", analyzer.groove().bands);
 }

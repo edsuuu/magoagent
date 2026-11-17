@@ -58,7 +58,7 @@ fn frame_delay(app: &mut DrawingApp, ctx: &Context, time: f64) -> std::time::Dur
 fn the_pills_bars_rise_with_the_song_each_with_its_own_swing() {
     use crate::app::integrations::spotify::groove::{Dance, Groove};
     use crate::app::island::pill::bars;
-    let groove = |energy, bass| Groove { bpm: 120.0, phase: 0.25, energy, bass, dance: Dance::Sway, beat: 0.5, since: 0.0 };
+    let groove = |energy, bass| Groove { bpm: 120.0, phase: 0.25, energy, bass, bands: None, dance: Dance::Sway, beat: 0.5, since: 0.0 };
     let loud = bars(Some(&groove(0.9, 0.7)), 1.0);
     let quiet = bars(Some(&groove(0.1, 0.0)), 1.0);
     let average = |heights: &[f32]| heights.iter().sum::<f32>() / heights.len() as f32;
@@ -70,6 +70,25 @@ fn the_pills_bars_rise_with_the_song_each_with_its_own_swing() {
     assert!(first.iter().all(|height| (0.15..0.95).contains(height)), "{first:?}");
     assert_ne!(first, bars(None, 2.4), "the sway goes on");
     assert!(first.windows(2).any(|pair| (pair[0] - pair[1]).abs() > 0.02), "each bar with its own swing: {first:?}");
+}
+
+/// Asked ("Luna à esquerda, capa e frequência no meio, os mini agentes à direita; sem mini agentes, à direita"): the
+/// cover and the bars go together, in the middle between the wizard and the minis, or at the right without minis.
+#[test]
+fn the_cover_and_the_bars_sit_in_the_middle_or_at_the_right() {
+    use crate::app::island::minis::mini_cells;
+    use crate::app::island::pill::spread;
+    let pill = Rect::from_min_size(Pos2::ZERO, Vec2::new(288.0, 40.0));
+    // the bars take 25 (five of 3 with 2.5 between); no agents: the pair ends as far from the right as the wizard starts from the left (25)
+    let (cover, bars) = spread(pill, None);
+    assert!(bars > cover + 26.0, "the bars after the cover");
+    assert!((bars + 25.0 - (288.0 - 25.0)).abs() < 1.0, "at the right: the bars end at {}", bars + 25.0);
+    // with agents: the pair's middle halfway between the wizard (55) and the minis' grid
+    let grid = mini_cells(pill, 2).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
+    let (cover, bars) = spread(pill, Some(grid));
+    let middle = (cover + bars + 25.0) / 2.0;
+    assert!((middle - (55.0 + grid.left()) / 2.0).abs() < 1.0, "in the middle: {middle} between 55 and {}", grid.left());
+    assert!(bars + 25.0 < grid.left(), "clear of the minis");
 }
 
 /// While the song plays the pill is alive and keeps asking for frames; paused, it asks for none.
