@@ -24,7 +24,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "name": "tour",
             "description": "Abre na tela a apresentação do MagoAgent (a mesma de Ajustes › Geral › Ver a apresentação de novo): escurece a tela e destaca, passo a passo, a barra de ferramentas, o botão do chat, a lateral dos espaços, os cantos do canvas e Ajustes, com Voltar, Próximo e Pular. `step` começa num passo (0 é o primeiro, 5 o último).",
             "inputSchema": { "type": "object", "properties": {
-                "step": { "type": "integer", "description": "o passo em que começa (0 a 5); sem ele, o primeiro" },
+                "step": { "type": "integer", "description": "o passo em que começa (0 a 6); sem ele, o primeiro" },
             } },
         }),
         json!({

@@ -13,6 +13,7 @@ pub(crate) enum Spot {
     Toolbar,
     Chat,
     Sidebar,
+    Panes,
     Corners,
     Settings,
 }
@@ -23,7 +24,7 @@ pub(crate) struct Step {
     pub(crate) text: &'static str,
 }
 
-pub(crate) const STEPS: [Step; 6] = [
+pub(crate) const STEPS: [Step; 7] = [
     Step {
         spot: None,
         title: "Boas-vindas ao MagoAgent",
@@ -40,7 +41,14 @@ pub(crate) const STEPS: [Step; 6] = [
         title: "Espaços de trabalho",
         text: "Cada espaço é um projeto, com o seu quadro e a sua pasta. O botão ☰ dobra e abre esta lateral.",
     },
-    Step { spot: Some(Spot::Corners), title: "Navegar no canvas", text: "Andares, uso dos planos, minimapa e zoom ficam neste canto." },
+    Step {
+        spot: Some(Spot::Panes),
+        title: "Painéis",
+        text: "Tarefas, Linha do tempo, Alterações e Fichário abrem ao lado do quadro. O número no botão diz quanto espera por você.",
+    },
+    Step {
+        spot: Some(Spot::Corners), title: "Navegar no canvas", text: "Andares, minimapa e zoom ficam neste canto. O uso dos planos fica no pé da lateral."
+    },
     Step {
         spot: Some(Spot::Settings),
         title: "Ajustes",
@@ -86,7 +94,7 @@ impl Tour {
     }
 }
 
-/// Where `spot` is on screen now, by the ids its widgets were painted with (toolbar.rs, titlebar.rs, sidebar.rs); an
+/// Where `spot` is on screen now, by the ids its widgets were painted with (toolbar.rs, titlebar.rs, sidebar.rs, panes/mod.rs); an
 /// area's rect is that of its "move" widget. `None` when none of them was painted or it is off the screen.
 pub(crate) fn spot_rect(ctx: &Context, spot: Spot) -> Option<Rect> {
     let widget = |name: &str| ctx.read_response(egui::Id::unique(name)).map(|response| response.rect);
@@ -95,7 +103,10 @@ pub(crate) fn spot_rect(ctx: &Context, spot: Spot) -> Option<Rect> {
         Spot::Toolbar => area("tools"),
         Spot::Chat => widget("top_chat"),
         Spot::Sidebar => area("sidebar"),
-        Spot::Corners => ["footer", "minimap_toggle", "usage_pill", "floors_pill"].into_iter().filter_map(area).reduce(|one, other| one.union(other)),
+        Spot::Panes => (0..4)
+            .filter_map(|index| ctx.read_response(egui::Id::unique(("pane_button", index))).map(|response| response.rect))
+            .reduce(|one, other| one.union(other)),
+        Spot::Corners => ["footer", "minimap", "floors_pill"].into_iter().filter_map(area).reduce(|one, other| one.union(other)),
         Spot::Settings => widget("sidebar_settings").or_else(|| widget("top_settings")),
     };
     let screen = ctx.content_rect();

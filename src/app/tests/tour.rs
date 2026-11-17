@@ -73,7 +73,7 @@ fn nothing_opens_by_itself_under_a_roteiro_or_over_the_welcome() {
 fn the_mcp_opens_the_tour_on_a_step() {
     let mut app = DrawingApp::default();
     let said = app.act("tour", &json!({ "step": 2 })).unwrap();
-    assert!(said.contains("passo 3 de 6"), "{said}");
+    assert!(said.contains("passo 3 de 7"), "{said}");
     assert_eq!(step_of(&app), Some(2));
     assert!(crate::mcp::app_tools::is_action("tour"));
 }
