@@ -1,7 +1,8 @@
 //! Spotify on Windows, by the system's media controls (the overlay the media keys show): Spotify publishes there what
 //! it plays, and Windows hands that session to any app, with its cover, shuffle, repeat and the timeline, and
-//! play/pause, next, previous, shuffle, repeat and a seek as requests. The volume is not there (the Web API does it with
-//! the account), nor a queue. No account, no key and no network.
+//! play/pause, next, previous, shuffle, repeat and a seek as requests. The volume is not there: it comes from the
+//! Windows mixer, Spotify's own session there (as the system's volume slider shows it). Nor a queue. No account, no key
+//! and no network.
 
 use super::{COVER_LIMIT, Command, Now, QueueItem, Repeat, Track, is_spotify_app};
 use windows::Media::Control::{
@@ -10,6 +11,13 @@ use windows::Media::Control::{
 };
 use windows::Media::MediaPlaybackAutoRepeatMode as RepeatMode;
 use windows::Storage::Streams::DataReader;
+use windows::Win32::Foundation::{CloseHandle, RPC_E_CHANGED_MODE};
+use windows::Win32::Media::Audio::{
+    IAudioSessionControl2, IAudioSessionManager2, IMMDeviceEnumerator, ISimpleAudioVolume, MMDeviceEnumerator, eMultimedia, eRender,
+};
+use windows::Win32::System::Com::{CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx};
+use windows::Win32::System::Threading::{OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW};
+use windows::core::{Interface, PWSTR};
 
 /// A TimeSpan's ticks (100 ns) in a ms.
 const TICKS_PER_MS: i64 = 10_000;
@@ -35,6 +43,7 @@ pub(super) fn read() -> Option<Now> {
     let mut now = Now { track, playing, ..Default::default() };
     let playback = &mut now.playback;
     playback.device = "Spotify".into();
+    playback.volume = volume();
     if let Some(info) = &info {
         playback.shuffle = info.IsShuffleActive().and_then(|shuffle| shuffle.Value()).ok();
         playback.repeat = info.AutoRepeatMode().and_then(|mode| mode.Value()).ok().map(|mode| match mode {
@@ -74,7 +83,9 @@ pub(super) fn control(command: &Command) -> bool {
             crate::app::browser::open_external(uri);
             return true;
         }
-        Command::Volume(_) | Command::Enqueue(_) => return false,
+        // the mixer has what the media session does not: Spotify's own volume
+        Command::Volume(percent) => return set_volume(*percent),
+        Command::Enqueue(_) => return false,
     };
     asked.and_then(|asked| asked.join()).unwrap_or(false)
 }
@@ -101,4 +112,77 @@ pub(super) fn cover(track: &Track) -> Option<Vec<u8>> {
     let mut bytes = vec![0u8; loaded as usize];
     reader.ReadBytes(&mut bytes).ok()?;
     Some(bytes)
+}
+
+/// COM is for the thread, and this one (the watch's) lives while the integration is on: initialized once. S_FALSE
+/// (already initialized) and another apartment (RPC_E_CHANGED_MODE) still leave it usable here.
+fn com_ready() -> bool {
+    thread_local! {
+        static READY: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+    }
+    READY.with(|ready| match ready.get() {
+        Some(ready) => ready,
+        None => {
+            let result = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+            let usable = result.is_ok() || result == RPC_E_CHANGED_MODE;
+            ready.set(Some(usable));
+            usable
+        }
+    })
+}
+
+/// The program's file name behind `pid` ("Spotify.exe").
+fn process_name(pid: u32) -> Option<String> {
+    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
+    let mut path = [0u16; 512];
+    let mut length = path.len() as u32;
+    let asked = unsafe { QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, PWSTR(path.as_mut_ptr()), &mut length) };
+    let _ = unsafe { CloseHandle(process) };
+    asked.ok()?;
+    let path = String::from_utf16_lossy(&path[..(length as usize).min(path.len())]);
+    Some(path.rsplit(['\\', '/']).next().unwrap_or_default().to_string())
+}
+
+/// The Windows mixer's sessions of Spotify: one for each of its windows that plays a sound, and there may be more than
+/// one. Core Audio has no counterpart in the media session, so Spotify's own volume comes from here.
+fn sessions() -> Option<Vec<ISimpleAudioVolume>> {
+    if !com_ready() {
+        return None;
+    }
+    // SAFETY: COM is up on this thread (com_ready), and each call's answer is checked before the next one
+    unsafe {
+        let enumerator: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).ok()?;
+        let device = enumerator.GetDefaultAudioEndpoint(eRender, eMultimedia).ok()?;
+        let manager: IAudioSessionManager2 = device.Activate(CLSCTX_ALL, None).ok()?;
+        let list = manager.GetSessionEnumerator().ok()?;
+        let mut found = Vec::new();
+        for index in 0..list.GetCount().ok()? {
+            let Ok(control) = list.GetSession(index) else { continue };
+            let Ok(control) = control.cast::<IAudioSessionControl2>() else { continue };
+            let spotify = control.GetProcessId().ok().and_then(process_name).is_some_and(|name| name.eq_ignore_ascii_case("Spotify.exe"));
+            if spotify && let Ok(volume) = control.cast::<ISimpleAudioVolume>() {
+                found.push(volume);
+            }
+        }
+        Some(found)
+    }
+}
+
+/// Spotify's volume in the mixer, 0 to 1: the first of its sessions (the one the mixer's slider shows); None when it
+/// has no session (it plays no sound now).
+fn volume() -> Option<f32> {
+    let level = unsafe { sessions()?.first()?.GetMasterVolume() }.ok()?;
+    Some(level.clamp(0.0, 1.0))
+}
+
+/// Turns every one of Spotify's sessions in the mixer to `percent`; false without a session of it, or when none of them
+/// took it.
+fn set_volume(percent: u8) -> bool {
+    let level = f32::from(percent.min(100)) / 100.0;
+    let Some(sessions) = sessions().filter(|sessions| !sessions.is_empty()) else { return false };
+    let mut turned = false;
+    for session in sessions {
+        turned |= unsafe { session.SetMasterVolume(level, std::ptr::null()) }.is_ok();
+    }
+    turned
 }

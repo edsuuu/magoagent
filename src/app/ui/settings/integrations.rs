@@ -409,10 +409,13 @@ impl DrawingApp {
                 }
             }
         });
-        let hint = "O Client ID do seu app no painel do Spotify para desenvolvedores (sem segredo: o app usa PKCE).";
+        let hint = "O Client ID do seu app no painel do Spotify para desenvolvedores (sem segredo: o app usa PKCE). Sem app: Criar app, cole o Redirect URI abaixo, marque Web API e salve; o Client ID aparece na página dele.";
         row(ui, k, "Client ID", hint, |ui| {
             if button(ui, k, "Abrir painel…").clicked() {
                 action = "dashboard";
+            }
+            if button(ui, k, "Criar app…").clicked() {
+                action = "create";
             }
             input(
                 ui,
@@ -444,6 +447,11 @@ impl DrawingApp {
             "disconnect" => {
                 let said = self.spotify_disconnect().unwrap_or_else(|why| format!("A conta não foi desconectada: {why}"));
                 self.toast(said);
+            }
+            "create" => {
+                if !cfg!(test) {
+                    open_external(crate::app::integrations::spotify::account::CREATE_APP);
+                }
             }
             "dashboard" => {
                 if !cfg!(test) {

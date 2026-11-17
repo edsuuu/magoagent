@@ -277,9 +277,9 @@ pub(crate) const CLOSED: &str = "O Spotify não está aberto neste computador (e
 
 /// Where `command` goes, with `player` the one shown (None: nothing plays here) and `linked` the account's state.
 /// Soloist (and Spotifast playing through its own Soloist) does everything by `soloist ctl`. The Spotify app takes
-/// shuffle, repeat, the volume, a seek and a uri by its own controls where the system has them, but with the account the
-/// Web API does those (it is what really reaches the app: its MPRIS shows them and ignores the writes), and a queue
-/// only exists there.
+/// shuffle, repeat, the volume, a seek and a uri by its own controls where the system has them (on Windows the volume is
+/// the Windows mixer's, by the player's thread), but with the account the Web API does those (it is what really reaches
+/// the app: its MPRIS shows them and ignores the writes), and a queue only exists there.
 pub(crate) fn route(system: System, player: Option<Player>, through_soloist: bool, linked: bool, command: &Command) -> Route {
     let web_or = |why: &'static str| if linked { Route::Web } else { Route::No(why) };
     let Some(player) = player else { return web_or(CLOSED) };
@@ -299,9 +299,6 @@ pub(crate) fn route(system: System, player: Option<Player>, through_soloist: boo
         // Spotifast's own MPRIS takes the writes
         _ if player == Player::Spotifast => Route::Player,
         _ if linked => Route::Web,
-        Command::Volume(_) if system == System::Windows => {
-            Route::No("O Spotify do Windows não deixa mudar o volume por fora: conecte a conta do Spotify em Ajustes › Integrações.")
-        }
         Command::Repeat(Repeat::Track) if system == System::Mac => {
             Route::No("O Spotify do macOS só repete a lista por fora: conecte a conta do Spotify em Ajustes › Integrações.")
         }

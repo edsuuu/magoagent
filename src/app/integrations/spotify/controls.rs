@@ -29,6 +29,8 @@ pub(crate) fn refused(command: &Command) -> String {
         Command::PlayPause | Command::Next | Command::Previous => "O player não respondeu.",
         Command::Shuffle(_) => "O player não aceitou mudar o embaralhar.",
         Command::Repeat(_) => "O player não aceitou mudar o repetir.",
+        // Windows: the volume is the Windows mixer's own, and Spotify only has a session there while it plays a sound
+        Command::Volume(_) if cfg!(windows) => "O Spotify não está tocando som agora: o volume dele aparece quando ele toca.",
         Command::Volume(_) => "O player não aceitou mudar o volume.",
         Command::Seek(_) => "O player não aceitou mudar o ponto da música.",
         Command::PlayUri(_) => "O player não conseguiu tocar isso.",

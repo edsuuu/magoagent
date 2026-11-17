@@ -145,12 +145,22 @@ pub(crate) struct Shared {
     ended: AtomicBool,
     /// It ended without hearing anything: no program to listen with, or no device.
     failed: AtomicBool,
+    /// The song changed: the thread hears the next one from scratch (its loudness and tempo), not measured against the
+    /// last one (asked: "quando troca de música a frequência fica bugada e depois de uns 20 segundos volta fluido").
+    pub(crate) new_song: AtomicBool,
     latest: Mutex<Option<(Groove, Instant)>>,
 }
 
 impl Shared {
     fn new(asked: Arc<AtomicU64>) -> Shared {
-        Shared { asked, stop: AtomicBool::new(false), ended: AtomicBool::new(false), failed: AtomicBool::new(false), latest: Mutex::new(None) }
+        Shared {
+            asked,
+            stop: AtomicBool::new(false),
+            ended: AtomicBool::new(false),
+            failed: AtomicBool::new(false),
+            new_song: AtomicBool::new(false),
+            latest: Mutex::new(None),
+        }
     }
 
     /// Whether the thread should go on: not stopped, and a dancer drawn within `LINGER`.
@@ -203,6 +213,13 @@ impl Dancer {
     /// A dancer is on screen now (the island, each frame it draws one).
     pub(crate) fn ask(&self) {
         self.asked.store(stamp(), Ordering::Relaxed);
+    }
+
+    /// Another song started: the listening forgets the last one's loudness and tempo.
+    pub(crate) fn new_song(&self) {
+        if let Some(shared) = &self.listening {
+            shared.new_song.store(true, Ordering::Relaxed);
+        }
     }
 
     /// Whether the thread is listening.
