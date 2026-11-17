@@ -348,10 +348,7 @@ fn caption_glyph(p: &Painter, k: usize, maximized: bool, at: Pos2, color: Color3
     let at = at.round() + Vec2::splat(0.5);
     let square = |min: Vec2, size: f32| Rect::from_min_size(at + min, Vec2::splat(size));
     match (k, maximized) {
-        (0, _) => {
-            p.line_segment([at + Vec2::new(-5.0, -5.0), at + Vec2::new(5.0, 5.0)], stroke);
-            p.line_segment([at + Vec2::new(-5.0, 5.0), at + Vec2::new(5.0, -5.0)], stroke);
-        }
+        (0, _) => crate::app::chat::images::cross(p, at, 5.0, stroke),
         (1, false) => {
             p.rect_stroke(square(Vec2::splat(-5.0), 10.0), 1, stroke, StrokeKind::Middle);
         }
