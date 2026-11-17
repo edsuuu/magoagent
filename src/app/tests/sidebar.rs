@@ -157,6 +157,12 @@ fn the_foot_shows_each_plan_and_its_detail_fits_the_sidebar() {
     assert_eq!(app.usage_ui.probe.next, 0.0);
     let said = app.act("usage", &json!({})).unwrap();
     assert!(said.contains("Plano lido pela CLI, Claude Code (Max): Sessão 98% (redefine em 3 dias)"), "{said}");
+    // asked ("se eu clico em configurações o meu cursor fica cursor de texto"): the link opens Ajustes › Agentes, it
+    // doesn't select its text
+    app.act("sidebar", &json!({ "action": "usage_open" })).unwrap();
+    press(&mut app, &ctx, "Configurações…");
+    assert!(app.settings_open && !app.usage_ui.open);
+    assert_eq!(crate::app::ui::settings::SETTINGS_TABS[app.settings_tab], "Agentes");
 }
 
 #[test]

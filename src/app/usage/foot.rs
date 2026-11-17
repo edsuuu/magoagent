@@ -172,7 +172,7 @@ impl DrawingApp {
                         ui.add_space(6.0);
                         ui.add(egui::Label::new(egui::RichText::new(&maestro).size(12.0).color(colors.muted)).wrap());
                         let link = ui
-                            .add(egui::Label::new(egui::RichText::new("Configurações…").size(12.0).color(accent)).sense(Sense::click()))
+                            .add(egui::Label::new(egui::RichText::new("Configurações…").size(12.0).color(accent)).selectable(false).sense(Sense::click()))
                             .on_hover_cursor(CursorIcon::PointingHand);
                         if link.clicked() {
                             action = Some(CardAction::Settings);
