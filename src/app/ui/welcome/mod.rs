@@ -143,6 +143,8 @@ impl DrawingApp {
         }
         self.prefs.welcome_seen = true;
         self.chat_open = self.prefs.start_in_chat;
+        // then the tour, once (ui/tour.rs)
+        self.tour_on_open(None);
     }
 
     pub(crate) fn welcome_ui(&mut self, ctx: &Context) {
@@ -251,6 +253,7 @@ impl DrawingApp {
             }
         });
         ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, id));
+        crate::app::ui::titlebar::raise_window_buttons(ctx, egui::LayerId::new(egui::Order::Foreground, id));
         ctx.request_repaint();
         // the arrows walk the slides (not inside a field), Enter goes on
         let typing = ctx.egui_wants_keyboard_input();

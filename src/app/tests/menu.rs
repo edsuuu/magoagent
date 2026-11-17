@@ -212,6 +212,48 @@ fn the_title_bar_moves_the_window_with_ajustes_open() {
     assert!(sent.is_empty() && !app.settings_open, "{sent:?}");
 }
 
+/// The welcome covers the whole window, the drawn bar too (asked: minimizar, maximizar e fechar sumiam nela): the
+/// window's buttons stay over it and answer, and the bar's empty stretch under it still moves the window.
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn the_window_buttons_stay_over_the_welcome() {
+    let ctx = Context::default();
+    crate::app::ui::install_fonts(&ctx, false);
+    let mut app = DrawingApp::default();
+    app.prefs.sidebar_hidden = true;
+    app.welcome = Some(Default::default());
+    let frame = |app: &mut DrawingApp, time: f64, events: Vec<egui::Event>| {
+        let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0));
+        let mut raw = egui::RawInput { screen_rect: Some(screen), time: Some(time), events, ..Default::default() };
+        app.caption_drag(&ctx, &mut raw);
+        let mut output = ctx.run_ui(raw, |_| {
+            app.title_bar(&ctx);
+            app.welcome_ui(&ctx);
+        });
+        output.textures_delta.clear();
+        output.viewport_output.remove(&egui::ViewportId::ROOT).map(|v| v.commands).unwrap_or_default()
+    };
+    let mut time = 0.0;
+    for _ in 0..3 {
+        time += 0.1;
+        frame(&mut app, time, vec![]);
+    }
+    let close = Pos2::new(1200.0 - 23.0, 19.0);
+    assert_eq!(ctx.layer_id_at(close).map(|layer| layer.id), Some(egui::Id::unique("title_bar_right")), "Fechar over the welcome");
+    assert_eq!(ctx.layer_id_at(Pos2::new(600.0, 400.0)).map(|layer| layer.id), Some(egui::Id::unique("welcome")));
+    let press = |app: &mut DrawingApp, time: &mut f64, at: Pos2| {
+        let mut sent = frame(app, *time, vec![egui::Event::PointerMoved(at), button(at, true)]);
+        sent.extend(frame(app, *time + 0.05, vec![button(at, false)]));
+        *time += 1.0;
+        sent
+    };
+    let minimize = Pos2::new(1200.0 - 46.0 * 2.5, 19.0);
+    assert_eq!(press(&mut app, &mut time, minimize), vec![egui::ViewportCommand::Minimized(true)]);
+    assert_eq!(press(&mut app, &mut time, Pos2::new(300.0, TITLE_BAR / 2.0)), vec![egui::ViewportCommand::StartDrag]);
+    assert!(press(&mut app, &mut time, close).contains(&egui::ViewportCommand::Close));
+    assert!(app.welcome.is_some(), "the welcome stays");
+}
+
 #[test]
 fn the_window_edges_resize_it() {
     use egui::ResizeDirection as R;

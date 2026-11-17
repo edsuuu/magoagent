@@ -981,3 +981,11 @@ Atualizações do MagoAgent: pede a verificação da última release no GitHub e
 |---|---|---|
 | `install` | boolean | baixar, conferir e instalar a atualização encontrada (o app fecha e reabre) |
 | `confirmed` | boolean | a pessoa soube que o app vai fechar e reabrir e aceitou |
+
+### `tour`
+
+Abre na tela a apresentação do MagoAgent (a mesma de Ajustes › Geral › Ver a apresentação de novo): escurece a tela e destaca, passo a passo, a barra de ferramentas, o botão do chat, a lateral dos espaços, os cantos do canvas e Ajustes, com Voltar, Próximo e Pular. `step` começa num passo (0 é o primeiro, 5 o último).
+
+| Parâmetro | Tipo | O que é |
+|---|---|---|
+| `step` | integer | o passo em que começa (0 a 5); sem ele, o primeiro |

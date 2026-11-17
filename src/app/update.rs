@@ -270,6 +270,8 @@ impl eframe::App for DrawingApp {
             self.dock_grip(&ctx);
         }
         self.welcome_ui(&ctx);
+        self.tour_ui(&ctx);
+        self.changelog_ui(&ctx);
         if TITLE_BAR > 0.0 {
             crate::app::ui::titlebar::edge_cursor(&ctx);
         }
