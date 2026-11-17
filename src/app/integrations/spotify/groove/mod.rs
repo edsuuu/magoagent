@@ -300,10 +300,15 @@ impl DrawingApp {
         self.prefs.integrations.luna_dances.then(|| self.integrations.spotify.dancer.groove(now.playing))
     }
 
-    /// Luna's colour while she dances: the cover's (`Spotify::tint`, asked: "a Luna trocar de cor de acordo com a capa
-    /// da música"), `usual` until the cover comes.
+    /// Luna's colour while she dances: the cover's first one, made light enough for the dark island
+    /// (`spotify::readable`); `usual` until the cover comes, or with a grey cover.
     pub(crate) fn luna_colour(&self, usual: Color32) -> Color32 {
-        self.integrations.spotify.tint.unwrap_or(usual)
+        self.integrations
+            .spotify
+            .tint
+            .filter(|tint| *tint != crate::app::integrations::spotify::GREY)
+            .map(crate::app::integrations::spotify::readable)
+            .unwrap_or(usual)
     }
 
     /// "A Luna dança com a música" in words, for the MCP.

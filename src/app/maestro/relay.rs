@@ -33,6 +33,27 @@ fn shorten(value: &mut Value) {
     }
 }
 
+/// Where the session runs ("hermes", "claude-desktop", "cursor"; empty: Claude Code). Claude Desktop's Code tab gives its
+/// CLI `CLAUDE_CODE_ENTRYPOINT=claude-desktop`; a hook run without the variable is told by the file the CLI keeps for the
+/// session in `sessions` (~/.claude/sessions/<pid>.json, its `entrypoint`).
+pub(crate) fn origin(payload: &Value, env: &dyn Fn(&str) -> Option<String>, sessions: Option<&std::path::Path>) -> &'static str {
+    // Hermes Agent's plugin (integrations/hermes) says so itself
+    if env("MAGOAGENT_ORIGIN").as_deref() == Some("hermes") {
+        return "hermes";
+    }
+    let entrypoint = env("CLAUDE_CODE_ENTRYPOINT").or_else(|| {
+        let session = payload["session_id"].as_str().filter(|session| !session.is_empty())?;
+        crate::transcript::entrypoint(sessions?, session)
+    });
+    if entrypoint.as_deref() == Some("claude-desktop") {
+        "claude-desktop"
+    } else if env("CURSOR_TRACE_ID").is_some() {
+        "cursor"
+    } else {
+        ""
+    }
+}
+
 /// What the hook sends of the CLI's event: the origin added, what weighs left out; an AskUserQuestion's input whole,
 /// as it is what goes back with the answers.
 pub(crate) fn tag(payload: &mut Value, env: &dyn Fn(&str) -> Option<String>) {
@@ -45,16 +66,7 @@ pub(crate) fn tag(payload: &mut Value, env: &dyn Fn(&str) -> Option<String>) {
         let refined = crate::app::maestro::normalize::refine(&canonical_event, fields);
         fields.insert("hook_event_name".into(), refined.into());
     }
-    // Hermes Agent's plugin (integrations/hermes) says so itself
-    let origin = if env("MAGOAGENT_ORIGIN").as_deref() == Some("hermes") {
-        "hermes"
-    } else if env("CLAUDE_CODE_ENTRYPOINT").as_deref() == Some("claude-desktop") {
-        "claude-desktop"
-    } else if env("CURSOR_TRACE_ID").is_some() {
-        "cursor"
-    } else {
-        ""
-    };
+    let origin = origin(payload, env, crate::transcript::claude_dir().map(|dir| dir.join("sessions")).as_deref());
     let input = (payload["tool_name"] == "AskUserQuestion").then(|| payload["tool_input"].clone());
     if let Some(fields) = payload.as_object_mut() {
         // the transcript's path goes: it is how the island reads the session's conversation (`outside_transcript`)

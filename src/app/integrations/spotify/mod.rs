@@ -277,57 +277,58 @@ fn watch(asks: Receiver<Ask>, messages: Sender<Message>, ctx: Context, sources: 
     }
 }
 
-/// The wheel cut in this many hues, each 30°: the pixels are gathered by them, and the two colours of the bars are the
-/// two that weigh most.
-const HUE_BUCKETS: usize = 12;
 /// The grey of a cover with no colour to give, as the Dynamic Island's dots are for it.
-const GREY: Color32 = Color32::from_gray(0xa8);
+pub(crate) const GREY: Color32 = Color32::from_gray(0xa8);
+/// A cover's colours are counted in boxes of 32 levels per channel (8 × 8 × 8): one box, one colour of it.
+const LEVELS: usize = 8;
+/// The least a colour must be to count: how vivid (0 grey, 1 pure) and how bright its brightest channel is.
+const VIVID: f32 = 0.25;
+const BRIGHT: f32 = 60.0;
+/// The darkest the bars' colour may be on the black island: a darker one is lifted to here, its hue kept.
+const DARKEST: f32 = 140.0;
 
-/// The liveliest colour of a cover (its RGBA pixels), made bright enough for the black island: each pixel weighs by how
-/// vivid and how light it is, and the liveliest hue's own colour wins; a grey cover gives grey, as the Dynamic Island's
-/// dots are for it. It is the first of the pair `accents` gives (the bars start with it and Luna takes it, through
-/// `tint`), kept for whoever reads one colour at a time — the tests today.
+/// The liveliest colour of a cover (its RGBA pixels): the first of the pair `accents` gives; a grey cover gives grey, as
+/// the Dynamic Island's dots are for it. Kept for whoever reads one colour at a time — the tests today.
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn accent(rgba: &[u8]) -> Color32 {
     accents(rgba).0
 }
 
-/// The two liveliest colours of a cover, left to right for the island's bars: the liveliest hue (what `accent` gives)
-/// and the liveliest one at least 60° from it — a lighter tone of the first when the cover has only one colour to give.
+/// The cover's two colours, left to right for the island's bars (asked: "o degradê traz cores que nem estão na capa"):
+/// the colour most of its coloured pixels have, and the most present one of another hue (at least 40° away), each the
+/// mean of real pixels of it; a lighter tone of the first when the cover has only one colour. Greys, near blacks and
+/// see-through pixels give none: a grey cover gives grey.
 pub(crate) fn accents(rgba: &[u8]) -> (Color32, Color32) {
-    let (mut weight, mut sums, mut weights) = (0.0f32, [[0.0f32; 3]; HUE_BUCKETS], [0.0f32; HUE_BUCKETS]);
-    for pixel in rgba.as_chunks::<4>().0 {
+    let mut boxes = vec![(0u32, [0.0f32; 3]); LEVELS * LEVELS * LEVELS];
+    let mut coloured = 0u32;
+    let pixels = rgba.as_chunks::<4>().0;
+    for pixel in pixels {
         let colour = [pixel[0], pixel[1], pixel[2]].map(f32::from);
-        let Some(each) = vividness(colour, pixel[3]) else { continue };
-        let around = (hue(colour) / (360.0 / HUE_BUCKETS as f32)) as usize % HUE_BUCKETS;
-        for (total, channel) in sums[around].iter_mut().zip(colour) {
-            *total += channel * each;
+        let (most, least) = (colour[0].max(colour[1]).max(colour[2]), colour[0].min(colour[1]).min(colour[2]));
+        if pixel[3] < 128 || most < BRIGHT || (most - least) / most < VIVID {
+            continue;
         }
-        (weight, weights[around]) = (weight + each, weights[around] + each);
+        let level = |channel: u8| usize::from(channel) * LEVELS / 256;
+        let (count, sum) = &mut boxes[(level(pixel[0]) * LEVELS + level(pixel[1])) * LEVELS + level(pixel[2])];
+        *count += 1;
+        for (total, channel) in sum.iter_mut().zip(colour) {
+            *total += channel;
+        }
+        coloured += 1;
     }
-    if weight < 0.02 * (rgba.len() / 4).max(1) as f32 {
+    // a few coloured pixels in a grey cover (a logo, a letter) do not make it a coloured one
+    if coloured == 0 || (coloured as usize) * 50 < pixels.len() {
         return (GREY, lighter(GREY));
     }
-    let mean = |around: usize| lifted(sums[around].map(|channel| channel / weights[around]));
-    let liveliest = (0..HUE_BUCKETS).max_by(|one, other| weights[*one].total_cmp(&weights[*other])).unwrap_or(0);
-    let first = mean(liveliest);
-    let first_hue = hue(sums[liveliest]);
-    // another colour: a hue with some presence in the cover, at least 60° from the first one's
-    let second = (0..HUE_BUCKETS)
-        .filter(|around| weights[*around] >= 0.05 * weight && apart(*around, first_hue))
-        .max_by(|one, other| weights[*one].total_cmp(&weights[*other]))
-        .map(mean);
-    (first, second.unwrap_or_else(|| lighter(first)))
-}
-
-/// How much a pixel counts for its colour: by how vivid it is, how light and how opaque; None for a pixel too dark or
-/// too grey to tell a colour.
-fn vividness([red, green, blue]: [f32; 3], alpha: u8) -> Option<f32> {
-    let (most, least) = (red.max(green).max(blue), red.min(green).min(blue));
-    (most >= 1.0).then(|| {
-        let vivid = (most - least) / most;
-        vivid * vivid * (most / 255.0) * f32::from(alpha) / 255.0
-    })
+    let mut ranked: Vec<(u32, [f32; 3])> =
+        boxes.into_iter().filter(|(count, _)| *count > 0).map(|(count, sum)| (count, sum.map(|total| total / count as f32))).collect();
+    ranked.sort_by_key(|(count, _)| std::cmp::Reverse(*count));
+    let first = ranked[0].1;
+    // another hue with some presence: a shade of the first is not a second colour
+    let second =
+        ranked.iter().skip(1).find(|(count, colour)| *count * 33 >= coloured && hue_apart(hue(*colour), hue(first)) >= 40.0).map(|(_, colour)| *colour);
+    let first = visible(first);
+    (first, second.map(visible).unwrap_or_else(|| lighter(first)))
 }
 
 /// Where a colour sits on the wheel, in degrees, 0 to 360.
@@ -347,18 +348,42 @@ fn hue([red, green, blue]: [f32; 3]) -> f32 {
     turn * 60.0
 }
 
-/// Whether the `around`-th hue of the wheel is at least 60° from `degrees`: another colour, not a shade of that one.
-fn apart(around: usize, degrees: f32) -> bool {
-    let middle = (around as f32 + 0.5) * (360.0 / HUE_BUCKETS as f32);
-    let angle = (middle - degrees).abs().rem_euclid(360.0);
-    angle.min(360.0 - angle) >= 60.0
+/// How far apart two hues are, in degrees, 0 to 180.
+fn hue_apart(one: f32, other: f32) -> f32 {
+    let angle = (one - other).abs().rem_euclid(360.0);
+    angle.min(360.0 - angle)
 }
 
-/// A colour made bright enough for the black island: its channels lifted so its brightest comes to 235.
-fn lifted(mean: [f32; 3]) -> Color32 {
-    let lift = 235.0 / mean.iter().copied().fold(1.0, f32::max);
-    let [red, green, blue] = mean.map(|channel| (channel * lift).clamp(0.0, 255.0) as u8);
+/// A colour of the cover as the bars show it: itself, only lifted (its hue and mix kept) when too dark for the black
+/// island.
+fn visible(colour: [f32; 3]) -> Color32 {
+    let most = colour.iter().copied().fold(1.0, f32::max);
+    let lift = (DARKEST / most).max(1.0);
+    let [red, green, blue] = colour.map(|channel| (channel * lift).clamp(0.0, 255.0) as u8);
     Color32::from_rgb(red, green, blue)
+}
+
+/// How light a colour looks, 0 to 1 (the eye's weights for red, green and blue).
+fn lightness(colour: Color32) -> f32 {
+    (0.299 * f32::from(colour.r()) + 0.587 * f32::from(colour.g()) + 0.114 * f32::from(colour.b())) / 255.0
+}
+
+/// The least lightness Luna's body needs on the dark island: about her own blue's.
+const LUNA_LIGHT: f32 = 0.55;
+
+/// `colour` as Luna can wear it (asked: "deixa a Luna trocar de cor, mas com contraste: roxo escuro não tem"): its
+/// brightest channel brought to full, and then toward white until she is as light as `LUNA_LIGHT`, its hue kept.
+pub(crate) fn readable(colour: Color32) -> Color32 {
+    let most = colour.r().max(colour.g()).max(colour.b()).max(1);
+    let lift = |channel: u8| (u16::from(channel) * 255 / u16::from(most)) as u8;
+    let full = Color32::from_rgb(lift(colour.r()), lift(colour.g()), lift(colour.b()));
+    let mut toward = 0.0;
+    let mut readable = full;
+    while lightness(readable) < LUNA_LIGHT && toward < 1.0 {
+        toward += 0.05;
+        readable = full.lerp_to_gamma(Color32::WHITE, toward);
+    }
+    readable
 }
 
 /// A lighter tone of `colour`, for a cover with a single colour to give.
@@ -519,7 +544,7 @@ impl Spotify {
                     // the change between songs was abrupt)
                     Some(_) if changed => {
                         (self.previous, self.before) = (self.cover.take(), self.colours.take());
-                        // Luna keeps the colour before too, until the new cover gives hers
+                        // the colour before stays too (the bars without the fade fall back to it), until the new cover gives its own
                         self.waiting_since = Some(ctx.input(|input| input.time));
                     }
                     Some(_) => {}

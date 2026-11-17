@@ -91,7 +91,7 @@ fn fit(size: [u32; 2], most: Vec2) -> Vec2 {
     size * (most.x / size.x).min(most.y / size.y).min(1.0)
 }
 
-/// The person's words: `.chat-row.user`, at the right, 32 in from the left; `.bubble`: 13% white, radius 12.
+/// The person's words: `.chat-row.user`, at the right, 32 in from the left; `.bubble`: 13% white, radius 12; selectable.
 fn bubble(ui: &mut egui::Ui, text: &str, width: f32) {
     let text = unmarked(text);
     if text.is_empty() {
@@ -100,12 +100,21 @@ fn bubble(ui: &mut egui::Ui, text: &str, width: f32) {
     let format = TextFormat { font_id: font(SIZE), color: INK, line_height: Some(LINE_HEIGHT), ..Default::default() };
     let mut job = LayoutJob::single_section(text, format);
     job.wrap.max_width = width - 32.0 - 20.0;
-    let galley = ui.painter().layout_job(job);
+    let galley = ui.painter().layout_job(job.clone());
     let size = galley.size() + Vec2::new(20.0, 14.0);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, size.y), Sense::hover());
     let bubble = Rect::from_min_size(Pos2::new(rect.right() - size.x, rect.top()), size);
     ui.painter().rect_filled(bubble, 12, Color32::from_white_alpha(33));
-    ui.painter().galley(bubble.min + Vec2::new(10.0, 7.0), galley, INK);
+    selectable(ui, bubble.min + Vec2::new(10.0, 7.0), job);
+}
+
+/// `job` at `at` as text the person can select and copy (asked: "o texto que o Claude retornar eu preciso poder
+/// selecionar, até as minhas mensagens"): the same job that was measured, wrapped at its own width, from the left.
+fn selectable(ui: &mut egui::Ui, at: Pos2, job: LayoutJob) {
+    let room = Rect::from_min_size(at, Vec2::new(job.wrap.max_width, f32::INFINITY));
+    ui.scope_builder(egui::UiBuilder::new().max_rect(room).layout(egui::Layout::top_down(egui::Align::LEFT)), |ui| {
+        ui.add(egui::Label::new(job).wrap().selectable(true));
+    });
 }
 
 /// The person's words without Claude Code's "[Image #3]" marks: the picture shows right after them.
@@ -167,10 +176,10 @@ fn reply(ui: &mut egui::Ui, text: &str, width: f32) {
                     let format = TextFormat { font_id: FontId::monospace(SIZE - 1.5), color: INK, line_height: Some(LINE_HEIGHT - 2.0), ..Default::default() };
                     let mut job = LayoutJob::single_section(code.join("\n"), format);
                     job.wrap.max_width = width - 20.0;
-                    let galley = ui.painter().layout_job(job);
+                    let galley = ui.painter().layout_job(job.clone());
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, galley.size().y + 14.0), Sense::hover());
                     ui.painter().rect_filled(rect, 8, Color32::from_white_alpha(12));
-                    ui.painter().galley(rect.min + Vec2::new(10.0, 7.0), galley, INK);
+                    selectable(ui, rect.min + Vec2::new(10.0, 7.0), job);
                 }
                 Block::Words(Line::Rule) => {
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 9.0), Sense::hover());
@@ -219,7 +228,7 @@ fn reply(ui: &mut egui::Ui, text: &str, width: f32) {
     });
 }
 
-/// A run of styled words `indent` in from the left, wrapped at `width`; its whole row.
+/// A run of styled words `indent` in from the left, wrapped at `width`, selectable; its whole row.
 fn paragraph(ui: &mut egui::Ui, spans: &[Span], size: f32, color: Color32, indent: f32, width: f32) -> Rect {
     let mut job = LayoutJob::default();
     job.wrap.max_width = width - indent;
@@ -250,9 +259,9 @@ fn paragraph(ui: &mut egui::Ui, spans: &[Span], size: f32, color: Color32, inden
         };
         job.append(&span.text, 0.0, format);
     }
-    let galley = ui.painter().layout_job(job);
+    let galley = ui.painter().layout_job(job.clone());
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, galley.size().y), Sense::hover());
-    ui.painter().galley(rect.min + Vec2::new(indent, 0.0), galley, color);
+    selectable(ui, rect.min + Vec2::new(indent, 0.0), job);
     rect
 }
 

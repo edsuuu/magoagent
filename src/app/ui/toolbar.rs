@@ -134,7 +134,7 @@ impl DrawingApp {
                 .order(egui::Order::Foreground)
                 .show(ctx, |ui| {
                     menu_frame(self.dark()).show(ui, |ui| {
-                        ui.set_width(280.0);
+                        ui.set_width(230.0);
                         ui.spacing_mut().item_spacing.y = 1.0;
                         for tool in Tool::EXTRA {
                             if extra_row(ui, tool, self.tool == tool, &c) {
@@ -380,7 +380,8 @@ fn extra_row(ui: &mut egui::Ui, tool: Tool, current: bool, c: &UiColors) -> bool
         p.rect_filled(rect, ITEM_RADIUS, colors.hover);
     }
     let ink = if current { PRIMARY } else { c.text };
-    let size = MENU_TEXT_SIZE + 2.0;
+    // the menus' own size, not bigger (asked: "diminui a fonte dessas palavras")
+    let size = MENU_TEXT_SIZE;
     paint_icon_scaled(p, Icon::Tool(tool), Pos2::new(rect.left() + ROW_PAD + ICON_SIZE / 2.0, rect.center().y), ink, ICON_SIZE / 16.0, 0.0);
     let x = rect.left() + ROW_PAD + ICON_SIZE + ROW_GAP;
     p.text(Pos2::new(x, rect.center().y), egui::Align2::LEFT_CENTER, tool.label(), FontId::proportional(size), ink);

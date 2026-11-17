@@ -5,6 +5,7 @@
 use super::dance::{ARM_LENGTH, ARM_WIDTH, Pose};
 use super::motion::{BODY_HALF, FLAME_TIP, Particle, ParticleKind};
 use super::{EyeKind, MagoMotion};
+use crate::app::integrations::spotify::groove::{Dance, Groove};
 use crate::prelude::*;
 
 /// Lume's blue.
@@ -41,6 +42,38 @@ const FLAME: [[(f32, f32); 3]; 6] = [
 ];
 /// Points per curve.
 const STEPS: usize = 8;
+
+/// Luna's dance expression chosen from the `Groove` now. Returns (eye kind, mouth curve, mouth open) to apply on top of
+/// whatever the base state gave (`MagoState::Idle` while dancing, `Sleeping` while napping). The rules are:
+/// - low energy → sleepy eyes (closed), unless she's already napping;
+/// - high energy peak → wide eyes;
+/// - bass hit close to phase 0 → open smile.
+///
+/// Blinking stays the motion's own.
+pub(super) fn dance_expression(groove: &Groove) -> (EyeKind, f32, f32) {
+    let energy = groove.energy.clamp(0.0, 1.0);
+    let bass = groove.bass.clamp(0.0, 1.0);
+    let phase = groove.phase;
+    // distance to the next beat: 0 on it, 0.5 halfway through
+    let near_beat = phase.min(1.0 - phase);
+
+    // eye kind
+    let eye = if groove.dance == Dance::Nap {
+        EyeKind::Sleepy
+    } else if energy < 0.2 {
+        EyeKind::Happy
+    } else if energy > 0.85 {
+        EyeKind::Wide
+    } else {
+        EyeKind::Round
+    };
+
+    // mouth: open smile on strong bass near the beat
+    let mouth_curve = if bass > 0.7 && near_beat < 0.1 { 0.06 } else { 0.03 };
+    let mouth_open = if bass > 0.7 && near_beat < 0.08 { 0.035 } else { 0.0 };
+
+    (eye, mouth_curve, mouth_open)
+}
 
 /// A design point in figure units: its bottom middle lands on the pivot.
 fn figure((x, y): (f32, f32)) -> (f32, f32) {
