@@ -101,6 +101,7 @@ impl DrawingApp {
                 false => Err("URL inválida ou teste já em curso: a URL precisa ser http://127.0.0.1:porta ou http://localhost:porta".into()),
             },
             ("whatsapp", "remove_credential") => self.whatsapp_remove_credential(),
+            ("whatsapp", "open") => Ok(self.whatsapp_open()),
             _ => Err(format!("integração ou ação desconhecida: {integration} {action}")),
         }
     }

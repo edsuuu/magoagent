@@ -141,6 +141,24 @@ impl DrawingApp {
         true
     }
 
+    /// A click on WhatsApp's line on the island (and the MCP's `integrations` whatsapp open): with the gateway connected,
+    /// its own page in the system's browser (only loopback, `local_base`); otherwise Ajustes › Integrações at its card,
+    /// where it is turned on, set and tested.
+    pub(crate) fn whatsapp_open(&mut self) -> String {
+        if self.integrations.whatsapp.link == Link::Connected
+            && let Some(base) = local_base(&self.prefs.integrations.whatsapp_base)
+        {
+            if !cfg!(test) {
+                open_external(&base);
+            }
+            return "Abri a página do gateway do WhatsApp no navegador.".into();
+        }
+        self.open_settings_at("Integrações");
+        self.integrations.scroll_to_whatsapp = true;
+        self.raise_window = true;
+        "Abri Ajustes › Integrações no WhatsApp.".into()
+    }
+
     pub(crate) fn whatsapp_report(&self) -> String {
         if !self.prefs.integrations.whatsapp {
             return "WhatsApp: desligado.".into();

@@ -95,6 +95,9 @@ impl DrawingApp {
         let (checking, link) = (self.integrations.whatsapp.checking, self.integrations.whatsapp.link.clone());
         let connected = link == Link::Connected;
         let hint = "Gateway GOWA local já iniciado por você (o app não baixa nem inicia o gateway). Só loopback: 127.0.0.1 ou localhost.";
+        if std::mem::take(&mut self.integrations.scroll_to_whatsapp) {
+            ui.scroll_to_cursor(Some(egui::Align::TOP));
+        }
         head(ui, k, "WhatsApp", hint, connected, &mut self.prefs.integrations.whatsapp);
         if !self.prefs.integrations.whatsapp {
             return;

@@ -61,6 +61,8 @@ pub(crate) struct Integrations {
     pub(crate) soloist_setup: spotify::setup::Setup,
     /// What was pressed on the island's cards (they are drawn where the app is only read): done by the next tick.
     pub(crate) pressed: std::cell::RefCell<Vec<String>>,
+    /// Ajustes › Integrações was opened for WhatsApp: its card scrolls into view once.
+    pub(crate) scroll_to_whatsapp: bool,
 }
 
 /// One line of an integration's card on the island; with an `action`, a press does it.
@@ -113,8 +115,9 @@ pub(crate) fn open_page(url: &str) {
 impl DrawingApp {
     /// Each frame: every integration that is on.
     pub(crate) fn integrations_tick(&mut self, ctx: &Context) {
+        let time = ctx.input(|input| input.time);
         for action in std::mem::take(self.integrations.pressed.get_mut()) {
-            self.integration_press(&action);
+            self.integration_press(&action, time);
         }
         self.github_tick(ctx);
         self.spotify_tick(ctx);
@@ -123,12 +126,17 @@ impl DrawingApp {
     }
 
     /// What a press on a card of the island does: "open <address>" (only a page of the services themselves), "seen
-    /// <integration>" (its card was shown) and "spotify <words>" (the pill's buttons and the Spotify page's, see
-    /// `DrawingApp::spotify_press`).
-    fn integration_press(&mut self, action: &str) {
+    /// <integration>" (its card was shown), "whatsapp open" (its line in Início, see `DrawingApp::whatsapp_open`) and
+    /// "spotify <words>" (the pill's buttons and the Spotify page's, see `DrawingApp::spotify_press`).
+    fn integration_press(&mut self, action: &str, time: f64) {
         match action.split_once(' ') {
             Some(("open", url)) => open_page(url),
             Some(("seen", "github")) => self.github_seen(),
+            Some(("whatsapp", "open")) => {
+                self.whatsapp_open();
+                // the app took it: the island folds back, as Spotify's "Abrir Ajustes › Integrações"
+                self.island.fold_now(time);
+            }
             Some(("spotify", words)) => self.spotify_press(words),
             _ => {}
         }
@@ -141,6 +149,8 @@ impl DrawingApp {
             let notice = self.integrations.github.notice.as_ref().map(|notice| notice.url.clone()).filter(|url| !url.is_empty());
             open_page(&notice.unwrap_or_else(|| github::PULLS_PAGE.into()));
             self.github_seen();
+        } else if name == "whatsapp" {
+            self.whatsapp_open();
         }
         true
     }
@@ -160,7 +170,7 @@ impl DrawingApp {
         items
     }
 
-    /// GitHub's pill: the alert first, then the pull requests with their checks and the ones to review.
+    /// WhatsApp's pill: how the gateway is, and one button (what a click on its line in Início does too).
     fn whatsapp_item(&self) -> IslandItem {
         let whatsapp = &self.integrations.whatsapp;
         let (text, color, failed) = match whatsapp.link {
@@ -177,11 +187,12 @@ impl DrawingApp {
             badge: failed.then_some(Badge::Error),
             failed,
             rows: vec![ItemRow { text: text.into(), color, action: None }],
-            chips: Vec::new(),
+            chips: vec![(if whatsapp.link == whatsapp::Link::Connected { "Abrir o gateway" } else { "Configurar" }, "whatsapp open".into())],
             cover: None,
         }
     }
 
+    /// GitHub's pill: the alert first, then the pull requests with their checks and the ones to review.
     fn github_item(&self) -> IslandItem {
         let github = &self.integrations.github;
         let mut rows = Vec::new();

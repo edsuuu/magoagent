@@ -476,6 +476,11 @@ pub(crate) struct NewForm {
 }
 
 impl Island {
+    /// Compact at once: the app took what was pressed on it (Ajustes, a page).
+    pub(crate) fn fold_now(&mut self, time: f64) {
+        self.machine.force_petit(time);
+    }
+
     /// The island as drawn now.
     #[cfg(test)]
     pub(crate) fn size(&self) -> Vec2 {
