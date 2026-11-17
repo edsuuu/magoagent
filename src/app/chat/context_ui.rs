@@ -27,6 +27,8 @@ pub(crate) struct Info {
     /// Os tokens em uso pela última resposta e quanto era quando o `/context` foi lido.
     pub(crate) live: u64,
     live_at_report: u64,
+    /// A janela de contexto que o fim da última resposta disse: dá a % antes de qualquer `/context`.
+    pub(crate) window: Option<u64>,
     pub(crate) report: Option<Report>,
     pub(crate) loading: bool,
     pub(crate) dirty: bool,
@@ -128,7 +130,13 @@ Conector {}: {}{}",
         let info = self.chat_ctx.info.get(id);
         match info.and_then(|i| i.report.as_ref().map(|r| (i, r))) {
             Some((info, report)) => Some((report.used + info.since()) as f64 / report.window.max(1) as f64 * 100.0),
-            None => self.usage.agents.get(id).and_then(|u| u.context),
+            // asked: "pelo menos a % de contexto precisa aparecer no chat", before the panel is ever opened
+            None => self
+                .usage
+                .agents
+                .get(id)
+                .and_then(|u| u.context)
+                .or_else(|| info.and_then(|info| info.window.filter(|_| info.live > 0).map(|window| info.live as f64 / window.max(1) as f64 * 100.0))),
         }
     }
 
@@ -197,6 +205,9 @@ Conector {}: {}{}",
         }
         if let Some(used) = context_used(event) {
             info.live = used;
+        }
+        if let Some(window) = context_window(event) {
+            info.window = Some(window);
         }
     }
 
@@ -287,5 +298,18 @@ mod tests {
         app.act_chat_context("", "open").unwrap();
         app.act_chat_context("", "close").unwrap();
         assert!(!app.prefs.chat_panel);
+    }
+
+    /// Asked: "pelo menos a % de contexto precisa aparecer no chat". After a reply, before any `/context`: what the reply
+    /// used over the window its end told.
+    #[test]
+    fn a_reply_alone_gives_the_context_share() {
+        let mut app = DrawingApp::default();
+        assert_eq!(app.context_percent("c1"), None);
+        let reply = json!({"type": "assistant", "parent_tool_use_id": null, "message": {"usage": {"input_tokens": 50_000}}});
+        app.context_event("c1", &reply);
+        assert_eq!(app.context_percent("c1"), None, "no window told yet");
+        app.context_event("c1", &json!({"type": "result", "modelUsage": {"claude-opus": {"contextWindow": 500_000}}}));
+        assert_eq!(app.context_percent("c1"), Some(10.0));
     }
 }
