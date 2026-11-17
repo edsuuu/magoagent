@@ -828,12 +828,11 @@ fn badge(painter: &Painter, center: Pos2, line: &Line, radius: f32) {
 /// com a expressao zzz ou com o check ali"): `!` it waits on the person, `✓` its turn ended, `✕` it failed, a `z` that
 /// drifts up while it is stopped; working, its mini is awake and says it.
 pub(super) fn shoulder_mark(painter: &Painter, center: Pos2, body: f32, line: &Line, time: f64) {
-    let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
     let at = center + Vec2::new(body * 0.42, -body * 0.4);
     let mark = match (line.badge, line.state) {
-        (Some(Badge::Approval), _) | (_, AgentState::Waiting) => Some((AMBER, "!", hex(0x2b1a00))),
-        (Some(Badge::Finished), _) => Some((hex(0x34d399), "✓", hex(0x062b1d))),
-        (Some(Badge::Error), _) => Some((hex(0xf4505e), "✕", hex(0x2b0006))),
+        (Some(Badge::Approval), _) | (_, AgentState::Waiting) => Some((AMBER, "!", rgb_hex(0x2b1a00))),
+        (Some(Badge::Finished), _) => Some((rgb_hex(0x34d399), "✓", rgb_hex(0x062b1d))),
+        (Some(Badge::Error), _) => Some((rgb_hex(0xf4505e), "✕", rgb_hex(0x2b0006))),
         _ => None,
     };
     let radius = (body * 0.23).max(4.5);
@@ -856,16 +855,15 @@ pub(super) fn shoulder_mark(painter: &Painter, center: Pos2, body: f32, line: &L
 /// The state's badge on a mini of `body` centred on `center`, as the reference's engine draws it (`drawBadge`, a mini's
 /// 1.25 bigger): on its upper left, a black ring and a disc of the state's colour; working, the disc pulses.
 fn mini_badge(painter: &Painter, center: Pos2, body: f32, line: &Line, time: f64) {
-    let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
     // (ring, disc) in the body's radius, and the colour
     let radius = body / 2.0;
     let pulse = 1.0 + 0.25 * ((time * 2.4).fract() as f32 * std::f32::consts::TAU).sin();
     let (ring, disc, color) = match (line.badge, line.state, line.mago) {
-        (Some(Badge::Error), ..) | (_, _, MagoState::Error) => (0.2, 0.135, hex(0xf4505e)),
-        (Some(Badge::Approval), ..) | (_, AgentState::Waiting, _) | (_, _, MagoState::NeedsYou) => (0.3, 0.23, hex(0xf5a524)),
-        (_, _, MagoState::Asking) => (0.3, 0.23, hex(0x22d3ee)),
-        (Some(Badge::Finished), ..) | (_, _, MagoState::Done) => (0.2, 0.135, hex(0x34d399)),
-        (_, _, MagoState::Working | MagoState::Listening | MagoState::Speaking) => (0.2, 0.22 * pulse, hex(0x3b9eff)),
+        (Some(Badge::Error), ..) | (_, _, MagoState::Error) => (0.2, 0.135, rgb_hex(0xf4505e)),
+        (Some(Badge::Approval), ..) | (_, AgentState::Waiting, _) | (_, _, MagoState::NeedsYou) => (0.3, 0.23, rgb_hex(0xf5a524)),
+        (_, _, MagoState::Asking) => (0.3, 0.23, rgb_hex(0x22d3ee)),
+        (Some(Badge::Finished), ..) | (_, _, MagoState::Done) => (0.2, 0.135, rgb_hex(0x34d399)),
+        (_, _, MagoState::Working | MagoState::Listening | MagoState::Speaking) => (0.2, 0.22 * pulse, rgb_hex(0x3b9eff)),
         _ => return,
     };
     let at = center - Vec2::splat(radius * 0.72);

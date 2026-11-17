@@ -341,15 +341,14 @@ pub(super) struct Line {
 
 /// The colour of an agent's mini wizard, from a catalogue of agents and its fallbacks.
 pub(crate) fn agent_color(program: &str, id: &str) -> Color32 {
-    let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
     match program {
-        "claude" => hex(0xd97757),
-        "codex" => hex(0x2dd4bf),
-        "gemini" => hex(0x8ab4f8),
-        "cursor" => hex(0xc0c4cc),
+        "claude" => rgb_hex(0xd97757),
+        "codex" => rgb_hex(0x2dd4bf),
+        "gemini" => rgb_hex(0x8ab4f8),
+        "cursor" => rgb_hex(0xc0c4cc),
         _ => {
             let hash = id.bytes().fold(0i32, |hash, byte| hash.wrapping_mul(31).wrapping_add(byte as i32));
-            [hex(0x22c55e), hex(0xeab308), hex(0x60a5fa), hex(0xe879f9)][hash.unsigned_abs() as usize % 4]
+            [rgb_hex(0x22c55e), rgb_hex(0xeab308), rgb_hex(0x60a5fa), rgb_hex(0xe879f9)][hash.unsigned_abs() as usize % 4]
         }
     }
 }

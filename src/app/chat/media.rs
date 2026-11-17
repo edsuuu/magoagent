@@ -119,14 +119,7 @@ impl DrawingApp {
         };
         let (rect, response) = ui.allocate_exact_size(size.max(Vec2::splat(24.0)), Sense::click());
         picture(ui.painter(), ready, rect, 10, c);
-        let edge = if look.dark {
-            {
-                let v = crate::app::chat::list::ink::DARK_EDGE;
-                Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8)
-            }
-        } else {
-            Color32::from_black_alpha(36)
-        };
+        let edge = if look.dark { rgb_hex(crate::app::chat::list::ink::DARK_EDGE) } else { Color32::from_black_alpha(36) };
         ui.painter().rect_stroke(rect, 10, Stroke::new(1.0, edge), StrokeKind::Inside);
         let response = response.on_hover_cursor(CursorIcon::PointingHand).tip("Clique para ampliar");
         if response.clicked() {

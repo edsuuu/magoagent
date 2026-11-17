@@ -12,20 +12,19 @@ use crate::prelude::*;
 
 /// O nome na legenda, a cor e se conta no uso (as adiadas não entram na janela).
 pub(crate) fn style(name: &str) -> (&'static str, Color32, bool) {
-    let rgb = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
     match name {
         "Messages" => ("Mensagens", CLAUDE, true),
-        "System tools" => ("Ferramentas do sistema", rgb(0x5e5ce6), true),
+        "System tools" => ("Ferramentas do sistema", rgb_hex(0x5e5ce6), true),
         "MCP tools" => ("Ferramentas MCP", ACCENT, true),
-        "Skills" => ("Skills", rgb(0xbf5af2), true),
-        "System prompt" => ("Prompt do sistema", rgb(0x8e8e93), true),
-        "MCP server instructions" => ("Instruções dos servidores MCP", rgb(0x64d2ff), true),
+        "Skills" => ("Skills", rgb_hex(0xbf5af2), true),
+        "System prompt" => ("Prompt do sistema", rgb_hex(0x8e8e93), true),
+        "MCP server instructions" => ("Instruções dos servidores MCP", rgb_hex(0x64d2ff), true),
         "Memory files" => ("Memória (CLAUDE.md)", READY, true),
-        "Autocompact buffer" => ("Reserva da auto-compactação", rgb(0x48484a), true),
-        "Free space" => ("Livre", rgb(0x2c2c2e), false),
-        "MCP tools (deferred)" => ("Ferramentas MCP (adiadas)", rgb(0x2c2c2e), false),
-        "System tools (deferred)" => ("Ferramentas do sistema (adiadas)", rgb(0x2c2c2e), false),
-        _ => ("", rgb(0x636366), true),
+        "Autocompact buffer" => ("Reserva da auto-compactação", rgb_hex(0x48484a), true),
+        "Free space" => ("Livre", rgb_hex(0x2c2c2e), false),
+        "MCP tools (deferred)" => ("Ferramentas MCP (adiadas)", rgb_hex(0x2c2c2e), false),
+        "System tools (deferred)" => ("Ferramentas do sistema (adiadas)", rgb_hex(0x2c2c2e), false),
+        _ => ("", rgb_hex(0x636366), true),
     }
 }
 
@@ -55,7 +54,7 @@ fn initial_colors(name: &str, look: &Look) -> (Color32, Color32) {
     const INKS: [u32; 6] = [0xd97757, 0x64a8ff, 0xffb340, 0xff6961, 0x4cd47c, 0xbf8cff];
     let k = name.bytes().fold(7u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32)) as usize % INKS.len();
     let v = INKS[k];
-    let ink = Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
+    let ink = rgb_hex(v);
     (look.bg.lerp_to_gamma(ink, if look.dark { 0.14 } else { 0.18 }), ink)
 }
 

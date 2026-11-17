@@ -38,10 +38,9 @@ pub(crate) struct AmberCard {
 
 impl AmberCard {
     pub(crate) fn new(dark: bool) -> AmberCard {
-        let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
         let [fill, edge, title, note, well, well_edge] =
             if dark { [0x2a2213, 0x7a5a22, 0xf6c46f, 0xd8c7a6, 0x17130b, 0x3d2f14] } else { [0xfdf3e1, 0xe6b866, 0x8a5a00, 0x6b5a3a, 0xfffaf0, 0xefd3a0] }
-                .map(hex);
+                .map(rgb_hex);
         AmberCard { fill, edge, title, note, well, well_edge }
     }
 
@@ -111,41 +110,40 @@ pub(crate) struct Look {
 
 impl Look {
     pub(crate) fn new(dark: bool, _c: &UiColors) -> Look {
-        let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
         if dark {
             Look {
                 dark,
-                bg: hex(ink::DARK_BG),
-                panel: hex(ink::DARK_PANEL),
-                surface: hex(ink::DARK_SURFACE),
-                raised: hex(ink::DARK_RAISED),
-                band: hex(ink::DARK_BAND),
-                selected: hex(ink::DARK_SELECTED),
-                line: hex(ink::DARK_LINE),
-                text: hex(ink::DARK_TEXT),
-                soft: hex(ink::DARK_SOFT),
-                muted: hex(ink::DARK_MUTED),
-                hover: hex(ink::DARK_HOVER),
-                strong: hex(ink::DARK_STRONG),
-                faint: hex(ink::DARK_FAINT),
+                bg: rgb_hex(ink::DARK_BG),
+                panel: rgb_hex(ink::DARK_PANEL),
+                surface: rgb_hex(ink::DARK_SURFACE),
+                raised: rgb_hex(ink::DARK_RAISED),
+                band: rgb_hex(ink::DARK_BAND),
+                selected: rgb_hex(ink::DARK_SELECTED),
+                line: rgb_hex(ink::DARK_LINE),
+                text: rgb_hex(ink::DARK_TEXT),
+                soft: rgb_hex(ink::DARK_SOFT),
+                muted: rgb_hex(ink::DARK_MUTED),
+                hover: rgb_hex(ink::DARK_HOVER),
+                strong: rgb_hex(ink::DARK_STRONG),
+                faint: rgb_hex(ink::DARK_FAINT),
             }
         } else {
             let line = Color32::from_black_alpha(24);
             Look {
                 dark,
                 bg: Color32::WHITE,
-                panel: hex(ink::LIGHT_PANEL),
-                surface: hex(ink::LIGHT_SURFACE),
-                raised: hex(ink::LIGHT_RAISED),
-                band: hex(ink::LIGHT_PANEL),
-                selected: hex(ink::LIGHT_RAISED),
+                panel: rgb_hex(ink::LIGHT_PANEL),
+                surface: rgb_hex(ink::LIGHT_SURFACE),
+                raised: rgb_hex(ink::LIGHT_RAISED),
+                band: rgb_hex(ink::LIGHT_PANEL),
+                selected: rgb_hex(ink::LIGHT_RAISED),
                 line,
-                text: hex(ink::LIGHT_TEXT),
-                soft: hex(ink::LIGHT_SOFT),
-                muted: hex(ink::LIGHT_MUTED),
-                hover: hex(ink::LIGHT_HOVER),
-                strong: hex(ink::LIGHT_STRONG),
-                faint: hex(ink::LIGHT_FAINT),
+                text: rgb_hex(ink::LIGHT_TEXT),
+                soft: rgb_hex(ink::LIGHT_SOFT),
+                muted: rgb_hex(ink::LIGHT_MUTED),
+                hover: rgb_hex(ink::LIGHT_HOVER),
+                strong: rgb_hex(ink::LIGHT_STRONG),
+                faint: rgb_hex(ink::LIGHT_FAINT),
             }
         }
     }
@@ -283,9 +281,8 @@ pub(crate) fn code_card(ui: &mut egui::Ui, info: &str, code: &str, c: &UiColors,
 pub(crate) fn code_box(ui: &mut egui::Ui, info: &str, shown: &str, code: &str, c: &UiColors, dark: bool) {
     let (lang, file) = info.split_once([' ', ':']).map_or((info, ""), |(lang, file)| (lang, file.trim().trim_start_matches("title=").trim_matches('"')));
     let title = if file.is_empty() { lang.to_string() } else { format!("{lang} · {file}") };
-    let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
     let (fill, edge, quiet, ink) = if dark {
-        (hex(ink::DARK_BAND), hex(ink::DARK_LINE), hex(ink::DARK_MUTED), hex(ink::DARK_TEXT))
+        (rgb_hex(ink::DARK_BAND), rgb_hex(ink::DARK_LINE), rgb_hex(ink::DARK_MUTED), rgb_hex(ink::DARK_TEXT))
     } else {
         (c.surface_low, tint(false, 20), c.muted, c.text)
     };
