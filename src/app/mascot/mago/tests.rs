@@ -233,7 +233,7 @@ mod dancing {
     const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
 
     fn groove(dance: Dance, beat: f64, energy: f32) -> Groove {
-        Groove { bpm: 120.0, phase: beat.fract() as f32, energy, bass: 0.3, dance, beat, since: 0.0 }
+        Groove { bpm: 120.0, phase: beat.fract() as f32, energy, bass: 0.3, bands: None, dance, beat, since: 0.0 }
     }
 
     fn close(one: f32, other: f32) -> bool {

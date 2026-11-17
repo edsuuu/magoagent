@@ -362,7 +362,8 @@ impl DrawingApp {
         let state = main_state(view.mood, view.celebrating);
         // while a song plays, its cover and the sound's bars fill the pill (asked: "como a Dynamic Island do iPhone")
         let now = self.integrations.spotify.now.as_ref().filter(|now| now.playing);
-        let groove = now.and_then(|_| self.luna_groove());
+        // the bars hear the song whether or not Luna dances to it (`Dancer::groove` asks for the listening)
+        let groove = now.map(|now| self.integrations.spotify.dancer.groove(now.playing));
         if !compact {
             let center = Pos2::new(rect.center().x, rect.center().y + 1.0);
             // while the music plays and no agent wants the person, she dances to it (asked: "a luna dançando")
@@ -372,18 +373,17 @@ impl DrawingApp {
                 None => paint_mago_toward(ui.painter(), "island-main", center, 22.0, state, time, view.pointer),
             }
             if let Some(now) = now {
-                self.island_playing(ui, rect, now, false, groove.as_ref(), time);
+                self.island_playing(ui, rect, now, None, groove.as_ref(), time);
             }
             return;
         }
         aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 30.0, state);
-        // the green mini of Spotify is the cover and the bars then, and the other ones make room at the right
+        // the green mini of Spotify is the cover and the bars then, spread between the wizard and the other minis
         let spotify = |line: &Line| line.id.strip_prefix(crate::app::integrations::ITEM_PREFIX) == Some("spotify");
         let lines: Vec<&Line> = view.lines.iter().filter(|line| now.is_none() || !spotify(line)).collect();
         let cells = mini_cells(rect, lines.len());
-        let shift = Vec2::new(if now.is_some() { -super::pill::MINIS_LEFT } else { 0.0 }, 0.0);
+        let grid = cells.iter().copied().reduce(|grid, cell| grid.union(cell));
         for (line, cell) in lines.into_iter().zip(cells) {
-            let cell = cell.translate(shift);
             line.paint_mini(ui.painter(), &format!("island-mini-{}", line.id), cell.center(), cell.width(), time);
             mini_badge(ui.painter(), cell.center(), cell.width(), line, time);
             // a click on a mini opens the island on it: its page (Início or Conversas) with it in the card
@@ -400,12 +400,12 @@ impl DrawingApp {
             crate::app::voice::paint_bars(ui.painter(), Pos2::new(rect.center().x, rect.center().y), bars, INK);
         }
         if let Some(now) = now {
-            self.island_playing(ui, rect, now, true, groove.as_ref(), time);
+            self.island_playing(ui, rect, now, Some(grid), groove.as_ref(), time);
         }
     }
 
-    /// The song's cover beside the wizard and the sound's bars at the right, in the pill, while it plays (`pill.rs`).
-    fn island_playing(&self, ui: &egui::Ui, rect: Rect, now: &Now, compact: bool, groove: Option<&Groove>, time: f64) {
+    /// The song's cover and the sound's bars in the pill while it plays, spread with the wizard and the minis (`pill.rs`).
+    fn island_playing(&self, ui: &egui::Ui, rect: Rect, now: &Now, compact: Option<Option<Rect>>, groove: Option<&Groove>, time: f64) {
         let cover = self.integrations.spotify.cover.as_ref().map(egui::TextureHandle::id);
         super::pill::spotify(ui, rect, cover, &now.track.title, compact, groove, time);
     }

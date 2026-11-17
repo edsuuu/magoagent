@@ -7,11 +7,13 @@ use crate::prelude::*;
 use super::music::{GREEN, picture};
 use crate::app::integrations::spotify::groove::Groove;
 
-/// The side of the cover and its corner on the compact island, and where it starts after the wizard (40 from the left,
-/// 30 big).
+/// The side of the cover and its corner on the compact island.
 const COVER: f32 = 26.0;
 const COVER_CORNER: u8 = 7;
-const COVER_LEFT: f32 = 62.0;
+/// The wizard on the compact island: its middle from the left edge and its size (`paint::island_small`); the last item
+/// ends as far from the right edge as the wizard starts from the left.
+const WIZARD_AT: f32 = 40.0;
+const WIZARD: f32 = 30.0;
 /// The same on the closed notch, which is smaller.
 const COVER_SMALL: f32 = 16.0;
 const COVER_CORNER_SMALL: u8 = 5;
@@ -19,23 +21,40 @@ const COVER_LEFT_SMALL: f32 = 4.0;
 
 /// The bars: how many, the side of each one and the room between them, how far their middle is from the right edge,
 /// and the tallest one.
-const BARS: usize = 5;
+const BARS: usize = crate::app::integrations::spotify::groove::BANDS;
 const BAR: f32 = 3.0;
 const BAR_GAP: f32 = 2.5;
 const BAR_SMALL: f32 = 2.0;
 const BAR_GAP_SMALL: f32 = 1.5;
-const BARS_RIGHT: f32 = 20.0;
 const BARS_RIGHT_SMALL: f32 = 12.0;
 const BARS_TALL: f32 = 18.0;
 const BARS_TALL_SMALL: f32 = 11.0;
-/// The room the bars take at the right of the compact island: the agents' minis leave it free while the music plays.
+/// The width the bars take on the compact island.
 const BARS_ROOM: f32 = BARS as f32 * BAR + (BARS - 1) as f32 * BAR_GAP;
-/// How far left the agents' minis go while the bars are there: their room and a gap.
-pub(super) const MINIS_LEFT: f32 = BARS_ROOM + 10.0;
+
+/// The room between the cover and the bars, which go together.
+const PAIR_GAP: f32 = 10.0;
+
+/// Where the cover and the bars start on the compact island `rect`, which go side by side: with the agents' minis
+/// (`minis`, their grid) in the middle between the wizard and them; with none, at the right, as far from the edge as the
+/// wizard is from the left (asked: "Luna à esquerda, capa e frequência no meio, os mini agentes à direita").
+pub(crate) fn spread(rect: Rect, minis: Option<Rect>) -> (f32, f32) {
+    let pair = COVER + PAIR_GAP + BARS_ROOM;
+    let edge = WIZARD_AT - WIZARD / 2.0;
+    let cover = match minis {
+        Some(grid) => (rect.left() + edge + WIZARD + grid.left()) / 2.0 - pair / 2.0,
+        None => rect.right() - edge - pair,
+    };
+    (cover, cover + COVER + PAIR_GAP)
+}
 
 /// The bars' heights at `time`, each 0 to 1: with the `groove` Luna dances to, the song's energy and bass on its beat,
 /// each bar a little after the one before it; without it, the clock's slow sway. No two bars rise together.
 pub(crate) fn bars(groove: Option<&Groove>, time: f64) -> [f32; BARS] {
+    // the song heard: each bar is its own band, low to high (asked: "de acordo com a música no Spotify")
+    if let Some(bands) = groove.and_then(|groove| groove.bands) {
+        return bands.map(|level| 0.08 + 0.92 * level);
+    }
     let mut heights = [0.0; BARS];
     for (index, height) in heights.iter_mut().enumerate() {
         let offset = index as f32 * 0.17;
@@ -56,21 +75,34 @@ pub(crate) fn bars(groove: Option<&Groove>, time: f64) -> [f32; BARS] {
     heights
 }
 
-/// The song's cover beside the wizard and the sound's bars at the right, in the `rect` of the compact island (`compact`)
-/// or of the closed notch. `cover` is the song's picture (its placeholder without one); `groove` is what Luna dances to,
-/// None while she doesn't. While they move, the next frame is asked for.
-pub(super) fn spotify(ui: &egui::Ui, rect: Rect, cover: Option<egui::TextureId>, title: &str, compact: bool, groove: Option<&Groove>, time: f64) {
+/// The song's cover and the sound's bars in the `rect` of the compact island (`minis`: Some, with the agents' grid, or
+/// None without agents; spread by `spread`) or of the closed notch (`minis` is not asked: the cover at the left, the
+/// bars at the right, the wizard between). `cover` is the song's picture (its placeholder without one); `groove` is what
+/// Luna dances to, None while she doesn't. While they move, the next frame is asked for.
+pub(super) fn spotify(
+    ui: &egui::Ui,
+    rect: Rect,
+    cover: Option<egui::TextureId>,
+    title: &str,
+    compact: Option<Option<Rect>>,
+    groove: Option<&Groove>,
+    time: f64,
+) {
     let painter = ui.painter();
-    let (side, corner, left, bar, gap, right, tall) = if compact {
-        (COVER, COVER_CORNER, COVER_LEFT, BAR, BAR_GAP, BARS_RIGHT, BARS_TALL)
+    let (side, corner, bar, gap, tall) = if compact.is_some() {
+        (COVER, COVER_CORNER, BAR, BAR_GAP, BARS_TALL)
     } else {
-        (COVER_SMALL, COVER_CORNER_SMALL, COVER_LEFT_SMALL, BAR_SMALL, BAR_GAP_SMALL, BARS_RIGHT_SMALL, BARS_TALL_SMALL)
+        (COVER_SMALL, COVER_CORNER_SMALL, BAR_SMALL, BAR_GAP_SMALL, BARS_TALL_SMALL)
     };
-    let art = Rect::from_min_size(Pos2::new(rect.left() + left, rect.center().y - side / 2.0), Vec2::splat(side));
-    picture(painter, art, corner, cover, title);
     let total = BARS as f32 * bar + (BARS - 1) as f32 * gap;
+    let (cover_left, bars_left) = match compact {
+        Some(minis) => spread(rect, minis),
+        None => (rect.left() + COVER_LEFT_SMALL, rect.right() - BARS_RIGHT_SMALL - total / 2.0),
+    };
+    let art = Rect::from_min_size(Pos2::new(cover_left, rect.center().y - side / 2.0), Vec2::splat(side));
+    picture(painter, art, corner, cover, title);
     for (index, level) in bars(groove, time).into_iter().enumerate() {
-        let x = rect.right() - right - total / 2.0 + index as f32 * (bar + gap) + bar / 2.0;
+        let x = bars_left + index as f32 * (bar + gap) + bar / 2.0;
         // a dot at its lowest, the tallest at its highest
         let height = (tall * (0.18 + 0.82 * level)).max(bar);
         let rise = Rect::from_center_size(Pos2::new(x, rect.center().y), Vec2::new(bar, height));

@@ -34,6 +34,13 @@ const ONSET_DELAY: f64 = 2.0;
 const PULL: f64 = 0.3;
 /// The bass: what is under this, against the whole.
 const BASS_UNDER: f32 = 150.0;
+/// The bands the sound is cut in for the island's bars (Hz): the bass, the low mids, the mids, the presence, the treble.
+pub(crate) const BAND_EDGES: [f32; BANDS + 1] = [40.0, 120.0, 300.0, 800.0, 2000.0, 5000.0];
+/// Each band against its own loudest of late, which comes down this many dB a second, over this range; a band rises at
+/// once and falls in about this long, as a meter does.
+const BAND_FALLS: f32 = 8.0;
+const BAND_RANGE: f32 = 30.0;
+const BAND_RELEASE: f32 = 0.12;
 /// The magnitudes are compressed by log(1 + this × magnitude), so the soft hits count too.
 const COMPRESSION: f32 = 1000.0;
 
@@ -196,6 +203,14 @@ pub(crate) fn last_beat(envelope: &[f32], period: f64) -> f64 {
     (best as f64 + finer + ONSET_DELAY).rem_euclid(period)
 }
 
+/// A band's next `level` from its loudness now (`decibels`), against its loudest of late (`peak`, which it moves): up at
+/// once, down in about `BAND_RELEASE`; nothing while the speakers are quiet.
+pub(crate) fn band_level(level: f32, peak: &mut f32, decibels: f32, silent: bool, step: f32) -> f32 {
+    *peak = decibels.max(*peak - BAND_FALLS * step);
+    let target = if silent { 0.0 } else { ((decibels - (*peak - BAND_RANGE)) / BAND_RANGE).clamp(0.0, 1.0) };
+    if target >= level { target } else { level + (target - level) * (1.0 - (-step / BAND_RELEASE).exp()) }
+}
+
 /// The listening thread's ear: samples in, the groove out.
 pub(crate) struct Analyzer {
     spectrum: Spectrum,
@@ -212,6 +227,9 @@ pub(crate) struct Analyzer {
     locked: bool,
     loudness: Loudness,
     bass: f32,
+    /// Each band's level (0 to 1) and its loudest of late (dB).
+    bands: [f32; BANDS],
+    band_peaks: [f32; BANDS],
     chorus: ChorusWatch,
     drops: DropWatch,
     chooser: Chooser,
@@ -233,6 +251,8 @@ impl Default for Analyzer {
             locked: false,
             loudness: Loudness::default(),
             bass: 0.0,
+            bands: [0.0; BANDS],
+            band_peaks: [-120.0; BANDS],
             chorus: ChorusWatch::default(),
             drops: DropWatch::default(),
             chooser: Chooser::default(),
@@ -268,6 +288,7 @@ impl Analyzer {
             phase: self.beat.rem_euclid(1.0) as f32,
             energy: self.loudness.energy,
             bass: self.bass,
+            bands: Some(self.bands),
             dance: self.chooser.dance,
             beat: self.beat,
             since: self.chooser.since,
@@ -297,6 +318,13 @@ impl Analyzer {
         let total = power(1..=WINDOW / 2);
         if total > 1e-9 {
             self.bass += (power(1..=low_bins) / total - self.bass) * (1.0 - (-step / 0.5).exp());
+        }
+        let bin = |hertz: f32| ((hertz / (RATE as f32 / WINDOW as f32)) as usize).clamp(1, WINDOW / 2);
+        let silent = self.loudness.silent();
+        for (index, (level, peak)) in self.bands.iter_mut().zip(self.band_peaks.iter_mut()).enumerate() {
+            let (from, to) = (bin(BAND_EDGES[index]), bin(BAND_EDGES[index + 1]).max(bin(BAND_EDGES[index]) + 1));
+            let mean = power(from..=to - 1) / (to - from) as f32;
+            *level = band_level(*level, peak, 10.0 * mean.max(1e-12).log10(), silent, step);
         }
 
         if self.frames.is_multiple_of(TEMPO_EVERY) && self.envelope.len() >= TEMPO_AFTER {

@@ -26,7 +26,7 @@ mod keymap;
 mod keys;
 mod log;
 mod marquee;
-mod minis;
+pub(crate) mod minis;
 mod music;
 mod paint;
 mod picture;
