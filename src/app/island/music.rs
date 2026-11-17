@@ -183,7 +183,7 @@ impl DrawingApp {
         let kind = painter.text(Pos2::new(name.right() + 6.0, name_y), egui::Align2::LEFT_CENTER, place, font(11.0), DIM);
         let luna_at = Pos2::new(kind.right() + if place.is_empty() { 8.0 } else { 15.0 }, name_y - 2.0);
         if let Some(groove) = self.luna_groove() {
-            crate::app::mascot::mago::paint_mago_dancing(&painter, "island-spotify-luna", luna_at, 16.0, GREEN, &groove, time);
+            crate::app::mascot::mago::paint_mago_dancing(&painter, "island-spotify-luna", luna_at, 16.0, self.luna_colour(GREEN), &groove, time);
             // the note floats up beside her while it plays
             if now.playing {
                 let rise = (time * 0.8).fract() as f32;

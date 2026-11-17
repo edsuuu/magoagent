@@ -346,3 +346,20 @@ fn a_new_songs_cover_fades_in_over_the_one_before_it() {
     spotify.publish(&ctx);
     assert_eq!(CoverFade::read(&ctx), fading, "the pill reads what the tick left");
 }
+
+/// Asked ("deixa a Luna trocar de cor, mas com contraste: roxo escuro não tem"): the cover's colour on Luna is always light
+/// enough for the dark island, its hue kept; a light one stays as it is.
+#[test]
+fn luna_wears_the_covers_colour_light_enough_to_be_seen() {
+    use super::super::readable;
+    let light = |colour: Color32| (0.299 * f32::from(colour.r()) + 0.587 * f32::from(colour.g()) + 0.114 * f32::from(colour.b())) / 255.0;
+    for dark in [Color32::from_rgb(60, 20, 90), Color32::from_rgb(10, 20, 80), Color32::from_rgb(90, 10, 10)] {
+        let worn = readable(dark);
+        assert!(light(worn) >= 0.55, "{dark:?} → {worn:?}");
+        // the same hue: the brightest channel is still the brightest
+        let brightest = |colour: Color32| [colour.r(), colour.g(), colour.b()].iter().enumerate().max_by_key(|(_, channel)| **channel).map(|(index, _)| index);
+        assert_eq!(brightest(worn), brightest(dark), "{dark:?} → {worn:?}");
+    }
+    let lume = Color32::from_rgb(0x38, 0xbd, 0xf8);
+    assert!(readable(lume).r() >= lume.r() && light(readable(lume)) >= 0.55, "a light one only brought to full");
+}
