@@ -157,7 +157,8 @@ impl DrawingApp {
                 ui.memory_mut(|m| m.set_focus_lock_filter(response.id, all));
             }
             if response.hovered() {
-                wheel = ui.input(|i| i.smooth_scroll_delta.y);
+                // egui turns Shift+wheel sideways: that one still scrolls the history
+                wheel = ui.input(|i| if i.modifiers.shift { i.smooth_scroll_delta.x + i.smooth_scroll_delta.y } else { i.smooth_scroll_delta.y });
             }
             clicked = response.clicked();
             secondary = response.secondary_clicked();
@@ -192,7 +193,8 @@ impl DrawingApp {
         let (frame, card_zoom) = self.terminal_frame(&element);
         let (_, font) = self.terminal_look(&element.terminal.clone().unwrap_or_default());
         let cell_size = cell(font) * card_zoom;
-        self.terminal_pointer(ctx, &element.id, frame.min + Vec2::new(TERMINAL_PAD, TERMINAL_HEADER + 4.0) * card_zoom, cell_size, &gesture);
+        let origin = frame.min + Vec2::new(TERMINAL_PAD, TERMINAL_HEADER + 4.0) * card_zoom;
+        self.terminal_pointer(ctx, &element.id, origin, cell_size, &gesture);
         let Some(Ok(session)) = self.terminals.get(&element.id) else {
             return;
         };
@@ -241,7 +243,12 @@ impl DrawingApp {
         self.terminal_scroll += wheel / cell_size.y;
         let lines = self.terminal_scroll.trunc();
         if lines != 0.0 {
-            session.scroll(lines as i32);
+            let at = gesture.pos.map(|pos| cell_at(pos, origin, cell_size)).map_or((0, 0), |at| (at.col, at.row.max(0) as usize));
+            let shift = ctx.input(|i| i.modifiers.shift);
+            match wheel_bytes(lines as i32, session.handle.mode(), at, shift) {
+                Some(bytes) => session.handle.write(bytes),
+                None => session.scroll(lines as i32),
+            }
             self.terminal_scroll -= lines;
         }
         if let Some(seed) = find {
