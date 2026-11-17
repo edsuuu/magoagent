@@ -48,6 +48,16 @@ impl DrawingApp {
         self.floors().iter().find(|floor| floor.id == id).map_or(GROUND.into(), |floor| floor.name.clone())
     }
 
+    /// The floors of space `space` (none when there is no such space).
+    fn space_floors(&self, space: &str) -> &[Floor] {
+        self.spaces.list.iter().find(|workspace| workspace.id == space).map_or(&[], |workspace| &workspace.floors)
+    }
+
+    /// Floor `id` of space `space`.
+    pub(crate) fn floor_in(&self, space: &str, id: &str) -> Option<&Floor> {
+        self.space_floors(space).iter().find(|floor| floor.id == id)
+    }
+
     /// How many things a floor of `space` holds (the drawing on screen counts live, the others read their file).
     pub(crate) fn floor_items(&self, space: &str, floor: &str) -> usize {
         let Some(workspace) = self.spaces.list.iter().find(|workspace| workspace.id == space) else { return 0 };
@@ -67,21 +77,13 @@ impl DrawingApp {
         if ["", "térreo", "terreo", "ground"].contains(&wanted.as_str()) {
             return Ok(String::new());
         }
-        let floors = self.spaces.list.iter().find(|workspace| workspace.id == space).map_or(&[][..], |workspace| &workspace.floors[..]);
-        let found = floors.iter().find(|floor| floor.id == name.trim() || floor.name.to_lowercase() == wanted);
+        let found = self.space_floors(space).iter().find(|floor| floor.id == name.trim() || floor.name.to_lowercase() == wanted);
         found.map(|floor| floor.id.clone()).ok_or_else(|| format!("Nenhum andar se chama {}.", name.trim()))
     }
 
     fn floor_taken(&self, space: &str, id: &str, name: &str) -> bool {
         let wanted = name.to_lowercase();
-        wanted == GROUND.to_lowercase()
-            || self
-                .spaces
-                .list
-                .iter()
-                .filter(|workspace| workspace.id == space)
-                .flat_map(|workspace| &workspace.floors)
-                .any(|floor| floor.id != id && floor.name.to_lowercase() == wanted)
+        wanted == GROUND.to_lowercase() || self.space_floors(space).iter().any(|floor| floor.id != id && floor.name.to_lowercase() == wanted)
     }
 
     /// A new floor above the others in the space on screen (not opened). `copy_ground` fills it with the
@@ -148,9 +150,7 @@ impl DrawingApp {
     /// one on screen goes to the ground floor first.
     pub(crate) fn delete_floor(&mut self, space: &str, id: &str) -> Result<String, String> {
         self.load_spaces();
-        let found =
-            self.spaces.list.iter().find(|workspace| workspace.id == space).and_then(|workspace| workspace.floors.iter().find(|floor| floor.id == id)).cloned();
-        let floor = found.ok_or("Esse andar não existe.")?;
+        let floor = self.floor_in(space, id).cloned().ok_or("Esse andar não existe.")?;
         if self.spaces.current == space && self.current_space().is_some_and(|workspace| workspace.floor == id) {
             self.switch_scope(space, "")?;
         }

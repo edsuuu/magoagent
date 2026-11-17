@@ -344,13 +344,7 @@ impl DrawingApp {
                 Ok(())
             }
             FloorPick::Rename(id) => {
-                let name = self
-                    .spaces
-                    .list
-                    .iter()
-                    .find(|workspace| workspace.id == space)
-                    .and_then(|workspace| workspace.floors.iter().find(|floor| floor.id == id))
-                    .map(|floor| floor.name.clone());
+                let name = self.floor_in(space, &id).map(|floor| floor.name.clone());
                 self.floors_ui.dialog = name.map(|name| FloorDialog::Rename { space: space.into(), id, name });
                 Ok(())
             }
@@ -406,13 +400,7 @@ impl DrawingApp {
                 }
             }
             Some(FloorDialog::Delete { space, id }) => {
-                let found = self
-                    .spaces
-                    .list
-                    .iter()
-                    .find(|workspace| workspace.id == space)
-                    .and_then(|workspace| workspace.floors.iter().find(|floor| floor.id == id))
-                    .map(|floor| floor.name.clone());
+                let found = self.floor_in(&space, &id).map(|floor| floor.name.clone());
                 let Some(name) = found else { return };
                 let items = self.floor_items(&space, &id);
                 let message = match items {
