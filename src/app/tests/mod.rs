@@ -116,6 +116,80 @@ fn key_press(key: Key) -> egui::Event {
     egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }
 }
 
+/// The screen the island's tests run it on.
+const ISLAND_SCREEN: Vec2 = Vec2::new(1200.0, 800.0);
+
+/// A chat of the app's list, as the island's tests make one.
+fn chat(id: &str, agent: &str, name: &str) -> crate::app::chat::direct::Chat {
+    crate::app::chat::direct::Chat {
+        id: id.into(),
+        agent: agent.into(),
+        name: name.into(),
+        cwd: "C:/p".into(),
+        session: None,
+        mode: 0,
+        model: String::new(),
+        effort: String::new(),
+        recruit: false,
+        named: false,
+        draft: false,
+    }
+}
+
+/// One frame of the island alone; the texts it painted and where.
+fn island_frame(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>) -> Vec<(String, Rect)> {
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, ISLAND_SCREEN)), time: Some(time), events, ..Default::default() };
+    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
+    output.textures_delta.clear();
+    output
+        .shapes
+        .iter()
+        .filter_map(|shape| if let egui::Shape::Text(text) = &shape.shape { Some((text.galley.text().to_string(), text.visual_bounding_rect())) } else { None })
+        .collect()
+}
+
+/// One frame of the island alone; the texts it painted.
+fn island_texts(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>) -> Vec<String> {
+    island_frame(app, ctx, time, events).into_iter().map(|(text, _)| text).collect()
+}
+
+/// The island as drawn: hung from the top centre.
+fn island_rect(app: &DrawingApp) -> Rect {
+    let size = app.island.size();
+    Rect::from_min_size(Pos2::new((ISLAND_SCREEN.x / 2.0 - size.x / 2.0).round(), 0.0), size)
+}
+
+/// A header button of the island, counted from the right: 0 the close, 1 the sound, 2 the settings, 3 the voice, 4 the size.
+fn right_button(app: &DrawingApp, index: usize) -> Pos2 {
+    let rect = island_rect(app);
+    Pos2::new(rect.right() - 25.0 - index as f32 * 32.0, rect.top() + 25.0)
+}
+
+/// The app with `chats`, its island opened by clicking on the compact pill, and the time it is at.
+fn island_opened(chats: Vec<crate::app::chat::direct::Chat>) -> (DrawingApp, Context, f64) {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.prefs.island = true;
+    app.chats = chats;
+    let mut time = 1.0;
+    let notch = Pos2::new(ISLAND_SCREEN.x / 2.0, 10.0);
+    while time < 2.0 {
+        island_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
+        time += 0.05;
+    }
+    assert!((app.island.size().x - crate::app::island::COMPACT_W).abs() < 4.0, "compact on hover: {}", app.island.size().x);
+    island_frame(&mut app, &ctx, time, vec![button(notch, true)]);
+    time += 0.05;
+    island_frame(&mut app, &ctx, time, vec![button(notch, false)]);
+    time += 0.05;
+    while time < 3.0 {
+        island_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
+        time += 0.05;
+    }
+    assert!((app.island.size().x - crate::app::island::EXPANDED_W).abs() < 1.0, "clicked to open: {}", app.island.size().x);
+    (app, ctx, time)
+}
+
 /// One pass that only paints the canvas; what it painted, in shapes.
 fn painted(app: &DrawingApp, ctx: &Context) -> usize {
     let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
