@@ -27,7 +27,7 @@ const BARS: usize = crate::app::integrations::spotify::groove::BANDS;
 // asked: "os palitinhos da frequência estão muito grossos, daria para deixar mais finos"
 const BAR: f32 = 1.5;
 const BAR_GAP: f32 = 3.0;
-const BAR_SMALL: f32 = 1.0;
+const BAR_SMALL: f32 = 1.5;
 const BAR_GAP_SMALL: f32 = 1.5;
 const BARS_RIGHT_SMALL: f32 = 12.0;
 const BARS_TALL: f32 = 16.0;
@@ -46,37 +46,18 @@ pub(crate) fn spread(rect: Rect, minis: Option<Rect>) -> (f32, f32) {
     let edge = WIZARD_AT - WIZARD / 2.0;
     let cover = match minis {
         Some(grid) => (rect.left() + edge + WIZARD + grid.left()) / 2.0 - pair / 2.0,
-        None => rect.right() - edge - pair,
+        // no minis: the song by the right side, with the minis' room to the edge
+        None => rect.right() - (super::MINIS_SIDE - WIZARD / 2.0) - pair,
     };
     (cover, cover + COVER + PAIR_GAP)
 }
 
-/// The bars' heights at `time`, each 0 to 1: with the `groove` Luna dances to, the song's energy and bass on its beat,
-/// each bar a little after the one before it; without it, the clock's slow sway. No two bars rise together.
-pub(crate) fn bars(groove: Option<&Groove>, time: f64) -> [f32; BARS] {
-    // the song heard: each bar is its own band, low to high (asked: "de acordo com a música no Spotify")
-    if let Some(bands) = groove.and_then(|groove| groove.bands) {
-        // a curve, so only the loud parts reach the top (asked: "a sensibilidade está muito alta")
-        return bands.map(|level| level.powf(1.6));
-    }
-    let mut heights = [0.0; BARS];
-    for (index, height) in heights.iter_mut().enumerate() {
-        let offset = index as f32 * 0.17;
-        *height = match groove {
-            Some(groove) => {
-                let wave = (std::f32::consts::TAU * (groove.phase + offset)).sin() * 0.5 + 0.5;
-                let beat = 1.0 - (groove.phase + offset * 0.5).fract();
-                (0.15 + 0.45 * groove.energy + 0.3 * wave + 0.3 * groove.bass * beat * beat).clamp(0.0, 1.0)
-            }
-            None => {
-                let index = index as f64;
-                let sway = (time * 2.6 + index * 1.7).sin() * 0.5 + 0.5;
-                let drift = (time * 0.9 + index * 0.6).sin() * 0.5 + 0.5;
-                (0.25 + 0.45 * sway + 0.2 * drift) as f32
-            }
-        };
-    }
-    heights
+/// The bars' heights, each 0 to 1: the song heard here, each bar its own band, low to high (asked: "de acordo com a
+/// música no Spotify"); with nothing heard (the song plays on another device, the listening is off or failed), they
+/// rest: nothing made up (asked: "se a música não está tocando nesse dispositivo, a frequência precisa ficar parada").
+pub(crate) fn bars(groove: Option<&Groove>) -> [f32; BARS] {
+    // a curve, so only the loud parts reach the top (asked: "a sensibilidade está muito alta")
+    groove.and_then(|groove| groove.bands).map(|bands| bands.map(|level| level.powf(1.6))).unwrap_or([0.0; BARS])
 }
 
 /// The song's cover and the sound's bars in the `rect` of the compact island (`minis`: Some, with the agents' grid, or
@@ -127,7 +108,7 @@ pub(super) fn spotify(
     }
     // paused, the dots rest (as the Dynamic Island's), and nothing moves; the closed notch is small: its bars are the
     // bands two by two
-    let levels = if playing { bars(groove, time) } else { [0.0; BARS] };
+    let levels = if playing { bars(groove) } else { [0.0; BARS] };
     let levels: Vec<f32> = if compact.is_some() { levels.to_vec() } else { levels.chunks(2).map(|pair| pair.iter().copied().fold(0.0, f32::max)).collect() };
     let colours = fade.colours_at(time).unwrap_or_else(|| (tint.unwrap_or(GREEN), tint.unwrap_or(GREEN)));
     for (index, level) in levels.into_iter().enumerate() {

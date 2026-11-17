@@ -60,24 +60,24 @@ fn frame_delay(app: &mut DrawingApp, ctx: &Context, time: f64) -> std::time::Dur
     output.viewport_output.get(&egui::ViewportId::ROOT).map_or(std::time::Duration::MAX, |viewport| viewport.repaint_delay)
 }
 
-/// Asked ("como a Dynamic Island do iPhone quando toca música"): the pill's bars rise with the song, each with its own
-/// swing; without the groove (the dance off, or macOS), the clock's smooth sway.
+/// Asked ("como a Dynamic Island do iPhone quando toca música"): the pill's bars follow the bands heard, each its own;
+/// with nothing heard here (the song on another device, the listening off), they rest, nothing made up (asked: "se a
+/// música não está tocando nesse dispositivo, a frequência precisa ficar parada").
 #[test]
-fn the_pills_bars_rise_with_the_song_each_with_its_own_swing() {
-    use crate::app::integrations::spotify::groove::{Dance, Groove};
+fn the_pills_bars_follow_what_is_heard_and_rest_without_it() {
+    use crate::app::integrations::spotify::groove::{BANDS, Dance, Groove};
     use crate::app::island::pill::bars;
-    let groove = |energy, bass| Groove { bpm: 120.0, phase: 0.25, energy, bass, bands: None, dance: Dance::Sway, beat: 0.5, since: 0.0 };
-    let loud = bars(Some(&groove(0.9, 0.7)), 1.0);
-    let quiet = bars(Some(&groove(0.1, 0.0)), 1.0);
-    let average = |heights: &[f32]| heights.iter().sum::<f32>() / heights.len() as f32;
-    assert!(loud.iter().all(|height| (0.0..=1.0).contains(height)));
-    assert!(average(&loud) > average(&quiet), "the louder the song, the higher the bars: {loud:?} against {quiet:?}");
-    assert!(loud.windows(2).any(|pair| (pair[0] - pair[1]).abs() > 0.02), "each bar with its own swing: {loud:?}");
-    // no groove: the clock moves them, smoothly and on its own
-    let first = bars(None, 2.0);
-    assert!(first.iter().all(|height| (0.15..0.95).contains(height)), "{first:?}");
-    assert_ne!(first, bars(None, 2.4), "the sway goes on");
-    assert!(first.windows(2).any(|pair| (pair[0] - pair[1]).abs() > 0.02), "each bar with its own swing: {first:?}");
+    let groove = |bands| Groove { bpm: 120.0, phase: 0.25, energy: 0.9, bass: 0.7, bands, dance: Dance::Sway, beat: 0.5, since: 0.0 };
+    let mut heard = [0.0; BANDS];
+    heard[0] = 1.0;
+    heard[5] = 0.5;
+    let heights = bars(Some(&groove(Some(heard))));
+    assert_eq!(heights[0], 1.0, "the loudest band at the top");
+    assert!(heights[5] > 0.0 && heights[5] < 0.5, "the curve keeps the middle low: {}", heights[5]);
+    assert_eq!(heights[9], 0.0, "a silent band rests");
+    // the clock's groove (nothing heard) and no groove at all: every bar at rest
+    assert_eq!(bars(Some(&groove(None))), [0.0; BANDS]);
+    assert_eq!(bars(None), [0.0; BANDS]);
 }
 
 /// Asked ("Luna à esquerda, capa e frequência no meio, os mini agentes à direita; sem mini agentes, à direita"): the
@@ -87,10 +87,10 @@ fn the_cover_and_the_bars_sit_in_the_middle_or_at_the_right() {
     use crate::app::island::minis::mini_cells;
     use crate::app::island::pill::spread;
     let pill = Rect::from_min_size(Pos2::ZERO, Vec2::new(288.0, 40.0));
-    // the bars take 42 (ten of 1.5 with 3 between); no agents: the pair ends as far from the right as the wizard starts from the left (4)
+    // the bars take 42 (ten of 1.5 with 3 between); no agents: the pair ends 12 from the right, the minis' room
     let (cover, bars) = spread(pill, None);
     assert!(bars > cover + 22.0, "the bars after the cover");
-    assert!((bars + 42.0 - (288.0 - 4.0)).abs() < 1.0, "at the right: the bars end at {}", bars + 42.0);
+    assert!((bars + 42.0 - (288.0 - 12.0)).abs() < 1.0, "at the right: the bars end at {}", bars + 42.0);
     // with agents: the pair's middle halfway between the wizard (34) and the minis' grid
     let grid = mini_cells(pill, 2).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
     let (cover, bars) = spread(pill, Some(grid));
@@ -103,6 +103,11 @@ fn the_cover_and_the_bars_sit_in_the_middle_or_at_the_right() {
     let (cover, bars) = spread(pill, Some(grid));
     let (before, after) = (cover - 34.0, grid.left() - (bars + 42.0));
     assert!((before - after).abs() < 1.0 && before > 10.0, "the gaps: {before} and {after}");
+    // two minis side by side: still some room, not the wide gaps (asked: "diminuir mais um pouco esse espaço")
+    let grid = mini_cells(pill, 2).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
+    let (cover, bars) = spread(pill, Some(grid));
+    let (before, after) = (cover - 34.0, grid.left() - (bars + 42.0));
+    assert!((10.0..=20.0).contains(&before) && (before - after).abs() < 1.0, "the gaps: {before} and {after}");
 }
 
 /// Asked ("ali a Luna não reage à música"): open on Início, while the song plays she dances too, and her dance asks for
