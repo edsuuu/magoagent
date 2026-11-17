@@ -358,7 +358,13 @@ impl Spotify {
                     Err(failure) => failed = Some(failure),
                 }
             }
-            Reply::Done(result) => failed = result.err(),
+            Reply::Done(result) => {
+                // done: what plays now is asked at once (the player's card changes with it)
+                if result.is_ok() {
+                    self.soon();
+                }
+                failed = result.err();
+            }
             Reply::Then(command) => return Some(command),
         }
         if let Some(failure) = failed {
@@ -492,6 +498,14 @@ impl Spotify {
         self.library.opened = Some(Opened { playlist, more: true, ..Default::default() });
         self.more_songs();
         Some(())
+    }
+
+    /// A song was played by the Web API: the player and the page are asked again soon, not at their next turn.
+    pub(super) fn soon(&mut self) {
+        if let Some((asks, _)) = &self.thread {
+            let _ = asks.send(Ask::Soon);
+        }
+        self.library.next_page = self.library.next_page.min(now_ms() + 700);
     }
 
     /// The opened playlist's next page of songs, unless one is on its way or none follow.
