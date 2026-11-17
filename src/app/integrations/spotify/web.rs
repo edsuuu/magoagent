@@ -330,6 +330,21 @@ pub(crate) fn play(shared: &Shared, uri: &str) -> Result<(), Failure> {
     }
 }
 
+/// The body of `PUT /me/player/play` for a song of the queue: `context` from that song, so the list goes on after it.
+pub(crate) fn play_in_body(track: &str, context: &str) -> Value {
+    json!({ "context_uri": context, "offset": { "uri": track } })
+}
+
+/// A song of the queue at once, not skipped to: in `context` from it, else (no context, or not in it, as a song put in
+/// the queue by hand) alone.
+pub(crate) fn play_in(shared: &Shared, track: &str, context: Option<&str>) -> Result<(), Failure> {
+    let Some(context) = context else { return play(shared, track) };
+    match on_a_device(shared, "PUT", "/me/player/play", Some(play_in_body(track, context))) {
+        Err(failure) if !failure.unauthorized => play(shared, track),
+        other => other,
+    }
+}
+
 /// A control on the account's active device; `playing`: whether it played (play and pause are two calls).
 pub(crate) fn control(shared: &Shared, command: &Command, playing: bool) -> Result<(), Failure> {
     let (method, path) = match command {
