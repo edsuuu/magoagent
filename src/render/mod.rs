@@ -294,6 +294,25 @@ pub(crate) fn note_colors(note: &Element, opacity: u8) -> (Color32, Color32) {
     (paper, if light { Color32::from_rgb(0x33, 0x33, 0x33) } else { Color32::WHITE })
 }
 
+/// The strip of tape holding a note to the board (asked: "a nota ter esse efeito de adesivo"): a translucent band across
+/// the top edge, a little turned, its size by the note's (`bounds` in the note's own points, `place` to the screen).
+pub(crate) fn tape(bounds: Rect) -> [Pos2; 4] {
+    let width = (bounds.width() * 0.32).clamp(20.0, 76.0);
+    let height = (width * 0.26).clamp(8.0, 18.0);
+    let center = Pos2::new(bounds.center().x + bounds.width() * 0.08, bounds.min.y);
+    let (sin, cos) = (-3.0_f32).to_radians().sin_cos();
+    [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].map(|(x, y): (f32, f32)| {
+        let (x, y) = (x * width / 2.0, y * height / 2.0);
+        center + Vec2::new(x * cos - y * sin, x * sin + y * cos)
+    })
+}
+
+fn paint_tape(painter: &Painter, bounds: Rect, place: &dyn Fn(Pos2) -> Pos2, alpha: f32) {
+    let points: Vec<Pos2> = tape(bounds).into_iter().map(place).collect();
+    let fill = Color32::from_rgba_unmultiplied(0xe9, 0xe4, 0xd4, 205).gamma_multiply(alpha);
+    painter.add(Shape::convex_polygon(points, fill, Stroke::new(0.8, Color32::from_black_alpha(34).gamma_multiply(alpha))));
+}
+
 /// A sticky note like the reference app's card: a soft shadow, the paper with a hairline edge, a
 /// header strip with the title, and the text as markdown. `body` is false while the
 /// editor types over the text.
@@ -316,6 +335,7 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
     let card = Rect::from_two_pos(place(b.min), place(b.max));
     painter.add(Shape::convex_polygon(outline(b, [radius; 4]), paper, Stroke::new(0.5 * zoom, Color32::from_black_alpha(20).gamma_multiply(alpha))));
     painter.add(Shape::convex_polygon(outline(header, [radius, radius, 0.0, 0.0]), strip.gamma_multiply(alpha), Stroke::NONE));
+    paint_tape(painter, b, &place, alpha);
     let ink = ink.gamma_multiply(alpha);
     let muted = ink.gamma_multiply(0.6);
     let header_clip = painter.with_clip_rect(Rect::from_two_pos(place(header.min), place(header.max)));
