@@ -252,8 +252,10 @@ impl DrawingApp {
 
     /// Copiar Captura de Tela: the open page's picture on the clipboard, a frame later.
     pub(crate) fn portal_copy_shot(&mut self, id: &str) -> Result<String, String> {
-        if !cfg!(windows) {
-            return Err("a captura da página só existe no Windows por enquanto".into());
+        #[cfg(not(any(windows, target_os = "macos")))]
+        {
+            let _ = id;
+            return Err("a captura da página só existe no Windows e macOS por enquanto".into());
         }
         let spec = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.as_ref()).ok_or("não é um navegador")?;
         if spec.unloaded {

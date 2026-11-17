@@ -103,6 +103,40 @@ pub(crate) fn webview_rgba(webview: &wry::WebView) -> Option<(u32, u32, Vec<u8>)
     Some((width, height, opaque_rgba(pixels)))
 }
 
+/// macOS: take a snapshot of the WKWebView for the whole visible page.
+#[cfg(target_os = "macos")]
+pub(crate) fn webview_rgba(webview: &wry::WebView) -> Option<(u32, u32, Vec<u8>)> {
+    use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSImage};
+    use objc2_foundation::{NSDictionary, NSError, NSPoint, NSRect, NSSize};
+    use wry::WebViewExtMacOS;
+    let Some(mtm) = objc2::MainThreadMarker::new() else { return None };
+    let view = webview.webview();
+    // the rect is in the view's points: the page's CSS px times its zoom (the canvas zoom, set in sync_portals)
+    let zoom = unsafe { view.pageZoom() };
+    let frame = unsafe { view.frame() };
+    let (w, h) = (frame.size.width * zoom, frame.size.height * zoom);
+    if w <= 0.0 || h <= 0.0 {
+        return None;
+    }
+    let config = unsafe { objc2_web_kit::WKSnapshotConfiguration::new(mtm) };
+    unsafe { config.setRect(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(w, h))) };
+    let (tx, rx) = std::sync::mpsc::channel();
+    let block = block2::RcBlock::new(move |image: *mut NSImage, _: *mut NSError| {
+        let png = unsafe { image.as_ref() }.and_then(|image| {
+            let tiff = image.TIFFRepresentation()?;
+            let rep = NSBitmapImageRep::imageRepWithData(&tiff)?;
+            unsafe { rep.representationUsingType_properties(NSBitmapImageFileType::PNG, &NSDictionary::new()) }.map(|d| d.to_vec())
+        });
+        let _ = tx.send(png);
+    });
+    unsafe { view.takeSnapshotWithConfiguration_completionHandler(Some(&config), &block) };
+    let png = rx.recv().ok().flatten()?;
+    // Decode PNG to RGBA
+    let image = image::load_from_memory(&png).ok()?.to_rgba8();
+    let (width, height) = image.dimensions();
+    Some((width, height, image.into_raw()))
+}
+
 impl DrawingApp {
     /// The agents' `portal_screenshot`: the open tab of portal `id` as a PNG in base64.
     pub(crate) fn portal_shot(&self, id: &str) -> Result<String, String> {
@@ -111,17 +145,21 @@ impl DrawingApp {
     }
 
     /// The open tab's picture as opaque RGBA (also what Copiar Captura de Tela puts on the clipboard).
-    // ponytail: Windows only (the Mac has `browser::design::snapshot`, which answers later; wire it when the Mac's turn comes)
     pub(crate) fn page_rgba(&self, id: &str) -> Result<(u32, u32, Vec<u8>), String> {
         #[cfg(windows)]
         {
             let tab = self.open_tab_view(id).ok_or("a página desse navegador não está aberta")?;
             webview_rgba(&tab.webview).ok_or_else(|| "não foi possível capturar a página: ela precisa estar na tela, com o navegador visível".into())
         }
-        #[cfg(not(windows))]
+        #[cfg(target_os = "macos")]
+        {
+            let tab = self.open_tab_view(id).ok_or("a página desse navegador não está aberta")?;
+            webview_rgba(&tab.webview).ok_or_else(|| "não foi possível capturar a página: ela precisa estar na tela, com o navegador visível".into())
+        }
+        #[cfg(all(not(windows), not(target_os = "macos")))]
         {
             let _ = id;
-            Err("a captura da página só existe no Windows por enquanto; use portal_read ou o screenshot do app".into())
+            Err("a captura da página só existe no Windows e macOS por enquanto; use portal_read ou o screenshot do app".into())
         }
     }
 }
