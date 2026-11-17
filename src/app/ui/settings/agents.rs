@@ -31,9 +31,42 @@ impl DrawingApp {
         if let Some(i) = row(ui, k, "Parar de recrutar em", hint, |ui| select(ui, k, "Parar de recrutar em", &["70%", "80%", "90%", "Nunca"], stop)) {
             self.prefs.usage_stop = [70, 80, 90, 0][i];
         }
+        divider(ui, k);
+        self.settings_mcp_elsewhere(ui, k);
         if cfg!(windows) {
             divider(ui, k);
             self.settings_wsl(ui, k);
+        }
+    }
+
+    /// O MCP do app no Claude Code e no Codex da pessoa (system/mcp_register.rs): o estado é lido quando a página abre.
+    fn settings_mcp_elsewhere(&mut self, ui: &mut egui::Ui, k: &K) {
+        use crate::app::system::mcp_register::*;
+        // the page drawn the pass before: still open; a gap: it opened now
+        let (seen, pass) = (egui::Id::unique("settings_mcp_seen"), ui.ctx().cumulative_pass_nr());
+        let before = ui.ctx().data_mut(|d| std::mem::replace(d.get_temp_mut_or(seen, 0u64), pass));
+        if before == 0 || pass - before > 1 {
+            mcp_check(ui.ctx());
+        }
+        for said in mcp_said() {
+            self.toast(said);
+        }
+        title(ui, k, "MCP EM OUTROS AGENTES");
+        note(ui, k, "Registra o MCP do MagoAgent no Claude Code ou no Codex de fora do app, para as sessões de lá também usarem o canvas.");
+        ui.add_space(3.25);
+        for (agent, name) in MCP_AGENTS {
+            let state = match mcp_status(agent) {
+                _ if mcp_busy(agent) => "Verificando…".to_string(),
+                McpStatus::Checking => "Verificando…".into(),
+                McpStatus::Registered => "Registrado".into(),
+                McpStatus::NotRegistered => "Não registrado".into(),
+                McpStatus::Missing => format!("{name} não encontrado"),
+            };
+            row(ui, k, name, &state, |ui| {
+                if button(ui, k, &format!("Registrar no {name}")).clicked() {
+                    mcp_register_soon(agent, ui.ctx());
+                }
+            });
         }
     }
 

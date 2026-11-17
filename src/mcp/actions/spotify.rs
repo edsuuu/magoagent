@@ -86,10 +86,15 @@ fn flag(text: &str) -> Option<bool> {
 }
 
 impl DrawingApp {
-    /// An action of `integrations` whose answer waits for the network: its work, to run on a thread (None: it answers at
-    /// once, by `act`). An Err is the answer itself (no account, no query).
+    /// An action of `integrations` whose answer waits for the network, or the setting `register_mcp`: its work, to run on
+    /// a thread (None: it answers at once, by `act`). An Err is the answer itself (no account, no query).
     pub(crate) fn act_later(&mut self, action: &str, args: &Value) -> Option<Job> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_lowercase();
+        // the agent's CLI takes seconds (system/mcp_register.rs)
+        if action == "set_setting" && text("name") == "register_mcp" {
+            let agent = text("value");
+            return Some(Box::new(move || crate::app::system::mcp_register::mcp_register(&agent)));
+        }
         let soloist_elsewhere = text("integration") == "soloist" && cfg!(any(windows, target_os = "macos"));
         if action != "integrations" || !matches!(text("integration").as_str(), "spotify" | "soloist") || soloist_elsewhere {
             return None;

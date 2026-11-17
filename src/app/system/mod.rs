@@ -3,6 +3,7 @@
 pub(crate) mod deb_update;
 pub(crate) mod download;
 pub(crate) mod files;
+pub(crate) mod mcp_register;
 pub(crate) mod memory;
 pub(crate) mod run_at_login;
 pub(crate) mod script;
