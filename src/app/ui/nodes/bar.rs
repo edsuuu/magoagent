@@ -28,7 +28,7 @@ impl DrawingApp {
         // the glass goes under the row at last frame's size, as the area's own anchoring does
         let dark = self.dark();
         // centered over the canvas, as the toolbar is: the sidebar takes its left
-        let middle = self.sidebar_width() / 2.0;
+        let middle = self.toolbar_middle(ctx);
         let bar_id = context_bar_id(&element);
         let area = egui::Area::new(bar_id).anchor(egui::Align2::CENTER_TOP, (middle, top)).show(ctx, |ui| {
             let size_id = bar_id.with("size");
