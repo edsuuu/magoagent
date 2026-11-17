@@ -279,15 +279,7 @@ mod tests {
     use crate::app::workspaces::read_spaces;
 
     fn app_in(name: &str) -> (DrawingApp, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("mago-grupos-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        // today's drawing already there: with none, it is a first run and there is no space yet
-        fs::write(dir.join("autosave.mago"), r#"{"version":1,"elements":[]}"#).unwrap();
-        let mut app = DrawingApp { autosave: Some(dir.join("autosave.mago")), ..Default::default() };
-        app.load_spaces();
-        app.load_autosave();
-        (app, dir)
+        crate::app::tests::app_in_folder(&format!("grupos-{name}"))
     }
 
     fn names(app: &DrawingApp, group: &str) -> Vec<String> {
