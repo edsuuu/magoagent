@@ -16,7 +16,7 @@ pub(super) fn pulse() -> Option<&'static Pulse> {
     PULSE
         .get_or_init(|| {
             let path = std::env::var_os("MAGOAGENT_SCENE").and_then(|_| std::env::var_os("MAGOAGENT_FAKE_GITHUB"))?;
-            let root: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+            let root: Value = read_json(std::path::Path::new(&path))?;
             Pulse::parse(&root)
         })
         .as_ref()

@@ -96,7 +96,7 @@ fn codex_cache() -> &'static Vec<(Choice, Vec<String>)> {
     static CACHE: OnceLock<Vec<(Choice, Vec<String>)>> = OnceLock::new();
     CACHE.get_or_init(|| {
         let path = std::env::home_dir().map(|h| h.join(".codex").join("models_cache.json"));
-        let json: Value = path.and_then(|p| fs::read_to_string(p).ok()).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let json: Value = path.and_then(|p| read_json(&p)).unwrap_or_default();
         let mut models: Vec<&Value> = json["models"].as_array().map(|a| a.iter().filter(|m| m["visibility"] == "list").collect()).unwrap_or_default();
         models.sort_by_key(|m| m["priority"].as_i64().unwrap_or(99));
         models
@@ -171,8 +171,7 @@ pub(crate) fn agent_mode(agent: &str) -> Option<usize> {
     if agent == "codex" {
         codex_mode(&fs::read_to_string(home.join(".codex").join("config.toml")).unwrap_or_default())
     } else {
-        let settings: Value =
-            fs::read_to_string(home.join(".claude").join("settings.json")).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let settings: Value = read_json(&home.join(".claude").join("settings.json")).unwrap_or_default();
         claude_mode(&settings)
     }
 }
@@ -181,8 +180,7 @@ pub(crate) fn agent_default(agent: &str) -> (String, String) {
     static FOUND: OnceLock<[(String, String); 2]> = OnceLock::new();
     let found = FOUND.get_or_init(|| {
         let home = std::env::home_dir().unwrap_or_default();
-        let settings: Value =
-            fs::read_to_string(home.join(".claude").join("settings.json")).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let settings: Value = read_json(&home.join(".claude").join("settings.json")).unwrap_or_default();
         let claude_model = claude_alias(settings["model"].as_str().unwrap_or_default());
         let claude_effort =
             settings["modelSettings"][&claude_model]["effortLevel"].as_str().or(settings["effortLevel"].as_str()).unwrap_or_default().to_string();

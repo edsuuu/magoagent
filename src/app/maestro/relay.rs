@@ -171,7 +171,7 @@ pub(crate) fn send(endpoint: (String, String), mut payload: Value, may_wait: boo
 
 /// The app's address and token, from the fixed `bridge.json` it keeps for the hooks.
 pub(crate) fn endpoint_from(path: &std::path::Path) -> Option<(String, String)> {
-    let saved: Value = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
+    let saved: Value = read_json(path)?;
     Some((saved["address"].as_str()?.to_string(), saved["token"].as_str()?.to_string()))
 }
 

@@ -90,7 +90,7 @@ impl DrawingApp {
     /// When the app opens after an update: how it ended, once; and the leftovers of the update's work folder go.
     pub(crate) fn show_update_result(&mut self) {
         let Some(path) = updater::result_path().filter(|path| path.is_file()) else { return };
-        let answer = fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok());
+        let answer = read_json::<Value>(&path);
         let _ = fs::remove_file(&path);
         if let Some(message) = answer.and_then(|answer| updater::result_message(&answer, env!("CARGO_PKG_VERSION"))) {
             self.toast(message);
