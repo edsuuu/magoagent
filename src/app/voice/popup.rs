@@ -355,6 +355,9 @@ pub(crate) mod plain {
         fn ShowWindow(hwnd: isize, command: i32) -> i32;
         fn BringWindowToTop(hwnd: isize) -> i32;
         fn SetForegroundWindow(hwnd: isize) -> i32;
+        fn GetForegroundWindow() -> isize;
+        fn GetCurrentThreadId() -> u32;
+        fn AttachThreadInput(attach: u32, to: u32, on: i32) -> i32;
     }
 
     /// This app's window called `title` shown (from the tray or the taskbar too) and in front, with the keyboard. Not
@@ -373,7 +376,17 @@ pub(crate) mod plain {
                 ShowWindow(hwnd, SW_SHOW);
             }
             BringWindowToTop(hwnd);
-            SetForegroundWindow(hwnd);
+            // asked with no click on the app (the voice, the MCP): the system refuses; for a moment the window in front
+            // shares its input with this thread, and then it lets go
+            if SetForegroundWindow(hwnd) == 0 && GetForegroundWindow() != hwnd {
+                let front = GetWindowThreadProcessId(GetForegroundWindow(), std::ptr::null_mut());
+                let ours = GetCurrentThreadId();
+                if front != 0 && front != ours && AttachThreadInput(ours, front, 1) != 0 {
+                    BringWindowToTop(hwnd);
+                    SetForegroundWindow(hwnd);
+                    AttachThreadInput(ours, front, 0);
+                }
+            }
         }
         true
     }
