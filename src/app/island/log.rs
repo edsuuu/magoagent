@@ -1,18 +1,15 @@
 //! The island's conversation log, the app's chat and a session outside alike: the person's words in bubbles at the
-//! right with the pictures they pasted, the answers as the light Markdown the agents write (headings, lists, quotes,
-//! code, **bold**, `code`), and the dots of an agent at work. It sticks to the bottom as it grows.
+//! right with the pictures they pasted, the answers drawn as the chat on the canvas draws them (`agent_words_in`: code
+//! cards with Copiar, pictures, files, tables), and the dots of an agent at work. It sticks to the bottom as it grows.
 
-use super::paint::{INK, font, semi};
+use super::paint::{INK, font};
 use crate::app::chat::image_key;
 use crate::app::chat::images::thumb;
 use crate::prelude::*;
-use crate::render::markdown::{Line, Mark, Span, inline, lines};
 use crate::transcript::ChatItem;
 use egui::text::{LayoutJob, TextFormat};
 
 pub(super) const REPLY: Color32 = Color32::from_rgb(0xb0, 0xb5, 0xbe);
-const QUOTE: Color32 = Color32::from_rgb(0x8b, 0x90, 0x99);
-const LINK: Color32 = Color32::from_rgb(0x7d, 0xd3, 0xfc);
 /// The type, the room between two messages and between the lines of one.
 const SIZE: f32 = 12.5;
 const MESSAGE_GAP: f32 = 14.0;
@@ -36,10 +33,13 @@ impl DrawingApp {
                 let width = ui.available_width();
                 ui.set_width(width);
                 ui.spacing_mut().item_spacing.y = MESSAGE_GAP;
+                // the answers as the chat on the canvas draws them (code cards with Copiar, pictures, files), always dark
+                ui.visuals_mut().dark_mode = true;
+                let colors = UiColors::new(true);
                 for item in items {
                     match item {
                         ChatItem::User(text) => bubble(ui, text, width),
-                        ChatItem::Agent(text) => reply(ui, text, width),
+                        ChatItem::Agent(text) => self.agent_words_in(ui, text, width - 8.0, &colors, false),
                         ChatItem::Image { data, .. } if self.island_picture(ui, data, width) => clicked = Some(data.clone()),
                         _ => {}
                     }
@@ -136,135 +136,6 @@ fn unmarked(text: &str) -> String {
     out.trim().to_string()
 }
 
-/// One block of an answer, as `reply` lays them out.
-#[derive(Debug, PartialEq)]
-enum Block<'a> {
-    Words(Line<'a>),
-    /// The lines between two fences, together.
-    Code(Vec<&'a str>),
-    /// Blank lines between two blocks: a little more room.
-    Gap,
-}
-
-/// The answer's lines as blocks: a fence's lines in one card, a run of blank lines one gap (none at the edges).
-fn blocks(text: &str) -> Vec<Block<'_>> {
-    let mut out: Vec<Block> = Vec::new();
-    for line in lines(text) {
-        match (line, out.last_mut()) {
-            (Line::Code(code), Some(Block::Code(run))) => run.push(code),
-            (Line::Code(code), _) => out.push(Block::Code(vec![code])),
-            (Line::Blank, None | Some(Block::Gap)) => {}
-            (Line::Blank, _) => out.push(Block::Gap),
-            (line, _) => out.push(Block::Words(line)),
-        }
-    }
-    if matches!(out.last(), Some(Block::Gap)) {
-        out.pop();
-    }
-    out
-}
-
-/// An answer: `.reply`, #b0b5be, 8 from the right, its Markdown drawn.
-fn reply(ui: &mut egui::Ui, text: &str, width: f32) {
-    let width = width - 8.0;
-    ui.scope(|ui| {
-        ui.spacing_mut().item_spacing.y = 4.0;
-        for block in blocks(text) {
-            match block {
-                Block::Gap => ui.add_space(2.0),
-                Block::Code(code) => {
-                    let format = TextFormat { font_id: FontId::monospace(SIZE - 1.5), color: INK, line_height: Some(LINE_HEIGHT - 2.0), ..Default::default() };
-                    let mut job = LayoutJob::single_section(code.join("\n"), format);
-                    job.wrap.max_width = width - 20.0;
-                    let galley = ui.painter().layout_job(job.clone());
-                    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, galley.size().y + 14.0), Sense::hover());
-                    ui.painter().rect_filled(rect, 8, Color32::from_white_alpha(12));
-                    selectable(ui, rect.min + Vec2::new(10.0, 7.0), job);
-                }
-                Block::Words(Line::Rule) => {
-                    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 9.0), Sense::hover());
-                    ui.painter().hline(rect.x_range(), rect.center().y, Stroke::new(1.0, Color32::from_white_alpha(28)));
-                }
-                Block::Words(Line::Heading(level, words)) => {
-                    let size = SIZE + [3.0, 2.0, 1.0].get(level - 1).copied().unwrap_or(0.0);
-                    paragraph(ui, &inline(words, true), size, INK, 0.0, width);
-                }
-                Block::Words(Line::Quote(words)) => {
-                    let rect = paragraph(ui, &inline(words, false), SIZE, QUOTE, 12.0, width);
-                    ui.painter().vline(rect.left() + 2.0, rect.y_range(), Stroke::new(2.0, Color32::from_white_alpha(40)));
-                }
-                Block::Words(Line::Item { depth, mark, text }) => {
-                    let indent = 4.0 + depth as f32 * 14.0;
-                    let rect = paragraph(ui, &inline(text, false), SIZE, REPLY, indent + 16.0, width);
-                    let middle = Pos2::new(rect.left() + indent + 4.0, rect.top() + LINE_HEIGHT / 2.0);
-                    let painter = ui.painter();
-                    match mark {
-                        Mark::Bullet => {
-                            painter.circle_filled(middle, 2.0, REPLY);
-                        }
-                        Mark::Number(number) => {
-                            painter.text(Pos2::new(rect.left() + indent, middle.y), egui::Align2::LEFT_CENTER, number, font(SIZE), REPLY);
-                        }
-                        Mark::Task(done) => {
-                            let square = Rect::from_center_size(middle + Vec2::new(1.0, 0.0), Vec2::splat(10.0));
-                            painter.rect_stroke(square, 3, Stroke::new(1.0, REPLY), StrokeKind::Inside);
-                            if done {
-                                let points = [
-                                    square.left_center() + Vec2::new(2.0, 0.0),
-                                    square.center_bottom() - Vec2::new(0.0, 2.5),
-                                    square.right_top() + Vec2::new(-2.0, 2.0),
-                                ];
-                                painter.line(points.to_vec(), Stroke::new(1.4, INK));
-                            }
-                        }
-                    }
-                }
-                Block::Words(Line::Para(words)) => {
-                    paragraph(ui, &inline(words, false), SIZE, REPLY, 0.0, width);
-                }
-                Block::Words(Line::Blank | Line::Code(_)) => {}
-            }
-        }
-    });
-}
-
-/// A run of styled words `indent` in from the left, wrapped at `width`, selectable; its whole row.
-fn paragraph(ui: &mut egui::Ui, spans: &[Span], size: f32, color: Color32, indent: f32, width: f32) -> Rect {
-    let mut job = LayoutJob::default();
-    job.wrap.max_width = width - indent;
-    for span in spans {
-        let font_id = if span.code {
-            FontId::monospace(size - 1.5)
-        } else if span.bold {
-            semi(size)
-        } else {
-            font(size)
-        };
-        let ink = if span.link {
-            LINK
-        } else if span.bold || span.code {
-            INK
-        } else {
-            color
-        };
-        let format = TextFormat {
-            font_id,
-            color: ink,
-            italics: span.italic,
-            line_height: Some(LINE_HEIGHT * size / SIZE),
-            background: if span.code { Color32::from_white_alpha(18) } else { Color32::TRANSPARENT },
-            strikethrough: if span.strike { Stroke::new(1.0, ink) } else { Stroke::NONE },
-            underline: if span.link { Stroke::new(1.0, LINK.gamma_multiply(0.5)) } else { Stroke::NONE },
-            ..Default::default()
-        };
-        job.append(&span.text, 0.0, format);
-    }
-    let galley = ui.painter().layout_job(job.clone());
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, galley.size().y), Sense::hover());
-    selectable(ui, rect.min + Vec2::new(indent, 0.0), job);
-    rect
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,22 +156,27 @@ mod tests {
     }
 
     #[test]
-    fn an_answer_is_drawn_in_blocks_with_its_code_in_one_card() {
-        let text = "Rode:\n\n```\n! sudo apt install ./mago.deb\nmagoagent\n```\n\n- **Tema**: claro\n\n\n> nota\n";
-        assert_eq!(
-            blocks(text),
-            [
-                Block::Words(Line::Para("Rode:")),
-                Block::Gap,
-                Block::Code(vec!["! sudo apt install ./mago.deb", "magoagent"]),
-                Block::Gap,
-                Block::Words(Line::Item { depth: 0, mark: Mark::Bullet, text: "**Tema**: claro" }),
-                Block::Gap,
-                Block::Words(Line::Quote("nota")),
-            ]
-        );
-        let spans = inline("**Tema**: claro", false);
-        assert!(spans[0].bold && spans[0].text == "Tema" && !spans[1].bold);
+    fn an_answer_in_the_island_is_drawn_as_the_chat_on_the_canvas() {
+        let (ctx, app) = (Context::default(), DrawingApp::default());
+        let path = std::env::temp_dir().join(format!("mago-island-log-{}.png", std::process::id()));
+        let answer = ChatItem::Agent(format!("Abra e digite `wsl -d`:\n\n```bash\nwsl -d Ubuntu\n```\n\n![Print das duas telas]({})", path.display()));
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 900.0))), ..Default::default() };
+        let output = ctx.run_ui(raw, |ui| {
+            app.island_log(ui, Rect::from_min_size(Pos2::ZERO, Vec2::new(500.0, 880.0)), &[&answer], false, 0.0);
+        });
+        let texts: Vec<String> = output
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(text) => Some(text.galley.job.text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(texts.iter().any(|text| text == "Copiar"), "the code card and its Copiar: {texts:?}");
+        assert!(texts.iter().any(|text| text.contains("digite wsl -d")), "the inline code keeps its space: {texts:?}");
+        assert!(!texts.iter().any(|text| text.contains("Print das duas telas")), "the picture is not its words: {texts:?}");
+        // the picture went to the chat's own picture (no file there: its card)
+        assert!(texts.iter().any(|text| text == "Arquivo não encontrado"), "{texts:?}");
     }
 
     #[test]

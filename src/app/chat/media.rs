@@ -22,7 +22,13 @@ const PICTURE_MAX: Vec2 = Vec2::new(420.0, 320.0);
 impl DrawingApp {
     /// The agent's words: markdown in bubbles, with its pictures and files drawn in between.
     pub(crate) fn agent_words(&self, ui: &mut egui::Ui, text: &str, width: f32, c: &UiColors) {
-        prose_with(ui, text, c, self.dark(), width, true, &mut |ui, seg| match seg {
+        self.agent_words_in(ui, text, width, c, true);
+    }
+
+    /// `agent_words` in the look of `ui` (the island's is always dark), each paragraph in a bubble when `bubbles`.
+    pub(crate) fn agent_words_in(&self, ui: &mut egui::Ui, text: &str, width: f32, c: &UiColors, bubbles: bool) {
+        let dark = ui.visuals().dark_mode;
+        prose_with(ui, text, c, dark, width, bubbles, &mut |ui, seg| match seg {
             Seg::Image { src, .. } => self.chat_picture(ui, src, c),
             Seg::File { label, path, linked } => {
                 let path = resolve(path, self.chat_folder().as_deref());
@@ -30,7 +36,7 @@ impl DrawingApp {
                 if *linked || path.exists() {
                     self.chat_file_card(ui, &path, label, c);
                 } else {
-                    ui.label(egui::RichText::new(label).monospace().size(13.0).color(Look::new(self.dark(), c).soft));
+                    ui.label(egui::RichText::new(label).monospace().size(13.0).color(Look::new(ui.visuals().dark_mode, c).soft));
                 }
             }
             _ => {}
@@ -46,7 +52,7 @@ impl DrawingApp {
     /// A picture from an address or a path: its image, up to `PICTURE_MAX`; a card when it can't be
     /// shown (an address on the web, a file that isn't there or isn't a picture).
     pub(crate) fn chat_picture(&self, ui: &mut egui::Ui, src: &str, c: &UiColors) {
-        let look = Look::new(self.dark(), c);
+        let look = Look::new(ui.visuals().dark_mode, c);
         if !is_local(src) && data_uri(src).is_none() {
             // ponytail: no network loader in the app, so a picture on the web is a link to it
             let host = src.split("://").nth(1).and_then(|r| r.split('/').next()).unwrap_or(src);
@@ -163,7 +169,8 @@ impl DrawingApp {
     /// The card itself: radius 16, a 4.5% wash with an 8% hairline, 10 pt around a 32 pt icon,
     /// the name (13, middle-cut keeping its end) over the detail (11); dimmed when `dim`.
     fn card(&self, ui: &mut egui::Ui, id: &str, name: &str, detail: &str, dim: bool, c: &UiColors) -> egui::Response {
-        let (dark, look) = (self.dark(), Look::new(self.dark(), c));
+        let dark = ui.visuals().dark_mode;
+        let look = Look::new(dark, c);
         let fade = if dim { 0.6 } else { 1.0 };
         let (ink_name, ink_detail) = (look.text.gamma_multiply(fade), look.muted.gamma_multiply(fade));
         let (name_font, detail_font) = (FontId::proportional(14.0), FontId::proportional(12.0));
