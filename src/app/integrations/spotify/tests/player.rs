@@ -268,9 +268,16 @@ fn soloists_queue_is_read_from_its_json_and_from_its_text() {
 #[test]
 fn the_bars_take_the_covers_liveliest_colour() {
     let cover = |pixels: &[[u8; 4]]| pixels.iter().flatten().copied().collect::<Vec<u8>>();
-    // mostly dark grey with a red patch: the red wins, lifted
+    // mostly dark grey with a red patch: the red wins, as it is (asked: "traz cores que nem estão na capa")
     let red = super::super::accent(&cover(&[[30, 30, 30, 255], [30, 30, 30, 255], [30, 30, 30, 255], [150, 20, 20, 255]]));
-    assert!(red.r() > 200 && red.g() < 80 && red.b() < 80, "{red:?}");
+    assert_eq!(red, Color32::from_rgb(150, 20, 20));
+    // a dark colour is lifted to be seen on black, its mix kept
+    let dark = super::super::accent(&cover(&[[70, 10, 35, 255]]));
+    assert_eq!(dark, Color32::from_rgb(140, 20, 70));
+    // the colour most of the cover has, not the most vivid speck: a big brown and a pixel of pure green
+    let mut brown = vec![[120, 70, 40, 255]; 40];
+    brown.push([0, 255, 0, 255]);
+    assert_eq!(super::super::accent(&cover(&brown)), Color32::from_rgb(140, 81, 46));
     let grey = super::super::accent(&cover(&[[90, 90, 90, 255], [120, 120, 120, 255]]));
     assert_eq!(grey, Color32::from_gray(0xa8), "a grey cover: grey dots, as the Dynamic Island's");
 }
@@ -283,8 +290,8 @@ fn the_bars_take_two_colours_of_the_cover() {
     // mostly red, with a blue patch: the two colours of the bars
     let two = cover(&[[200, 20, 20, 255], [200, 20, 20, 255], [200, 20, 20, 255], [20, 20, 200, 255]]);
     let (red, blue) = super::super::accents(&two);
-    assert!(red.r() > 200 && red.g() < 80 && red.b() < 80, "the liveliest first: {red:?}");
-    assert!(blue.b() > 200 && blue.r() < 80 && blue.g() < 80, "another colour after it: {blue:?}");
+    assert_eq!(red, Color32::from_rgb(200, 20, 20), "the one most of the cover has first, as it is");
+    assert_eq!(blue, Color32::from_rgb(20, 20, 200), "another colour of it after");
     assert_eq!(super::super::accent(&two), red, "the first one is what Luna takes");
     // one colour only: a lighter tone of it
     let (red, light) = super::super::accents(&cover(&[[200, 20, 20, 255], [150, 30, 30, 255]]));
