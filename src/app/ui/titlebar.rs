@@ -58,6 +58,23 @@ impl DrawingApp {
         if round(ui, second, "top_chat", Icon::Composer, chat, if chat { "Voltar ao canvas" } else { "Abrir o chat" }) {
             self.chat_open = !chat;
         }
+        // how many wait on the person, in an amber badge; over the chat, the title says what runs
+        let (running, waiting) = self.chats_counts();
+        if waiting > 0 {
+            let badge = second.right_top() + Vec2::new(-3.0, 4.0);
+            let count = p.layout_no_wrap(waiting.min(99).to_string(), FontId::proportional(10.0), Color32::from_rgb(0x1d, 0x1d, 0x1f));
+            let pill = Rect::from_center_size(badge, Vec2::new((count.size().x + 8.0).max(16.0), 16.0));
+            p.rect(pill, 8, crate::app::chat::list::AMBER, Stroke::new(1.5, if dark { Color32::from_gray(0x1a) } else { Color32::WHITE }), StrokeKind::Outside);
+            p.galley(pill.center() - count.size() / 2.0, count, Color32::from_rgb(0x1d, 0x1d, 0x1f));
+        }
+        if chat {
+            let at = Pos2::new(second.right() + TOP_GAP + 6.0, TOP_ROW_Y);
+            let title = crate::app::chat::list::bold(&p, at - Vec2::new(0.0, 9.0), "Chats", 14.0, ink);
+            let rest = format!(" · {running} rodando · {waiting} esperando");
+            p.text(Pos2::new(title.right(), TOP_ROW_Y), egui::Align2::LEFT_CENTER, rest, FontId::proportional(14.0), ink.gamma_multiply(0.6));
+            // the words, not a button: the bar under them still moves the window
+            return second.right();
+        }
         let space = self.spaces.list.iter().find(|w| w.id == self.spaces.current).filter(|_| folded && !chat);
         let Some(space) = space else { return second.right() };
         // up to the toolbar, which shares the row

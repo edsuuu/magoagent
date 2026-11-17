@@ -1,6 +1,6 @@
 //! The chat screen (⌘1, back to the canvas with ⌘2): the conversation of the agent running in a
-//! terminal, read from Claude Code's own files, the agents beside it and the header over it
-//! (chat/list.rs, chat/header.rs), and the box to write to it (chat/composer.rs). Over the box, what the agent runs now or, when it
+//! terminal, read from Claude Code's own files, everything running beside it and the header over it
+//! (chat/list/, chat/header.rs), and the box to write to it (chat/composer.rs). Over the box, what the agent runs now or, when it
 //! waits on its terminal, that terminal's last lines (chat/steps.rs).
 
 pub(crate) mod ask;
@@ -139,16 +139,15 @@ impl DrawingApp {
         let (mut voice_click, mut mute_click, mut speakers_click, mut launch_click) = (false, false, false, None);
         // the box grows a line at a time up to this; the conversation gives it the room
         let cap = 200f32.min(area.height() * 0.35);
-        // the chats, and under Terminais the terminal whose conversation is open
-        let mut listed = self.chat_rows();
-        listed.extend(chosen.filter(|r| !self.is_chat(&r.id)).cloned());
-        let mut filter = std::mem::take(&mut self.chat_listing.filter);
+        // everything running in every space, and the agent whose conversation is open (list/running.rs)
+        let listed = self.running_entries();
+        let (mut filter, mut show) = (std::mem::take(&mut self.chat_listing.filter), self.chat_listing.show);
         egui::Area::new(egui::Id::unique("chat_screen")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_min_size(area.size());
             // the bar's strip too: the chat and the bar are one piece
             ui.painter().rect_filled(area.with_min_y(0.0), 0, look.bg);
             if full && !narrow {
-                self.chat_list(ui, side, &listed, &look, time, &mut act, &mut filter);
+                self.chat_list(ui, side, &listed, &look, time, &mut act, &mut filter, &mut show);
             } else {
                 self.chat_column(ui, side, &self.chat_rows(), &look, time, &mut act);
             }
@@ -258,7 +257,7 @@ impl DrawingApp {
         if full && narrow {
             let over = Rect::from_min_size(side.min, Vec2::new(LIST, side.height()));
             egui::Area::new(egui::Id::unique("chat_list_over")).fixed_pos(over.min).order(egui::Order::Foreground).show(ctx, |ui| {
-                self.chat_list(ui, over, &listed, &look, time, &mut act, &mut filter);
+                self.chat_list(ui, over, &listed, &look, time, &mut act, &mut filter, &mut show);
             });
             // picking one closes it
             if act.pick.is_some() {
@@ -288,7 +287,7 @@ impl DrawingApp {
         }
         self.chat_draft = draft;
         self.chat_search = search;
-        self.chat_listing.filter = filter;
+        (self.chat_listing.filter, self.chat_listing.show) = (filter, show);
         // Abrir em miniatura: the chat closes and its panel opens over the canvas
         if act.mini {
             self.chat_open = false;
@@ -348,6 +347,13 @@ impl DrawingApp {
         }
         if let Some(id) = act.pick {
             self.open_agent(&id);
+        }
+        if let Some((id, answer)) = act.answer.take() {
+            self.answer_row(&id, answer);
+        }
+        // a session outside the app: its conversation is the island's
+        if let Some(id) = act.outside.take() {
+            self.island_show(&id, time);
         }
         // the same way a dropped file goes in (`handle_canvas`)
         if let Some(act) = footer_act {

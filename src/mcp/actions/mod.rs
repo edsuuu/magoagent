@@ -25,7 +25,7 @@ impl DrawingApp {
     /// app's window comes to the front with it.
     pub(crate) fn act(&mut self, action: &str, args: &Value) -> Result<String, String> {
         let result = self.act_on(action, args);
-        if result.is_ok() && matches!(action, "ide_folder" | "open_path" | "chat_new" | "chat_open" | "chat_node") {
+        if result.is_ok() && matches!(action, "ide_folder" | "open_path" | "chat_new" | "chat_open" | "chat_node" | "chats_view") {
             self.bring_to_front();
         }
         result
@@ -86,6 +86,7 @@ impl DrawingApp {
             "chat_decide" => self.act_chat_decide(args),
             "disconnect" => self.act_disconnect(&text("a"), &text("b")),
             "chat_list" => Ok(self.act_chat_list()),
+            "chats_view" => self.act_chats_view(&text("state"), &text("filter"), args["query"].as_str()),
             "chat_new" => self.act_chat_new(&text("agent"), &text("folder")),
             "chat_provider" => {
                 let id = if text("chat").is_empty() { self.chat_agent.clone().ok_or("nenhum chat aberto")? } else { self.chat_named(&text("chat"))? };

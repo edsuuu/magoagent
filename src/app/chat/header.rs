@@ -1,7 +1,7 @@
 //! The bar over the conversation: the agent's mark in a rounded square (Claude's asterisk, still or
 //! turning while it works), its name and the chat's whole folder, its state and model; at the right
 //! the plan's 5-hour window, the context ring that opens the Contexto panel, the search, the live
-//! terminal and Abrir em miniatura.
+//! terminal, Ver no canvas and Abrir em miniatura.
 
 use crate::app::chat::list::{AMBER, CHAT_SEARCH, CROSS, ListAction, Look, PROMPT, RED, clipped, elapsed, glyph};
 use crate::app::chat::thinking::{CLAUDE, spinner};
@@ -135,6 +135,18 @@ impl DrawingApp {
         glyph(ui.painter(), rect.center(), 17.0, 2.0, ink, &[&[(3.0, 5.0), (21.0, 5.0), (21.0, 19.0), (3.0, 19.0), (3.0, 5.0)]]);
         ui.painter().rect_filled(Rect::from_min_max(rect.center() + Vec2::new(0.5, 0.5), rect.center() + Vec2::new(6.0, 4.5)), 1, ink);
         act.mini |= mini.clicked();
+        right = rect.left() - 6.0;
+        // Ver no canvas: the canvas, in the agent's space, on its card
+        let label = if narrow { "" } else { "Ver no canvas" };
+        let width = if narrow { 32.0 } else { 30.0 + ui.painter().layout_no_wrap(label.into(), font.clone(), look.soft).size().x + 12.0 };
+        let rect = button(right, width);
+        let r = bar_button(ui, rect, "chat_on_canvas", look, false, true).tip("Ver no canvas");
+        let ink = if r.hovered() { look.text } else { look.soft };
+        paint_icon(ui.painter(), Icon::Map, Pos2::new(if narrow { rect.center().x } else { rect.left() + 16.0 }, middle), ink);
+        ui.painter().text(Pos2::new(rect.left() + 30.0, middle), egui::Align2::LEFT_CENTER, label, font.clone(), ink);
+        if r.clicked() {
+            act.on_canvas = Some(row.id.clone());
+        }
         right = rect.left() - 6.0;
         if talks && !self.is_chat(&row.id) && !row.spec.chat {
             let label = if narrow { "" } else { "Terminal" };
@@ -290,10 +302,9 @@ impl DrawingApp {
             AgentState::Idle(_) => "Pronto".into(),
             _ => self.state_note(row).map_or(row.state.label().to_string(), |n| format!("{} · {n}", row.state.label())),
         };
-        let line = match &model {
-            Some(model) => format!("{words} · {model}"),
-            None => words,
-        };
+        // · model · space
+        let space = Some(self.row_space(row)).filter(|space| !space.is_empty()).map(|space| self.space_name(&space));
+        let line = [Some(words), model, space].into_iter().flatten().collect::<Vec<_>>().join(" · ");
         let line2 = middle + 10.0;
         let dot = Pos2::new(x + 3.0, line2);
         let color = state_color(&row.state, look);

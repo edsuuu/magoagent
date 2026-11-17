@@ -3,6 +3,7 @@ use super::*;
 mod arrows;
 mod chat;
 mod chat_node;
+mod chats_view;
 mod conflicts;
 mod dialogs;
 mod drops;

@@ -494,6 +494,16 @@ Mostra um chat à pessoa.
 |---|---|---|
 | `chat` (obrigatório) | string | o nome do chat (ou parte dele), como chat_list mostra; vazio: o chat aberto |
 
+### `chats_view`
+
+A área de Chats fora do canvas (o botão de chat da barra de título): tudo o que está rodando em todos os espaços (os chats do app, os terminais com Claude Code ou Codex e as sessões de fora do app), agrupado por espaço, com o estado (Trabalhando, Esperando, Pronto) e a última linha de cada um. `state` open (o padrão) abre a área e devolve a lista; close volta ao canvas. `filter` escolhe o chip: all (Todos), working (Trabalhando), waiting (Esperando) ou ready (Prontos); `query` busca nos nomes e nas últimas linhas (vazio limpa a busca).
+
+| Parâmetro | Tipo | O que é |
+|---|---|---|
+| `state` | string: `open`, `close` |  |
+| `filter` | string: `all`, `working`, `waiting`, `ready` |  |
+| `query` | string |  |
+
 ### `chat_send`
 
 Manda uma mensagem a um chat, como se a pessoa a escrevesse lá; o agente dele responde no chat.

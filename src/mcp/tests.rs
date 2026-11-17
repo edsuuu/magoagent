@@ -189,6 +189,7 @@ fn every_app_action_is_a_tool_once() {
         "canvas_drop",
         "chat_send",
         "mini_chat",
+        "chats_view",
         "chat_command",
         "voice_call",
         "portal_tab",

@@ -183,9 +183,10 @@ fn the_chat_opens_on_a_chat_and_keeps_an_agents_conversation_opened_from_its_ter
     app.chat_on(&zelador);
     let texts = chat_frame(&mut app, &ctx, size, vec![]);
     assert_eq!(app.chat_agent.as_ref(), Some(&zelador));
-    // the chats, and the terminal whose conversation is open under Terminais, at the end
-    let (chats, terminals) = (painted(&texts, "CONVERSAS").expect("the chats' group"), painted(&texts, "TERMINAIS").expect("its group"));
-    assert!(chats.top() < terminals.top() && painted(&texts, "Agentes").is_none(), "{texts:?}");
+    // the chats, and the terminal whose conversation is open, under their space (none here: no card on a canvas)
+    let group = painted(&texts, "SEM ESPAÇO").unwrap_or_else(|| panic!("{texts:?}"));
+    let rows: Vec<Rect> = texts.iter().filter(|(t, r)| t == "Zelador" && r.left() < crate::app::chat::list::LIST).map(|(_, r)| *r).collect();
+    assert!(rows.iter().any(|r| r.top() > group.top()) && painted(&texts, "Codex").is_some(), "{texts:?}");
 }
 
 #[test]
@@ -333,7 +334,9 @@ fn citar_puts_a_message_in_the_box_as_a_quote() {
     app.transcripts.insert(id, t);
     let size = Vec2::new(1200.0, 800.0);
     chat_frame(&mut app, &ctx, size, vec![]);
-    let at = painted(&chat_frame(&mut app, &ctx, size, vec![]), "tudo verde").expect("the message").center();
+    // the conversation's, not the list's last line
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    let at = texts.iter().find(|(t, r)| t == "tudo verde" && r.left() > crate::app::chat::list::LIST + 16.0).expect("the message").1.center();
     let right = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() };
     chat_frame(&mut app, &ctx, size, vec![egui::Event::PointerMoved(at), right(true)]);
     chat_frame(&mut app, &ctx, size, vec![right(false)]);
