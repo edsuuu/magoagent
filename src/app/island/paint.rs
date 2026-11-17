@@ -361,9 +361,10 @@ impl DrawingApp {
     fn island_small(&self, ui: &mut egui::Ui, rect: Rect, view: &View, compact: bool, time: f64, out: &mut Out) {
         let state = main_state(view.mood, view.celebrating);
         // while a song plays, its cover and the sound's bars fill the pill (asked: "como a Dynamic Island do iPhone")
-        let now = self.integrations.spotify.now.as_ref().filter(|now| now.playing);
+        // playing or paused, as the Dynamic Island keeps the song while it pauses (its bars then rest as dots)
+        let now = self.integrations.spotify.now.as_ref();
         // the bars hear the song whether or not Luna dances to it (`Dancer::groove` asks for the listening)
-        let groove = now.map(|now| self.integrations.spotify.dancer.groove(now.playing));
+        let groove = now.filter(|now| now.playing).map(|now| self.integrations.spotify.dancer.groove(now.playing));
         if !compact {
             let center = Pos2::new(rect.center().x, rect.center().y + 1.0);
             // while the music plays and no agent wants the person, she dances to it (asked: "a luna dançando")
@@ -407,7 +408,7 @@ impl DrawingApp {
     /// The song's cover and the sound's bars in the pill while it plays, spread with the wizard and the minis (`pill.rs`).
     fn island_playing(&self, ui: &egui::Ui, rect: Rect, now: &Now, compact: Option<Option<Rect>>, groove: Option<&Groove>, time: f64) {
         let cover = self.integrations.spotify.cover.as_ref().map(egui::TextureHandle::id);
-        super::pill::spotify(ui, rect, cover, self.integrations.spotify.tint, &now.track.title, compact, groove, time);
+        super::pill::spotify(ui, rect, cover, self.integrations.spotify.tint, &now.track.title, now.playing, compact, groove, time);
     }
 
     /// The open island: the header and the page under it.

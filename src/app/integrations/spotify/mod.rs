@@ -273,7 +273,7 @@ fn watch(asks: Receiver<Ask>, messages: Sender<Message>, ctx: Context, sources: 
 }
 
 /// The liveliest colour of a cover (its RGBA pixels), made bright enough for the black island: each pixel weighs by how
-/// vivid and how light it is; a grey cover gives a light grey, as the Dynamic Island's bars are for it.
+/// vivid and how light it is; a grey cover gives grey, as the Dynamic Island's dots are for it.
 pub(crate) fn accent(rgba: &[u8]) -> Color32 {
     let (mut sum, mut weight) = ([0.0f32; 3], 0.0f32);
     for pixel in rgba.as_chunks::<4>().0 {
@@ -290,7 +290,7 @@ pub(crate) fn accent(rgba: &[u8]) -> Color32 {
         weight += each;
     }
     if weight < 0.02 * (rgba.len() / 4).max(1) as f32 {
-        return Color32::from_gray(0xe8);
+        return Color32::from_gray(0xa8);
     }
     let mean = sum.map(|total| total / weight);
     let lift = 235.0 / mean.iter().copied().fold(1.0, f32::max);

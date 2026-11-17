@@ -34,8 +34,9 @@ const ONSET_DELAY: f64 = 2.0;
 const PULL: f64 = 0.3;
 /// The bass: what is under this, against the whole.
 const BASS_UNDER: f32 = 150.0;
-/// The bands the sound is cut in for the island's bars (Hz): the bass, the low mids, the mids, the presence, the treble.
-pub(crate) const BAND_EDGES: [f32; BANDS + 1] = [40.0, 120.0, 300.0, 800.0, 2000.0, 5000.0];
+/// The bands the sound is cut in for the island's ten bars (Hz), each about 1.6 times the one before, from the bass to the
+/// treble (asked: "colocar mais barrinhas, pois tem espaço").
+pub(crate) const BAND_EDGES: [f32; BANDS + 1] = [40.0, 65.0, 105.0, 170.0, 275.0, 445.0, 720.0, 1170.0, 1900.0, 3080.0, 5000.0];
 /// Each band against its own loudest of late, which comes down this many dB a second, over this range (wide, so only the
 /// loud parts reach the top: asked "a sensibilidade está muito alta"); a band rises in about `BAND_ATTACK` and falls in
 /// about `BAND_RELEASE`, smooth as the Dynamic Island's bars.
