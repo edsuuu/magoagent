@@ -431,3 +431,12 @@ fn the_songs_face_eases_in_over_the_states() {
     motion.advance(MagoState::Idle, time + 0.016, None);
     assert_eq!(motion.look.eye, Look::of(MagoState::Idle).eye, "the song over: the state's face again");
 }
+
+#[test]
+fn a_small_luna_has_bigger_eyes_up_to_a_minis() {
+    assert_eq!(draw::small_eyes(40.0), (1.0, 1.0));
+    assert_eq!(draw::small_eyes(26.0), (1.0, 1.0));
+    let (grow, spread) = draw::small_eyes(18.0);
+    assert!(grow > 1.4 && grow < 1.8 && spread > 1.1 && spread < 1.3, "{grow} {spread}");
+    assert_eq!(draw::small_eyes(10.0), (1.8, 1.3));
+}
