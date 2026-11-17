@@ -113,7 +113,7 @@ impl Geometry {
     }
 }
 
-/// One value on the same spring (core/anim.ts `Spring`): the island's wizard, its place and size between the modes.
+/// One value on the same spring: the island's wizard, its place and size between the modes.
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Spring {
     pub(crate) value: f32,

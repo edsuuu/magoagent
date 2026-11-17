@@ -1,4 +1,4 @@
-//! The island's icons, the reference's own (views/icons.ts, drawn by its `svg()` in a 24 grid): filled, or a line of
+//! The island's icons, drawn in a 24 grid: filled, or a line of
 //! the stroke it names. Rasterized by resvg as the editor's (`editor::icons`) and tinted with the ink.
 
 use crate::editor::icons::{Svg, paint_tint};

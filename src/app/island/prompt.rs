@@ -1,4 +1,4 @@
-//! The island's conversation as the reference's prompt view (views/chat.ts `buildPrompt`): one card with the indigo
+//! The island's conversation: one card with the indigo
 //! wash, the wizard at 52 at the left, and from 84 the log (the person's words in bubbles at the right, the answers
 //! plain), the model's pill and a one-line box. Its ⤢ opens the whole mini chat in the island instead.
 

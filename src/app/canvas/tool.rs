@@ -63,7 +63,7 @@ impl Tool {
         }
     }
 
-    /// Letter shortcut first, numeric second (HelpDialog.tsx).
+    /// Letter shortcut first, numeric second.
     pub(crate) fn keys(self) -> &'static [Key] {
         match self {
             Tool::Hand => &[Key::H],

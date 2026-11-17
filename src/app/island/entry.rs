@@ -58,7 +58,7 @@ pub(super) struct Pose {
     pub(super) card: f32,
 }
 
-/// The pose at `t` (greeting.ts `greetPose`).
+/// The pose at `t`.
 pub(super) fn pose(t: f32) -> Pose {
     let t = t.min(END + 10.0);
     let (cx, cy) = (CENTER.x, CENTER.y);

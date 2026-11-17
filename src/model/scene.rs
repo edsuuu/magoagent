@@ -77,7 +77,7 @@ pub(crate) struct Folders {
 /// nothing changes.
 pub(crate) const FRAME_RATES: [u16; 5] = [30, 60, 120, 144, 240];
 
-/// Main menu → Preferências (DefaultItems.tsx Preferences), remembered between launches.
+/// Main menu → Preferências, remembered between launches.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub(crate) struct Prefs {

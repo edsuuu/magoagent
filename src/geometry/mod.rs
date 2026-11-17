@@ -30,7 +30,7 @@ pub(crate) fn polygon_contains(poly: &[[f32; 2]], p: [f32; 2]) -> bool {
     inside
 }
 
-/// the reference app's adaptive corner radius (packages/common/src/constants.ts ROUNDNESS).
+/// the reference app's adaptive corner radius.
 pub(crate) fn corner_radius(size: f32) -> f32 {
     if size <= 128.0 { size * 0.25 } else { 32.0 }
 }

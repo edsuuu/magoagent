@@ -612,7 +612,7 @@ impl DrawingApp {
         }
     }
 
-    /// The island's settings, in the island as the reference's (views.ts `buildSettings`): the wizard at the left, then
+    /// The island's settings, in the island: the wizard at the left, then
     /// rows 10 apart (padding 14 16 14 84): [switch, Som, volume] with the island's colours at the right; [timer,
     /// Fechar sozinho · N s, 5s 10s 15s 30s]; [● Claude Code, ● API, Ajustes… at the right]. The type is a size above the
     /// reference's, which read too small here.
