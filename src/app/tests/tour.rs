@@ -97,7 +97,9 @@ fn the_hole_is_around_the_real_widgets_and_follows_them() {
         let widget = spot_rect(&ctx, spot).unwrap_or_else(|| panic!("{spot:?} was painted"));
         let hole = app.tour.as_ref().unwrap().hole.unwrap();
         assert_eq!(step_of(&app), Some(index));
-        assert!(hole.contains_rect(widget) && (hole.width() - widget.width() - 12.0).abs() < 0.5, "{spot:?}: {hole:?} around {widget:?}");
+        // 6 around it, kept inside the window (the sidebar runs along its edge)
+        let screen = Rect::from_min_size(Pos2::ZERO, SIZE);
+        assert_eq!(hole, widget.expand(6.0).intersect(screen), "{spot:?}");
     }
     // the toolbar centers over the canvas past the sidebar: folding the sidebar moves it, and the hole goes with it
     app.tour.as_mut().unwrap().go(1, time);

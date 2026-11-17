@@ -59,9 +59,9 @@ impl DrawingApp {
                 } else {
                     (format!("Nova versão {}", changelog.version), format!("Você usa a {}. Veja o que muda:", env!("CARGO_PKG_VERSION")))
                 };
-                text_line(ui, &title, kit::semibold(19.0), k.fg, width);
+                text_line(ui, &title, kit::semibold(18.0), k.fg, width);
                 ui.add_space(4.0);
-                text_line(ui, &line, FontId::proportional(13.0), k.muted_fg, width);
+                text_line(ui, &line, FontId::proportional(12.0), k.muted_fg, width);
                 ui.add_space(14.0);
                 ui.spacing_mut().scroll = crate::app::ui::scroll_style();
                 egui::ScrollArea::vertical().max_height((screen.height() * 0.5).max(120.0)).auto_shrink([false, true]).show(ui, |ui| {
@@ -70,7 +70,7 @@ impl DrawingApp {
                 });
                 ui.add_space(16.0);
                 if confirming {
-                    text_line(ui, CLOSES_AND_REOPENS, FontId::proportional(12.5), k.muted_fg, width);
+                    text_line(ui, CLOSES_AND_REOPENS, FontId::proportional(12.0), k.muted_fg, width);
                     ui.add_space(12.0);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -80,7 +80,7 @@ impl DrawingApp {
                         (false, false) => &[("Atualizar agora", ChangelogChoice::Now, true), ("Atualizar depois", ChangelogChoice::Later, false)],
                     };
                     for (label, what, primary) in buttons {
-                        let clicked = if *primary { primary_button(ui, &k, label) } else { kit::button(ui, &k, label) }.clicked();
+                        let clicked = card_button(ui, &k, label, *primary).clicked();
                         if clicked {
                             choice = Some(*what);
                         }
@@ -131,14 +131,19 @@ fn text_line(ui: &mut egui::Ui, text: &str, font: FontId, color: Color32, width:
     ui.painter().galley(rect.min, galley, color);
 }
 
-/// Like `kit::button`, in the accent.
-fn primary_button(ui: &mut egui::Ui, k: &K, text: &str) -> egui::Response {
-    let galley = ui.painter().layout_no_wrap(text.into(), kit::semibold(12.5), Color32::WHITE);
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(galley.size().x + 28.0, 30.0), Sense::click());
+/// The card's buttons, one size and one line: the accent's, or `kit::button`'s colours.
+fn card_button(ui: &mut egui::Ui, k: &K, text: &str, primary: bool) -> egui::Response {
+    let ink = if primary { Color32::WHITE } else { k.fg };
+    let galley = ui.painter().layout_no_wrap(text.into(), kit::semibold(13.0), ink);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(galley.size().x + 28.0, 32.0), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, text));
-    ui.painter().rect_filled(rect, 8, if response.hovered() { k.primary.gamma_multiply(0.85) } else { k.primary });
-    ui.painter().galley(rect.center() - galley.size() / 2.0, galley, Color32::WHITE);
+    let fill = if primary { k.primary } else { k.button };
+    ui.painter().rect_filled(rect, 8, if response.hovered() { fill.gamma_multiply(0.85) } else { fill });
+    if !primary {
+        ui.painter().rect_stroke(rect, 8, Stroke::new(1.0, k.button_line), StrokeKind::Inside);
+    }
+    ui.painter().galley(rect.center() - galley.size() / 2.0, galley, ink);
     response
 }
 
@@ -146,7 +151,7 @@ fn primary_button(ui: &mut egui::Ui, k: &K, text: &str) -> egui::Response {
 fn paint_notes(ui: &mut egui::Ui, k: &K, notes: &str) {
     let width = ui.available_width();
     if notes.trim().is_empty() {
-        return text_line(ui, "Essa release não traz notas.", FontId::proportional(13.5), k.muted_fg, width);
+        return text_line(ui, "Essa release não traz notas.", FontId::proportional(14.0), k.muted_fg, width);
     }
     for line in markdown::lines(notes) {
         let (indent, mark, spans, size, ink) = match line {
@@ -161,7 +166,7 @@ fn paint_notes(ui: &mut egui::Ui, k: &K, notes: &str) {
             }
             Line::Heading(level, text) => {
                 ui.add_space(6.0);
-                (0.0, String::new(), markdown::inline(text, true), if level <= 2 { 16.0 } else { 14.5 }, k.fg)
+                (0.0, String::new(), markdown::inline(text, true), if level <= 2 { 16.0 } else { 15.0 }, k.fg)
             }
             Line::Item { depth, mark, text } => {
                 let mark = match mark {
@@ -169,11 +174,11 @@ fn paint_notes(ui: &mut egui::Ui, k: &K, notes: &str) {
                     Mark::Number(number) => number,
                     Mark::Task(done) => if done { "☑" } else { "☐" }.to_string(),
                 };
-                (14.0 + depth as f32 * 14.0, mark, markdown::inline(text, false), 13.5, k.fg)
+                (14.0 + depth as f32 * 14.0, mark, markdown::inline(text, false), 14.0, k.fg)
             }
-            Line::Quote(text) => (14.0, "│".into(), markdown::inline(text, false), 13.5, k.muted_fg),
-            Line::Code(text) => (14.0, String::new(), vec![Span { text: text.into(), code: true, ..Default::default() }], 12.5, k.fg),
-            Line::Para(text) => (0.0, String::new(), markdown::inline(text, false), 13.5, k.fg),
+            Line::Quote(text) => (14.0, "│".into(), markdown::inline(text, false), 14.0, k.muted_fg),
+            Line::Code(text) => (14.0, String::new(), vec![Span { text: text.into(), code: true, ..Default::default() }], 13.0, k.fg),
+            Line::Para(text) => (0.0, String::new(), markdown::inline(text, false), 14.0, k.fg),
         };
         let galley = ui.painter().layout_job(notes_job(&spans, size, ink, width - indent));
         let (rect, _) = ui.allocate_exact_size(Vec2::new(width, galley.size().y + 3.0), Sense::hover());
