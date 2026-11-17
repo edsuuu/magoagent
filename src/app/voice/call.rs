@@ -85,7 +85,7 @@ impl DrawingApp {
             cwd,
             resume: chat.as_ref().filter(|c| c.agent == "codex").and_then(|c| c.session.clone()),
             instructions: chat.as_ref().map(|c| crate::app::chat::tools::system_prompt(&self.prefs, c)).unwrap_or_default(),
-            args: chat.as_ref().map(|c| crate::app::chat::tools::maestro_args("codex", &self.prefs, c)).unwrap_or_default(),
+            args: chat.as_ref().map(|c| crate::app::chat::tools::maestro_args("codex", &self.prefs, c, false)).unwrap_or_default(),
             full_access: chat.as_ref().is_some_and(|c| c.mode == 1),
             relay: self.voice.relay,
         };

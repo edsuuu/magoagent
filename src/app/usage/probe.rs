@@ -268,7 +268,8 @@ fn relative(seconds: i64) -> String {
 
 /// Reads one agent's plan on this thread: the CLI is asked, and killed at the end.
 fn read(agent: Agent) -> Result<Reading, String> {
-    let program = crate::editor::lsp::which(match agent {
+    // on Windows, maybe the one inside WSL (system/wsl.rs)
+    let program = agent_cli(match agent {
         Agent::Claude => "claude",
         Agent::Codex => "codex",
     })
@@ -305,9 +306,11 @@ fn read(agent: Agent) -> Result<Reading, String> {
 
 /// Starts `program`, sends it the `requests` (one JSON per line) and waits for the first line `answer`
 /// takes as its own, up to `READ_LIMIT`; the program is killed whatever comes.
-fn exchange(program: &std::path::Path, args: &[&str], requests: &[Value], answer: fn(&Value) -> Option<Result<Reading, String>>) -> Result<Reading, String> {
-    let mut child = crate::editor::command(program)
-        .args(args)
+fn exchange(program: &AgentCli, args: &[&str], requests: &[Value], answer: fn(&Value) -> Option<Result<Reading, String>>) -> Result<Reading, String> {
+    let mut command = program.command();
+    command.args(args);
+    let mut child = program
+        .finish(command)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())

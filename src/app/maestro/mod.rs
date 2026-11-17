@@ -96,7 +96,12 @@ impl DrawingApp {
             let spec = self.new_recruit_chat(&id, &name, &cwd, raw);
             terminal.chat = Some(spec);
         } else {
-            terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command, maestro: false, ..Default::default() });
+            let mut spec = TerminalSpec { name: name.clone(), cwd, command, maestro: false, ..Default::default() };
+            // its agent only in WSL (system/wsl.rs): the terminal opens in that distro
+            if let Some(distro) = spec.command.split_whitespace().next().and_then(agent_cli).as_ref().and_then(|cli| cli.wsl()) {
+                spec.look.shell = wsl_shell(&distro.name);
+            }
+            terminal.terminal = Some(spec);
         }
         self.scene.elements.push(terminal);
         // one Cmd+Z takes back the recruit and its rope together

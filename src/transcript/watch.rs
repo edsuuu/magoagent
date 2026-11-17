@@ -1,7 +1,7 @@
 //! Which Claude Code session each terminal runs, found off the interface's thread: a folder of
 //! files to read and, at times, the list of the system's processes, twice a second.
 
-use super::{Session, assign, parents, sessions};
+use super::{Session, all_sessions, assign, parents};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -10,6 +10,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 /// A terminal that may run Claude Code: its id, folder, start (ms since 1970) and its shell's pid.
 pub(crate) type Terminal = (String, String, i64, u32);
 
+/// The terminals, Claude Code's folder and, on Windows, the folder and distro of a Claude Code in WSL.
+type Input = (Vec<Terminal>, Option<PathBuf>, Option<(PathBuf, String)>);
+
 /// What was found: each terminal's id with the session it runs.
 pub(crate) type Found = Vec<(String, Session)>;
 
@@ -17,7 +20,7 @@ pub(crate) type Found = Vec<(String, Session)>;
 /// is a thread's, which goes away once nobody asks for a while.
 #[derive(Clone, Default)]
 pub(crate) struct SessionWatch {
-    input: Arc<Mutex<(Vec<Terminal>, Option<PathBuf>)>>,
+    input: Arc<Mutex<Input>>,
     found: Arc<Mutex<Option<Found>>>,
     running: Arc<AtomicBool>,
     asked: Arc<AtomicU64>,
@@ -28,9 +31,10 @@ fn now_secs() -> u64 {
 }
 
 impl SessionWatch {
-    /// The terminals to look at now and Claude Code's folder; starts the thread when it isn't there.
-    pub(crate) fn ask(&self, terminals: Vec<Terminal>, dir: Option<PathBuf>) {
-        *self.input.lock().unwrap_or_else(|e| e.into_inner()) = (terminals, dir);
+    /// The terminals to look at now and Claude Code's folders (here, and in WSL with its distro); starts the thread
+    /// when it isn't there.
+    pub(crate) fn ask(&self, terminals: Vec<Terminal>, dir: Option<PathBuf>, wsl: Option<(PathBuf, String)>) {
+        *self.input.lock().unwrap_or_else(|e| e.into_inner()) = (terminals, dir, wsl);
         self.asked.store(now_secs(), Ordering::Relaxed);
         if self.running.swap(true, Ordering::Relaxed) {
             return;
@@ -39,11 +43,8 @@ impl SessionWatch {
         std::thread::spawn(move || {
             // nobody asked for ten seconds (the app closed, no agent left): the thread ends, and the next ask starts another
             while now_secs().saturating_sub(asked.load(Ordering::Relaxed)) <= 10 {
-                let (terminals, dir) = input.lock().unwrap_or_else(|e| e.into_inner()).clone();
-                let result = match &dir {
-                    Some(dir) if !terminals.is_empty() => assign(&terminals, &sessions(&dir.join("sessions")), parents),
-                    _ => Vec::new(),
-                };
+                let (terminals, dir, wsl) = input.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let result = if terminals.is_empty() { Vec::new() } else { assign(&terminals, &all_sessions(dir.as_deref(), wsl.as_ref()), parents) };
                 *found.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
                 std::thread::sleep(Duration::from_millis(500));
             }
@@ -67,7 +68,7 @@ mod tests {
         std::fs::create_dir_all(dir.join("sessions")).unwrap();
         let watch = SessionWatch::default();
         assert_eq!(watch.take(), None, "nothing asked, nothing found");
-        watch.ask(vec![("t1".into(), dir.to_string_lossy().into_owned(), 0, 1)], Some(dir.clone()));
+        watch.ask(vec![("t1".into(), dir.to_string_lossy().into_owned(), 0, 1)], Some(dir.clone()), None);
         let mut found = None;
         for _ in 0..100 {
             found = watch.take();

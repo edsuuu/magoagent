@@ -36,15 +36,12 @@ pub(crate) fn claude_cli_models() -> Vec<Value> {
 /// `claude -p` in stream-json, asked to initialize: the `models` of its answer. It is stopped once it
 /// answered, or after 30 s.
 fn ask_claude() -> Option<Vec<Value>> {
-    let program = crate::editor::lsp::which("claude")?;
-    let mut child = crate::editor::command(program)
-        .args(["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--no-session-persistence"])
-        .current_dir(std::env::temp_dir())
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .ok()?;
+    let cli = agent_cli("claude")?;
+    let mut command = cli.command();
+    command.args(["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--no-session-persistence"]);
+    command.current_dir(std::env::temp_dir());
+    let mut child =
+        cli.finish(command).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn().ok()?;
     writeln!(child.stdin.as_mut()?, r#"{{"type":"control_request","request_id":"models","request":{{"subtype":"initialize"}}}}"#).ok()?;
     let out = child.stdout.take()?;
     let child = Arc::new(Mutex::new(child));

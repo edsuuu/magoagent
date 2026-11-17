@@ -10,6 +10,10 @@ impl DrawingApp {
         }
         // `magoagent list|ask|…` works in every terminal: this app's folder first on PATH
         env.extend(crate::app::chat::node::app_path());
+        // and in a WSL one (system/wsl.rs): the bridge's variables cross into the distro
+        if cfg!(windows) {
+            env.push(("WSLENV".into(), wslenv(std::env::var("WSLENV").ok().as_deref())));
+        }
         // the MCP in it draws in this drawing, its workspace's, even once another one is on screen
         // (absolute: the shell may change folder)
         if let Some(scene) = &self.autosave {
@@ -77,10 +81,13 @@ impl DrawingApp {
                 Some(Err(_)) => {}
                 None => {
                     let env = self.terminal_env(id, &spec.name);
-                    let command = with_hooks(spec.launch_command(crate::transcript::claude_dir().as_deref()), self.hook_settings().as_deref());
+                    // a WSL shell's claude runs the hooks by the exe's Linux path, and gets the paths as Linux sees them
+                    let wsl = is_wsl_shell(&shell);
+                    let command = with_hooks(spec.launch_command(crate::transcript::claude_dir().as_deref()), self.hook_settings(wsl).as_deref());
                     // the app's skills go to a terminal's claude too (skills.rs); never the real folder in a test
                     let skills = if cfg!(test) { None } else { crate::app::maestro::skills::skills_path() };
                     let command = crate::app::maestro::skills::with_skills(command, skills.as_deref());
+                    let command = if wsl { wsl_quoted_paths(&command) } else { command };
                     let session =
                         TerminalSession::spawn_shell(&shell, &spec.cwd, &command, grid, Some(ctx.clone()), env, None, self.prefs.terminal_history, look);
                     self.terminals.insert(id.clone(), session.map_err(|e| e.to_string()));

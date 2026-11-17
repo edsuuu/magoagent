@@ -37,7 +37,9 @@ pub(crate) const CHAT_NODE_MIN: Vec2 = Vec2::new(220.0, 110.0);
 pub(crate) fn app_path() -> Option<(String, String)> {
     let exe = std::env::current_exe().ok()?;
     let path = std::env::var_os("PATH").unwrap_or_default();
-    let dirs = exe.parent().map(PathBuf::from).into_iter().chain(std::env::split_paths(&path));
+    // then, on Windows, the folder of the `magoagent` WSL runs (system/wsl.rs): nothing to PowerShell or cmd
+    let shim = shim_dir().filter(|dir| cfg!(windows) && dir.join("magoagent").is_file());
+    let dirs = exe.parent().map(PathBuf::from).into_iter().chain(shim).chain(std::env::split_paths(&path));
     Some(("PATH".into(), std::env::join_paths(dirs).ok()?.to_string_lossy().into()))
 }
 

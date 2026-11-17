@@ -419,12 +419,14 @@ impl DrawingApp {
 
     /// Ajustes › Chat › Hooks nos agentes do app: the settings file with the app's hooks, beside
     /// the drawing, written fresh (the app may have moved); None while it's off.
-    pub(crate) fn hook_settings(&self) -> Option<PathBuf> {
+    /// `wsl`: for a Claude Code inside WSL, which runs this exe by its `/mnt/c/…` path (system/wsl.rs).
+    pub(crate) fn hook_settings(&self, wsl: bool) -> Option<PathBuf> {
         if !self.prefs.agent_hooks {
             return None;
         }
-        let path = self.autosave.as_ref()?.with_file_name("hooks-claude.json");
+        let path = self.autosave.as_ref()?.with_file_name(if wsl { "hooks-claude-wsl.json" } else { "hooks-claude.json" });
         let exe = std::env::current_exe().ok()?.to_string_lossy().replace('\\', "/");
+        let exe = if wsl { linux_path(&exe) } else { exe };
         write_atomic(&path, serde_json::to_string_pretty(&hook_settings_json(&exe)).ok()?).ok()?;
         Some(path)
     }

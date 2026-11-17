@@ -153,6 +153,7 @@ impl eframe::App for DrawingApp {
         );
         self.voice_tick(&ctx);
         self.dictation_tick(&ctx);
+        wsl_choose(&self.prefs.wsl);
         self.check_agents();
         self.tasks_tick();
         self.usage_tick();
