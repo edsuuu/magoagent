@@ -374,11 +374,11 @@ fn the_pointer_over_a_pill_only_lights_it_and_its_click_puts_its_agent_in_focus(
     let width = (inner.width() - 4.0) / 2.0;
     let second = Pos2::new(inner.left() + width + 4.0 + width / 2.0, inner.center().y);
     let asked = app.island.chimes();
-    // Coucou's mouseenter only lights the pill: the card at the left stays, so nothing slides from under the pointer
+    // the pointer only lights the pill: the card at the left stays, so nothing slides from under the pointer
     rest(&mut app, &ctx, &mut time, second, 2.0);
     assert_eq!(app.island.focus(), None, "the pointer over a pill changes no focus");
     assert_eq!(app.island.chimes(), asked, "and makes no sound");
-    // its click is Coucou's setFocus: the agent in the card at the left, a blip, still on Chats
+    // its click focuses it: the agent in the card at the left, a blip, still on Chats
     click(&mut app, &ctx, &mut time, second);
     assert_eq!(app.island.focus(), Some("b"));
     assert!(app.island.chimes() > asked, "the click has its blip");

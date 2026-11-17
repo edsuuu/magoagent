@@ -1,5 +1,5 @@
-//! The island: the Maestro as a black notch glued to the top edge of the screen, over every other window, like
-//! Coucou's (MIT) island. Closed it is small (the wizard at the left, a mini wizard per agent at the right, in the
+//! The island: the Maestro as a black notch glued to the top edge of the screen, over every other window.
+//! Closed it is small (the wizard at the left, a mini wizard per agent at the right, in the
 //! agent's colour); with the pointer resting on it, or a question waiting, it grows into a wide panel: Home (the agent
 //! in focus and a grid of the agents), the conversation, the new chat (a workspace of its own, `actions.rs`) and the
 //! questions and permissions. It is dragged anywhere on the screen, another monitor too, and sticks to the top edge
@@ -41,7 +41,7 @@ mod window;
 pub(crate) mod x11;
 pub(crate) use window::*;
 
-/// The sizes of Coucou's island (core/layout.ts): the closed one, the open one and their corners.
+/// The sizes of the island: the closed one, the open one and their corners.
 // asked: "entre a capa e a Luna, e entre a frequência e os mini mascotes, tem um espaço muito grande": about 15 each
 // with two minis
 pub(crate) const COMPACT_W: f32 = 188.0;
@@ -333,7 +333,7 @@ pub(super) struct Line {
     pub(super) asleep: bool,
 }
 
-/// The colour of an agent's mini wizard, from Coucou's catalogue of agents (core/agents.ts) and its fallbacks.
+/// The colour of an agent's mini wizard, from a catalogue of agents and its fallbacks.
 pub(crate) fn agent_color(program: &str, id: &str) -> Color32 {
     let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
     match program {
@@ -658,7 +658,7 @@ impl DrawingApp {
         if island.dock.upright() && shape != Shape::Open {
             aim = upright(shape, aim, song);
         }
-        // it grows on Coucou's spring (it overshoots a little and settles) and shrinks along its curve in 340 ms, with no
+        // it grows on a spring (it overshoots a little and settles) and shrinks along its curve in 340 ms, with no
         // overshoot (`spring.rs`); pulled by an edge it follows the pointer at once
         if island.resizing {
             island.geometry.jump(aim, radius);
@@ -691,7 +691,7 @@ impl DrawingApp {
         };
         self.island.form = form;
         let island = &mut self.island;
-        // the one wizard springs to where the page that shows put it (Coucou's botPosition); with none, the closed
+        // the one wizard springs to where the page that shows put it; with none, the closed
         // island's spot (46, 16, 6) and not drawn
         let wanted = view.aim.get().map_or([46.0, 16.0, 6.0], |aim| [aim.at.x, aim.at.y, aim.size]);
         let delta = ctx.input(|input| input.stable_dt).min(0.05);
@@ -730,7 +730,7 @@ impl DrawingApp {
         if cfg!(windows) && !ctx.embed_viewports() {
             ctx.request_repaint_after(std::time::Duration::from_millis(if self.island.pointer.is_some() { 33 } else { 250 }));
         }
-        // the clicks of the buttons; the pointer over a pill makes no sound, as in Coucou
+        // the clicks of the buttons; the pointer over a pill makes no sound
         if out.tab.is_some()
             || out.open_agent.is_some()
             || out.canvas.is_some()
@@ -797,7 +797,7 @@ mod tests {
     }
 
     #[test]
-    fn closed_it_is_a_small_notch_then_coucous_compact_island_and_the_open_panel() {
+    fn closed_it_is_a_small_notch_then_the_compact_island_and_the_open_panel() {
         let chat = Vec2::new(640.0, 360.0);
         assert_eq!(target(Shape::Closed, Tab::Chat, false, false, false, 0.0, chat), (Vec2::new(80.0, 24.0), 10.0));
         assert_eq!(target(Shape::Compact, Tab::Chat, false, false, false, 0.0, chat), (Vec2::new(188.0, 38.5), 18.0));

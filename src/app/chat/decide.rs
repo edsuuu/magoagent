@@ -55,7 +55,7 @@ pub(crate) struct PersonAsk {
     pub(crate) shown: Option<f64>,
 }
 
-/// Clicks in the first moments of a new card are ignored: it appears under a pointer busy in another window (Coucou's 600 ms).
+/// Clicks in the first moments of a new card are ignored: it appears under a pointer busy in another window (600 ms).
 const CLICK_GUARD: f64 = 0.6;
 
 impl PersonAsk {
@@ -114,7 +114,7 @@ impl PersonAsk {
         (0..self.questions.len()).all(|index| !self.picked[index].is_empty() || !self.other[index].trim().is_empty())
     }
 
-    /// The option `option` of the question shown, as Coucou's buttons: ticked or not in a multiple choice, otherwise
+    /// The option `option` of the question shown, as buttons: ticked or not in a multiple choice, otherwise
     /// the answer, on to the next question. True when that answered the last one.
     pub(crate) fn pick(&mut self, option: usize) -> bool {
         let step = self.step.min(self.questions.len().saturating_sub(1));

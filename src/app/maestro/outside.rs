@@ -179,7 +179,7 @@ fn hex(value: u32) -> Color32 {
     Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8)
 }
 
-/// The colours a mini can have, Coucou's (`PILL_PALETTE`, PillColors.palette on the Mac): every one readable on the
+/// The colours a mini can have: every one readable on the
 /// island's black with the mini's dark eyes. Claude Code's own is the first, the white.
 pub(crate) const PILL_PALETTE: [u32; 10] = [0xf5f6f8, 0xf4505e, 0xf29b38, 0xfacc15, 0x4ade80, 0x2dd4bf, 0x38bdf8, 0x818cf8, 0xc084fc, 0xe879f9];
 
@@ -190,8 +190,8 @@ fn palette_index(cwd: &str) -> usize {
 }
 
 /// A Claude Code project's colour among the pills there are (`taken`): its own, or the palette's next one no other pill
-/// has, so two projects side by side never look alike (Coucou has one pill per agent, each of its own colour; here
-/// each project of Claude Code has its pill). All taken, its own.
+/// has, so two projects side by side never look alike (each project of Claude Code
+/// has its pill). All taken, its own.
 fn free_color(own: Color32, taken: &[Color32]) -> Color32 {
     let start = PILL_PALETTE.iter().position(|value| hex(*value) == own).unwrap_or(0);
     (0..PILL_PALETTE.len()).map(|step| hex(PILL_PALETTE[(start + step) % PILL_PALETTE.len()])).find(|color| !taken.contains(color)).unwrap_or(own)

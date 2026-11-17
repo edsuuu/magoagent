@@ -1,4 +1,4 @@
-//! How the island's size and corner get to where they are going, as Coucou's (core/anim.ts, MIT): growing, on SwiftUI's
+//! How the island's size and corner get to where they are going: growing, on SwiftUI's
 //! spring (response 0.5 s, damping 0.72: it overshoots a little and settles), stepped 240 times a second so that a slow
 //! frame never shakes it; shrinking, along a curve in 340 ms (cubic-bezier .45, 0, .2, 1), which never overshoots.
 

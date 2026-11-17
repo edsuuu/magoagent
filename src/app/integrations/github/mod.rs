@@ -1,4 +1,4 @@
-//! GitHub in Ajustes › Integrações and on the island, as Coucou's (MIT) GitHub pulse: the person's open pull requests
+//! GitHub in Ajustes › Integrações and on the island, a GitHub pulse: the person's open pull requests
 //! with the state of their checks, the ones that wait for their review, and the contribution calendar. One GraphQL
 //! request a poll (every minute while a check runs, every five otherwise; GraphQL is a POST, so there is no ETag to
 //! send: the answer's own `rateLimit` holds the polls back instead), with a personal token that lives in the keychain.
@@ -175,7 +175,7 @@ impl Pulse {
     }
 }
 
-/// What changed between two polls, as Coucou tells it. The first poll (no `old`) is silent. On the same commit, the
+/// What changed between two polls. The first poll (no `old`) is silent. On the same commit, the
 /// plain changes of state; on a new commit or a new pull request, its checks at once if they already ended (a run
 /// shorter than the interval), and nothing while they run: the next poll, on the same commit, sees them end. A
 /// default branch only ever tells that it failed, never that it passed. A pull request merged or closed tells nothing.

@@ -1,4 +1,4 @@
-//! The card of a question or a permission on the open island, as Coucou's `buildQuestion` and `buildApproval`: one card
+//! The card of a question or a permission on the open island: one card
 //! with its wash (cyan asking, amber for a permission), the wizard inside it at the left, and at 116 the agent, the
 //! question (or the command) and a row of round buttons.
 

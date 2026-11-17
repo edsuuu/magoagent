@@ -1,5 +1,5 @@
-//! The island's sounds, made in code (nothing is copied from Coucou's own files): a short soft tone or chord for each
-//! moment Coucou has one (core/sound.ts, `STATE_SOUND`): it peeks, opens, closes, a question or permission comes, one
+//! The island's sounds, made in code: a short soft tone or chord for each
+//! moment: it peeks, opens, closes, a question or permission comes, one
 //! is answered, something finishes or fails, and the clicks of its buttons (a hover makes none). Low in volume.
 
 use crate::prelude::*;

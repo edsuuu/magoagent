@@ -4,8 +4,7 @@
 
 A ilha do MagoAgent foi feita tomando o [Coucou](https://github.com/louis-cfm/coucou), de Louis Raillé, como
 referência. Partes do código do Coucou foram adaptadas para Rust: o desenho e o comportamento da ilha (as páginas, os
-cartões, as pílulas e os atalhos), a paleta das pílulas e as cores do catálogo, e a técnica das mãos do mascote. Os
-comentários do código que citam o Coucou marcam esses trechos.
+cartões, as pílulas e os atalhos), a paleta das pílulas e as cores do catálogo, e a técnica das mãos do mascote.
 
 Só o **código** do Coucou está sob a licença MIT, reproduzida abaixo. O nome "Coucou", o personagem Mochi, os ícones,
 os sons e as imagens do Coucou têm todos os direitos reservados pelo autor (veja o

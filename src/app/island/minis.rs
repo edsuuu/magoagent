@@ -1,5 +1,4 @@
-//! The mini agents of the compact island, where Coucou puts its own (style.css `#mini-grid`, island.ts
-//! `applyGeometry`): a 2×2 grid by the right side, 12 from it (`MINIS_SIDE`). The reference's cells are
+//! The mini agents of the compact island: a 2×2 grid by the right side, 12 from it (`MINIS_SIDE`). The reference's cells are
 //! 13 px, 3 apart; here the compact island is taller (38.5) for bigger ones, 14 and 2 apart, with 4 px above and below.
 
 use crate::prelude::*;

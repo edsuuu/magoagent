@@ -1,8 +1,8 @@
 //! The mascot, Lume: a small magic flame that licks and sways, with two dark eyes on its round bottom and nothing
 //! else (all the expression is in the eyes and the flame); sparks fly from its tip when an agent finishes.
 //! The technique (properties chasing a target with easing, a table of states -> face,
-//! eyes that follow the pointer and blink alone, particles, reactions to clicks) is adapted from Coucou's
-//! engine (MIT); the character, shapes and palette are this app's own.
+//! eyes that follow the pointer and blink alone, particles, reactions to clicks) is adapted from
+//! an MIT engine (THIRD-PARTY-NOTICES.md); the character, shapes and palette are this app's own.
 
 mod dance;
 mod draw;
@@ -146,8 +146,7 @@ pub(crate) fn paint_mago(painter: &Painter, center: Pos2, size: f32, state: Mago
     painter.ctx().request_repaint_after(std::time::Duration::from_millis(frame));
 }
 
-/// What `paint` draws, squashed or stretched by `scale` around `center` (the entrance's bounces, as Coucou's
-/// `x.scale(p.sx, p.sy)`): egui scales its shapes only evenly, so they are made triangles first and those are scaled.
+/// What `paint` draws, squashed or stretched by `scale` around `center` (the entrance's bounces): egui scales its shapes only evenly, so they are made triangles first and those are scaled.
 pub(crate) fn paint_scaled(painter: &Painter, center: Pos2, scale: Vec2, paint: impl FnOnce(&Painter)) {
     if scale == Vec2::splat(1.0) {
         return paint(painter);

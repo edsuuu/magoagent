@@ -1,5 +1,5 @@
 //! Home: the agent in focus in a card at the left (the mascot big) and the grid of
-//! agents at the right, as Coucou's overview. What the card says follows what the agent does (`stage.rs`): the tool it is
+//! agents at the right. What the card says follows what the agent does (`stage.rs`): the tool it is
 //! on with a glimpse of the file or the command's output, an edit's change in a card of its own, how a turn ended, and
 //! the wizard's dizziness when it is poked too much.
 
@@ -66,7 +66,7 @@ impl DrawingApp {
         let home = if editing { Pos2::new(left.left() + 36.0, left.top() + 40.0) } else { Pos2::new(left.left() + 58.0, left.center().y) };
         let size = if editing { 46.0 } else { 62.0 };
         // the entrance: the wizard drops into the middle of one card; it ends folding to compact, where the island's
-        // wizard springs from that spot (`aim` at size 0, as Coucou's greeting layout)
+        // wizard springs from that spot (`aim` at size 0)
         if let Some(t) = view.entrance {
             let pose = entry::pose(t);
             ui.painter().rect(page, 20, CARD.gamma_multiply(pose.card), hairline(), StrokeKind::Inside);

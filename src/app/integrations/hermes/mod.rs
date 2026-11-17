@@ -1,4 +1,4 @@
-//! Hermes Agent (Nous Research) on the island, as Coucou's (MIT) Hermes plugin: a plugin of ours in
+//! Hermes Agent (Nous Research) on the island: a plugin of ours in
 //! `~/.hermes/plugins/magoagent/` (`plugin.yaml` and `__init__.py`, from `plugin.py` here) hands each session's events
 //! (it started, a prompt came, a tool runs, the turn ended) to the same `magoagent hook external` the Claude Code
 //! hooks use (maestro/outside.rs), which shows them as the "Hermes" pill. Hermes loads a plugin only when its name is

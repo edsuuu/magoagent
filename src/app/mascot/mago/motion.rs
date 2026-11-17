@@ -8,7 +8,7 @@ const GRAVITY: f32 = 14.0;
 /// The face, the round bottom of the flame: where its middle is (figure units, y down) and its half width and height.
 pub(crate) const BODY_CENTER: f32 = 0.2;
 pub(crate) const BODY_HALF: (f32, f32) = (0.3, 0.27);
-/// The eyes on the face, as Coucou's engine (MIT) projects them on its round body: each sits `EYE_SPREAD` radians to
+/// The eyes on the face, projected on the round body: each sits `EYE_SPREAD` radians to
 /// its side of the middle and `EYE_PITCH` from it, and the gaze turns both (by `LOOK_YAW` and `LOOK_PITCH` at the most),
 /// so they slide over a curved face and narrow as they near its edge. `LOOK_RATE` is its `1 - 0.0025^dt` a frame.
 const EYE_SPREAD: f32 = 0.37;
@@ -214,7 +214,7 @@ impl MagoMotion {
     }
 
     /// Where a mini one looks: it never follows the pointer, it glances around, at a new place every 0.5 to 2 s
-    /// (Coucou's mini bots: across within 0.88 of the middle, from 0.55 down to 0.45 up).
+    /// (the mini bots: across within 0.88 of the middle, from 0.55 down to 0.45 up).
     pub(crate) fn glance(&mut self, time: f64) -> Vec2 {
         if time >= self.glance_until {
             self.glance = Vec2::new(-0.88 + self.random() * 1.76, -0.45 + self.random());

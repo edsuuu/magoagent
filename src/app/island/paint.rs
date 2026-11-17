@@ -1,4 +1,4 @@
-//! What the island draws, as Coucou's: the black notch (closed: the wizard and one mini wizard per agent), and open the
+//! What the island draws: the black notch (closed: the wizard and one mini wizard per agent), and open the
 //! header (tabs at the left, buttons at the right) over Home or the page of a tab. It only draws and says what was asked
 //! (`Out`); `island_apply` does it.
 
@@ -85,7 +85,7 @@ pub(super) struct View {
     pub(super) origin: std::cell::Cell<Pos2>,
 }
 
-/// Where a page wants the island's one mascot (Coucou's `botPosition`): from the island's top left, how big and in which
+/// Where a page wants the island's one mascot: from the island's top left, how big and in which
 /// state. It springs there and is drawn once, over everything.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Aim {
@@ -140,7 +140,7 @@ pub(crate) struct Out {
     pub(super) full: bool,
     /// The sound button.
     pub(super) sound: bool,
-    /// A pill was clicked: its blip (Coucou's `setFocus`).
+    /// A pill was clicked: its blip.
     pub(super) picked: bool,
     pub(super) hovered: bool,
     /// A button of the mouse is down.
@@ -209,7 +209,7 @@ impl DrawingApp {
             asleep: pill.asleep,
             id: pill.id,
             name: pill.name,
-            // what it is doing, as Coucou's step line (the prompt, the tool on what, how the turn ended); nothing yet: its state
+            // what it is doing, a step line (the prompt, the tool on what, how the turn ended); nothing yet: its state
             detail: if pill.activity.is_empty() { pill.state.label().to_string() } else { pill.activity.clone() },
             state: pill.state,
             color: pill.color,
@@ -693,8 +693,8 @@ impl DrawingApp {
 pub(super) const PILL_H: f32 = 28.0;
 const PILL_MINI: f32 = 24.0;
 
-/// One pill of the grid, as Coucou's `buildPill`: its mini wizard and its name. The pointer over it only lights it in its
-/// colour (`mouseenter`); a click puts its agent in the card at the left (`setFocus`), where Abrir and Conversar are.
+/// One pill of the grid: its mini wizard and its name. The pointer over it only lights it in its
+/// colour; a click puts its agent in the card at the left, where Abrir and Conversar are.
 /// The tabs of the header, in order: GitHub's and Spotify's only while their integration is on (its pill is there).
 pub(super) fn header_tabs(lines: &[Line]) -> Vec<(Tab, crate::editor::icons::Svg, f32, &'static str)> {
     let on = |name: &str| lines.iter().any(|line| line.id.strip_prefix(crate::app::integrations::ITEM_PREFIX) == Some(name));
@@ -718,7 +718,7 @@ pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, opens: bool, time
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, PILL_H), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let hovered = response.hovered();
-    // it grows on hover as Coucou's (scale 1.04), within its own room: past it the scroll area would cut its edge
+    // it grows on hover (scale 1.04), within its own room: past it the scroll area would cut its edge
     let rect = if hovered { rect } else { rect.shrink(1.0) };
     let edge = match (hovered, line.asleep) {
         (true, _) => 0x8c,
@@ -793,7 +793,7 @@ const ISLAND_COLORS: [Color32; 5] = [
     Color32::from_rgb(0x3a, 0x1f, 0x3f),
 ];
 
-/// The dot on a pill's corner when something waits there (Coucou's `pillBadge`): an amber "!" for a question or a
+/// The dot on a pill's corner when something waits there: an amber "!" for a question or a
 /// permission, a green ✓ for a turn that just ended. `radius` 7 is the 14 px of the pill's own.
 fn badge(painter: &Painter, center: Pos2, line: &Line, radius: f32) {
     let (color, mark) = match (line.badge, line.state, line.mago) {
@@ -956,7 +956,7 @@ pub(super) fn mago(painter: &Painter, pointer: Option<Pos2>, id: &str, center: P
     paint_mago_toward(painter, id, center, size, state, time, pointer.or_else(|| painter.ctx().pointer_latest_pos()));
 }
 
-/// The colour a card washes over its bottom with, by state (Coucou's `washRGBA`): amber for a permission, green for
+/// The colour a card washes over its bottom with, by state: amber for a permission, green for
 /// done, red for an error; none for the rest.
 pub(super) fn wash(painter: &Painter, card: Rect, state: MagoState) {
     let (color, strength) = match state {
