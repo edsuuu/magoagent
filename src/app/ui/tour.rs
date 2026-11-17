@@ -196,7 +196,7 @@ impl DrawingApp {
         let screen = ctx.content_rect();
         let last = STEPS.len() - 1;
         let step = &STEPS[tour.step];
-        let target = step.spot.and_then(|spot| spot_rect(ctx, spot)).map(|rect| rect.expand(PAD));
+        let target = step.spot.and_then(|spot| spot_rect(ctx, spot)).map(|rect| rect.expand(PAD).intersect(screen));
         let hole = tour.hole_at(target, time);
         tour.hole = hole;
         if tour.moved.is_some_and(|(_, at)| time - at < SLIDE) {
@@ -214,7 +214,7 @@ impl DrawingApp {
             }
             let inner = TIP_WIDTH - 32.0;
             let title = painter.layout(step.title.into(), kit::semibold(16.0), k.fg, inner);
-            let text = kit::galley(ui, step.text, 13.5, 19.0, k.muted_fg, inner);
+            let text = kit::galley(ui, step.text, 14.0, 20.0, k.muted_fg, inner);
             let size = Vec2::new(TIP_WIDTH, 16.0 + title.size().y + 6.0 + text.size().y + 14.0 + 30.0 + 16.0);
             let tip = tip_place(hole, size, rect);
             let shadow = egui::epaint::Shadow { offset: [0, 20], blur: 50, spread: 0, color: Color32::from_black_alpha(100) };
