@@ -30,6 +30,7 @@ mod nodes;
 mod notes;
 mod notes_rail;
 mod outside;
+mod outside_message;
 mod pages;
 mod persist;
 mod props;

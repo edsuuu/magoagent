@@ -165,12 +165,51 @@ fn a_hook_waits_for_the_apps_answer_only_on_a_permission() {
 }
 
 #[test]
+fn a_stop_takes_the_messages_waiting_for_its_session() {
+    let Bridge { address, token, shared, commands } = Bridge::start(None).unwrap();
+    locked(&shared).outbox.insert("s1".into(), vec!["roda os testes".into(), "e me diz o resultado".into()]);
+    let hook = |event: &str, session: &str| {
+        let request = json!({ "cmd": "hook", "payload": { "hook_event_name": event, "session_id": session }, "wait": 0 });
+        // o relay de verdade: `ask_app` com espera zero ainda lê a linha da resposta
+        request_to(&address, &token, &format!("ext:{session}"), request, Duration::ZERO).unwrap()
+    };
+    // a falha do fim da vez não leva nada: a sessão não vai seguir
+    assert_eq!(hook("StopFailure", "s1"), "");
+    let Ok(UiCommand::Hook { payload, .. }) = commands.recv_timeout(Duration::from_secs(5)) else { panic!("o evento vai ao app") };
+    assert!(payload.get("mago_delivered").is_none());
+    let printed: Value = serde_json::from_str(&hook("Stop", "s1")).unwrap();
+    assert_eq!(printed["decision"], "block");
+    assert_eq!(printed["reason"], "Mensagem da pessoa pelo MagoAgent:\nroda os testes\n\ne me diz o resultado");
+    // o evento ainda vai ao app, dizendo quantas foram
+    let Ok(UiCommand::Hook { from, payload, reply: None }) = commands.recv_timeout(Duration::from_secs(5)) else { panic!("o evento vai ao app") };
+    assert_eq!((from.as_str(), hook_name(&payload), payload["mago_delivered"].as_u64()), ("ext:s1", "Stop", Some(2)));
+    // levadas uma vez só
+    assert!(locked(&shared).outbox.is_empty());
+    assert_eq!(hook("Stop", "s1"), "");
+    let Ok(UiCommand::Hook { payload, .. }) = commands.recv_timeout(Duration::from_secs(5)) else { panic!("o evento vai ao app") };
+    assert!(payload.get("mago_delivered").is_none());
+}
+
+#[test]
+fn the_stop_of_another_session_takes_nothing() {
+    let Bridge { address, token, shared, commands } = Bridge::start(None).unwrap();
+    locked(&shared).outbox.insert("s1".into(), vec!["oi".into()]);
+    for (event, session) in [("Stop", "s2"), ("Stop", ""), ("PostToolUse", "s1"), ("UserPromptSubmit", "s1")] {
+        let request = json!({ "cmd": "hook", "payload": { "hook_event_name": event, "session_id": session }, "wait": 0 });
+        assert_eq!(request_to(&address, &token, "ext:s2", request, Duration::ZERO).as_deref(), Ok(""), "{event} {session}");
+        assert!(commands.recv_timeout(Duration::from_secs(5)).is_ok());
+    }
+    assert_eq!(locked(&shared).outbox["s1"], ["oi"]);
+}
+
+#[test]
 fn a_hook_whose_relay_hangs_up_tells_the_app() {
+    let shared = Mutex::new(Shared::default());
     let (sender, commands) = mpsc::channel();
     let asks = json!({ "cmd": "hook", "from": "ext:s1", "payload": { "hook_event_name": "PermissionRequest", "session_id": "s1" }, "wait": 30 });
     let start = Instant::now();
     // a conexão do relay caiu: nada a imprimir, e o app recebe o aviso com o número do pedido
-    assert_eq!(relay_hook(&asks, &sender, &|| true), Ok(String::new()));
+    assert_eq!(relay_hook(&asks, &shared, &sender, &|| true), Ok(String::new()));
     assert!(start.elapsed() < Duration::from_secs(5));
     let Ok(UiCommand::Hook { payload: asked, reply: Some(_), .. }) = commands.try_recv() else { panic!("o pedido vai ao app") };
     let number = asked["mago_request"].as_str().unwrap().to_string();
@@ -182,7 +221,7 @@ fn a_hook_whose_relay_hangs_up_tells_the_app() {
     );
     // quem não espera a pessoa não ganha número nem é vigiado
     let quick = json!({ "cmd": "hook", "from": "ext:s1", "payload": { "hook_event_name": "Stop" } });
-    assert_eq!(relay_hook(&quick, &sender, &|| true), Ok(String::new()));
+    assert_eq!(relay_hook(&quick, &shared, &sender, &|| true), Ok(String::new()));
     let Ok(UiCommand::Hook { payload: stop, reply: None, .. }) = commands.try_recv() else { panic!("o evento vai ao app") };
     assert!(stop.get("mago_request").is_none() && commands.try_recv().is_err());
 }
@@ -229,7 +268,7 @@ fn a_child_terminal_cannot_control_global_app_commands() {
     let shared = Mutex::new(Shared { nodes: vec![node("Filho", false), node("Chefe", true)], ..Default::default() });
     let (sender, commands) = mpsc::channel();
     for cmd in ["show", "set_folder", "screenshot", "review", "look", "raise"] {
-        assert!(handle(&json!({ "cmd": cmd, "from": "Filho" }), &shared, &sender).unwrap_err().contains("Maestro"), "{cmd}");
+        assert!(handle(&json!({ "cmd": cmd, "from": "Filho" }), &shared, &sender).unwrap_err().contains("Luna"), "{cmd}");
     }
     assert!(commands.try_recv().is_err());
     assert!(handle(&json!({ "cmd": "show", "from": "Chefe" }), &shared, &sender).is_ok());
@@ -266,7 +305,7 @@ fn a_terminal_that_is_no_maestro_acts_only_on_its_own_trees() {
     let run = |from: &str, action: &str, args: Value| handle(&json!({ "cmd": "act", "from": from, "action": action, "args": args }), &shared, &sender);
     // what changes the whole app, or names a target anywhere, is refused before it reaches the app
     for action in ["set_setting", "update", "close_window", "terminal_menu", "chat_send"] {
-        assert!(run("Filho", action, json!({})).unwrap_err().contains("Maestro"), "{action}");
+        assert!(run("Filho", action, json!({})).unwrap_err().contains("Luna"), "{action}");
     }
     assert!(commands.try_recv().is_err());
     // a tree it is not roped to is refused; its own is aimed at, named or not

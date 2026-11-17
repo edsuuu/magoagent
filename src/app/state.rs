@@ -104,6 +104,8 @@ pub(crate) struct DrawingApp {
     pub(crate) settings_open: bool,
     pub(crate) settings_edit: Option<usize>,
     pub(crate) claude_hooks_preview: Option<(std::path::PathBuf, String, serde_json::Value, serde_json::Value)>,
+    /// Ajustes › Dados › Limpar todos os dados asks before it does (`system/wipe.rs`).
+    pub(crate) wipe_confirm: bool,
     /// The section open in Ajustes (settings.rs, `SETTINGS_TABS`).
     pub(crate) settings_tab: usize,
     pub(crate) press_world: Pos2,
@@ -370,7 +372,7 @@ pub(crate) struct DrawingApp {
     pub(crate) away: std::collections::HashMap<String, (String, TerminalSpec)>,
     pub(crate) space_views: std::collections::HashMap<String, (f32, Vec2, Vec<String>)>,
     pub(crate) space_dialog: Option<workspaces::SpaceDialog>,
-    /// The welcome slides over everything (ui/welcome.rs), while they are on.
+    /// The welcome slides over everything (ui/welcome/), while they are on.
     pub(crate) welcome: Option<crate::app::ui::welcome::Welcome>,
     pub(crate) space_rename: Option<(String, String)>,
     /// Ajustes › Integrações (integrations/): what each one fetched, away from `prefs`.

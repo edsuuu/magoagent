@@ -1,0 +1,7 @@
+{
+  "devices": [
+    { "id": "dev-soloist", "is_active": true, "name": "Soloist", "type": "Computer", "volume_percent": 55 },
+    { "id": "dev-phone", "is_active": false, "name": "Celular da Ana", "type": "Smartphone", "volume_percent": null },
+    { "id": null, "is_active": false, "name": "Sem Id", "type": "Speaker" }
+  ]
+}

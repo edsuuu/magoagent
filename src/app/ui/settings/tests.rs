@@ -40,6 +40,9 @@ impl Window {
             if self.app.claude_hooks_preview.is_some() {
                 self.app.claude_hooks_preview_ui(ui.ctx());
             }
+            if self.app.wipe_confirm {
+                self.app.wipe_confirm_ui(ui.ctx());
+            }
         });
         output.textures_delta.clear();
         self.texts = output
@@ -362,6 +365,34 @@ fn integracoes_shows_what_spotify_plays_with_its_buttons() {
     assert!(window.has("Pausado: Canção — Banda") && window.has("Tocar"), "{:?}", window.texts);
 }
 
+/// Conta do Spotify: the Client ID, the exact Redirect URI with its copy button, and Conectar / Cancelar / Desconectar.
+#[test]
+fn integracoes_has_the_spotify_account_with_its_redirect_uri() {
+    use crate::app::integrations::spotify::account::{Account, Link, REDIRECT_URI};
+    let mut window = Window::at(6);
+    assert!(!window.has("Client ID"), "off: no account to show");
+    window.app.prefs.integrations.spotify = true;
+    window.frame(vec![]);
+    window.scroll_to(REDIRECT_URI);
+    assert!(window.has("Conta do Spotify") && window.has("Client ID") && window.has(REDIRECT_URI) && window.has("Copiar"), "{:?}", window.texts);
+    assert!(window.texts.iter().any(|(text, _)| text.contains("8989/login")), "the Spotifast Client ID serves too: {:?}", window.texts);
+    // no Client ID: it says what to paste
+    window.click_text("Conectar");
+    assert_eq!(window.app.integrations.spotify.account.link, Link::Off);
+    window.app.prefs.integrations.spotify_client_id = "0123456789abcdef0123456789abcdef".into();
+    window.frame(vec![]);
+    window.click_text("Conectar");
+    assert_eq!(window.app.integrations.spotify.account.link, Link::Waiting, "no browser in a test");
+    window.frame(vec![]);
+    window.click_text("Cancelar");
+    assert_eq!(window.app.integrations.spotify.account.link, Link::Off);
+    window.app.integrations.spotify.account = Account::with_session("ana");
+    window.frame(vec![]);
+    assert!(window.has("Conectada como Ana") && window.has("Desconectar"), "{:?}", window.texts);
+    window.click_text("Desconectar");
+    assert!(!window.app.integrations.spotify.account.linked());
+}
+
 /// Soloist has its own switch beside Spotify's (asked: "deixa as duas opções"); what it plays shows on its card only.
 #[test]
 fn integracoes_has_a_switch_of_its_own_for_soloist() {
@@ -388,6 +419,92 @@ fn integracoes_has_a_switch_of_its_own_for_soloist() {
     window.app.prefs.integrations.spotify = true;
     window.frame(vec![]);
     assert!(window.texts.iter().any(|(text, _)| text.contains("o Soloist está")), "{:?}", window.texts);
+}
+
+/// Soloist's Configurar (Linux): the five steps by what was found, a button only for what is missing (so a setup that
+/// is all there changes nothing), the key hidden and never kept, and the service's own buttons.
+#[test]
+fn integracoes_sets_soloist_up_step_by_step() {
+    use crate::app::integrations::spotify::setup::{KeyFile, Login, Program, Status};
+    const KEY: &str = "spak_SEGREDO0123456789";
+    if cfg!(any(windows, target_os = "macos")) {
+        return;
+    }
+    let mut window = Window::at(6);
+    window.app.prefs.integrations.soloist = true;
+    window.frame(vec![]);
+    window.scroll_to("Configurar");
+    window.click_text("Configurar");
+    fn setup(window: &mut Window) -> &mut crate::app::integrations::spotify::setup::Setup {
+        &mut window.app.integrations.soloist_setup
+    }
+    assert!(setup(&mut window).open && setup(&mut window).name_field.starts_with("Soloist"), "the name starts as the default");
+    assert!(window.has("Conferindo o que já está feito…"), "{:?}", window.texts);
+    // the button under the steps' head, not one of the page above
+    let below = |window: &Window, name: &str| {
+        let top = window.at_text("Configurar o Soloist").top();
+        window.texts.iter().filter(|(text, rect)| text == name && rect.top() > top).map(|(_, rect)| rect.center()).next()
+    };
+    // nothing there: step 1 is now, with its button
+    setup(&mut window).status = Some(Status::default());
+    window.frame(vec![]);
+    window.scroll_to("5. Escolher o Soloist no celular");
+    assert!(window.has("1. Baixar o Soloist") && window.has("Chave"), "{:?}", window.texts);
+    assert!(window.texts.iter().any(|(text, _)| text.starts_with("Agora · ")), "{:?}", window.texts);
+    let download = below(&window, "Baixar").expect("Baixar");
+    window.click(download);
+    assert_eq!(setup(&mut window).asked, ["download"]);
+    assert!(window.has("Baixando…"), "it says what runs");
+    setup(&mut window).busy = None;
+    // an expired version: Atualizar downloads again
+    setup(&mut window).status = Some(Status { program: Program::Expired, ..Default::default() });
+    window.frame(vec![]);
+    assert!(window.texts.iter().any(|(text, _)| text.contains("Esta versão expirou")) && below(&window, "Atualizar").is_some(), "{:?}", window.texts);
+    // all there and running, as on a computer already set up: every step done, nothing offered that writes
+    let done = Status {
+        program: Program::Ready("soloist 1.3.10".into()),
+        key: KeyFile::Private,
+        unit: true,
+        enabled: true,
+        active: "active".into(),
+        login: Login::In,
+        ..Default::default()
+    };
+    setup(&mut window).status = Some(done.clone());
+    window.frame(vec![]);
+    window.scroll_to("Serviço soloist.service");
+    for step in ["✓ 1. Baixar o Soloist", "✓ 2. Gerar a chave de desenvolvedor", "✓ 4. Salvar e ligar com o computador", "✓ 5. Escolher o Soloist no celular"]
+    {
+        assert!(window.has(step), "{step}: {:?}", window.texts);
+    }
+    for writes in ["Baixar", "Atualizar", "Ligar", "Salvar e ligar"] {
+        assert!(below(&window, writes).is_none(), "{writes}: {:?}", window.texts);
+    }
+    // a new key pasted: it is never drawn, and Salvar e ligar takes it out of the field into the job
+    setup(&mut window).key_field = KEY.into();
+    window.frame(vec![]);
+    assert!(window.texts.iter().all(|(text, _)| !text.contains("SEGREDO")), "the key shows: {:?}", window.texts);
+    let save = below(&window, "Salvar e ligar").expect("Salvar e ligar");
+    window.click(save);
+    assert_eq!(setup(&mut window).asked.last(), Some(&"turn_on_with_key"));
+    assert!(setup(&mut window).key_field.is_empty() && !window.app.status.contains("SEGREDO"));
+    setup(&mut window).busy = None;
+    // the service: Parar while it runs, and its Status
+    window.frame(vec![]);
+    let stop = below(&window, "Parar").expect("Parar");
+    window.click(stop);
+    setup(&mut window).busy = None;
+    let details = below(&window, "Status").expect("Status");
+    window.click(details);
+    assert_eq!(setup(&mut window).asked[2..], ["stop", "details"]);
+    setup(&mut window).busy = None;
+    // Fechar: a key not saved goes with the steps
+    setup(&mut window).key_field = "spak_meio".into();
+    window.frame(vec![]);
+    window.scroll_to("Fechar");
+    window.click_text("Fechar");
+    assert!(!setup(&mut window).open && setup(&mut window).key_field.is_empty());
+    assert!(!window.has("1. Baixar o Soloist"));
 }
 
 /// Hermes Agent: on, the plugin's state and its buttons; "Instalar…" says what it will write before writing.
@@ -656,11 +773,11 @@ fn dados_says_where_the_canvas_the_data_and_the_chats_are() {
     window.frame(vec![]);
     let titles = ["DESENHOS DO CANVAS", "DADOS DO APP", "CHATS"].map(|name| window.at_text(name).top());
     assert!(titles[0] < titles[1] && titles[1] < titles[2], "{titles:?}");
-    for name in ["Desenho em uso", "Abrir pasta", "Pasta de dados", "Memória do Maestro", "Chats do app", "Conversas do Claude Code"] {
+    for name in ["Desenho em uso", "Abrir pasta", "Pasta de dados", "Memória da Luna", "Chats do app", "Conversas do Claude Code"] {
         assert!(window.has(name), "{name}: {:?}", window.texts);
     }
     assert!(window.has_under("DESENHOS DO CANVAS", "Desenho em uso") && window.at_text("Desenho em uso").top() < titles[1]);
-    assert!(window.at_text("Memória do Maestro").top() < titles[2] && window.at_text("Chats do app").top() > titles[2]);
+    assert!(window.at_text("Memória da Luna").top() < titles[2] && window.at_text("Chats do app").top() > titles[2]);
     let file = std::env::temp_dir().join("mago-dados").join("autosave.mago").display().to_string();
     assert!(window.texts.iter().any(|(text, _)| text.contains(&file)), "the drawing's own path: {:?}", window.texts);
 }
@@ -714,4 +831,26 @@ fn sobre_buttons_keep_the_cards_padding() {
             assert!(text.top() - card.top() >= 14.0 && text.left() - card.left() >= 14.0, "{name}: {text:?} in {card:?}");
         }
     }
+}
+
+/// Ajustes › Dados › Limpar todos os dados asks first: Cancelar leaves everything, Apagar tudo closes the app (the copy
+/// outside cleans; none starts in a test).
+#[test]
+fn limpar_todos_os_dados_asks_before_it_closes_the_app() {
+    let mut window = Window::at(SETTINGS_TABS.iter().position(|tab| *tab == "Dados").unwrap());
+    window.scroll_to("Limpar todos os dados");
+    window.click_text("Limpar…");
+    for _ in 0..6 {
+        window.frame(vec![]);
+    }
+    assert!(window.app.wipe_confirm && window.has("Apagar todos os dados do MagoAgent?"));
+    window.click_text("Cancelar");
+    assert!(!window.app.wipe_confirm && !window.app.quitting, "nothing goes");
+    window.click_text("Limpar…");
+    for _ in 0..6 {
+        window.frame(vec![]);
+    }
+    window.click_text("Apagar tudo");
+    assert!(!window.app.wipe_confirm, "answered");
+    assert!(window.app.quitting, "it closes");
 }

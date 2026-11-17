@@ -49,16 +49,20 @@ impl DrawingApp {
         }
         // the providers the empty chat offers (looked up again every 10 s)
         self.installed_agents();
-        let mut rows = self.agent_rows();
+        // a draft no longer shown goes: it was never talked to
+        let shown = self.chat_agent.clone();
+        self.chats.retain(|chat| !chat.draft || shown.as_deref() == Some(chat.id.as_str()));
+        let screen_rows = |app: &Self| app.agent_rows().into_iter().chain(app.draft_rows()).collect::<Vec<_>>();
+        let mut rows = screen_rows(self);
         if self.chat_agent.as_ref().is_none_or(|id| !rows.iter().any(|r| &r.id == id)) {
-            // nothing to talk to: a chat with the agent and the leave Ajustes preset, no form
-            if self.chats.is_empty() && self.start_chat(true) {
-                rows = self.agent_rows();
-            }
             // a chat by default, Claude's first; an agent's conversation is opened from its terminal
             // (the bar's Chat button) or from the agents panel
             let chats = self.chat_rows();
             self.chat_agent = chats.iter().find(|r| r.spec.command.contains("claude")).or(chats.first()).map(|r| r.id.clone());
+            // nothing to talk to: a draft with the agent and the leave Ajustes preset, made a chat by its first message
+            if self.chat_agent.is_none() && self.start_draft_chat(true) {
+                rows = screen_rows(self);
+            }
         }
         self.refresh_transcript();
         // a picture open covers the whole chat: the conversation isn't drawn behind it
@@ -290,8 +294,9 @@ impl DrawingApp {
             self.chat_open = false;
             self.mini_set(true);
         }
+        // Nova conversa: a draft, made a chat by its first message
         if act.new_chat {
-            self.start_chat(false);
+            self.start_draft_chat(false);
         }
         if let Some(id) = act.remove.take() {
             self.remove_chat(&id);

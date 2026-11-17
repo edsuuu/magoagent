@@ -54,7 +54,7 @@ Anote a distro, o ambiente (GNOME/KDE…, X11 ou Wayland), a GPU e o tempo de bu
 - Novo Terminal; shell padrão do sistema; cores, seleção, colar, rolagem, busca, ampliar.
 - Novo Chat (Claude Code e Codex, se instalados): enviar, resposta em tempo real, ferramentas, permissão, interromper.
 - Variáveis no terminal: `MAGOAGENT_BRIDGE`, `MAGOAGENT_TOKEN`, `MAGOAGENT_TERMINAL_ID`; `magoagent list|ask|check|note`.
-- Recrutar agente (Maestro), com e sem `worktree: true`; teto de agentes; consumo do plano (pílula e Agentes › Uso).
+- Recrutar agente (Luna), com e sem `worktree: true`; teto de agentes; consumo do plano (pílula e Agentes › Uso).
 
 ### 4. Chat
 - Lista de conversas, chat novo, composer, comandos com barra, anexos/imagens, painel Contexto, Ditar,
@@ -95,7 +95,7 @@ Ligue em Ajustes (`Prefs.island`). É uma janela própria por cima de tudo; no W
   "O Spotify não está instalado neste computador."; com snap/flatpak, achar o app), Hermes, WhatsApp.
 
 ### 9. Voz
-- Microfone (cpal/ALSA/PipeWire), ditado, chamada com o Maestro; voz pela OpenAI só com chave. Nada é baixado.
+- Microfone (cpal/ALSA/PipeWire), ditado, chamada com a Luna; voz pela OpenAI só com chave. Nada é baixado.
 
 ### 10. MCP e ponte
 - `magoagent mcp`: `initialize`, `tools/list` (conte as ferramentas; o README diz 95), `tools/call` de algumas

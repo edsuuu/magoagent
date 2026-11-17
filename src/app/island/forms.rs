@@ -4,13 +4,12 @@
 //! round buttons.
 
 use super::NewForm;
-use super::paint::{DIM, DIM_3, INK, Out, View, aim, font, wash_with};
-use crate::app::chat::direct::folder_label;
+use super::paint::{DIM, DIM_3, INK, Out, View, aim, font};
+use crate::app::chat::footer::chip_folder;
 use crate::app::chat::list::clipped;
 use crate::prelude::*;
 
 const CARD: Color32 = Color32::from_rgb(0x14, 0x15, 0x18);
-const INDIGO: Color32 = Color32::from_rgb(0x63, 0x66, 0xf1);
 const PICKED: Color32 = Color32::from_rgb(0x81, 0x8c, 0xf8);
 const FAILED: Color32 = Color32::from_rgb(0xf4, 0x50, 0x5e);
 /// The projects kept, most recent first (the reference's `MAX_PROJECTS`).
@@ -44,7 +43,6 @@ pub(crate) fn remember_project(folder: &str, list: &[String]) -> Vec<String> {
 pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<NewForm>, view: &View, out: &mut Out) {
     let Some(form) = form.as_mut() else { return };
     ui.painter().rect(page, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
-    wash_with(&ui.painter().with_clip_rect(page), page, INDIGO, 0.5, 0.0);
     aim(view, Pos2::new(page.left() + 48.0, page.center().y), 52.0, MagoState::Idle);
     // the reference's .launch-body: 98 from the card's left, 16 from its right, its rows 8 apart and centred
     let body = Rect::from_min_max(Pos2::new(page.left() + 98.0, page.top() + 4.0), Pos2::new(page.right() - 16.0, page.bottom() - 4.0));
@@ -53,7 +51,7 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
     let top = body.center().y - height / 2.0;
     let head = Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width(), 22.0));
     // the project at the right of the title, the worktree before it
-    let label = if form.folder.is_empty() { "Escolha um projeto".to_string() } else { folder_label(&form.folder) };
+    let label = if form.folder.is_empty() { "Escolha um projeto".to_string() } else { chip_folder(&form.folder) };
     let name = clipped(ui.painter(), label, font(11.0), INK, 160.0);
     let project = Rect::from_min_size(Pos2::new(head.right() - name.size().x - 34.0, head.top()), Vec2::new(name.size().x + 34.0, 22.0));
     let response = ui.interact(project, ui.scope_id().with("launch_project"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
@@ -168,7 +166,7 @@ fn projects_menu(ui: &mut egui::Ui, full: Rect, drop: Rect, form: &mut NewForm, 
             };
             for path in form.projects.clone() {
                 let on = path.eq_ignore_ascii_case(&form.folder);
-                if row(ui, folder_label(&path), on).on_hover_text(&path).clicked() {
+                if row(ui, chip_folder(&path), on).on_hover_text(&path).clicked() {
                     (form.folder, form.choosing) = (path, false);
                 }
             }

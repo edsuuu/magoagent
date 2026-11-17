@@ -99,8 +99,9 @@ impl DrawingApp {
     /// Ajustes presets it (its agent, folder and leave), which is then shown. With no agent on the
     /// PATH, Codex's voice (`codex`) still gets a Codex chat: the Codex inside its app runs it.
     pub(super) fn call_chat(&mut self, codex: bool) -> Option<crate::app::chat::direct::Chat> {
+        // a draft: what is said makes it a chat
         if self.chat_agent.is_none() {
-            self.start_chat(true);
+            self.start_draft_chat(true);
         }
         if let Some(id) = &self.chat_agent {
             return self.chats.iter().find(|c| &c.id == id).cloned();
@@ -120,6 +121,7 @@ impl DrawingApp {
             effort: String::new(),
             recruit: false,
             named: false,
+            draft: false,
         };
         self.chats.push(chat.clone());
         self.chat_agent = Some(chat.id.clone());

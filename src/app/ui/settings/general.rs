@@ -6,6 +6,8 @@ use crate::prelude::*;
 
 /// The seconds the island's "Fechar sozinho" offers (the same as the island's own chips and `set_setting`).
 const CLOSE_AFTER: [u8; 4] = [5, 10, 15, 30];
+/// How long the compact island waits before it shrinks to the notch, in seconds; 0 is never.
+const COMPACT_AFTER: [u16; 5] = [15, 30, 60, 300, 0];
 
 impl DrawingApp {
     pub(super) fn settings_general(&mut self, ui: &mut egui::Ui, k: &K) {
@@ -18,7 +20,7 @@ impl DrawingApp {
         if let Some(i) = row(ui, k, "Tema", "Sistema segue o do seu sistema operacional.", |ui| choice(ui, k, "Tema", &["Sistema", "Claro", "Escuro"], now)) {
             self.prefs.theme = [Theme::System, Theme::Light, Theme::Dark][i];
         }
-        let hint = "O Maestro fala no idioma em que você fala com ele; aqui você fixa um.";
+        let hint = "A Luna fala no idioma em que você fala com ela; aqui você fixa um.";
         if let Some(i) = row(ui, k, "Idioma", hint, |ui| select(ui, k, "Idioma", &super::LANGUAGES, self.prefs.language)) {
             self.prefs.language = i;
         }
@@ -35,15 +37,15 @@ impl DrawingApp {
         if let Some(i) = row(ui, k, "Abrir o app em", "", |ui| choice(ui, k, "Abrir o app em", &["Canvas", "Chat"], now)) {
             self.prefs.start_in_chat = i == 1;
         }
-        if cfg!(windows) {
-            let was_enabled = self.prefs.run_at_login;
-            toggle(ui, k, "Iniciar com o Windows", "Abre o MagoAgent ao entrar na sua conta do Windows.", &mut self.prefs.run_at_login);
-            if self.prefs.run_at_login != was_enabled
-                && let Err(error) = crate::app::system::run_at_login::set_run_at_login(self.prefs.run_at_login)
-            {
-                self.prefs.run_at_login = was_enabled;
-                self.toast(error);
-            }
+        let was_enabled = self.prefs.run_at_login;
+        let system = crate::app::system::run_at_login::system_name();
+        let (label, hint) = (format!("Iniciar com o {system}"), format!("Abre o MagoAgent ao entrar na sua conta do {system}."));
+        toggle(ui, k, &label, &hint, &mut self.prefs.run_at_login);
+        if self.prefs.run_at_login != was_enabled
+            && let Err(error) = crate::app::system::run_at_login::set_run_at_login(self.prefs.run_at_login)
+        {
+            self.prefs.run_at_login = was_enabled;
+            self.toast(error);
         }
         let hint = "Fechar a janela deixa o MagoAgent rodando, com os terminais e os agentes. Ele volta pelo ícone perto do relógio; Ctrl+Q sai de verdade.";
         toggle(ui, k, "Fechar mantém em segundo plano", hint, &mut self.prefs.close_to_background);
@@ -58,6 +60,11 @@ impl DrawingApp {
         if let Some(index) = row(ui, k, "Lugar da ilha", hint, |ui| choice(ui, k, "Lugar da ilha", &Place::NAMES, now)) {
             self.put_island(Place::ALL[index]);
         }
+        let hint = "Sumiu ou ficou fora da tela? Volta a ilha ao meio do topo do monitor onde está a janela do MagoAgent.";
+        if row(ui, k, "Trazer a ilha de volta", hint, |ui| button(ui, k, "Voltar ao lugar padrão")).clicked() {
+            self.reset_island();
+            self.toast("A ilha voltou ao topo da tela.");
+        }
         #[cfg(target_os = "linux")]
         if crate::app::island::gnome::wanted() {
             self.settings_gnome_cursor(ui, k);
@@ -66,6 +73,12 @@ impl DrawingApp {
         let hint = "Quanto a ilha aberta espera depois que o mouse sai.";
         if let Some(i) = row(ui, k, "Fechar sozinho", hint, |ui| choice(ui, k, "Fechar sozinho", &["5 s", "10 s", "15 s", "30 s"], now)) {
             self.prefs.island_close_after = CLOSE_AFTER[i];
+        }
+        let now = COMPACT_AFTER.iter().position(|seconds| *seconds == self.prefs.island_compact_after).unwrap_or(2);
+        let hint = "Quanto a ilha compacta (a pílula com a Luna, a música e os agentes) espera, depois que o mouse sai, até virar o notch pequeno.";
+        let labels = ["15 s", "30 s", "1 min", "5 min", "Nunca"];
+        if let Some(i) = row(ui, k, "Encolher para o notch", hint, |ui| choice(ui, k, "Encolher para o notch", &labels, now)) {
+            self.prefs.island_compact_after = COMPACT_AFTER[i];
         }
 
         title(ui, k, "CANVAS");

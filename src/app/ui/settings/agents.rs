@@ -19,7 +19,7 @@ impl DrawingApp {
             divider(ui, k);
         }
         title(ui, k, "LIMITES DO MAESTRO");
-        note(ui, k, "O que segura o Maestro ao recrutar agentes.");
+        note(ui, k, "O que segura a Luna ao recrutar agentes.");
         ui.add_space(3.25);
         let mode = usize::from(self.prefs.agent_mode == AgentMode::Chat);
         let hint = "Terminal: Claude Code completo em um terminal. Chat: conversa leve pelo chat do app, usando o login do CLI; gasta bem menos memória.";
@@ -27,7 +27,7 @@ impl DrawingApp {
             self.prefs.agent_mode = [AgentMode::Terminal, AgentMode::Chat][i];
         }
         let stop = [70, 80, 90].iter().position(|n| *n == self.prefs.usage_stop).unwrap_or(3);
-        let hint = "Com a janela de 5 horas do plano nesta porcentagem, o Maestro para de recrutar.";
+        let hint = "Com a janela de 5 horas do plano nesta porcentagem, a Luna para de recrutar.";
         if let Some(i) = row(ui, k, "Parar de recrutar em", hint, |ui| select(ui, k, "Parar de recrutar em", &["70%", "80%", "90%", "Nunca"], stop)) {
             self.prefs.usage_stop = [70, 80, 90, 0][i];
         }

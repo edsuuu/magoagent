@@ -2,7 +2,7 @@
 
 <!-- gerado por docs/mcp.py a partir do tools/list do app: não edite à mão -->
 
-O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.17) e tem **97 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
+O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.20) e tem **98 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
 
 ## Ligar
 
@@ -12,7 +12,7 @@ O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.17) e
 - **opencode**: em `opencode.json`, `"mcp": { "magoagent": { "type": "local", "command": ["<caminho do magoagent>", "mcp"] } }`.
 - **Testar sem cliente**: mande JSON-RPC pelo stdin de `magoagent mcp` (`initialize` com `clientInfo.name`, `tools/list`, `tools/call`).
 
-Um terminal comum (que não é o Maestro) só mexe nas árvores ligadas a ele por corda; criar terminais, navegadores e conexões é do Maestro e dos chats. O que uma ação abre para quem pediu (um navegador do `open_path`, por exemplo) fica ligado a ele por corda.
+Um terminal comum (que não é o da Luna) só mexe nas árvores ligadas a ele por corda; criar terminais, navegadores e conexões é da Luna e dos chats. O que uma ação abre para quem pediu (um navegador do `open_path`, por exemplo) fica ligado a ele por corda.
 
 ## Canvas e desenho
 
@@ -96,11 +96,11 @@ Solta arquivos e pastas no canvas, como arrastá-los para lá: .md e .txt viram 
 
 ### `canvas_group`
 
-Grupos do canvas (o quadro tracejado com nome em volta de vários elementos; o menu "Grupo"): `create` agrupa os `elements` (ids ou nomes de nós; 2 ou mais) com o `name` (padrão "Grupo"), `rename` dá o `name` ao `group`, `color` pinta o `group` com um papel de nota (`color`: Amarelo, Rosa, Azul…, ou `none` para sem cor), `ungroup` desfaz o `group` (os elementos ficam), `list` mostra os grupos. `group` é o nome ou o id.
+Grupos do canvas (o quadro tracejado com nome em volta de vários elementos; o menu "Grupo"): `create` agrupa os `elements` (ids ou nomes de nós; 2 ou mais) com o `name` (padrão "Grupo"), `rename` dá o `name` ao `group`, `color` pinta o `group` com um papel de nota (`color`: Amarelo, Rosa, Azul…, ou `none` para sem cor), `ungroup` desfaz o `group` (os elementos ficam), `list` mostra os grupos, `tidy` é o Organizar (⇧Ctrl T): os `elements` (2 ou mais) numa grade alinhada; de novo com os mesmos, numa linha, depois numa coluna. `group` é o nome ou o id.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `action` (obrigatório) | string: `list`, `create`, `rename`, `color`, `ungroup` |  |
+| `action` (obrigatório) | string: `list`, `create`, `rename`, `color`, `ungroup`, `tidy` |  |
 | `elements` | array |  |
 | `group` | string |  |
 | `name` | string |  |
@@ -203,7 +203,7 @@ Fichário (pilha de notas): `stack` junta as notas de `notes` numa pilha onde s�
 
 ### `binder`
 
-O fichário: notas com nome, em Markdown, guardadas entre as sessões (decisões, pendências, contexto de um projeto), para o Maestro e os agentes lerem e escreverem. Não são as notas adesivas do canvas. list traz o nome, o tamanho e a primeira linha de cada nota; read lê uma; write grava (substitui) e append acrescenta ao fim, até 64 KB por nota; delete tira a nota do fichário e a guarda na pasta recuperados.
+O fichário: notas com nome, em Markdown, guardadas entre as sessões (decisões, pendências, contexto de um projeto), para a Luna e os agentes lerem e escreverem. Não são as notas adesivas do canvas. list traz o nome, o tamanho e a primeira linha de cada nota; read lê uma; write grava (substitui) e append acrescenta ao fim, até 64 KB por nota; delete tira a nota do fichário e a guarda na pasta recuperados.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -211,11 +211,11 @@ O fichário: notas com nome, em Markdown, guardadas entre as sessões (decisões
 | `name` | string | o nome da nota (vira um nome de arquivo seguro: sem acentos, minúsculo) |
 | `text` | string | write, append: o texto, em Markdown |
 
-## Agentes, terminais e Maestro
+## Agentes, terminais e a Luna
 
 ### `list_agents`
 
-Lista os agentes (terminais e chats do canvas), notas e navegadores ligados a você por uma seta, com o estado de cada agente (trabalhando, parado, encerrado; um chat é o Maestro e diz que é chat). Fora de um terminal do MagoAgent, ou de um chat ainda sem corda, lista todos.
+Lista os agentes (terminais e chats do canvas), notas e navegadores ligados a você por uma seta, com o estado de cada agente (trabalhando, parado, encerrado; um chat é a Luna e diz que é chat). Fora de um terminal do MagoAgent, ou de um chat ainda sem corda, lista todos.
 
 Sem parâmetros.
 
@@ -373,6 +373,15 @@ O que espera a pessoa, do mais urgente ao menos: pedidos de permissão, pergunta
 | `answer` | string: `allow`, `deny` |  |
 | `reason` | string |  |
 
+### `outside_message`
+
+Manda uma mensagem da pessoa a uma sessão do Claude Code de fora do app (as que demands lista no fim), como a caixa da conversa dela na ilha. Se a sessão roda no tmux e nada espera a pessoa na tela dela, o texto é digitado no terminal com o Enter na hora; senão fica na fila e entra quando o Claude terminar a vez (uma sessão parada só recebe quando trabalhar de novo e terminar). A resposta diz qual foi. Claude Desktop, Cursor e Hermes não recebem: responda na janela deles.
+
+| Parâmetro | Tipo | O que é |
+|---|---|---|
+| `session` | string | o nome da sessão como demands mostra (Claude Code · pasta), a pasta ou parte dela; vazio: a única |
+| `text` (obrigatório) | string | a mensagem |
+
 ### `timeline`
 
 A linha do tempo dos agentes ("o que aconteceu na última hora?", "o que o Revisor fez hoje?"): os eventos recentes, do mais antigo ao mais novo, com a hora local na frente; filtra por agente, tipo e minutos. Com mais de 5 eventos, começa por um resumo das contagens (ferramentas, pedidos de permissão, erros, agentes).
@@ -405,7 +414,7 @@ As tarefas: o que foi pedido a quem, em que estado está e do que depende. creat
 
 ### `skills`
 
-Lista as skills disponíveis para o Maestro ou abre a pasta delas no gerenciador de arquivos; action list (padrão) ou open.
+Lista as skills disponíveis para a Luna ou abre a pasta delas no gerenciador de arquivos; action list (padrão) ou open.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -413,7 +422,7 @@ Lista as skills disponíveis para o Maestro ou abre a pasta delas no gerenciador
 
 ### `maestro_comment`
 
-Comentar para o Maestro: envia ao chat do Maestro um comentário sobre linhas de um arquivo (caminho, trecho em bloco de código e o comentário). Vai ao chat ligado à Árvore, senão ao chat em uso, senão a um novo, e abre o mini chat nele. Sem `tree`, usa a Árvore selecionada ou a primeira.
+Comentar para a Luna: envia ao chat da Luna um comentário sobre linhas de um arquivo (caminho, trecho em bloco de código e o comentário). Vai ao chat ligado à Árvore, senão ao chat em uso, senão a um novo, e abre o mini chat nele. Sem `tree`, usa a Árvore selecionada ou a primeira.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -550,7 +559,7 @@ Responde pela pessoa o que o agente de um chat espera decidir (as perguntas com 
 
 ### `chat_node`
 
-O cartão de um chat no canvas: ali o chat é o Maestro (list_agents o chama de Maestro), e o que se liga a ele por cordas, terminais e outros chats (connect, disconnect), é o time que ele comanda e que o alcança com ask_agent. action show (o padrão) põe o cartão do chat no canvas deste espaço, se ainda não está, e mostra o canvas nele; new cria um chat novo (`agent` e `folder` como em chat_new) já com o cartão, e mostra o canvas; remove tira o cartão do canvas (a conversa continua na lista de chats); fold recolhe o cartão de um agente recrutado em chat ao nome e à tarefa, ou o abre de novo mostrando o que ele faz.
+O cartão de um chat no canvas: ali o chat é a Luna (list_agents a chama de Luna), e o que se liga a ele por cordas, terminais e outros chats (connect, disconnect), é o time que ele comanda e que o alcança com ask_agent. action show (o padrão) põe o cartão do chat no canvas deste espaço, se ainda não está, e mostra o canvas nele; new cria um chat novo (`agent` e `folder` como em chat_new) já com o cartão, e mostra o canvas; remove tira o cartão do canvas (a conversa continua na lista de chats); fold recolhe o cartão de um agente recrutado em chat ao nome e à tarefa, ou o abre de novo mostrando o que ele faz.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -894,11 +903,11 @@ Os andares do espaço de trabalho na tela: o Térreo (o desenho do espaço) e os
 
 ### `set_setting`
 
-Muda um ajuste do app: theme (light, dark, system), voice (voicestudio, openai, codex: o motor da chamada; com o Codex a chamada não liga), island (on, off: a ilha do Maestro, um notch no topo da tela por cima de tudo com o resumo dos agentes, as perguntas pendentes, o chat novo e a voz), island_sound (on, off: os sons da ilha), island_volume (0 a 0.2; padrão 0.1), island_close_after (5, 10, 15 ou 30 segundos), island_color (cor #rrggbb), claude_hooks (install, remove, status: os hooks do MagoAgent no settings.json do Claude Code da pessoa, com backup e sem apagar nada, para a ilha mostrar as perguntas e permissões de qualquer sessão, o Claude Desktop incluso; só a pedido dela), voice_studio_url (o endereço do servidor do VoiceStudio, padrão http://127.0.0.1:3900), voice_studio_voice (o id da voz dele, da lista de Ajustes › Voz; alloy é a padrão), voice_studio_key (a chave de API dele, se pedir; vazio tira), terminal_history (1000, 5000, 10000), avatar (on, off: a barra do Maestro por cima de tudo na tela), avatar_follow (on: a barra segue a janela em uso; off: fica onde está) zoom_step (de 2 a 50: quantos pontos de zoom um passo da roda do mouse muda) voice_mic (o microfone que a chamada e o Ditar ouvem, por parte do nome; auto usa o do sistema, menos um cabo virtual), ou favorite_folder (o caminho de uma pasta: entra nas favoritas do campo de pasta, no topo da lista Recentes, ou sai delas se já estava). Consumo: max_agents (quantos agentes podem rodar para o Maestro recrutar mais um; 0 tira o teto), usage_stop (a porcentagem da janela de 5 horas do plano a partir da qual o app não recruta; 0 nunca para) e agent_mode (terminal ou chat: como os agentes recrutados rodam, num terminal com o Claude Code completo ou num chat leve do app) e recruit_model (o modelo dos agentes recrutados, por exemplo sonnet ou haiku; cli usa o da CLI). style_skill (o caminho do SKILL.md do seu estilo de código, que a etapa Padronização do fluxo manda o agente ler). Chat novo (Ajustes › Chat): chat_agent (claude ou codex), chat_folder (a pasta de trabalho; vazio: a padrão), chat_mode (auto ou bypass: o que o agente pode), chat_autocompact (100k a 1M: onde o Claude Code compacta sozinho; padrão volta ao do modelo), chat_panel (on, off: o painel Contexto) e agent_hooks (on, off: os agentes do app avisam a ilha por hooks). Voz (Ajustes › Ok Mago): ok_mago (on, off: dizer Ok Mago chama o Maestro na chamada) e speak_answers (on, off: a chamada começa com os alto-falantes ligados). Seleção: window_outline (a borda azul de uma janela selecionada: animated, still ou none). Árvore de Arquivos: hidden_shown (os ocultos que ela ainda lista com os ocultos escondidos, separados por vírgula, como .claude, .idea; a .git fica oculta). Atalhos globais da ilha, que valem com qualquer programa na frente: shortcut_openChat (abre o chat da ilha), shortcut_goToAlert (vai à pergunta ou permissão pendente), shortcut_jumpToTerminal (abre o terminal da sessão), shortcut_nextPill, shortcut_prevPill e shortcut_muteToggle; o valor são as teclas (Ctrl+Alt+K: Ctrl, Alt ou Win com uma tecla), off ou on para desligar e ligar, ou default para voltar ao padrão.
+Muda um ajuste do app: theme (light, dark, system), voice (voicestudio, openai, codex: o motor da chamada; com o Codex a chamada não liga), island (on, off: a ilha da Luna, um notch no topo da tela por cima de tudo com o resumo dos agentes, as perguntas pendentes, o chat novo e a voz), island_sound (on, off: os sons da ilha), island_volume (0 a 0.2; padrão 0.1), island_close_after (5, 10, 15 ou 30 segundos), island_place (top, bottom: a ilha no topo, ou embaixo crescendo para cima; reset: volta ao lugar padrão, o meio do topo do monitor do app, quando ela sumiu ou ficou fora da tela), island_page (home, chats, chat, new, claude, github, spotify: abre a ilha nessa aba; home é o resumo, claude as sessões do Claude Code fora do app), island_feed (hide_all: oculta as linhas do resumo da aba Início até mudarem; show_hidden: traz as ocultas de volta), frame_rate (30, 60, 120, 144 ou 240: os quadros por segundo da ilha e das animações; mais fica mais suave e gasta mais processador), gnome_cursor (install, remove, status: no Linux com GNOME, a extensão do GNOME que diz onde o mouse está para os olhos da ilha seguirem ele fora das janelas do app; o GNOME a carrega no próximo login; só a pedido da pessoa), island_color (cor #rrggbb), claude_hooks (install, remove, status: os hooks do MagoAgent no settings.json do Claude Code da pessoa, com backup e sem apagar nada, para a ilha mostrar as perguntas e permissões de qualquer sessão, o Claude Desktop incluso; só a pedido dela), voice_studio_url (o endereço do servidor do VoiceStudio, padrão http://127.0.0.1:3900), voice_studio_voice (o id da voz dele, da lista de Ajustes › Voz; alloy é a padrão), voice_studio_key (a chave de API dele, se pedir; vazio tira), terminal_history (1000, 5000, 10000), avatar (on, off: a barra da Luna por cima de tudo na tela), avatar_follow (on: a barra segue a janela em uso; off: fica onde está) zoom_step (de 2 a 50: quantos pontos de zoom um passo da roda do mouse muda) voice_mic (o microfone que a chamada e o Ditar ouvem, por parte do nome; auto usa o do sistema, menos um cabo virtual), ou favorite_folder (o caminho de uma pasta: entra nas favoritas do campo de pasta, no topo da lista Recentes, ou sai delas se já estava). Consumo: max_agents (quantos agentes podem rodar para a Luna recrutar mais um; 0 tira o teto), usage_stop (a porcentagem da janela de 5 horas do plano a partir da qual o app não recruta; 0 nunca para) e agent_mode (terminal ou chat: como os agentes recrutados rodam, num terminal com o Claude Code completo ou num chat leve do app) e recruit_model (o modelo dos agentes recrutados, por exemplo sonnet ou haiku; cli usa o da CLI). style_skill (o caminho do SKILL.md do seu estilo de código, que a etapa Padronização do fluxo manda o agente ler). Chat novo (Ajustes › Chat): chat_agent (claude ou codex), chat_folder (a pasta de trabalho; vazio: a padrão), chat_mode (auto ou bypass: o que o agente pode), chat_autocompact (100k a 1M: onde o Claude Code compacta sozinho; padrão volta ao do modelo), chat_panel (on, off: o painel Contexto) e agent_hooks (on, off: os agentes do app avisam a ilha por hooks). Voz (Ajustes › Ok Mago): ok_mago (on, off: dizer Ok Mago chama a Luna na chamada) e speak_answers (on, off: a chamada começa com os alto-falantes ligados). Seleção: window_outline (a borda azul de uma janela selecionada: animated, still ou none). Árvore de Arquivos: hidden_shown (os ocultos que ela ainda lista com os ocultos escondidos, separados por vírgula, como .claude, .idea; a .git fica oculta). Atalhos globais da ilha, que valem com qualquer programa na frente: shortcut_openChat (abre o chat da ilha), shortcut_goToAlert (vai à pergunta ou permissão pendente), shortcut_jumpToTerminal (abre o terminal da sessão), shortcut_nextPill, shortcut_prevPill e shortcut_muteToggle; o valor são as teclas (Ctrl+Alt+K: Ctrl, Alt ou Win com uma tecla), off ou on para desligar e ligar, ou default para voltar ao padrão. wipe_data (Limpar todos os dados) não é feito por aqui: só a pessoa, em Ajustes › Dados. Atalhos do app, que valem na janela dele: shortcut_settings (ajustes), shortcut_palette (paleta de comandos), shortcut_showChat (tela do chat), shortcut_showCanvas (voltar ao canvas), shortcut_openTree (abrir a árvore de arquivos), shortcut_nextNeedingYou (próximo agente que precisa de você), shortcut_floors (visão dos andares), shortcut_grid (mostrar ou esconder a grade), shortcut_theme (tema claro ou escuro), shortcut_save (salvar), shortcut_saveAs (salvar como), shortcut_open (abrir), shortcut_export (exportar imagem), shortcut_undo (desfazer), shortcut_redo (refazer), shortcut_selectAll (selecionar tudo), shortcut_duplicate (duplicar), shortcut_clearCanvas (limpar o canvas), shortcut_group (agrupar), shortcut_ungroup (desagrupar), shortcut_lock (travar ou destravar), shortcut_tidy (arrumar a seleção), shortcut_editPoints (editar os pontos da linha), shortcut_layerForward (uma camada à frente), shortcut_layerBackward (uma camada atrás), shortcut_layerFront (trazer para a frente de tudo), shortcut_layerBack (enviar para trás de tudo), shortcut_zoomIn (aproximar), shortcut_zoomOut (afastar), shortcut_zoomReset (voltar a 100%), shortcut_fitAll (ver tudo), shortcut_fitSelection (ver a seleção). O valor são as teclas (Ctrl+S, Ctrl+Shift+K, Shift+1, F2), none para deixar sem tecla ou default para o padrão; vale também para os globais. Teclas que já são de outro atalho, as fixas (as letras das ferramentas, Esc, Enter, Delete, as setas, Ctrl+C, Ctrl+X, Ctrl+V) e as do sistema (Alt+Tab, Alt+F4) são recusadas, dizendo de quem são.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `name` (obrigatório) | string: `theme`, `voice`, `voice_studio_url`, `voice_studio_voice`, `voice_studio_key`, `terminal_history`, `avatar`, `avatar_follow`, `island`, `island_sound`, `island_volume`, `island_close_after`, `island_color`, `favorite_folder`, `zoom_step`, `max_agents`, `usage_stop`, `agent_mode`, `recruit_model`, `voice_mic`, `hidden_shown`, `window_outline`, `style_skill`, `chat_agent`, `chat_folder`, `chat_mode`, `chat_autocompact`, `chat_panel`, `agent_hooks`, `ok_mago`, `speak_answers`, `claude_hooks`, `codex_hooks`, `shortcut_openChat`, `shortcut_goToAlert`, `shortcut_jumpToTerminal`, `shortcut_nextPill`, `shortcut_prevPill`, `shortcut_muteToggle` |  |
+| `name` (obrigatório) | string: `theme`, `voice`, `voice_studio_url`, `voice_studio_voice`, `voice_studio_key`, `terminal_history`, `avatar`, `avatar_follow`, `island`, `island_sound`, `island_volume`, `island_close_after`, `island_place`, `island_page`, `wipe_data`, `island_feed`, `frame_rate`, `gnome_cursor`, `island_color`, `favorite_folder`, `zoom_step`, `max_agents`, `usage_stop`, `agent_mode`, `recruit_model`, `voice_mic`, `hidden_shown`, `window_outline`, `style_skill`, `chat_agent`, `chat_folder`, `chat_mode`, `chat_autocompact`, `chat_panel`, `agent_hooks`, `ok_mago`, `speak_answers`, `claude_hooks`, `codex_hooks`, `shortcut_openChat`, `shortcut_goToAlert`, `shortcut_jumpToTerminal`, `shortcut_nextPill`, `shortcut_prevPill`, `shortcut_muteToggle`, `shortcut_settings`, `shortcut_palette`, `shortcut_showChat`, `shortcut_showCanvas`, `shortcut_openTree`, `shortcut_nextNeedingYou`, `shortcut_floors`, `shortcut_grid`, `shortcut_theme`, `shortcut_save`, `shortcut_saveAs`, `shortcut_open`, `shortcut_export`, `shortcut_undo`, `shortcut_redo`, `shortcut_selectAll`, `shortcut_duplicate`, `shortcut_clearCanvas`, `shortcut_group`, `shortcut_ungroup`, `shortcut_lock`, `shortcut_tidy`, `shortcut_editPoints`, `shortcut_layerForward`, `shortcut_layerBackward`, `shortcut_layerFront`, `shortcut_layerBack`, `shortcut_zoomIn`, `shortcut_zoomOut`, `shortcut_zoomReset`, `shortcut_fitAll`, `shortcut_fitSelection` |  |
 | `value` (obrigatório) | string |  |
 
 ### `dictionary`
@@ -924,12 +933,19 @@ O servidor MCP de email (Gmail ou outro) que os agentes dos chats ganham ao lado
 
 ### `integrations`
 
-Ajustes › Integrações, os serviços de fora que a ilha mostra. `integration` github: status (o padrão) diz quem está conectado e lista os pull requests abertos da pessoa com o estado dos checks e da revisão, os que pedem a revisão dela e a atividade; on e off ligam e desligam; test pergunta ao GitHub quem é o token e busca os pull requests de agora; remove_token tira o token do cofre do sistema. O token nunca passa por aqui: a pessoa cola em Ajustes › Integrações e ele fica no cofre do sistema. `integration` spotify (sem conta e sem chave: o Spotify aberto neste computador): status diz o que toca; on e off; playpause, next e previous tocam ou pausam e pulam a faixa. `integration` hermes (o Hermes Agent na ilha): on e off mostram ou não as sessões dele; install põe o plugin magoagent no Hermes da pessoa (~/.hermes/plugins/magoagent e o nome em plugins.enabled do config.yaml, com backup) e remove tira só o que é nosso; status diz se está instalado. `integration` whatsapp (gateway GOWA local): status diz se o gateway está conectado, precisa parear ou está indisponível; on e off; test testa a conexão com o gateway; remove_credential tira a credencial do cofre do sistema. A credencial e a URL nunca passam por aqui: a pessoa cola em Ajustes › Integrações. Sem `integration`, status resume todas.
+Ajustes › Integrações, os serviços de fora que a ilha mostra. `integration` github: status (o padrão) diz quem está conectado e lista os pull requests abertos da pessoa com o estado dos checks e da revisão, os que pedem a revisão dela, o CI da branch principal dos repositórios dela, a atividade e como foi a última escrita; on e off ligam e desligam; test pergunta ao GitHub quem é o token e busca os pull requests de agora; remove_token tira o token do cofre do sistema; prs lista os pull requests da aba GitHub da ilha (os mudados por último, abertos, mesclados ou fechados, e os que pedem a revisão dela) com estado, branches, quando mudou, checks, conflito e se precisa dela (`filter` all, open, needs_you ou closed; needs_you: checks falharam, conflito, mudanças pedidas ou revisão pedida a ela); pr com `pr` (dono/repo#número ou o endereço) lê a descrição em Markdown e o que bloqueia o pull request (a primeira leitura só pede ao GitHub: chame de novo em alguns segundos); pr_body com `pr` e `text` troca a descrição inteira por `text`; pr_comment com `pr` e `text` comenta. pr_body e pr_comment escrevem no GitHub em nome da pessoa: só a pedido dela; o resultado aparece em status. O token nunca passa por aqui: a pessoa cola em Ajustes › Integrações e ele fica no cofre do sistema. `integration` spotify (sem conta e sem chave: o app do Spotify aberto neste computador; no Linux, também o Spotifast) e, só no Linux, `integration` soloist (o receptor do Spotify Connect, aberto com a API local -w ou pelo Spotifast), cada um com o seu on e off; a ilha mostra o que estiver tocando: status diz o que toca (de onde, o tempo, embaralhar, repetir, volume, se é curtida, a conta); on e off; playpause, next e previous tocam ou pausam e pulam a faixa; shuffle (`value` on/off), repeat (`value` off, context ou track), volume (`value` 0 a 100) e seek (`value` em segundos ou 1:23) mudam o player que toca; queue lista o que vem a seguir; play toca `uri` (spotify:track:…, spotify:playlist:…, spotify:album:…; `value` liked para as Músicas curtidas) ou o primeiro achado de `query` (`kind` playlist para a primeira playlist); enqueue põe na fila `uri` de uma música ou o primeiro achado de `query`; like e unlike põem ou tiram a música que toca (ou `uri`) das Músicas curtidas; search busca músicas e playlists por `query`; playlists lista as playlists da pessoa; liked as últimas Músicas curtidas; devices lista os aparelhos do Spotify e device (`value` o nome ou o id) passa a música para um deles; dance_on e dance_off ligam e desligam "A Luna dança com a música" (na ilha, ela dança no ritmo do que toca: ouve o som do computador só para achar a batida, nada é gravado nem enviado; no macOS balança no ritmo do relógio) e dance diz se está ligado e o passo de agora. Fila de um player que não é o Soloist, busca, playlists, curtidas, coração e aparelhos precisam da conta do Spotify conectada: client_id (`value` o Client ID do app da pessoa no painel do Spotify) guarda o Client ID, connect abre o navegador no login do Spotify (a pessoa autoriza lá), disconnect desconecta e account diz como está; o token nunca passa por aqui. O Configurar do soloist (Linux, sem sudo): setup diz os 5 passos (baixar, chave, nome, salvar e ligar com o computador, escolher no celular), cada um feito, agora ou a fazer; update (ou install) baixa a versão nova do Spotify (cada uma vale 90 dias) e religa o serviço; enable liga o soloist.service do usuário com a chave já salva; start e stop ligam e param o serviço. A chave do Soloist nunca passa por aqui (key só responde isso): a pessoa cola em Ajustes › Integrações › Soloist › Configurar. `integration` hermes (o Hermes Agent na ilha) está desativado por enquanto: responde só que está desativado. `integration` whatsapp (gateway GOWA local): status diz se o gateway está conectado, precisa parear ou está indisponível; on e off; test testa a conexão com o gateway; remove_credential tira a credencial do cofre do sistema. A credencial e a URL nunca passam por aqui: a pessoa cola em Ajustes › Integrações. Sem `integration`, status resume todas.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `integration` | string: `github`, `spotify`, `hermes`, `whatsapp` |  |
-| `action` | string: `status`, `on`, `off`, `test`, `remove_token`, `remove_credential`, `playpause`, `next`, `previous`, `install`, `remove` |  |
+| `integration` | string: `github`, `spotify`, `soloist`, `hermes`, `whatsapp` |  |
+| `action` | string: `status`, `on`, `off`, `test`, `remove_token`, `remove_credential`, `playpause`, `next`, `previous`, `dance`, `dance_on`, `dance_off`, `install`, `remove`, `setup`, `update`, `enable`, `start`, `stop`, `key`, `prs`, `pr`, `pr_body`, `pr_comment`, `shuffle`, `repeat`, `volume`, `seek`, `queue`, `search`, `play`, `enqueue`, `like`, `unlike`, `playlists`, `liked`, `devices`, `device`, `client_id`, `connect`, `disconnect`, `account` |  |
+| `filter` | string: `all`, `open`, `needs_you`, `closed` | github prs: quais listar (o padrão é all) |
+| `pr` | string | github: o pull request, como dono/repo#42 ou https://github.com/dono/repo/pull/42 |
+| `text` | string | github: a descrição nova inteira em Markdown (pr_body) ou o comentário (pr_comment) |
+| `value` | string | o valor da ação do Spotify: on/off, off/context/track, 0 a 100, segundos, liked, o aparelho, o Client ID |
+| `query` | string | o que buscar no Spotify (search, play, enqueue) |
+| `uri` | string | o endereço do Spotify: spotify:track:…, spotify:playlist:…, spotify:album:… |
+| `kind` | string: `track`, `playlist` | play com query: tocar a primeira música (o padrão) ou a primeira playlist |
 
 ### `voice_call`
 

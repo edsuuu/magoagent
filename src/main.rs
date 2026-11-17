@@ -83,6 +83,8 @@ fn main() -> eframe::Result {
         Some("statusline") => std::process::exit(app::usage::statusline_cli()),
         // the update's second half, run from a copy outside the installed folder (app/system/updater.rs)
         Some("atualizar") => std::process::exit(app::system::updater::cli(&args[1..])),
+        // Limpar todos os dados: waits for the app to close, cleans, opens it again (app/system/wipe.rs)
+        Some("limpar") => std::process::exit(app::system::wipe::cli(&args[1..])),
         Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "connect" | "notify" | "help") => {
             attach_console();
             std::process::exit(cli(&args))

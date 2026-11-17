@@ -46,7 +46,7 @@ impl DrawingApp {
     /// "Skill de estilo": the file the flow's Padronização step reads, and Abrir to show it in a file tree on the canvas.
     fn style_skill_row(&mut self, ui: &mut egui::Ui, k: &K) {
         let path = &mut self.prefs.style_skill;
-        let hint = "O SKILL.md com o seu estilo de código: a etapa Padronização do fluxo do Maestro manda o agente lê-lo e conferir o diff regra a regra.";
+        let hint = "O SKILL.md com o seu estilo de código: a etapa Padronização do fluxo da Luna manda o agente lê-lo e conferir o diff regra a regra.";
         let mut open = false;
         row(ui, k, "Skill de estilo", hint, |ui| {
             open = button(ui, k, "Abrir").clicked();

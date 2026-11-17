@@ -1,3 +1,4 @@
+use super::token::token_looks_right;
 use super::*;
 
 /// Shaped as a token, and nobody's.
@@ -9,7 +10,7 @@ pub(crate) fn recorded_pulse() -> Value {
 }
 
 fn request(id: &str, ci: CiState, head: Option<&str>) -> PullRequest {
-    PullRequest { id: id.into(), title: "T".into(), url: "https://github.com/a/b/pull/1".into(), draft: false, ci, review: "", head: head.map(String::from) }
+    PullRequest { id: id.into(), title: "T".into(), url: "https://github.com/a/b/pull/1".into(), ci, head: head.map(String::from), ..Default::default() }
 }
 
 fn pulse(mine: Vec<PullRequest>, to_review: Vec<PullRequest>) -> Pulse {
@@ -24,8 +25,8 @@ fn a_recorded_pulse_is_read() {
     let ids: Vec<&str> = pulse.mine.iter().map(|request| request.id.as_str()).collect();
     assert_eq!(
         ids,
-        ["ana-dev/loja#42", "ana-dev/loja#43", "ana-dev/site#7"],
-        "a duplicate, one without a number and one with an address outside GitHub are left out"
+        ["ana-dev/loja#42", "ana-dev/loja#43", "ana-dev/site#7", "ana-dev/loja#40", "ana-dev/site#39"],
+        "a duplicate, one without a number and one with an address outside GitHub are left out; the merged and the closed come too"
     );
     assert_eq!((pulse.mine[0].ci, pulse.mine[0].review, pulse.mine[0].head.as_deref()), (CiState::Success, "aprovado", Some("aaa111")));
     assert_eq!((pulse.mine[1].ci, pulse.mine[1].draft, pulse.mine[1].review), (CiState::Unknown, true, ""), "no rollup, no decision");
@@ -271,4 +272,335 @@ fn a_failure_opens_where_it_failed_and_the_alert_is_kept_to_sound() {
     github.take_pulse(with_main(vec![branch(CiState::Failure, "c2")]), 2_000);
     let notice = github.notice.as_ref().unwrap();
     assert_eq!((notice.text.as_str(), notice.url.as_str()), ("O CI da main de ana/loja falhou", "https://github.com/ana/loja/actions"));
+}
+
+/// A pull request's detail as GitHub answers it (recorded shape, made-up names).
+fn recorded_detail() -> Value {
+    serde_json::from_str(include_str!("../fixtures/github_pr_detail.json")).unwrap()
+}
+
+/// Noon of the day the fixtures were recorded, ms.
+fn noon() -> i64 {
+    crate::transcript::iso_ms("2026-11-16T12:00:00Z").unwrap()
+}
+
+/// GitHub on, with a token and the recorded pulse: what the tab reads and writes.
+fn app_with_pulse() -> DrawingApp {
+    let mut app = DrawingApp::default();
+    app.prefs.integrations.github = true;
+    app.integrations.github = GitHub::with_token(TOKEN);
+    app.integrations.github.pulse = Pulse::parse(&recorded_pulse());
+    app
+}
+
+#[test]
+fn the_poll_asks_for_the_last_20_of_every_state_and_no_description() {
+    assert!(PULSE_QUERY.contains("pullRequests(states: [OPEN, MERGED, CLOSED], first: 20, orderBy: {field: UPDATED_AT, direction: DESC})"));
+    for field in ["id number", "state mergeable", "updatedAt headRefName baseRefName", "contexts(first: 25)", "detailsUrl", "targetUrl"] {
+        assert!(PULSE_QUERY.contains(field), "{field}");
+    }
+    assert!(!PULSE_QUERY.contains("body"), "the description is read when a pull request is picked, never in the polls");
+}
+
+#[test]
+fn the_pulse_reads_each_pull_requests_state_branches_and_failed_checks() {
+    let pulse = Pulse::parse(&recorded_pulse()).unwrap();
+    let checkout = &pulse.mine[0];
+    assert_eq!((checkout.state, checkout.mergeable, checkout.node_id.as_str()), (PrState::Open, MergeableState::Mergeable, "PR_kwDOAAAB42"));
+    assert_eq!((checkout.head_ref.as_str(), checkout.base_ref.as_str(), checkout.updated_at), ("feat/checkout", "main", noon() - 4 * 60_000));
+    assert!(checkout.failing.is_empty(), "its checks passed");
+    let cart = &pulse.mine[2];
+    assert_eq!(cart.mergeable, MergeableState::Conflicting);
+    assert_eq!(
+        cart.failing,
+        [
+            Check { name: "build".into(), url: Some("https://github.com/ana-dev/site/actions/runs/9/job/2".into()) },
+            Check { name: "ci/vercel".into(), url: Some("https://vercel.com/ana-dev/site/abc".into()) },
+            Check { name: "deploy".into(), url: None },
+        ],
+        "a failed run, a status in error, a cancelled run whose page is no https address; each name once, the ones that passed out"
+    );
+    assert_eq!((pulse.mine[3].state, pulse.mine[4].state), (PrState::Merged, PrState::Closed));
+    assert!(pulse.to_review[0].review_requested_of_me && !pulse.mine.iter().any(|request| request.review_requested_of_me));
+    assert_eq!((pulse.to_review[0].head_ref.as_str(), pulse.to_review[0].node_id.as_str()), ("troca-http", "PR_kwDOAAAB310"));
+    let old = Pulse::parse(&json!({ "data": { "viewer": { "login": "ana", "pullRequests": { "nodes": [
+        { "number": 1, "title": "Velho", "url": "https://github.com/a/b/pull/1", "repository": { "nameWithOwner": "a/b" } }
+    ] } } } }))
+    .unwrap();
+    let before = &old.mine[0];
+    assert_eq!(
+        (before.state, before.mergeable, before.updated_at, before.node_id.as_str()),
+        (PrState::Open, MergeableState::Unknown, 0, ""),
+        "fields left out"
+    );
+}
+
+#[test]
+fn a_pull_request_merged_or_closed_tells_nothing() {
+    let pulse = Pulse::parse(&recorded_pulse()).unwrap();
+    let mut open = pulse.clone();
+    open.mine.retain(PullRequest::is_open);
+    assert_eq!(alerts(Some(&open), &pulse), [], "a merged one with its checks failed and a closed one come: no news");
+    let mut running = pulse.clone();
+    (running.mine[3].state, running.mine[3].ci) = (PrState::Open, CiState::Pending);
+    assert_eq!(alerts(Some(&running), &pulse), [], "it was open and running; merged now, its failure is no news");
+    let mut still_open = pulse.clone();
+    still_open.mine[3].state = PrState::Open;
+    assert_eq!(alerts(Some(&running), &still_open), [Alert::CheckFailed("ana-dev/loja#40".into())], "still open: told");
+}
+
+#[test]
+fn a_pull_request_needs_the_person_when_it_is_open_and_waits_for_them() {
+    let calm = PullRequest { id: "a/b#1".into(), ci: CiState::Success, mergeable: MergeableState::Mergeable, ..Default::default() };
+    assert!(!calm.needs_you());
+    for (why, request) in [
+        ("checks failed", PullRequest { ci: CiState::Failure, ..calm.clone() }),
+        ("a conflict with its base", PullRequest { mergeable: MergeableState::Conflicting, ..calm.clone() }),
+        ("changes asked for", PullRequest { review: CHANGES_REQUESTED, ..calm.clone() }),
+        ("its review asked of the person", PullRequest { review_requested_of_me: true, ..calm.clone() }),
+    ] {
+        assert!(request.needs_you(), "{why}");
+        assert!(!PullRequest { state: PrState::Merged, ..request.clone() }.needs_you(), "{why}, but merged");
+        assert!(!PullRequest { state: PrState::Closed, ..request }.needs_you(), "{why}, but closed");
+    }
+    let waiting = PullRequest { ci: CiState::Pending, mergeable: MergeableState::Unknown, review: "aguarda revisão", draft: true, ..calm };
+    assert!(!waiting.needs_you(), "running, not yet worked out, waiting for others: nothing for the person");
+}
+
+#[test]
+fn the_tabs_filters_split_the_list_the_last_changed_first() {
+    let pulse = Pulse::parse(&recorded_pulse()).unwrap();
+    let ids = |filter| pulse.listed(filter).iter().map(|request| request.id.clone()).collect::<Vec<_>>();
+    let all = ["ana-dev/loja#42", "time/api#310", "ana-dev/loja#43", "ana-dev/site#7", "ana-dev/loja#40", "ana-dev/site#39"];
+    assert_eq!(ids(PrFilter::All), all, "the review asked for among the person's own");
+    assert_eq!(ids(PrFilter::Open), all[..4]);
+    assert_eq!(ids(PrFilter::NeedsYou), ["time/api#310", "ana-dev/site#7"], "a review asked of the person; checks failed, a conflict, changes asked for");
+    assert_eq!(ids(PrFilter::Closed), ["ana-dev/loja#40", "ana-dev/site#39"], "merged and closed");
+    assert_eq!(PrFilter::EVERY.map(PrFilter::label), ["Todas", "Abertas", "Precisa de você", "Fechadas"]);
+    assert_eq!(pulse.find("ANA-DEV/Loja#42").map(|request| request.id.as_str()), Some("ana-dev/loja#42"), "GitHub's names ignore case");
+}
+
+#[test]
+fn ver_checks_opens_the_failed_run_when_it_is_on_github() {
+    let pulse = Pulse::parse(&recorded_pulse()).unwrap();
+    assert_eq!(pulse.mine[2].checks_page(), "https://github.com/ana-dev/site/actions/runs/9/job/2");
+    let elsewhere = PullRequest { failing: vec![Check { name: "ci/vercel".into(), url: Some("https://vercel.com/a".into()) }], ..pulse.mine[2].clone() };
+    assert_eq!(elsewhere.checks_page(), "https://github.com/ana-dev/site/pull/7/checks", "the app opens only GitHub's own pages");
+    assert_eq!(pulse.mine[0].checks_page(), "https://github.com/ana-dev/loja/pull/42/checks");
+}
+
+#[test]
+fn how_long_ago_in_portuguese() {
+    let now = noon();
+    assert_eq!(ago(now - 20_000, now), "agora");
+    assert_eq!(ago(now - 4 * 60_000, now), "há 4 min");
+    assert_eq!(ago(now - 27 * 3_600_000, now), "ontem");
+    assert_eq!(ago(now - 3 * 86_400_000, now), "há 3 dias");
+    assert_eq!(ago(0, now), "", "GitHub did not say");
+    let pulse = Pulse::parse(&recorded_pulse()).unwrap();
+    assert_eq!(pulse.mine[0].subtitle(now), "ana-dev/loja #42 · feat/checkout → main · há 4 min");
+    assert_eq!(pulse.mine[2].subtitle(now), "ana-dev/site #7 · fix/carrinho → main · ontem");
+    assert_eq!(pulse.mine[3].subtitle(now), "ana-dev/loja #40 · feat/logotipo → main · há 3 dias");
+    assert_eq!(request("a/b#1", CiState::Unknown, None).subtitle(now), "a/b #1", "no branches, no time");
+}
+
+#[test]
+fn a_recorded_detail_is_read_with_its_reviews_and_what_blocks_it() {
+    let detail = PrDetail::parse(&recorded_detail(), 5).unwrap();
+    assert_eq!(detail.body, "## O que muda\n\n- conserta o total\n- testa o frete\n\n\tFecha #3.", "GitHub's line breaks as \\n, a control character out");
+    assert!(!detail.truncated);
+    assert_eq!((detail.approved, detail.changes_requested), (2, 2), "the latest review of each reviewer: duda changed her mind; a dismissed one is neither");
+    let request = &detail.request;
+    assert_eq!(
+        (request.id.as_str(), request.node_id.as_str(), request.mergeable, detail.fetched_at),
+        ("ana-dev/site#7", "PR_kwDOAAAB07", MergeableState::Conflicting, 5)
+    );
+    let blockers = detail.blockers();
+    let read: Vec<(&str, Option<&str>)> = blockers.iter().map(|blocker| (blocker.text.as_str(), blocker.url.as_deref())).collect();
+    assert_eq!(
+        read,
+        [
+            ("Conflito com main", Some("https://github.com/ana-dev/site/pull/7")),
+            ("Check falhou: build", Some("https://github.com/ana-dev/site/actions/runs/9/job/2")),
+            ("Check falhou: e2e", Some("https://github.com/ana-dev/site/actions/runs/9/job/3")),
+            ("Check falhou: ci/vercel", Some("https://vercel.com/ana-dev/site/abc")),
+            ("2 revisores pediram mudanças", Some("https://github.com/ana-dev/site/pull/7/files")),
+        ]
+    );
+    assert_eq!(detail.reviews_words(), "2 aprovações · 2 pedidos de mudanças");
+    let merged = PrDetail { request: PullRequest { state: PrState::Merged, ..detail.request.clone() }, ..detail.clone() };
+    assert!(merged.blockers().is_empty(), "merged: nothing blocks it");
+    let report = detail.report(noon());
+    assert!(report.starts_with("ana-dev/site#7 · aberto · Corrige o carrinho quebrado · fix/carrinho → main · ontem · checks falharam"), "{report}");
+    assert!(report.contains("\nBloqueios: Conflito com main (https://github.com/ana-dev/site/pull/7); Check falhou: build"), "{report}");
+    assert!(report.ends_with("Descrição (Markdown):\n## O que muda\n\n- conserta o total\n- testa o frete\n\n\tFecha #3."), "{report}");
+    assert_eq!(PrDetail::parse(&json!({ "data": { "repository": { "pullRequest": null } } }), 0), None);
+    assert_eq!(PrDetail::parse(&json!({ "data": { "repository": null } }), 0), None);
+}
+
+#[test]
+fn a_long_description_is_cut_and_never_saved_back() {
+    let (body, cut) = super::detail::body_text(&"á".repeat(20_001));
+    assert_eq!((body.chars().count(), cut), (20_000, true));
+    assert_eq!(super::detail::body_text("curta\r\nduas"), ("curta\nduas".to_string(), false));
+    let mut app = app_with_pulse();
+    let mut long = PrDetail::parse(&recorded_detail(), 5).unwrap();
+    long.truncated = true;
+    app.integrations.github.receive(Message::Detail("ana-dev/site#7".into(), Ok(Box::new(long))), 10);
+    // the island's Salvar: what goes wrong is where the tab reads how the last write went
+    assert!(app.github_save_body("ana-dev/site#7", "x").is_err());
+    let said = app.github_last_write().cloned().unwrap().unwrap_err();
+    assert!(said.contains("longa demais"), "saving it would cut the rest: {said}");
+    assert!(app.github_comment("ana-dev/site#7", &"x".repeat(65_537)).unwrap_err().contains("limite do GitHub"));
+    assert!(!app.github_writing() && app.integrations.github.sent.is_empty(), "nothing was sent");
+}
+
+#[test]
+fn a_pull_request_is_named_by_its_id_or_its_address() {
+    for (text, owner, name, number) in [
+        ("ana-dev/site#7", "ana-dev", "site", 7),
+        (" Ana-Dev/site.io#12 ", "Ana-Dev", "site.io", 12),
+        ("https://github.com/ana-dev/site/pull/7", "ana-dev", "site", 7),
+        ("https://github.com/ana-dev/site/pull/7/files#diff-1", "ana-dev", "site", 7),
+        ("https://github.com/ana-dev/site/pull/7#issuecomment-1", "ana-dev", "site", 7),
+    ] {
+        assert_eq!(parse_id(text), Some((owner.to_string(), name.to_string(), number)), "{text}");
+    }
+    for bad in ["", "site#7", "ana-dev/site", "ana-dev/site#0", "ana-dev/site#x", "ana dev/site#7", "../site#1", "a/b/c#1"] {
+        assert_eq!(parse_id(bad), None, "{bad}");
+    }
+    for bad in ["https://github.com/ana-dev/site/issues/7", "https://evil.example/ana-dev/site/pull/7"] {
+        assert_eq!(parse_id(bad), None, "{bad}");
+    }
+}
+
+#[test]
+fn the_requests_carry_the_pull_request_and_the_text_as_variables() {
+    let detail = detail_request("ana-dev", "site", 7);
+    assert_eq!(detail["variables"], json!({ "owner": "ana-dev", "name": "site", "number": 7 }));
+    let query = detail["query"].as_str().unwrap();
+    assert!(query.contains("pullRequest(number: $number)") && query.contains(" body ") && query.contains("latestOpinionatedReviews"), "{query}");
+    let text = "Descrição \"nova\"\nlinha 2\nurl = \"https://evil.example\"";
+    let save = save_body_request("PR_kwDOAAAB07", text);
+    assert!(save["query"].as_str().unwrap().contains("updatePullRequest(input: {pullRequestId: $id, body: $body})"));
+    assert_eq!(save["variables"], json!({ "id": "PR_kwDOAAAB07", "body": text }), "the text as it is, never inside the query");
+    let comment = comment_request("PR_kwDOAAAB07", "Bom trabalho!");
+    assert!(comment["query"].as_str().unwrap().contains("addComment(input: {subjectId: $id, body: $body})"));
+    assert_eq!(comment["variables"], json!({ "id": "PR_kwDOAAAB07", "body": "Bom trabalho!" }));
+    let config = http::config(&super::request(TOKEN, "POST", GRAPHQL, Some(save.to_string())));
+    assert_eq!(config.lines().count(), 7, "url, method, four headers and the body: the text adds no line of curl's own: {config}");
+}
+
+#[test]
+fn a_write_says_whether_it_was_done_and_a_token_that_only_reads_is_told_what_to_give() {
+    let answer = |status, body: Value| Ok(http::Answer { status, body: body.to_string() });
+    assert_eq!(written(answer(200, json!({ "data": { "updatePullRequest": { "pullRequest": { "id": "x" } } } })), "updatePullRequest"), Ok(()));
+    for refusal in [
+        json!({ "data": { "updatePullRequest": null }, "errors": [{ "type": "FORBIDDEN", "message": "Resource not accessible by personal access token" }] }),
+        json!({ "data": null, "errors": [{ "type": "INSUFFICIENT_SCOPES", "message": "Your token has not been granted the required scopes" }] }),
+        json!({ "data": { "addComment": null }, "errors": [{ "message": "Resource not accessible by integration" }] }),
+    ] {
+        assert_eq!(written(answer(200, refusal.clone()), "addComment").unwrap_err().message, NO_WRITE, "{refusal}");
+    }
+    let forbidden = Ok(http::Answer { status: 403, body: "{\"message\":\"Resource not accessible by personal access token\"}".into() });
+    assert_eq!(written(forbidden, "addComment").unwrap_err().message, NO_WRITE);
+    let spent = written(Ok(http::Answer { status: 403, body: "{\"message\":\"API rate limit exceeded\"}".into() }), "addComment").unwrap_err();
+    assert!(spent.message.contains("limite de uso"), "the hour's budget, not the permission: {}", spent.message);
+    assert!(written(answer(401, json!({ "message": "Bad credentials" })), "addComment").unwrap_err().unauthorized);
+    let gone = json!({ "data": { "addComment": null }, "errors": [{ "type": "NOT_FOUND", "message": "Could not resolve to a node" }] });
+    assert_eq!(written(answer(200, gone), "addComment").unwrap_err().message, "O GitHub recusou: Could not resolve to a node");
+    assert_eq!(written(answer(200, json!({ "data": { "addComment": null } })), "addComment").unwrap_err().message, "O GitHub não confirmou a escrita.");
+    assert_eq!(written(Err("sem conexão".into()), "addComment").unwrap_err().message, "Sem conexão com o GitHub.");
+    assert_eq!(NO_WRITE, "O token não pode escrever em pull requests: dê a permissão Pull requests (leitura e escrita) ao token.");
+}
+
+#[test]
+fn a_picked_pull_request_reads_its_detail_and_keeps_it_by_its_id() {
+    let mut app = app_with_pulse();
+    assert!(app.github_load_detail("loja").is_err(), "no pull request named");
+    app.github_load_detail("https://github.com/ANA-DEV/site/pull/7").unwrap();
+    assert!(app.github_detail_loading("ana-dev/site#7") && app.github_detail("ana-dev/site#7").is_none(), "kept as the pulse writes its id");
+    let detail = PrDetail::parse(&recorded_detail(), 5).unwrap();
+    app.integrations.github.receive(Message::Detail("ana-dev/site#7".into(), Ok(Box::new(detail.clone()))), 10);
+    assert!(!app.github_detail_loading("ana-dev/site#7"));
+    assert_eq!(app.github_detail("Ana-Dev/Site#7"), Some(&detail));
+    // a failure is kept, and the detail read before stays
+    app.github_load_detail("ana-dev/site#7").unwrap();
+    let offline = Failure { message: "Sem conexão com o GitHub.".into(), unauthorized: false };
+    app.integrations.github.receive(Message::Detail("ana-dev/site#7".into(), Err(offline)), 20);
+    assert_eq!((app.github_detail_error("ana-dev/site#7"), app.github_detail("ana-dev/site#7")), (Some("Sem conexão com o GitHub."), Some(&detail)));
+    // the island reads a pull request once it shows
+    app.github_load_detail("ana-dev/loja#42").unwrap();
+    assert!(app.github_detail_loading("ana-dev/loja#42"));
+    // a refused token stops the reads until it changes
+    let refused = Failure { message: "Token inválido ou expirado.".into(), unauthorized: true };
+    app.integrations.github.receive(Message::Detail("ana-dev/loja#42".into(), Err(refused)), 30);
+    assert_eq!(app.github_load_detail("ana-dev/loja#43").unwrap_err(), "Token inválido ou expirado.");
+    // off: nothing is asked, and what was read goes
+    app.prefs.integrations.github = false;
+    assert_eq!(app.github_load_detail("ana-dev/loja#43").unwrap_err(), "O GitHub está desligado em Ajustes › Integrações.");
+    app.github_tick(&Context::default());
+    assert!(app.github_detail("ana-dev/site#7").is_none());
+}
+
+#[test]
+fn the_description_is_saved_and_a_comment_sent_one_write_at_a_time() {
+    let mut app = app_with_pulse();
+    app.integrations.github.receive(Message::Detail("ana-dev/site#7".into(), Ok(Box::new(PrDetail::parse(&recorded_detail(), 5).unwrap()))), 10);
+    app.github_save_body("ana-dev/site#7", "## Novo\n\nTexto").unwrap();
+    assert!(app.github_writing() && app.github_last_write().is_none());
+    assert_eq!(app.integrations.github.sent, [save_body_request("PR_kwDOAAAB07", "## Novo\n\nTexto")]);
+    assert_eq!(app.github_comment("ana-dev/site#7", "Oi").unwrap_err(), "Espere a escrita anterior terminar.");
+    app.integrations.github.receive(Message::Wrote(Write::Body("## Novo\n\nTexto".into()), "ana-dev/site#7".into(), Ok(())), 20);
+    assert!(!app.github_writing());
+    assert_eq!(app.github_last_write(), Some(&Ok("Descrição salva.".to_string())));
+    assert_eq!(app.github_detail("ana-dev/site#7").unwrap().body, "## Novo\n\nTexto", "what was read is now what was saved");
+    // a comment with nothing in it is not sent, and says why
+    assert!(app.github_comment("ana-dev/site#7", "  \n").is_err());
+    assert_eq!(app.github_last_write(), Some(&Err("Escreva o comentário antes de enviar.".to_string())));
+    app.github_comment("ana-dev/loja#42", "Bom trabalho!").unwrap();
+    assert_eq!(app.integrations.github.sent.last(), Some(&comment_request("PR_kwDOAAAB42", "Bom trabalho!")), "the node's id from the pulse");
+    let read_only = Failure { message: NO_WRITE.into(), unauthorized: false };
+    app.integrations.github.receive(Message::Wrote(Write::Comment("Bom trabalho!".into()), "ana-dev/loja#42".into(), Err(read_only)), 30);
+    assert_eq!(app.github_last_write(), Some(&Err(NO_WRITE.to_string())));
+    assert!(app.integrations.github.report().ends_with(&format!("A última escrita falhou: {NO_WRITE}")));
+    app.github_comment("ana-dev/loja#42", "De novo").unwrap();
+    app.integrations.github.receive(Message::Wrote(Write::Comment("De novo".into()), "ana-dev/loja#42".into(), Ok(())), 40);
+    assert_eq!(app.github_last_write(), Some(&Ok("Comentário enviado.".to_string())));
+    assert!(app.github_save_body("outra/coisa#1", "x").unwrap_err().contains("leia o pull request antes"), "GitHub's id of its node is needed");
+}
+
+#[test]
+fn the_agents_list_read_edit_and_comment_on_pull_requests_through_the_mcp() {
+    let mut app = app_with_pulse();
+    let github = |app: &mut DrawingApp, args: Value| {
+        let mut call = json!({ "integration": "github" });
+        call.as_object_mut().unwrap().extend(args.as_object().unwrap().clone());
+        app.act("integrations", &call)
+    };
+    let all = github(&mut app, json!({ "action": "prs" })).unwrap();
+    assert!(all.contains("\n- ana-dev/loja#40 · mesclado · Troca o logotipo · feat/logotipo → main · "), "{all}");
+    assert!(
+        all.contains("\n- ana-dev/site#7 · aberto · Corrige o carrinho quebrado · fix/carrinho → main · ") && all.contains("conflito · precisa de você"),
+        "{all}"
+    );
+    let needs = github(&mut app, json!({ "action": "prs", "filter": "needs_you" })).unwrap();
+    assert_eq!(needs.lines().count(), 3, "a heading, time/api#310 and ana-dev/site#7: {needs}");
+    assert!(github(&mut app, json!({ "action": "prs", "filter": "minhas" })).is_err());
+    assert!(github(&mut app, json!({ "action": "pr" })).is_err(), "which one?");
+    let first = github(&mut app, json!({ "action": "pr", "pr": "ana-dev/site#7" })).unwrap();
+    assert!(first.starts_with("Buscando ana-dev/site#7 no GitHub"), "the first read only asks: {first}");
+    app.integrations.github.receive(Message::Detail("ana-dev/site#7".into(), Ok(Box::new(PrDetail::parse(&recorded_detail(), now_ms()).unwrap()))), now_ms());
+    let read = github(&mut app, json!({ "action": "pr", "pr": "https://github.com/ana-dev/site/pull/7" })).unwrap();
+    assert!(read.contains("Bloqueios: Conflito com main") && read.contains("Revisões: 2 aprovações") && read.contains("\n## O que muda\n"), "{read}");
+    let text = "## Novo\n\nCom Maiúsculas e linhas";
+    let sent = github(&mut app, json!({ "action": "pr_body", "pr": "ana-dev/site#7", "text": text })).unwrap();
+    assert!(sent.starts_with("Enviando a descrição nova de ana-dev/site#7"), "{sent}");
+    assert_eq!(app.integrations.github.sent.last(), Some(&save_body_request("PR_kwDOAAAB07", text)), "the text keeps its case and its lines");
+    app.integrations.github.receive(Message::Wrote(Write::Body(text.into()), "ana-dev/site#7".into(), Ok(())), now_ms());
+    let status = github(&mut app, json!({ "action": "status" })).unwrap();
+    assert!(status.ends_with("Última escrita: Descrição salva.") && !status.contains("#40"), "the merged ones stay out of status: {status}");
+    github(&mut app, json!({ "action": "pr_comment", "pr": "time/api#310", "text": "Pode revisar de novo?" })).unwrap();
+    assert_eq!(app.integrations.github.sent.last(), Some(&comment_request("PR_kwDOAAAB310", "Pode revisar de novo?")));
+    assert!(!format!("{all}{read}{status}").contains(TOKEN), "never the token");
 }

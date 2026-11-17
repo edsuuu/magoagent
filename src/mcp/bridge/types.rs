@@ -55,6 +55,9 @@ pub(crate) struct Shared {
     /// The chats, by id: what each is called (the Maestro). One speaks by a token of its own while
     /// its agent answers.
     pub(crate) chats: HashMap<String, String>,
+    /// What the person wrote to sessions outside the app (maestro/message.rs), by session id, in order: the session's
+    /// next `Stop` hook takes it all and Claude Code goes on with it (`relay_hook`).
+    pub(crate) outbox: HashMap<String, Vec<String>>,
 }
 
 /// How an `ask` ended, for the asked agent's events.

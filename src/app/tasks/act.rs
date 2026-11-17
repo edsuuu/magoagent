@@ -11,7 +11,7 @@ impl DrawingApp {
         let requester = match (text("caller"), text("requester")) {
             (caller, _) if !caller.is_empty() => self.agent_label(&caller),
             (_, requester) if !requester.is_empty() => requester,
-            _ => "Maestro".into(),
+            _ => "Luna".into(),
         };
         match text("action").as_str() {
             "create" => self.task_create(args, &requester),

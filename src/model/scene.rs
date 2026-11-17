@@ -105,7 +105,7 @@ pub(crate) struct Prefs {
     pub(crate) window_outline: WindowOutline,
     /// The app opens on the chat (on by default) or on the canvas.
     pub(crate) start_in_chat: bool,
-    /// The welcome slides (ui/welcome.rs) were seen to the end: they show once, after an install or an update.
+    /// The welcome slides (ui/welcome/) were seen to the end: they show once, after an install or an update.
     pub(crate) welcome_seen: bool,
     /// Fechar mantém em segundo plano: the window's close hides it and the terminals and agents keep running;
     /// the tray (Windows) or opening the app again brings it back, Ctrl+Q quits.
@@ -154,6 +154,8 @@ pub(crate) struct Prefs {
     pub(crate) island_volume: f32,
     /// Seconds before the open island folds after the pointer leaves.
     pub(crate) island_close_after: u8,
+    /// Seconds before the compact island shrinks to the closed notch after the pointer leaves; 0, never.
+    pub(crate) island_compact_after: u16,
     /// Frames a second of the island and the animations (Ajustes › Geral › Quadros por segundo): one of `FRAME_RATES`.
     pub(crate) frame_rate: u16,
     /// Background colour of the island, RGB.
@@ -260,6 +262,7 @@ impl Default for Prefs {
             island_projects: Vec::new(),
             island_volume: 0.1,
             island_close_after: 15,
+            island_compact_after: 60,
             frame_rate: 60,
             island_color: [0, 0, 0],
             shortcuts: Default::default(),

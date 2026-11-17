@@ -1,9 +1,16 @@
-# Compila, verifica qualidade e testa no Windows e no Linux a cada push e pull request.
+# Compila, verifica qualidade e testa no Windows e no Linux: a cada push na main, em cada pull request e dentro do
+# release (release.yml). Uma vez por commit: o push de uma branch com PR e a tag do release rodavam outro igual ao mesmo
+# tempo, disputando as máquinas.
 name: CI
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_call:
+# um push novo no mesmo PR cancela o CI do anterior, que já não vale
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 # actions: write deixa um job que falha cancelar a execução inteira (o passo "Parar o resto do CI")
 permissions:
   contents: read
@@ -72,7 +79,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev libasound2-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libssl-dev
       - name: Identidade do git para os testes que fazem commits
         run: git config --global user.name ci && git config --global user.email ci@example.com
-      - run: cargo check --release --all-targets
+      # sem `cargo check` antes: não há examples nem benches, e o `cargo test` já compila tudo o que ele compilaria
       - run: cargo test --release
       - name: Parar o resto do CI
         if: failure()

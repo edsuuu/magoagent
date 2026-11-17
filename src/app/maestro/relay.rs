@@ -3,6 +3,7 @@
 //! a pessoa pode responder (um pedido de permissão, a pergunta do hook `wait`), e mesmo aí desiste assim que o processo
 //! que o rodou se vai, porque responderam no terminal.
 
+use super::message::{tmux_pane, tmux_socket};
 use super::outside::{ASK_PREFIX, WAIT};
 use crate::mcp::bridge::hook_endpoint_path;
 use crate::prelude::*;
@@ -32,6 +33,27 @@ fn shorten(value: &mut Value) {
     }
 }
 
+/// Where the session runs ("hermes", "claude-desktop", "cursor"; empty: Claude Code). Claude Desktop's Code tab gives its
+/// CLI `CLAUDE_CODE_ENTRYPOINT=claude-desktop`; a hook run without the variable is told by the file the CLI keeps for the
+/// session in `sessions` (~/.claude/sessions/<pid>.json, its `entrypoint`).
+pub(crate) fn origin(payload: &Value, env: &dyn Fn(&str) -> Option<String>, sessions: Option<&std::path::Path>) -> &'static str {
+    // Hermes Agent's plugin (integrations/hermes) says so itself
+    if env("MAGOAGENT_ORIGIN").as_deref() == Some("hermes") {
+        return "hermes";
+    }
+    let entrypoint = env("CLAUDE_CODE_ENTRYPOINT").or_else(|| {
+        let session = payload["session_id"].as_str().filter(|session| !session.is_empty())?;
+        crate::transcript::entrypoint(sessions?, session)
+    });
+    if entrypoint.as_deref() == Some("claude-desktop") {
+        "claude-desktop"
+    } else if env("CURSOR_TRACE_ID").is_some() {
+        "cursor"
+    } else {
+        ""
+    }
+}
+
 /// What the hook sends of the CLI's event: the origin added, what weighs left out; an AskUserQuestion's input whole,
 /// as it is what goes back with the answers.
 pub(crate) fn tag(payload: &mut Value, env: &dyn Fn(&str) -> Option<String>) {
@@ -44,16 +66,7 @@ pub(crate) fn tag(payload: &mut Value, env: &dyn Fn(&str) -> Option<String>) {
         let refined = crate::app::maestro::normalize::refine(&canonical_event, fields);
         fields.insert("hook_event_name".into(), refined.into());
     }
-    // Hermes Agent's plugin (integrations/hermes) says so itself
-    let origin = if env("MAGOAGENT_ORIGIN").as_deref() == Some("hermes") {
-        "hermes"
-    } else if env("CLAUDE_CODE_ENTRYPOINT").as_deref() == Some("claude-desktop") {
-        "claude-desktop"
-    } else if env("CURSOR_TRACE_ID").is_some() {
-        "cursor"
-    } else {
-        ""
-    };
+    let origin = origin(payload, env, crate::transcript::claude_dir().map(|dir| dir.join("sessions")).as_deref());
     let input = (payload["tool_name"] == "AskUserQuestion").then(|| payload["tool_input"].clone());
     if let Some(fields) = payload.as_object_mut() {
         // the transcript's path goes: it is how the island reads the session's conversation (`outside_transcript`)
@@ -68,6 +81,16 @@ pub(crate) fn tag(payload: &mut Value, env: &dyn Fn(&str) -> Option<String>) {
             if !fields.contains_key(field) {
                 fields.insert(field.into(), env(variable).unwrap_or_default().into());
             }
+        }
+        // a session inside tmux can be typed into (message.rs): its server's socket and its pane, only as tmux writes them
+        for field in ["tmux_socket", "tmux_pane"] {
+            fields.remove(field);
+        }
+        if let Some(socket) = env("TMUX").as_deref().and_then(tmux_socket) {
+            fields.insert("tmux_socket".into(), socket.into());
+        }
+        if let Some(pane) = env("TMUX_PANE").filter(|pane| tmux_pane(pane)) {
+            fields.insert("tmux_pane".into(), pane.into());
         }
         if fields.get("cwd").and_then(Value::as_str).is_none_or(str::is_empty)
             && let Ok(here) = std::env::current_dir()
@@ -184,5 +207,25 @@ mod tests {
         assert_eq!(wait_answer(&answers, || false), None);
         // o pai deste teste (o cargo) está vivo
         assert!(!parent_watch()());
+    }
+
+    #[test]
+    fn a_session_in_tmux_says_its_socket_and_its_pane() {
+        let tagged = |tmux: &'static str, pane: &'static str| {
+            let mut payload = json!({ "hook_event_name": "Stop", "session_id": "s1", "cwd": "/w/loja", "tmux_pane": "%9" });
+            let env = move |name: &str| match name {
+                "TMUX" => Some(tmux.to_string()).filter(|value| !value.is_empty()),
+                "TMUX_PANE" => Some(pane.to_string()).filter(|value| !value.is_empty()),
+                _ => None,
+            };
+            tag(&mut payload, &env);
+            (payload.get("tmux_socket").and_then(Value::as_str).map(String::from), payload.get("tmux_pane").and_then(Value::as_str).map(String::from))
+        };
+        assert_eq!(tagged("/tmp/tmux-1000/default,4242,0", "%3"), (Some("/tmp/tmux-1000/default".into()), Some("%3".into())));
+        // fora do tmux nada, nem o que o payload trouxe; um socket relativo ou um painel que não é %número não passam
+        assert_eq!(tagged("", ""), (None, None));
+        assert_eq!(tagged("default,4242,0", "3"), (None, None));
+        assert_eq!(tagged("/tmp/s,1,0", "%3; rm -rf /"), (Some("/tmp/s".into()), None));
+        assert_eq!(tagged("/tmp/s", "%"), (Some("/tmp/s".into()), None));
     }
 }

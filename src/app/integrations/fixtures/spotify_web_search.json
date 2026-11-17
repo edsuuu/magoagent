@@ -1,0 +1,58 @@
+{
+  "tracks": {
+    "href": "https://api.spotify.com/v1/search?offset=0&limit=10&query=teste&type=track",
+    "limit": 10,
+    "offset": 0,
+    "total": 2,
+    "next": null,
+    "previous": null,
+    "items": [
+      {
+        "uri": "spotify:track:4uLU6hMCjMI75M1A2tKUQC",
+        "id": "4uLU6hMCjMI75M1A2tKUQC",
+        "type": "track",
+        "name": "Canção de Teste",
+        "duration_ms": 213573,
+        "explicit": false,
+        "artists": [{ "name": "Banda Exemplo", "uri": "spotify:artist:1" }, { "name": "Convidada", "uri": "spotify:artist:2" }],
+        "album": {
+          "name": "Disco de Teste",
+          "uri": "spotify:album:3",
+          "images": [
+            { "url": "https://i.scdn.co/image/grande", "height": 640, "width": 640 },
+            { "url": "https://i.scdn.co/image/media", "height": 300, "width": 300 },
+            { "url": "https://i.scdn.co/image/miuda", "height": 64, "width": 64 }
+          ]
+        }
+      },
+      {
+        "uri": "spotify:track:5",
+        "name": "Capa de Fora",
+        "duration_ms": 1000,
+        "artists": [{ "name": "Alguém" }],
+        "album": { "images": [{ "url": "https://evil.example/capa.jpg", "width": 64 }] }
+      }
+    ]
+  },
+  "playlists": {
+    "href": "https://api.spotify.com/v1/search?offset=0&limit=10&query=teste&type=playlist",
+    "limit": 10,
+    "offset": 0,
+    "total": 3,
+    "next": null,
+    "previous": null,
+    "items": [
+      null,
+      {
+        "uri": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M",
+        "id": "37i9dQZF1DXcBWIGoYBM5M",
+        "name": "Lista de Domingo",
+        "type": "playlist",
+        "owner": { "display_name": "Ana Exemplo", "id": "ana" },
+        "images": [{ "url": "https://mosaic.scdn.co/640/abc", "height": 640, "width": 640 }],
+        "items": { "href": "https://api.spotify.com/v1/playlists/37i9dQZF1DXcBWIGoYBM5M/items", "total": 42 }
+      },
+      { "uri": "spotify:album:naoeplaylist", "name": "Errada" }
+    ]
+  }
+}

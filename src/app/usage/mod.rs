@@ -389,7 +389,7 @@ mod tests {
             app.scene.elements.push(element);
             id
         };
-        let maestro = add(&mut app, "Maestro", "claude");
+        let maestro = add(&mut app, "Luna", "claude");
         add(&mut app, "Shell", "");
         assert_eq!(app.running_agents(), 1, "a plain shell is no agent");
         let reset = now_ms() / 1000 + 3600;
@@ -401,7 +401,7 @@ mod tests {
         assert!(
             said.starts_with("Plano: 5 h em 95% (reinicia às ")
                 && said.contains("Agentes rodando: 1 (teto de 6).")
-                && said.contains("Maestro: Opus · contexto 12%"),
+                && said.contains("Luna: Opus · contexto 12%"),
             "{said}"
         );
         // near the limit the Maestro recruits nobody; with the rule off, or under the mark, it does

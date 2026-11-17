@@ -40,6 +40,11 @@ impl DrawingApp {
             ("voice_studio_url", url) if !url.trim().is_empty() => self.prefs.voice_studio_url = url.trim().to_string(),
             ("voice_studio_voice", voice) if !voice.trim().is_empty() => self.prefs.voice_studio_voice = voice.trim().to_string(),
             ("voice_studio_key", key) => self.prefs.voice_studio_key = key.trim().to_string(),
+            ("run_at_login", "on" | "ligado" | "off" | "desligado") => {
+                let enabled = matches!(value, "on" | "ligado");
+                crate::app::system::run_at_login::set_run_at_login(enabled)?;
+                self.prefs.run_at_login = enabled;
+            }
             ("close_to_background", "on" | "ligado") => self.prefs.close_to_background = true,
             ("close_to_background", "off" | "desligado") => self.prefs.close_to_background = false,
             ("avatar", "on" | "ligado") => self.prefs.avatar = true,
@@ -57,7 +62,20 @@ impl DrawingApp {
             ("gnome_cursor", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return gnome_cursor(action),
             ("island_place", "top" | "topo") => self.put_island(crate::app::island::Place::Top),
             ("island_place", "bottom" | "embaixo" | "baixo") => self.put_island(crate::app::island::Place::Bottom),
+            ("island_place", "reset" | "padrão" | "padrao") => self.reset_island(),
+            // Limpar todos os dados (system/wipe.rs) is the person's alone: it cannot be undone
+            ("wipe_data", _) => {
+                return Err("Apagar todos os dados só a pessoa faz, em Ajustes › Dados › Limpar todos os dados (pergunta antes e não tem volta).".into());
+            }
+            ("island_page", page) if crate::app::island::Tab::named(page).is_some() => {
+                self.island_show_page(crate::app::island::Tab::named(page).unwrap_or_default())
+            }
+            ("island_feed", "hide_all" | "ocultar_tudo") => self.island_feed_hide(true),
+            ("island_feed", "show_hidden" | "mostrar_ocultos") => self.island_feed_hide(false),
             ("island_close_after", seconds) if ["5", "10", "15", "30"].contains(&seconds) => self.prefs.island_close_after = seconds.parse().unwrap_or(15),
+            ("island_compact_after", seconds) if ["15", "30", "60", "300", "0"].contains(&seconds) => {
+                self.prefs.island_compact_after = seconds.parse().unwrap_or(60)
+            }
             ("island_color", color) if parse_island_color(color).is_some() => self.prefs.island_color = parse_island_color(color).unwrap_or([0, 0, 0]),
             (name, value) if name.starts_with("shortcut_") => return self.act_shortcut(&name["shortcut_".len()..], value),
             ("avatar_follow", "on" | "ligado") => self.avatar_track_window(true),

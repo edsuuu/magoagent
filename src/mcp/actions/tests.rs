@@ -60,6 +60,7 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
         effort: String::new(),
         recruit: false,
         named: false,
+        draft: false,
     };
     app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
     // chats: listed, opened by part of the name, a message queued for the next frame
@@ -116,6 +117,13 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
     assert_eq!((app.prefs.island_volume, app.prefs.island_close_after, app.prefs.island_color), (0.15, 30, [0x12, 0x34, 0x56]));
     assert!(app.act("set_setting", &json!({ "name": "island_volume", "value": "0.5" })).is_err());
     assert!(app.act("set_setting", &json!({ "name": "island_close_after", "value": "60" })).is_err());
+    app.act("set_setting", &json!({ "name": "island_compact_after", "value": "0" })).unwrap();
+    assert_eq!(app.prefs.island_compact_after, 0, "the compact island never shrinks");
+    assert!(app.act("set_setting", &json!({ "name": "island_compact_after", "value": "45" })).is_err());
+    app.act("set_setting", &json!({ "name": "run_at_login", "value": "on" })).unwrap();
+    assert!(app.prefs.run_at_login, "the app opens at login");
+    app.act("set_setting", &json!({ "name": "run_at_login", "value": "off" })).unwrap();
+    assert!(!app.prefs.run_at_login);
     assert!(app.act("set_setting", &json!({ "name": "island_color", "value": "pink" })).is_err());
     assert!(!app.prefs.island);
     assert!(app.act("set_setting", &json!({ "name": "island", "value": "talvez" })).is_err());
@@ -197,6 +205,29 @@ fn the_agents_see_what_spotify_plays_and_press_its_buttons() {
     assert!(!app.prefs.integrations.spotify);
 }
 
+/// "A Luna dança com a música" (Ajustes › Integrações › Spotify) through the MCP: its switch and the dance of now.
+#[test]
+fn the_agents_turn_lunas_dance_on_and_off() {
+    use crate::app::integrations::spotify::{Now, Track};
+    let spotify = |app: &mut DrawingApp, action: &str| app.act("integrations", &json!({ "integration": "spotify", "action": action }));
+    let mut app = DrawingApp::default();
+    assert!(spotify(&mut app, "dance").unwrap().starts_with("A Luna dança com a música: ligado"), "on by default");
+    assert!(spotify(&mut app, "dance_off").unwrap().starts_with("A Luna dança com a música: desligado"));
+    assert!(!app.prefs.integrations.luna_dances);
+    spotify(&mut app, "dance_on").unwrap();
+    assert!(app.prefs.integrations.luna_dances);
+    // playing, before anything is heard: the clock's sway; paused: asleep
+    let now = Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, ..Default::default() };
+    app.prefs.integrations.spotify = true;
+    app.integrations.spotify.now = Some(now.clone());
+    assert!(spotify(&mut app, "dance").unwrap().ends_with("Agora: Balanço."));
+    app.integrations_tick(&Context::default());
+    assert_eq!(app.integrations.spotify.dancer.starts, 0, "the agents asking is no dancer on screen: she does not listen");
+    app.integrations.spotify.now = Some(Now { playing: false, ..now });
+    assert!(spotify(&mut app, "dance").unwrap().ends_with("Agora: Cochila."));
+    assert!(crate::mcp::app_tools::app_tools().iter().any(|tool| tool["inputSchema"]["properties"]["action"]["enum"].to_string().contains("dance_on")));
+}
+
 #[test]
 fn the_agents_reach_soloists_own_switch() {
     use crate::app::integrations::spotify::{Command, Now, Player, Track};
@@ -220,6 +251,114 @@ fn the_agents_reach_soloists_own_switch() {
     assert!(!app.prefs.integrations.soloist);
 }
 
+/// `integrations soloist`'s Configurar: its steps in words and its buttons, one at a time; the key never comes through
+/// the MCP, not even when an agent sends one.
+#[test]
+fn the_agents_set_soloist_up_but_never_carry_its_key() {
+    use crate::app::integrations::spotify::setup::{KeyFile, Login, Program, Status};
+    const KEY: &str = "spak_SEGREDO0123456789";
+    let soloist = |app: &mut DrawingApp, action: &str| app.act("integrations", &json!({ "integration": "soloist", "action": action, "key": KEY }));
+    let mut app = DrawingApp::default();
+    if cfg!(any(windows, target_os = "macos")) {
+        assert!(soloist(&mut app, "setup").unwrap_err().contains("só existe no Linux"));
+        return;
+    }
+    assert!(soloist(&mut app, "setup").unwrap().contains("Conferindo"), "nothing looked at yet");
+    app.integrations.soloist_setup.status = Some(Status {
+        program: Program::Ready("soloist 1.3.10".into()),
+        key: KeyFile::Private,
+        unit: true,
+        enabled: true,
+        active: "active".into(),
+        login: Login::Waiting,
+        vpn: vec!["wg0".into()],
+        ..Default::default()
+    });
+    app.integrations.soloist_setup.key_field = KEY.into();
+    let report = soloist(&mut app, "setup").unwrap();
+    assert!(report.contains("1. Baixar o Soloist — feito. soloist 1.3.10") && report.contains("5. Escolher o Soloist no celular — agora"), "{report}");
+    assert!(report.contains("wg0") && !report.contains("SEGREDO"), "{report}");
+    let refused = soloist(&mut app, "key").unwrap_err();
+    assert!(refused.contains("Ajustes › Integrações › Soloist") && !refused.contains("SEGREDO"), "{refused}");
+    assert!(soloist(&mut app, "update").unwrap().contains("Baixando"));
+    assert!(soloist(&mut app, "stop").unwrap_err().contains("ocupado"), "one at a time");
+    for action in ["stop", "start", "enable"] {
+        app.integrations.soloist_setup.busy = None;
+        soloist(&mut app, action).unwrap();
+    }
+    assert_eq!(app.integrations.soloist_setup.asked, ["download", "stop", "start", "turn_on"], "enable keeps the key saved before");
+    assert_eq!(app.integrations.soloist_setup.key_field, KEY, "what is in Ajustes' field is the person's, untouched");
+}
+
+/// The island's Spotify page by the MCP: shuffle, repeat, the volume, a seek, play, the queue, the heart, the search and
+/// the account (here on Soloist, which takes everything on every system; the Web API never reached).
+#[test]
+fn the_agents_do_what_the_spotify_page_does() {
+    use crate::app::integrations::spotify::account::{Account, Link};
+    use crate::app::integrations::spotify::library::LISTS_NEED_ACCOUNT;
+    use crate::app::integrations::spotify::{Command, Now, Player, Repeat, Track};
+    let spotify = |app: &mut DrawingApp, action: &str, more: Value| {
+        let mut args = json!({ "integration": "spotify", "action": action });
+        args.as_object_mut().unwrap().extend(more.as_object().cloned().unwrap_or_default());
+        app.act("integrations", &args)
+    };
+    let mut app = DrawingApp::default();
+    app.prefs.integrations.spotify = true;
+    app.integrations.spotify.now =
+        Some(Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, player: Player::Soloist, ..Default::default() });
+    assert_eq!(spotify(&mut app, "shuffle", json!({ "value": "on" })).unwrap(), "Embaralhar ligado.");
+    assert_eq!(spotify(&mut app, "repeat", json!({ "value": "track" })).unwrap(), "Agora repetindo a faixa.");
+    assert_eq!(spotify(&mut app, "volume", json!({ "value": 40 })).unwrap(), "Volume em 40%.");
+    assert_eq!(spotify(&mut app, "seek", json!({ "value": "1:23" })).unwrap(), "Indo para 1:23.");
+    spotify(&mut app, "play", json!({ "uri": "spotify:playlist:abc" })).unwrap();
+    spotify(&mut app, "enqueue", json!({ "uri": "spotify:track:abc" })).unwrap();
+    let asked = [
+        Command::Shuffle(true),
+        Command::Repeat(Repeat::Track),
+        Command::Volume(40),
+        Command::Seek(83_000),
+        Command::PlayUri("spotify:playlist:abc".into()),
+        Command::Enqueue("spotify:track:abc".into()),
+    ];
+    assert_eq!(app.integrations.spotify.asked, asked);
+    for (action, more) in
+        [("volume", json!({ "value": "alto" })), ("repeat", json!({})), ("enqueue", json!({ "uri": "spotify:album:abc" })), ("play", json!({}))]
+    {
+        assert!(spotify(&mut app, action, more).is_err(), "{action}");
+    }
+    assert!(spotify(&mut app, "status", json!({})).unwrap().contains("repetindo a faixa"), "status says what the page shows");
+    // Soloist's queue answers without the account; the lists and the heart need it
+    assert_eq!(spotify(&mut app, "queue", json!({})).unwrap(), "teste: a fila do Soloist");
+    assert_eq!(spotify(&mut app, "playlists", json!({})).unwrap_err(), LISTS_NEED_ACCOUNT);
+    assert!(spotify(&mut app, "like", json!({})).unwrap_err().contains("conta do Spotify"));
+    assert!(spotify(&mut app, "account", json!({})).unwrap().contains("http://127.0.0.1:8990/callback"));
+    // the Client ID, and Conectar (no browser in a test)
+    assert!(spotify(&mut app, "client_id", json!({ "value": "abc" })).is_err());
+    spotify(&mut app, "client_id", json!({ "value": "0123456789abcdef0123456789abcdef" })).unwrap();
+    assert_eq!(app.prefs.integrations.spotify_client_id, "0123456789abcdef0123456789abcdef");
+    spotify(&mut app, "connect", json!({})).unwrap();
+    assert_eq!(app.integrations.spotify.account.link, Link::Waiting);
+    // with the account: what asks the Web API answers from a thread, the rest at once
+    app.integrations.spotify.account = Account::with_session("ana");
+    let later = |app: &mut DrawingApp, action: &str, more: Value| {
+        let mut args = json!({ "integration": "spotify", "action": action });
+        args.as_object_mut().unwrap().extend(more.as_object().cloned().unwrap_or_default());
+        app.act_later("integrations", &args).map(|job| job())
+    };
+    assert_eq!(later(&mut app, "search", json!({ "query": "lista" })), Some(Ok("teste: search lista".into())));
+    assert_eq!(later(&mut app, "play", json!({ "query": "lista", "kind": "playlist" })), Some(Ok("teste: play lista".into())));
+    assert_eq!(later(&mut app, "search", json!({})), Some(Err("diga o que buscar em `query`".into())));
+    assert_eq!(later(&mut app, "shuffle", json!({ "value": "on" })), None, "a control answers at once");
+    assert_eq!(later(&mut app, "play", json!({ "uri": "spotify:track:abc" })), None);
+    assert!(app.act_later("canvas", &json!({ "integration": "spotify", "action": "search" })).is_none());
+    assert_eq!(spotify(&mut app, "devices", json!({})).unwrap(), "teste: devices", "act runs the same work in place");
+    spotify(&mut app, "like", json!({ "uri": "spotify:track:abc" })).unwrap();
+    spotify(&mut app, "play", json!({ "value": "liked" })).unwrap();
+    assert_eq!(app.integrations.spotify.library.web_asked, ["save", "control"], "the heart and Liked Songs by the Web API");
+    assert!(spotify(&mut app, "status", json!({})).unwrap().contains("conectada como Ana"));
+    assert!(spotify(&mut app, "disconnect", json!({})).is_ok() && !app.integrations.spotify.account.linked());
+}
+
 /// `integrations hermes`: the switch, and the plugin's buttons (here on a Hermes that is not there: the tests' own
 /// folder, which is never made; what they write is in integrations/hermes/tests.rs).
 #[test]
@@ -238,4 +377,13 @@ fn the_agents_reach_the_hermes_switch_and_the_plugins_buttons() {
     assert!(act(&mut app, "explodir").is_err());
     act(&mut app, "off").unwrap();
     assert!(!app.prefs.integrations.hermes);
+}
+
+/// Limpar todos os dados is the person's alone: an agent asking is told where, and nothing goes.
+#[test]
+fn the_agents_never_wipe_the_apps_data() {
+    let mut app = DrawingApp::default();
+    let said = app.act("set_setting", &json!({ "name": "wipe_data", "value": "sim" })).unwrap_err();
+    assert!(said.contains("Ajustes › Dados › Limpar todos os dados"), "{said}");
+    assert!(!app.quitting && !app.wipe_confirm);
 }

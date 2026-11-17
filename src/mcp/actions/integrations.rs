@@ -1,7 +1,9 @@
 //! Ajustes › Integrações through the MCP's `integrations`: what each one shows, its switch and its buttons. A secret
-//! (GitHub's token) never comes through here: the person pastes it in Ajustes, so it stays out of the agents' logs.
+//! (GitHub's token, Soloist's key) never comes through here: the person pastes it in Ajustes, so it stays out of the
+//! agents' logs.
 
 use crate::app::integrations::spotify::Command;
+use crate::app::integrations::spotify::setup::Job;
 use crate::prelude::*;
 
 impl DrawingApp {
@@ -30,6 +32,24 @@ impl DrawingApp {
                 false => Err("sem token do GitHub (ou um teste já em curso): a pessoa cola o token em Ajustes › Integrações".into()),
             },
             ("github", "remove_token") => self.github_remove_token(),
+            ("github", "prs") => self.github_prs_report(&text("filter")),
+            // the pull request's id and the text keep their case and their lines
+            ("github", "pr" | "pr_body" | "pr_comment") => {
+                let pr = args["pr"].as_str().unwrap_or_default().trim().to_string();
+                if pr.is_empty() {
+                    return Err("diga o `pr`: dono/repo#número ou o endereço dele (como `prs` lista)".into());
+                }
+                let words = args["text"].as_str().unwrap_or_default();
+                match action.as_str() {
+                    "pr" => self.github_pr_report(&pr),
+                    "pr_body" => self
+                        .github_save_body(&pr, words)
+                        .map(|()| format!("Enviando a descrição nova de {pr} ao GitHub: o resultado aparece em `status` em alguns segundos.")),
+                    _ => self
+                        .github_comment(&pr, words)
+                        .map(|()| format!("Enviando o comentário em {pr} ao GitHub: o resultado aparece em `status` em alguns segundos.")),
+                }
+            }
             ("spotify", "" | "status") => Ok(format!("Spotify: {}", self.spotify_report())),
             ("spotify", "on" | "off") => {
                 self.prefs.integrations.spotify = action == "on";
@@ -41,11 +61,26 @@ impl DrawingApp {
                 self.prefs.integrations.soloist = action == "on";
                 Ok(format!("Soloist {}.", if action == "on" { "ligado" } else { "desligado" }))
             }
+            // Configurar (integrations/spotify/setup): its steps, and what the person presses there; never the key
+            ("soloist", "setup") => Ok(self.soloist_setup_report()),
+            ("soloist", "key") => {
+                Err("a chave do Soloist nunca passa pelo MCP: a pessoa gera no painel do Spotify e cola em Ajustes › Integrações › Soloist › Configurar".into())
+            }
+            ("soloist", "update" | "install") => self.soloist_setup_run(Job::Download),
+            ("soloist", "enable") => {
+                let name = self.integrations.soloist_setup.name_field.clone();
+                self.soloist_setup_run(Job::TurnOn { key: None, name })
+            }
+            ("soloist", "start") => self.soloist_setup_run(Job::Start),
+            ("soloist", "stop") => self.soloist_setup_run(Job::Stop),
+            ("spotify" | "soloist", "dance") => Ok(self.luna_report()),
+            ("spotify" | "soloist", "dance_on" | "dance_off") => {
+                self.prefs.integrations.luna_dances = action == "dance_on";
+                Ok(self.luna_report())
+            }
+            ("spotify" | "soloist", action) if super::spotify::ACTIONS.contains(&action) => self.act_spotify(action, args),
             ("spotify" | "soloist", command) if Command::parse(command).is_some() => {
-                match Command::parse(command).is_some_and(|command| self.spotify_control(command)) {
-                    true => Ok("Pedido ao Spotify.".into()),
-                    false => Err("o Spotify está desligado em Ajustes › Integrações, ou não está aberto neste computador".into()),
-                }
+                Command::parse(command).map_or(Err(String::new()), |command| self.spotify_do(command)).map(|()| "Pedido ao Spotify.".into())
             }
             ("hermes", "on" | "off") => {
                 self.prefs.integrations.hermes = action == "on";
