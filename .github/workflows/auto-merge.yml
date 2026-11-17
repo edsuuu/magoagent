@@ -1,0 +1,57 @@
+# Junta sozinho o pull request para a main quando o CI dele passa inteiro (formatação, clippy, auditoria, testes no
+# Windows e no Linux, ponta a ponta). Fica de fora: rascunho, PR de fork e PR com o rótulo "segurar" (para o dono validar
+# antes). Depois do merge, se a versão do Cargo.toml mudou e a tag ainda não existe, cria a tag v<versão> e dispara a
+# release (release.yml), que gera o MSI e os pacotes do Linux em rascunho.
+# O merge feito pelo GITHUB_TOKEN não dispara outros workflows por push; por isso a release vai por workflow_dispatch.
+name: Auto-merge
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+jobs:
+  merge:
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Achar o PR e conferir se pode juntar
+        id: pr
+        run: |
+          set -euo pipefail
+          pr=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" --jq '[.[] | select(.state == "open")][0]')
+          if [ -z "$pr" ] || [ "$pr" = "null" ]; then echo "nenhum PR aberto com este commit"; exit 0; fi
+          number=$(jq -r .number <<<"$pr")
+          base=$(jq -r .base.ref <<<"$pr")
+          draft=$(jq -r .draft <<<"$pr")
+          fork=$(jq -r '.head.repo.full_name != .base.repo.full_name' <<<"$pr")
+          hold=$(jq -r '[.labels[].name] | index("segurar") != null' <<<"$pr")
+          head=$(jq -r .head.sha <<<"$pr")
+          echo "PR #$number base=$base rascunho=$draft fork=$fork segurar=$hold"
+          if [ "$base" != "main" ] || [ "$draft" = "true" ] || [ "$fork" = "true" ] || [ "$hold" = "true" ]; then exit 0; fi
+          # um commit novo no PR depois deste CI: espera o CI dele
+          if [ "$head" != "$HEAD_SHA" ]; then echo "o PR andou depois deste CI"; exit 0; fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+      - name: Juntar na main
+        if: steps.pr.outputs.number != ''
+        run: gh pr merge "${{ steps.pr.outputs.number }}" --repo "$REPO" --merge --match-head-commit "$HEAD_SHA"
+      - uses: actions/checkout@v4.2.2
+        if: steps.pr.outputs.number != ''
+        with:
+          ref: main
+      - name: Tag e release quando a versão mudou
+        if: steps.pr.outputs.number != ''
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          tag="v$version"
+          if gh api "repos/$REPO/git/ref/tags/$tag" >/dev/null 2>&1; then echo "a tag $tag já existe"; exit 0; fi
+          gh api "repos/$REPO/git/refs" -f ref="refs/tags/$tag" -f sha="$(git rev-parse HEAD)" >/dev/null
+          gh workflow run release.yml --repo "$REPO" --ref "$tag"
+          echo "criada a tag $tag e disparada a release"
