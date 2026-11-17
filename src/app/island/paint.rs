@@ -371,7 +371,8 @@ impl DrawingApp {
         let state = main_state(view.mood, view.celebrating);
         // while a song plays, its cover and the sound's bars fill the pill (asked: "como a Dynamic Island do iPhone")
         // playing or paused, as the Dynamic Island keeps the song while it pauses (its bars then rest as dots)
-        let now = self.integrations.spotify.now.as_ref();
+        // paused for a while, the song leaves the pill (`Spotify::shown`)
+        let now = self.integrations.spotify.shown(time);
         // the bars hear the song whether or not Luna dances to it (`Dancer::groove` asks for the listening)
         let groove = now.filter(|now| now.playing).map(|now| self.integrations.spotify.dancer.groove(now.playing));
         if !compact {
