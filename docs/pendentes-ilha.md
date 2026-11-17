@@ -114,3 +114,10 @@ O dono quer: **merge do PR e release do Linux primeiro (prioridade), depois a do
   de verdade (bandas do som), são finas e pouco sensíveis, no estilo da Dynamic Island do iPhone. O tempo para a
   compacta virar notch é configurável (Ajustes › Geral, `island_compact_after`).
 - **A ilha lateral foi tirada de propósito** (commit `142b257`): perto de uma borda ela fica como pílula livre.
+
+## Pausa de 16/11 à noite
+
+O trabalho dos agentes ficou em dois ramos, ainda não juntados ao `feat/ilha-pendentes`:
+- `pend-deepseek`: item 2 pronto (commit da aba Claude) e um commit "WIP" com o item 4 pela metade (e o que mais os agentes deixaram), sem testar.
+- `pend-qwen`: um commit "WIP" com o item 1 (expressões) pela metade, sem testar.
+Para continuar: junte os dois ramos neste, confira os WIP (`cargo test`, clippy), termine os itens 1, 3, 4, 5 e 6, e abra o PR deste ramo para o `feat/ilha-abas` (sem merge: o dono valida antes). O OmniRoute (`omniroute serve`) precisa estar ligado para o opencode usar `omniroute/livre`; o plano grátis do opencode estourou.
