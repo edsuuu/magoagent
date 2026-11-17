@@ -6,6 +6,8 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # o auto-merge.yml cria a tag com o GITHUB_TOKEN (que não dispara push) e chama a release por aqui, com --ref na tag
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
