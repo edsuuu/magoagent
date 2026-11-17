@@ -127,6 +127,9 @@ pub(crate) struct MagoMotion {
     pub(crate) particles: Vec<Particle>,
     /// The face now (the state's, or a reaction's) and the breathing.
     pub(crate) look: Look,
+    /// While she dances: the eyes and the mouth the song asks for (`draw::dance_expression`), on top of the state's
+    /// face; the mouth eases there as it does to any face.
+    pub(crate) dance_face: Option<(EyeKind, f32, f32)>,
     pub(crate) breath: f32,
     /// How much the mouth is open while it speaks (0..1).
     pub(crate) talk: f32,
@@ -178,6 +181,7 @@ impl Default for MagoMotion {
             seed: 0x9e37_79b9,
             particles: Vec::new(),
             look,
+            dance_face: None,
             breath: 0.0,
             talk: 1.0,
             badge: None,
@@ -314,7 +318,10 @@ impl MagoMotion {
         match self.reaction {
             Reaction::Annoyed => Look { eye: EyeKind::Focus, mouth_curve: -0.03, badge: None, ..look },
             Reaction::Dizzy => Look { eye: EyeKind::Spiral, mouth_curve: 0.0, mouth_open: 0.03, mouth_width: 0.05, badge: None, ..look },
-            Reaction::None => look,
+            Reaction::None => match self.dance_face {
+                Some((eye, mouth_curve, mouth_open)) => Look { eye, mouth_curve, mouth_open, ..look },
+                None => look,
+            },
         }
     }
 
