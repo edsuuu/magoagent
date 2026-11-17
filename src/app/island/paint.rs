@@ -8,7 +8,7 @@ use super::stage::{self, Activity, Phase};
 use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, main_state};
 use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::integrations::spotify::Now;
-use crate::app::integrations::spotify::groove::Groove;
+use crate::app::integrations::spotify::groove::{Dance, Groove};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
 use crate::app::mascot::mago::{LUME, MagoState, mago_pokes, paint_mago_dancing, paint_mago_toward, paint_mini};
@@ -351,7 +351,9 @@ impl DrawingApp {
             // "tem momento que a Luna fica parada como se nada estivesse tocando")
             let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.playing);
             let calm = dances_through(wanted.state) && (view.shape != Shape::Open || playing);
-            match self.luna_groove().filter(|_| calm) {
+            // the island open, she is awake and can be poked: no nap there when the song isn't heard here (asked: "se eu
+            // abro a ilha ela tem que acordar")
+            match self.luna_groove().filter(|groove| calm && !(view.shape == Shape::Open && groove.dance == Dance::Nap)) {
                 Some(groove) => paint_mago_dancing(&painter, "island-main-dance", center, size, self.luna_colour(LUME), &groove, time),
                 None => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),
             }
