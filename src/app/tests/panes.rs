@@ -278,3 +278,19 @@ fn the_binder_turns_its_pages_makes_a_note_and_puts_one_on_the_canvas() {
     assert!(app.panes.binder.draft.is_empty());
     let _ = fs::remove_dir_all(&base);
 }
+
+#[test]
+fn a_narrow_window_keeps_the_toolbar_clear_of_the_panel_buttons() {
+    let ctx = Context::default();
+    install_fonts(&ctx, false);
+    let mut app = DrawingApp::default();
+    let narrow = Vec2::new(1000.0, 700.0);
+    for _ in 0..4 {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, narrow)), ..Default::default() };
+        let _ = ctx.run_ui(raw, |_| app.floating_controls(&ctx));
+    }
+    let tools = crate::app::ui::tour::spot_rect(&ctx, crate::app::ui::tour::Spot::Toolbar).expect("the toolbar was painted");
+    let buttons = app.pane_button(narrow.x, 0);
+    assert!(tools.right() < buttons.left(), "{tools:?} runs into {buttons:?}");
+    assert!(tools.left() > app.sidebar_width(), "still over the canvas: {tools:?}");
+}
