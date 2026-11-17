@@ -28,14 +28,6 @@ impl Agent {
             Agent::Codex => "Codex",
         }
     }
-
-    /// The ring's base color (the reference app's).
-    pub(crate) fn color(self) -> Color32 {
-        match self {
-            Agent::Claude => Color32::from_rgb(0xD9, 0x77, 0x57),
-            Agent::Codex => Color32::from_rgb(0x10, 0xA3, 0x7F),
-        }
-    }
 }
 
 /// One window of a plan: how much is used (0 to 1) and when it starts over (Unix seconds).

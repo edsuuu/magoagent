@@ -2,9 +2,8 @@
 //! and in the chats' stream), each agent's model, context and cost, and the rules that hold the Maestro
 //! back: a ceiling of agents, no recruiting near the limit, a cheaper model for the recruits.
 
-pub(crate) mod pill;
+pub(crate) mod foot;
 pub(crate) mod probe;
-pub(crate) mod rings;
 
 use crate::app::maestro::demands::{Demand, DemandKind};
 use crate::prelude::*;
@@ -279,7 +278,7 @@ impl DrawingApp {
         if self.prefs.usage_stop > 0 {
             out += &format!("\nO app não recruta com a janela de 5 h em {}% ou mais.", self.prefs.usage_stop);
         }
-        // the plans as the CLIs themselves read them (the pill's rings)
+        // the plans as the CLIs themselves read them (the sidebar's foot)
         for line in self.usage_ui.probe.lines(now_ms() / 1000) {
             out += &format!("\nPlano lido pela CLI, {line}.");
         }

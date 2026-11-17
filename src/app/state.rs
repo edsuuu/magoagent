@@ -161,8 +161,8 @@ pub(crate) struct DrawingApp {
     /// The sidebar on its way open or folded: since when, from which width, toward which
     /// (negative before the first frame).
     pub(crate) sidebar_slide: (f64, f32, f32),
-    /// The bottom right row's pills (ui/usage_pill.rs, ui/floors.rs).
-    pub(crate) usage_ui: crate::app::usage::pill::UsagePill,
+    /// The plans' use at the sidebar's foot and its popover (usage/foot.rs).
+    pub(crate) usage_ui: crate::app::usage::foot::UsageCard,
     pub(crate) floors_ui: crate::app::floors::pill::FloorsUi,
     pub(crate) autosave: Option<PathBuf>,
     /// The thread that writes the autosave off the UI thread (started with the first write).

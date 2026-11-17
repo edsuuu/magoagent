@@ -28,6 +28,8 @@ pub(crate) enum Icon {
     Panel,
     Monitor,
     Map,
+    /// Four corners: Ver tudo.
+    Fit,
     /// Three lines: the sidebar's toggle.
     Menu,
     /// Ajustes.
@@ -285,6 +287,11 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             line(&pts);
             let (ex, ey) = pts[0];
             line(&[(ex + 3.5, ey - 1.0), (ex, ey), (ex + 0.5, ey + 3.5)]);
+        }
+        Icon::Fit => {
+            for (x, y) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+                line(&[(2.5 * x, 6.5 * y), (6.5 * x, 6.5 * y), (6.5 * x, 2.5 * y)]);
+            }
         }
         Icon::Expand => {
             line(&[(1.5, -6.5), (6.5, -6.5), (6.5, -1.5)]);
