@@ -124,6 +124,22 @@ fn the_app_keeps_what_plays_and_the_cover_of_that_track_only() {
 }
 
 #[test]
+fn a_song_paused_for_half_a_minute_leaves_the_island() {
+    let ctx = Context::default();
+    let mut spotify = Spotify::default();
+    let paused = || Message::Now(Some(Now { track: track("A"), playing: false, ..Default::default() }));
+    spotify.take(Message::Now(playing("A")), &ctx);
+    assert!(spotify.shown(1000.0).is_some(), "playing: always shown");
+    spotify.take(paused(), &ctx);
+    assert!(spotify.shown(10.0).is_some(), "just paused: still shown");
+    spotify.take(paused(), &ctx);
+    assert!(spotify.shown(29.0).is_some(), "the same pause told again does not restart it");
+    assert!(spotify.shown(31.0).is_none(), "paused for 30 s: gone");
+    spotify.take(Message::Now(playing("A")), &ctx);
+    assert!(spotify.shown(1000.0).is_some(), "playing again: back");
+}
+
+#[test]
 fn spotify_is_on_the_island_while_it_plays_and_its_buttons_ask_the_player() {
     let mut app = DrawingApp::default();
     let ctx = Context::default();

@@ -351,9 +351,9 @@ impl DrawingApp {
             // "tem momento que a Luna fica parada como se nada estivesse tocando")
             let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.playing);
             let calm = dances_through(wanted.state) && (view.shape != Shape::Open || playing);
-            // the island open, she is awake and can be poked: no nap there when the song isn't heard here (asked: "se eu
-            // abro a ilha ela tem que acordar")
-            match self.luna_groove().filter(|groove| calm && !(view.shape == Shape::Open && groove.dance == Dance::Nap)) {
+            // she dances only to a song heard here; not heard (or paused), she is awake and can be poked, with her own
+            // faces (asked: "se eu abro a ilha ela tem que acordar", "no notch os olhos da Luna somem")
+            match self.luna_groove().filter(|groove| calm && groove.dance != Dance::Nap) {
                 Some(groove) => paint_mago_dancing(&painter, "island-main-dance", center, size, self.luna_colour(LUME), &groove, time),
                 None => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),
             }
@@ -371,7 +371,8 @@ impl DrawingApp {
         let state = main_state(view.mood, view.celebrating);
         // while a song plays, its cover and the sound's bars fill the pill (asked: "como a Dynamic Island do iPhone")
         // playing or paused, as the Dynamic Island keeps the song while it pauses (its bars then rest as dots)
-        let now = self.integrations.spotify.now.as_ref();
+        // paused for a while, the song leaves the pill (`Spotify::shown`)
+        let now = self.integrations.spotify.shown(time);
         // the bars hear the song whether or not Luna dances to it (`Dancer::groove` asks for the listening)
         let groove = now.filter(|now| now.playing).map(|now| self.integrations.spotify.dancer.groove(now.playing));
         if !compact {
@@ -380,7 +381,7 @@ impl DrawingApp {
             let calm = dances_through(state);
             // the notch is 24 tall: she keeps 3 above and below (asked: "a Luna está quase colada, diminui um pouco")
             const LUNA: f32 = 18.0;
-            match self.luna_groove().filter(|_| calm) {
+            match self.luna_groove().filter(|groove| calm && groove.dance != Dance::Nap) {
                 Some(groove) => paint_mago_dancing(ui.painter(), "island-main-dance", center, LUNA, self.luna_colour(LUME), &groove, time),
                 None => paint_mago_toward(ui.painter(), "island-main", center, LUNA, state, time, view.pointer),
             }
@@ -599,7 +600,9 @@ impl DrawingApp {
         }
         let row_font = font(12.5);
         // 1: the sound, its volume, and the colours
-        let switch = Rect::from_min_size(Pos2::new(left, centers[0] - 9.0), Vec2::new(32.0, 18.0));
+        // on whole pixels and a point lower, on the line of the "Som" letters (asked: "o toggle de som está muito para cima")
+        let switch =
+            egui::emath::GuiRounding::round_to_pixels(Rect::from_min_size(Pos2::new(left, centers[0] - 8.0), Vec2::new(32.0, 18.0)), ui.pixels_per_point());
         let response = ui.interact(switch, ui.scope_id().with("island_settings_sound"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
         let on = ui.ctx().animate_bool_with_time(response.id, view.sound_on, 0.18);
         ui.painter().rect_filled(switch, 9, Color32::from_white_alpha(38).lerp_to_gamma(GREEN, on));
