@@ -11,3 +11,4 @@ pub(crate) mod update_flow;
 pub(crate) mod updater;
 pub(crate) mod updates;
 pub(crate) mod wipe;
+pub(crate) mod wsl;
