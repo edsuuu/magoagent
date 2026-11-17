@@ -201,7 +201,7 @@ impl DrawingApp {
                 }
             })
             .collect();
-        // the sessions outside the app, one pill per origin
+        // the sessions outside the app, one pill per origin and folder: the name says which ("Claude Desktop · loja"), the kind where
         lines.extend(self.outside_pills().into_iter().map(|pill| Line {
             kind: if pill.name == "Hermes" { "Hermes Agent" } else { "fora do app" }.into(),
             mago: if pill.asleep { MagoState::Sleeping } else { MagoState::from_agent(pill.state, self.now) },
