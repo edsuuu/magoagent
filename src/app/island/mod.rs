@@ -115,6 +115,12 @@ pub(crate) fn main_state(mood: Mood, celebrating: bool) -> MagoState {
     }
 }
 
+/// Whether an agent at work last frame (`working`) ended its turn now: done, or waiting on the person. One stopped
+/// (Esc: idle since no answer) or closed did not.
+pub(crate) fn turn_ended(working: &std::collections::HashSet<String>, rows: &[AgentRow]) -> bool {
+    rows.iter().any(|row| working.contains(&row.id) && matches!(row.state, AgentState::Idle(Some(_)) | AgentState::Waiting))
+}
+
 /// What the open island shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) enum Tab {
@@ -361,6 +367,8 @@ pub(crate) struct Island {
     asked: usize,
     /// Something was working or waiting last frame: the end of it is news.
     was_busy: bool,
+    /// The agents and chats at work last frame (`turn_ended`).
+    working: std::collections::HashSet<String>,
     celebrate_until: f64,
     /// The island as drawn: its size and corner follow the target, easing.
     anim: Vec2,
@@ -627,6 +635,12 @@ impl DrawingApp {
             tones.push(sounds::FINISH);
         }
         island.was_busy = busy;
+        // asked ("quando ela termina uma ação, ela não abre a ilha"): an agent done or waiting on the person opens it, as
+        // a question does, and it folds after "Fechar sozinho" as usual
+        if turn_ended(&island.working, &rows) {
+            island.machine.force_home(time);
+        }
+        island.working = rows.iter().filter(|row| matches!(row.state, AgentState::Working(_))).map(|row| row.id.clone()).collect();
         let asked_before = std::mem::replace(&mut island.asked, asks.len());
         if asks.len() < asked_before {
             tones.push(sounds::APPROVE);
@@ -817,6 +831,34 @@ mod tests {
         assert_eq!(row.state, AgentState::Idle(Some(9.0)));
         let view = app.island_view(vec![row], Vec::new(), Mood::Ready, 10.0);
         assert_eq!(view.lines[0].mago, MagoState::Done);
+    }
+
+    #[test]
+    fn the_island_opens_when_a_turn_ends_and_not_when_it_is_stopped() {
+        let frame = |app: &mut DrawingApp, ctx: &Context, time: f64| {
+            let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0))), time: Some(time), ..Default::default() };
+            ctx.run_ui(raw, |_| app.island_ui(ctx)).textures_delta.clear();
+        };
+        for (ended, opens) in [(Some(4.0), true), (None, false)] {
+            let (ctx, mut app) = (Context::default(), DrawingApp::default());
+            app.prefs.island = true;
+            app.chats = vec![chat("a")];
+            frame(&mut app, &ctx, 1.0);
+            assert_eq!(app.island.machine.stage(), fsm::Stage::Hidden);
+            // the chat was at work last frame; now its answer ended (or Esc stopped it)
+            app.island.working.insert("a".into());
+            if let Some(at) = ended {
+                app.chat_ended.insert("a".into(), at);
+            }
+            frame(&mut app, &ctx, 5.0);
+            assert_eq!(app.island.machine.stage() == fsm::Stage::Home, opens, "ended at {ended:?}");
+            assert!(app.island.working.is_empty(), "no one at work now");
+        }
+        let working: std::collections::HashSet<String> = ["a".to_string()].into();
+        let row = |state| AgentRow { id: "a".into(), spec: Default::default(), state, mission: None, space: String::new() };
+        assert!(turn_ended(&working, &[row(AgentState::Waiting)]), "waiting on the person");
+        assert!(!turn_ended(&working, &[row(AgentState::Working(1.0))]), "still at work");
+        assert!(!turn_ended(&Default::default(), &[row(AgentState::Idle(Some(1.0)))]), "it was not at work");
     }
 
     #[test]
