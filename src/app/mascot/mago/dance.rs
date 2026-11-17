@@ -287,6 +287,13 @@ pub(crate) fn paint_mago_dancing(painter: &Painter, id: &str, center: Pos2, size
         let mut motions = motions.borrow_mut();
         let motion = motions.entry(key).or_insert_with(|| MagoMotion::seeded(key));
         motion.advance(state, time, None);
+        // overlay dance expressions on top of the base state
+        if groove.dance != Dance::Nap {
+            let (eye, mouth_curve, mouth_open) = draw::dance_expression(groove);
+            motion.look.eye = eye;
+            motion.mouth_curve.value = mouth_curve;
+            motion.mouth_open.value = mouth_open;
+        }
         draw::paint_dancer(painter, center, size, color, motion, &pose, time);
     });
     let frame = if groove.dance == Dance::Nap { std::time::Duration::from_millis(66) } else { crate::app::update::frame_spacing() };
