@@ -194,7 +194,8 @@ impl DrawingApp {
                     chat: self.is_chat(&row.id),
                     canvas: self.scene.elements.iter().any(|element| element.id == row.id) || self.away.contains_key(&row.id),
                     badge: None,
-                    kind: stage::program_name(&program),
+                    // where it is: the two kinds of session Claude Code's page shows
+                    kind: if program == "claude" { format!("{} · no canvas", stage::program_name(&program)) } else { stage::program_name(&program) },
                     at: 0,
                     asleep: false,
                 }
@@ -202,7 +203,7 @@ impl DrawingApp {
             .collect();
         // the sessions outside the app, one pill per origin
         lines.extend(self.outside_pills().into_iter().map(|pill| Line {
-            kind: if pill.name == "Hermes" { "Hermes Agent" } else { "Claude Code" }.into(),
+            kind: if pill.name == "Hermes" { "Hermes Agent" } else { "fora do app" }.into(),
             mago: if pill.asleep { MagoState::Sleeping } else { MagoState::from_agent(pill.state, self.now) },
             at: pill.at,
             asleep: pill.asleep,
@@ -227,7 +228,7 @@ impl DrawingApp {
             super::feed::feed_lines(&lines, &Default::default()).0.iter().map(|line| (line.id.clone(), super::feed::signature(line))).collect();
         let island = &self.island;
         let grid = island.tab.grid();
-        let in_grid = |line: &&Line| Tab::of(&line.id) == grid;
+        let in_grid = |line: &&Line| grid.shows(line);
         let focus = island
             .focus
             .clone()
@@ -677,7 +678,7 @@ pub(super) fn header_tabs(lines: &[Line]) -> Vec<(Tab, crate::editor::icons::Svg
         (Tab::Home, icons::HOUSE, 17.0, "Início: o resumo"),
         (Tab::Chat, icons::BUBBLE, 19.0, "Chat atual"),
         (Tab::Chats, icons::LIST, 17.0, "Conversas: os agentes do app"),
-        (Tab::Claude, icons::CLAUDE, 16.0, "Claude Code: as sessões fora do app"),
+        (Tab::Claude, icons::CLAUDE, 16.0, "Claude Code: as sessões no canvas e fora do app"),
     ];
     if on("github") {
         tabs.push((Tab::GitHub, icons::PULL, 18.0, "GitHub: os pull requests"));
