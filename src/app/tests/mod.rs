@@ -119,7 +119,7 @@ fn key_press(key: Key) -> egui::Event {
 /// The screen the island's tests run it on.
 const ISLAND_SCREEN: Vec2 = Vec2::new(1200.0, 800.0);
 
-/// A chat of the app's list, as the island's tests make one.
+/// A chat of the app's list, in folder C:/p.
 fn chat(id: &str, agent: &str, name: &str) -> crate::app::chat::direct::Chat {
     crate::app::chat::direct::Chat {
         id: id.into(),
@@ -134,6 +134,12 @@ fn chat(id: &str, agent: &str, name: &str) -> crate::app::chat::direct::Chat {
         named: false,
         draft: false,
     }
+}
+
+/// A Claude chat named `name` (its id the name in lower case) put on the app's list; its id.
+fn push_chat(app: &mut DrawingApp, name: &str) -> String {
+    app.chats.push(crate::app::chat::direct::Chat { cwd: String::new(), ..chat(&name.to_lowercase(), "claude", name) });
+    name.to_lowercase()
 }
 
 /// One frame of the island alone; the texts it painted and where.

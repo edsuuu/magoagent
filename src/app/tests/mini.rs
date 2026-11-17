@@ -11,19 +11,7 @@ fn app_with_chat() -> DrawingApp {
     // the pill and its panel are the island-off way (on, the chats go to the island)
     app.prefs.island = false;
     app.canvas_rect = Rect::from_min_size(Pos2::ZERO, SIZE);
-    app.chats = vec![crate::app::chat::direct::Chat {
-        id: "a".into(),
-        agent: "claude".into(),
-        name: "Claude Code · loja".into(),
-        cwd: "C:/p".into(),
-        session: None,
-        mode: 0,
-        model: String::new(),
-        effort: String::new(),
-        recruit: false,
-        named: false,
-        draft: false,
-    }];
+    app.chats = vec![chat("a", "claude", "Claude Code · loja")];
     let mut t = Transcript::new(PathBuf::new());
     t.items = vec![ChatItem::User("oi".into()), ChatItem::Agent("olá".into())];
     app.transcripts.insert("a".into(), t);
