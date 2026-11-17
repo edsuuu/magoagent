@@ -16,6 +16,7 @@ pub(crate) mod maestro;
 pub(crate) mod mascot;
 pub(crate) use mascot::mago::{MagoState, paint_mago_for};
 pub(crate) mod notes;
+pub(crate) mod panes;
 mod state;
 pub(crate) mod system;
 mod tasks;

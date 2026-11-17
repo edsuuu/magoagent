@@ -203,6 +203,7 @@ fn every_app_action_is_a_tool_once() {
         "binder",
         "minimap",
         "sidebar",
+        "panel",
         "terminal_menu",
         "terminal_find",
         "terminal_look",
@@ -336,4 +337,26 @@ fn every_tool_is_in_the_mcp_docs() {
         .map(String::from)
         .collect();
     assert!(missing.is_empty(), "docs/mcp.md não tem {missing:?}: rode `python docs/mcp.py` depois de um build release");
+}
+
+#[test]
+fn the_panel_tool_opens_and_closes_the_right_panels() {
+    use crate::app::panes::Pane;
+    let mut app = DrawingApp { chat_open: true, ..Default::default() };
+    assert_eq!(app.act("panel", &json!({ "name": "tasks" })).unwrap(), "Painel Tarefas aberto.");
+    assert_eq!((app.panes.open, app.chat_open), (Some(Pane::Tasks), false), "it shows beside the canvas");
+    // one at a time: another takes its place
+    app.act("panel", &json!({ "name": "binder", "open": true })).unwrap();
+    assert_eq!(app.panes.open, Some(Pane::Binder));
+    assert_eq!(app.act("panel", &json!({ "name": "Linha do tempo" })).unwrap(), "Painel Linha do tempo aberto.");
+    assert_eq!(app.act("panel", &json!({ "name": "timeline" })).unwrap(), "Painel Linha do tempo fechado.", "no `open` toggles");
+    assert_eq!(app.panes.open, None);
+    app.act("panel", &json!({ "name": "changes", "open": true })).unwrap();
+    // closing another one leaves the open one alone; no name closes it
+    app.act("panel", &json!({ "name": "tasks", "open": false })).unwrap();
+    assert_eq!(app.panes.open, Some(Pane::Changes));
+    assert_eq!(app.act("panel", &json!({ "open": false })).unwrap(), "Painel fechado.");
+    assert_eq!(app.panes.open, None);
+    assert!(app.act("panel", &json!({ "name": "nada" })).unwrap_err().contains("tasks, timeline, changes ou binder"));
+    assert!(app.act("panel", &json!({ "open": true })).is_err());
 }
