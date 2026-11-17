@@ -401,8 +401,9 @@ pub(crate) struct Island {
     anchor: Option<[f32; 2]>,
     origin: Pos2,
     built: Vec2,
-    /// Where the window was seen after the person moved it, and since when: let go once it stays.
-    moved: Option<(Pos2, f64)>,
+    /// Where the window was seen after the person moved it, and since when: let go once it stays; and the cursor then
+    /// (points), on the island being dragged: its monitor is the one it sticks to.
+    moved: Option<(Pos2, f64, Option<Pos2>)>,
     /// X11: the window is the island's size since a drag began (the size it was), until the island grows once it is let
     /// go. In its room the system stops the window at the top bar with the island still below it.
     slim: Option<Vec2>,
