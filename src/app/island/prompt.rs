@@ -3,7 +3,7 @@
 //! plain), the model's pill and a one-line box. Its ⤢ opens the whole mini chat in the island instead.
 
 use super::log::said;
-use super::paint::{CARD, DIM_3, EXPAND, INK, Out, View, aim, font, wash_with};
+use super::paint::{CARD, DIM_3, EXPAND, INK, Out, View, aim, font};
 use crate::app::chat::list::glyph;
 use crate::app::mascot::mago::MagoState;
 use crate::app::ui::agents::{AgentRow, AgentState};
@@ -22,7 +22,6 @@ impl DrawingApp {
         self.refresh_transcript();
         let painter = ui.painter().with_clip_rect(page);
         painter.rect(page, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
-        wash_with(&painter, page, Color32::from_rgb(0x63, 0x66, 0xf1), 0.5, 0.0);
         // botPosition with no botY: the middle of an 84 pt card under the header, at 52 from the island's left, 44 wide
         let line = view.lines.iter().find(|line| line.id == row.id);
         let origin = view.origin.get();
