@@ -18,7 +18,8 @@ impl DrawingApp {
     /// The integrations' pills, after the agents'.
     pub(super) fn integration_lines(&self) -> Vec<Line> {
         let line = |item: crate::app::integrations::IslandItem| Line {
-            detail: item.rows.first().map(|row| row.text.clone()).unwrap_or_default(),
+            // a song alone ("155") says little: Spotify's line carries the artist too
+            detail: item.rows.iter().take(if item.name == "Spotify" { 2 } else { 1 }).map(|row| row.text.as_str()).collect::<Vec<_>>().join(" · "),
             id: item.id,
             name: item.name.to_string(),
             state: AgentState::Idle(None),

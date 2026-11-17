@@ -30,6 +30,7 @@ mod minis;
 mod music;
 mod paint;
 mod picture;
+pub(crate) mod pill;
 mod prompt;
 mod session;
 mod sounds;

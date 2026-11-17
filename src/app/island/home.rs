@@ -65,7 +65,12 @@ impl DrawingApp {
 
     /// The focus card (and what is under it: its wash) and the grid of agents.
     fn home_cards(&self, ui: &mut egui::Ui, (left, right): (Rect, Rect), view: &View, focus: Option<&Line>, time: f64, out: &mut Out) {
-        for card in [left, right] {
+        // the grid: two columns of pills, a mini wizard and the name, the page's own (`Tab::of`)
+        let lines: Vec<&Line> = view.lines.iter().filter(|line| Tab::of(&line.id) == view.tab.grid()).collect();
+        // nothing to show: one card across, not an empty one beside it
+        let alone = focus.is_none() && lines.is_empty();
+        let left = if alone { left.union(right) } else { left };
+        for card in if alone { vec![left] } else { vec![left, right] } {
             ui.painter().rect(card, 20, CARD, hairline(), StrokeKind::Inside);
         }
         let activity = view.activity.as_ref();
@@ -88,12 +93,14 @@ impl DrawingApp {
                     Tab::Music => ("Nada tocando agora", "Ligue o Spotify em Ajustes › Integrações"),
                     _ => ("Nenhum agente ainda", "Crie um chat em  +"),
                 };
-                ui.painter().text(Pos2::new(text_x, left.top() + 26.0), egui::Align2::LEFT_CENTER, title, font(13.0), INK);
-                ui.painter().text(Pos2::new(text_x, left.top() + 46.0), egui::Align2::LEFT_CENTER, hint, font(11.5), DIM);
+                // on the wizard's middle line, as the wizard
+                ui.painter().text(Pos2::new(text_x, left.center().y - 10.0), egui::Align2::LEFT_CENTER, title, font(13.0), INK);
+                ui.painter().text(Pos2::new(text_x, left.center().y + 10.0), egui::Align2::LEFT_CENTER, hint, font(11.5), DIM);
             }
         }
-        // the grid: two columns of pills, a mini wizard and the name, the page's own (`Tab::of`)
-        let lines: Vec<&Line> = view.lines.iter().filter(|line| Tab::of(&line.id) == view.tab.grid()).collect();
+        if alone {
+            return;
+        }
         let inner = right.shrink2(Vec2::new(8.0, 0.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
             ui.spacing_mut().item_spacing = Vec2::splat(4.0);

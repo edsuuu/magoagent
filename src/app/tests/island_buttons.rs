@@ -482,7 +482,8 @@ fn the_github_tab_reads_the_pull_request_picked() {
 fn the_spotify_tab_plays_what_is_pressed() {
     use crate::app::integrations::spotify::{Command, Now, Playback, Player, QueueItem, Track};
     let (mut app, ctx, mut time) = opened();
-    app.prefs.integrations.soloist = true;
+    // Soloist only counts on Linux: the Spotify switch keeps the integration on elsewhere
+    (app.prefs.integrations.soloist, app.prefs.integrations.spotify) = (true, true);
     let playback = Playback { shuffle: Some(false), position_ms: Some(10_000), duration_ms: Some(200_000), ..Default::default() };
     app.integrations.spotify.now =
         Some(Now { track: Track::new("Canção", "Banda", "Disco", "").unwrap(), playing: true, player: Player::Soloist, playback, ..Default::default() });
@@ -494,9 +495,9 @@ fn the_spotify_tab_plays_what_is_pressed() {
     assert_eq!(app.island.tab(), Tab::Music);
     assert!((app.island.size().y - 318.0).abs() < 2.0, "the player's room: {}", app.island.size().y);
     let page = Rect::from_min_max(island_rect(&app).min + Vec2::new(10.0, 42.0), island_rect(&app).max - Vec2::new(10.0, 10.0));
-    // the buttons' row: six in the player's card, aleatório the first
+    // the buttons' row: five in the player's card, aleatório the first and tocar in the middle
     let (left, bottom) = (page.left() + 16.0, page.bottom() - 12.0);
-    click(&mut app, &ctx, &mut time, Pos2::new(left + 286.0 / 12.0, bottom - 48.0));
+    click(&mut app, &ctx, &mut time, Pos2::new(left + 286.0 / 10.0, bottom - 48.0));
     assert_eq!(app.integrations.spotify.asked, [Command::Shuffle(true)]);
     // the second song of A seguir: the player skips two
     let list_x = page.left() + 318.0 + 10.0 + 120.0;

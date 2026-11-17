@@ -44,6 +44,56 @@ fn run(app: &mut DrawingApp, ctx: &Context, from: f64, to: f64, events: Vec<egui
     }
 }
 
+/// One frame of the island, and the time it asked before the next one.
+fn frame_delay(app: &mut DrawingApp, ctx: &Context, time: f64) -> std::time::Duration {
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(time), events: vec![], ..Default::default() };
+    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
+    output.textures_delta.clear();
+    output.viewport_output.get(&egui::ViewportId::ROOT).map_or(std::time::Duration::MAX, |viewport| viewport.repaint_delay)
+}
+
+/// Asked ("como a Dynamic Island do iPhone quando toca música"): the pill's bars rise with the song, each with its own
+/// swing; without the groove (the dance off, or macOS), the clock's smooth sway.
+#[test]
+fn the_pills_bars_rise_with_the_song_each_with_its_own_swing() {
+    use crate::app::integrations::spotify::groove::{Dance, Groove};
+    use crate::app::island::pill::bars;
+    let groove = |energy, bass| Groove { bpm: 120.0, phase: 0.25, energy, bass, dance: Dance::Sway, beat: 0.5, since: 0.0 };
+    let loud = bars(Some(&groove(0.9, 0.7)), 1.0);
+    let quiet = bars(Some(&groove(0.1, 0.0)), 1.0);
+    let average = |heights: &[f32]| heights.iter().sum::<f32>() / heights.len() as f32;
+    assert!(loud.iter().all(|height| (0.0..=1.0).contains(height)));
+    assert!(average(&loud) > average(&quiet), "the louder the song, the higher the bars: {loud:?} against {quiet:?}");
+    assert!(loud.windows(2).any(|pair| (pair[0] - pair[1]).abs() > 0.02), "each bar with its own swing: {loud:?}");
+    // no groove: the clock moves them, smoothly and on its own
+    let first = bars(None, 2.0);
+    assert!(first.iter().all(|height| (0.15..0.95).contains(height)), "{first:?}");
+    assert_ne!(first, bars(None, 2.4), "the sway goes on");
+    assert!(first.windows(2).any(|pair| (pair[0] - pair[1]).abs() > 0.02), "each bar with its own swing: {first:?}");
+}
+
+/// While the song plays the pill is alive and keeps asking for frames; paused, it asks for none.
+#[test]
+fn the_pill_asks_for_frames_while_the_song_plays_and_not_paused() {
+    use crate::app::integrations::spotify::{Now, Track};
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    // with no dance, the frames while it plays are the bars'
+    app.prefs.integrations.luna_dances = false;
+    run(&mut app, &ctx, 1.0, 1.3, vec![]);
+    assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H), "the notch, with nothing waiting");
+    let mut now = Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, ..Default::default() };
+    app.integrations.spotify.now = Some(now.clone());
+    let playing = frame_delay(&mut app, &ctx, 2.0);
+    assert!(playing <= std::time::Duration::from_millis(33), "the bars are moving: a frame at the island's rate ({playing:?})");
+    now.playing = false;
+    app.integrations.spotify.now = Some(now);
+    let paused = frame_delay(&mut app, &ctx, 2.2);
+    assert!(paused >= std::time::Duration::from_millis(60), "paused: only the wizard's slow blink ({paused:?})");
+    app.integrations.spotify.now = None;
+    assert_eq!(paused, frame_delay(&mut app, &ctx, 2.4), "paused, the pill is the one with no song");
+}
+
 #[test]
 fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() {
     let ctx = Context::default();
