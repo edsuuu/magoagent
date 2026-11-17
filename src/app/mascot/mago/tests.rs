@@ -229,6 +229,7 @@ mod dancing {
     use super::*;
     use crate::app::integrations::spotify::groove::{Dance, Groove};
     use dance::{Place, pose};
+    use draw::dance_expression;
 
     const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
 
@@ -336,6 +337,66 @@ mod dancing {
             assert_eq!(motions[&motion_key("luna-palmas")].look.eye, EyeKind::Round, "dancing: the eyes as always");
             assert!(!motions.contains_key(&motion_key("luna-nada")));
         });
+    }
+
+    #[test]
+    fn low_energy_gives_happy_eyes() {
+        let groove = groove(Dance::Clap, 0.5, 0.1);
+        let (eye, _curve, _open) = dance_expression(&groove);
+        assert_eq!(eye, EyeKind::Happy, "low energy while dancing should give happy eyes");
+    }
+
+    #[test]
+    fn high_energy_gives_wide_eyes() {
+        let groove = groove(Dance::Clap, 0.5, 0.9);
+        let (eye, _curve, _open) = dance_expression(&groove);
+        assert_eq!(eye, EyeKind::Wide, "high energy peak should give wide eyes");
+    }
+
+    #[test]
+    fn normal_energy_gives_round_eyes() {
+        let groove = groove(Dance::Sway, 0.5, 0.5);
+        let (eye, _curve, _open) = dance_expression(&groove);
+        assert_eq!(eye, EyeKind::Round, "normal energy should give round eyes");
+    }
+
+    #[test]
+    fn high_bass_near_beat_gives_open_smile() {
+        // bass > 0.7 and near phase 0 (phase = 0.02 → near_beat = 0.02)
+        let groove = Groove {
+            bpm: 120.0, phase: 0.02, energy: 0.5, bass: 0.85, bands: None, dance: Dance::Clap, beat: 10.02, since: 0.0,
+        };
+        let (_eye, curve, open) = dance_expression(&groove);
+        assert!(curve > 0.05, "high bass near beat should give a wider smile curve: {}", curve);
+        assert!(open > 0.02, "high bass very near beat should open mouth: {}", open);
+    }
+
+    #[test]
+    fn low_bass_gives_neutral_mouth() {
+        let groove = groove(Dance::Sway, 0.5, 0.5);
+        let (_eye, curve, open) = dance_expression(&groove);
+        assert!(close(curve, 0.03), "low bass should give default mouth curve: {}", curve);
+        assert!(close(open, 0.0), "low bass should give neutral (closed) mouth: {}", open);
+    }
+
+    #[test]
+    fn high_bass_not_near_beat_gives_smile_no_open() {
+        // phase = 0.5 → near_beat = 0.5 (not near beat)
+        let groove = Groove {
+            bpm: 120.0, phase: 0.5, energy: 0.5, bass: 0.9, bands: None, dance: Dance::Clap, beat: 10.5, since: 0.0,
+        };
+        let (_eye, curve, open) = dance_expression(&groove);
+        assert!(close(curve, 0.03), "high bass far from beat should keep default curve");
+        assert!(close(open, 0.0), "high bass far from beat should not open mouth");
+    }
+
+    #[test]
+    fn nap_gives_sleepy_eyes() {
+        let groove = Groove {
+            bpm: 40.0, phase: 0.5, energy: 0.1, bass: 0.1, bands: None, dance: Dance::Nap, beat: 1.0, since: 0.0,
+        };
+        let (eye, _curve, _open) = dance_expression(&groove);
+        assert_eq!(eye, EyeKind::Sleepy, "nap should give sleepy eyes regardless of energy");
     }
 }
 
