@@ -122,6 +122,14 @@ fn the_sound_button_turns_the_sounds_off_and_on() {
     assert_eq!(app.prefs.island_sound, !before);
     click(&mut app, &ctx, &mut time, at);
     assert_eq!(app.prefs.island_sound, before);
+    // with the settings page open too: its own switch must not take the click away (asked: "clico na engrenagem e
+    // clico no ícone do som ali do lado, ele não funciona")
+    let gear = right_button(&app, 2);
+    click(&mut app, &ctx, &mut time, gear);
+    assert!(app.island.settings_open());
+    let at = right_button(&app, 1);
+    click(&mut app, &ctx, &mut time, at);
+    assert_eq!(app.prefs.island_sound, !before);
 }
 
 #[test]

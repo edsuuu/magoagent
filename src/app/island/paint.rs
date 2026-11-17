@@ -604,7 +604,7 @@ impl DrawingApp {
         let on = ui.ctx().animate_bool_with_time(response.id, view.sound_on, 0.18);
         ui.painter().rect_filled(switch, 9, Color32::from_white_alpha(38).lerp_to_gamma(GREEN, on));
         ui.painter().circle_filled(Pos2::new(switch.left() + 9.0 + 14.0 * on, switch.center().y), 7.0, Color32::WHITE);
-        out.sound = response.clicked();
+        out.sound |= response.clicked();
         let label = ui.painter().text(Pos2::new(switch.right() + 10.0, centers[0]), egui::Align2::LEFT_CENTER, "Som", row_font.clone(), ROW_INK);
         let track = Rect::from_min_size(Pos2::new(label.right() + 10.0, centers[0] - 6.0), Vec2::new(72.0, 12.0));
         let response = ui.interact(track, ui.scope_id().with("island_volume"), Sense::click_and_drag()).on_hover_cursor(CursorIcon::PointingHand);
