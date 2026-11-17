@@ -9,6 +9,14 @@ impl DrawingApp {
         self.terminal_focus.as_ref().or(self.card_focus.as_ref()).or(elevated)
     }
 
+    /// The selected window drawn without its outline: a terminal being typed into or one enlarged, a note being written.
+    /// A file tree with the keys keeps it (asked: "a IDE só é selecionada quando clica nesse quadradinho": a click on its
+    /// rows took the outline away).
+    pub(crate) fn unoutlined_window(&self) -> Option<String> {
+        let elevated = self.terminal_elevated.as_ref().filter(|_| self.dock.is_none());
+        self.terminal_focus.as_ref().or(elevated).cloned().or_else(|| self.note_focus_id())
+    }
+
     /// Lets the bridge threads see the canvas as it is now: each frame, and before an agent hears
     /// back about something it created, so its next request already finds it.
     pub(crate) fn publish_nodes(&self) {

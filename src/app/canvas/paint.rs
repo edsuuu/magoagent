@@ -266,8 +266,7 @@ impl DrawingApp {
         let with_card = |element: &&Element| {
             card(element) || element.rope || selected.iter().any(|other| card(other) && other.group_id.is_some() && other.group_id == element.group_id)
         };
-        // the window in focus (a terminal being typed into, or one enlarged, the IDE open) gets no outline
-        let focused = self.focused_window().cloned().or_else(|| self.note_focus_id());
+        let focused = self.unoutlined_window();
         if selected.iter().any(|element| card(element)) && selected.iter().all(with_card) && self.tool == Tool::Select {
             // terminals, portals and notes: only a dashed rounded outline whose dashes crawl, stand still or
             // aren't drawn (Ajustes; the corners still resize them); drawings keep the straight box with handles
