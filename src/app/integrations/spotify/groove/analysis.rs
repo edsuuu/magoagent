@@ -36,11 +36,13 @@ const PULL: f64 = 0.3;
 const BASS_UNDER: f32 = 150.0;
 /// The bands the sound is cut in for the island's bars (Hz): the bass, the low mids, the mids, the presence, the treble.
 pub(crate) const BAND_EDGES: [f32; BANDS + 1] = [40.0, 120.0, 300.0, 800.0, 2000.0, 5000.0];
-/// Each band against its own loudest of late, which comes down this many dB a second, over this range; a band rises at
-/// once and falls in about this long, as a meter does.
-const BAND_FALLS: f32 = 8.0;
-const BAND_RANGE: f32 = 30.0;
-const BAND_RELEASE: f32 = 0.12;
+/// Each band against its own loudest of late, which comes down this many dB a second, over this range (wide, so only the
+/// loud parts reach the top: asked "a sensibilidade está muito alta"); a band rises in about `BAND_ATTACK` and falls in
+/// about `BAND_RELEASE`, smooth as the Dynamic Island's bars.
+const BAND_FALLS: f32 = 4.0;
+const BAND_RANGE: f32 = 42.0;
+const BAND_ATTACK: f32 = 0.045;
+const BAND_RELEASE: f32 = 0.16;
 /// The magnitudes are compressed by log(1 + this × magnitude), so the soft hits count too.
 const COMPRESSION: f32 = 1000.0;
 
@@ -203,12 +205,22 @@ pub(crate) fn last_beat(envelope: &[f32], period: f64) -> f64 {
     (best as f64 + finer + ONSET_DELAY).rem_euclid(period)
 }
 
-/// A band's next `level` from its loudness now (`decibels`), against its loudest of late (`peak`, which it moves): up at
-/// once, down in about `BAND_RELEASE`; nothing while the speakers are quiet.
+/// The FFT bins of each band (`BAND_EDGES`), first and past the last: one at least each, in order.
+pub(crate) fn band_ranges() -> [(usize, usize); BANDS] {
+    let bin = |hertz: f32| ((hertz / (RATE as f32 / WINDOW as f32)) as usize).clamp(1, WINDOW / 2);
+    std::array::from_fn(|index| {
+        let from = bin(BAND_EDGES[index]);
+        (from, bin(BAND_EDGES[index + 1]).max(from + 1))
+    })
+}
+
+/// A band's next `level` from its loudness now (`decibels`), against its loudest of late (`peak`, which it moves): up in
+/// about `BAND_ATTACK`, down in about `BAND_RELEASE`; nothing while the speakers are quiet.
 pub(crate) fn band_level(level: f32, peak: &mut f32, decibels: f32, silent: bool, step: f32) -> f32 {
     *peak = decibels.max(*peak - BAND_FALLS * step);
     let target = if silent { 0.0 } else { ((decibels - (*peak - BAND_RANGE)) / BAND_RANGE).clamp(0.0, 1.0) };
-    if target >= level { target } else { level + (target - level) * (1.0 - (-step / BAND_RELEASE).exp()) }
+    let span = if target >= level { BAND_ATTACK } else { BAND_RELEASE };
+    level + (target - level) * (1.0 - (-step / span).exp())
 }
 
 /// The listening thread's ear: samples in, the groove out.
@@ -319,10 +331,8 @@ impl Analyzer {
         if total > 1e-9 {
             self.bass += (power(1..=low_bins) / total - self.bass) * (1.0 - (-step / 0.5).exp());
         }
-        let bin = |hertz: f32| ((hertz / (RATE as f32 / WINDOW as f32)) as usize).clamp(1, WINDOW / 2);
         let silent = self.loudness.silent();
-        for (index, (level, peak)) in self.bands.iter_mut().zip(self.band_peaks.iter_mut()).enumerate() {
-            let (from, to) = (bin(BAND_EDGES[index]), bin(BAND_EDGES[index + 1]).max(bin(BAND_EDGES[index]) + 1));
+        for ((level, peak), (from, to)) in self.bands.iter_mut().zip(self.band_peaks.iter_mut()).zip(band_ranges()) {
             let mean = power(from..=to - 1) / (to - from) as f32;
             *level = band_level(*level, peak, 10.0 * mean.max(1e-12).log10(), silent, step);
         }

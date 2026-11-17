@@ -272,6 +272,32 @@ fn watch(asks: Receiver<Ask>, messages: Sender<Message>, ctx: Context, sources: 
     }
 }
 
+/// The liveliest colour of a cover (its RGBA pixels), made bright enough for the black island: each pixel weighs by how
+/// vivid and how light it is; a grey cover gives a light grey, as the Dynamic Island's bars are for it.
+pub(crate) fn accent(rgba: &[u8]) -> Color32 {
+    let (mut sum, mut weight) = ([0.0f32; 3], 0.0f32);
+    for pixel in rgba.as_chunks::<4>().0 {
+        let [red, green, blue] = [pixel[0], pixel[1], pixel[2]].map(f32::from);
+        let (most, least) = (red.max(green).max(blue), red.min(green).min(blue));
+        if most < 1.0 {
+            continue;
+        }
+        let vivid = (most - least) / most;
+        let each = vivid * vivid * (most / 255.0) * f32::from(pixel[3]) / 255.0;
+        for (total, channel) in sum.iter_mut().zip([red, green, blue]) {
+            *total += channel * each;
+        }
+        weight += each;
+    }
+    if weight < 0.02 * (rgba.len() / 4).max(1) as f32 {
+        return Color32::from_gray(0xe8);
+    }
+    let mean = sum.map(|total| total / weight);
+    let lift = 235.0 / mean.iter().copied().fold(1.0, f32::max);
+    let [red, green, blue] = mean.map(|channel| (channel * lift).clamp(0.0, 255.0) as u8);
+    Color32::from_rgb(red, green, blue)
+}
+
 /// Where each system puts the app: Windows (installer or Store), macOS (.app), Linux (PATH, snap, Flatpak).
 pub(crate) fn install_places(env: impl Fn(&str) -> Option<String>) -> Vec<std::path::PathBuf> {
     let at = |name: &str, rest: &str| env(name).map(|base| std::path::Path::new(&base).join(rest));
@@ -312,6 +338,8 @@ pub(crate) struct Spotify {
     pub(crate) now: Option<Now>,
     /// The cover of what plays, once it came.
     pub(crate) cover: Option<egui::TextureHandle>,
+    /// The cover's liveliest colour (`accent`), for the island's bars as the Dynamic Island colours them.
+    pub(crate) tint: Option<Color32>,
     /// The Spotify app (or Spotifast) and Soloist are not installed here: looked once, when the integration turned on.
     pub(crate) missing: bool,
     pub(crate) soloist_missing: bool,
@@ -343,7 +371,7 @@ impl Spotify {
         match message {
             Message::Now(now) => {
                 if now.as_ref().map(|now| &now.track) != self.now.as_ref().map(|now| &now.track) {
-                    self.cover = None;
+                    (self.cover, self.tint) = (None, None);
                 }
                 self.now = now;
                 self.enrich();
@@ -355,6 +383,7 @@ impl Spotify {
                 if let Ok(picture) = image::load_from_memory(&bytes) {
                     let picture = picture.thumbnail(96, 96).into_rgba8();
                     let size = [picture.width() as usize, picture.height() as usize];
+                    self.tint = Some(accent(&picture));
                     self.cover =
                         Some(ctx.load_texture("spotify-cover", egui::ColorImage::from_rgba_unmultiplied(size, &picture), egui::TextureOptions::LINEAR));
                 }

@@ -407,7 +407,7 @@ impl DrawingApp {
     /// The song's cover and the sound's bars in the pill while it plays, spread with the wizard and the minis (`pill.rs`).
     fn island_playing(&self, ui: &egui::Ui, rect: Rect, now: &Now, compact: Option<Option<Rect>>, groove: Option<&Groove>, time: f64) {
         let cover = self.integrations.spotify.cover.as_ref().map(egui::TextureHandle::id);
-        super::pill::spotify(ui, rect, cover, &now.track.title, compact, groove, time);
+        super::pill::spotify(ui, rect, cover, self.integrations.spotify.tint, &now.track.title, compact, groove, time);
     }
 
     /// The open island: the header and the page under it.

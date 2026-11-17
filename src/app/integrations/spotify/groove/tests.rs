@@ -337,10 +337,15 @@ fn the_bands_follow_where_the_sound_is() {
     let tone = |hertz: f64| -> Vec<f32> {
         (0..(2.0 * f64::from(RATE)) as usize).map(|index| 0.5 * (index as f64 / f64::from(RATE) * hertz * std::f64::consts::TAU).sin() as f32).collect()
     };
+    let quarter = BANDS / 4;
+    let most = |levels: &[f32]| levels.iter().copied().fold(0.0, f32::max);
     let low = hear(&tone(70.0)).groove().bands.unwrap();
-    assert!(low[0] > low[BANDS - 1] + 0.3, "a 70 Hz tone is bass: {low:?}");
+    assert!(most(&low[..quarter]) > most(&low[BANDS - quarter..]) + 0.3, "a 70 Hz tone is bass: {low:?}");
     let high = hear(&tone(3000.0)).groove().bands.unwrap();
-    assert!(high[BANDS - 1] > high[0] + 0.3, "a 3 kHz tone is treble: {high:?}");
+    assert!(most(&high[BANDS - quarter..]) > most(&high[..quarter]) + 0.3, "a 3 kHz tone is treble: {high:?}");
+    // the bands cover the range in order, none empty
+    let ranges = super::analysis::band_ranges();
+    assert!(ranges.iter().all(|(from, to)| from < to) && ranges.windows(2).all(|pair| pair[0].1 <= pair[1].0 + 1), "{ranges:?}");
     let mut analyzer = hear(&tone(3000.0));
     analyzer.feed(&vec![0.0; RATE as usize]);
     assert!(analyzer.groove().bands.unwrap().iter().all(|level| *level < 0.05), "silence: {:?}", analyzer.groove().bands);
