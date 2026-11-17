@@ -452,3 +452,91 @@ fn the_mcp_opens_each_page_and_hides_the_summary() {
     app.act("set_setting", &serde_json::json!({ "name": "island_feed", "value": "hide_all" })).unwrap();
     app.act("set_setting", &serde_json::json!({ "name": "island_feed", "value": "show_hidden" })).unwrap();
 }
+
+/// The island as drawn: hung from the top centre.
+fn island_rect(app: &DrawingApp) -> Rect {
+    let size = app.island.size();
+    Rect::from_min_size(Pos2::new((SIZE.x / 2.0 - size.x / 2.0).round(), 0.0), size)
+}
+
+/// A header button, counted from the right: 0 the close, 1 the sound, 2 the settings, 3 the voice, 4 the size.
+fn right_button(app: &DrawingApp, index: usize) -> Pos2 {
+    let rect = island_rect(app);
+    Pos2::new(rect.right() - 25.0 - index as f32 * 32.0, rect.top() + 25.0)
+}
+
+/// A click as the hand makes it: the pointer comes, rests, presses, lets go; then a few frames for it to settle.
+fn click(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2) {
+    let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    for events in [vec![egui::Event::PointerMoved(at)], vec![egui::Event::PointerMoved(at)], vec![press(true)], vec![press(false)]] {
+        frame_at(app, ctx, *time, events);
+        *time += 0.05;
+    }
+    rest(app, ctx, time, at, 0.5);
+}
+
+/// The pointer still at `at` for `seconds`.
+fn rest(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2, seconds: f64) {
+    let end = *time + seconds;
+    while *time < end {
+        frame_at(app, ctx, *time, vec![egui::Event::PointerMoved(at)]);
+        *time += 0.05;
+    }
+}
+
+/// The app, its island opened by clicking on the compact pill, and the time it is at.
+fn opened() -> (DrawingApp, Context, f64) {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.prefs.island = true;
+    app.chats = vec![chat("a", "claude", "Claude Code · loja"), chat("b", "codex", "Codex · site")];
+    let mut time = 1.0;
+    let notch = Pos2::new(SIZE.x / 2.0, 10.0);
+    while time < 2.0 {
+        frame_at(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
+        time += 0.05;
+    }
+    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "compact on hover: {}", app.island.size().x);
+    let press = |pressed| egui::Event::PointerButton { pos: notch, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    frame_at(&mut app, &ctx, time, vec![press(true)]);
+    time += 0.05;
+    frame_at(&mut app, &ctx, time, vec![press(false)]);
+    time += 0.05;
+    while time < 3.0 {
+        frame_at(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
+        time += 0.05;
+    }
+    assert!((app.island.size().x - EXPANDED_W).abs() < 1.0, "clicked to open: {}", app.island.size().x);
+    (app, ctx, time)
+}
+
+/// Opening the app's Ajustes from the island's settings page sets app.settings_open true, closes the island's
+/// settings page, and folds the island back to compact.
+#[test]
+fn the_islands_settings_link_opens_app_settings_closes_island_settings_and_folds_to_compact() {
+    let (mut app, ctx, mut time) = opened();
+    // open the island's settings page via the gear button
+    let gear = right_button(&app, 2);
+    click(&mut app, &ctx, &mut time, gear);
+    assert!(app.island.settings_open(), "the gear opens the island's settings page");
+    assert_eq!(app.island.size().x, EXPANDED_W, "the island is expanded");
+    // find and click the "Ajustes…" link in the island's settings page
+    // the settings page is drawn inside the page area (PAGE_TOP = 42 from top, 10 from bottom)
+    // the link is on the third row (centers[2]) at the right side of the page
+    let rect = island_rect(&app);
+    let page_top = rect.top() + 42.0; // PAGE_TOP
+    let page_bottom = rect.bottom() - 10.0;
+    let page_center_y = (page_top + page_bottom) / 2.0;
+    // the three rows: 20, 24, 18 with 10 gap = 82 total, centered on page_center_y
+    // centers[2] = page_center_y - 41 + 20 + 10 + 24 + 10 + 9 = page_center_y + 32
+    let centers_2 = page_center_y + 32.0;
+    let link_at = Pos2::new(rect.right() - 26.0 - 60.0, centers_2 - 8.0); // right - 16 - text_width
+    click(&mut app, &ctx, &mut time, link_at);
+    // the app's settings window is now open
+    assert!(app.settings_open, "app.settings_open is true");
+    // the island's settings page is closed
+    assert!(!app.island.settings_open(), "the island's settings page is closed");
+    // the island has folded back to compact
+    rest(&mut app, &ctx, &mut time, link_at, 0.5);
+    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "the island folded to compact: {:?}", app.island.size());
+}
