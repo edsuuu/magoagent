@@ -117,7 +117,11 @@ O dono quer: **merge do PR e release do Linux primeiro (prioridade), depois a do
 
 ## Pausa de 16/11 à noite
 
-O trabalho dos agentes ficou em dois ramos, ainda não juntados ao `feat/ilha-pendentes`:
-- `pend-deepseek`: item 2 pronto (commit da aba Claude) e um commit "WIP" com o item 4 pela metade (e o que mais os agentes deixaram), sem testar.
-- `pend-qwen`: um commit "WIP" com o item 1 (expressões) pela metade, sem testar.
-Para continuar: junte os dois ramos neste, confira os WIP (`cargo test`, clippy), termine os itens 1, 3, 4, 5 e 6, e abra o PR deste ramo para o `feat/ilha-abas` (sem merge: o dono valida antes). O OmniRoute (`omniroute serve`) precisa estar ligado para o opencode usar `omniroute/livre`; o plano grátis do opencode estourou.
+O trabalho dos agentes ficou em dois ramos no GitHub, ainda não juntados a este (`feat/ilha-pendentes`). Nada deles foi
+revisado nem testado por mim:
+- `pend-deepseek`: item 2 (aba Claude com canvas e fora do app), item 6 (teste dos Ajustes) e um commit "WIP" com o item
+  4 pela metade.
+- `pend-qwen`: item 1 (expressões da Luna) e item 3 (texto selecionável na conversa da ilha).
+Falta: terminar o item 4 e fazer o 5 (Claude Desktop × CLI); juntar os dois ramos aqui; `cargo test`, clippy e o check do
+Linux; abrir o PR deste ramo para o `feat/ilha-abas` (sem merge: o dono valida antes). Para o opencode usar
+`omniroute/livre`, o OmniRoute precisa estar ligado (`omniroute serve`); o plano grátis do opencode estourou.
