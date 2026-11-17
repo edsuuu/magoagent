@@ -42,7 +42,8 @@ pub(crate) mod x11;
 pub(crate) use window::*;
 
 /// The sizes of Coucou's island (core/layout.ts): the closed one, the open one and their corners.
-pub(crate) const COMPACT_W: f32 = 264.0;
+// asked: "essa ilha daria para diminuir o espaçamento": about 14 between Luna, the song and the minis
+pub(crate) const COMPACT_W: f32 = 212.0;
 // asked: "essa barra da ilha está muito grande, diminui uns 1,5 px"
 pub(crate) const COMPACT_H: f32 = 38.5;
 pub(crate) const EXPANDED_W: f32 = 760.0;
@@ -752,7 +753,7 @@ mod tests {
     fn closed_it_is_a_small_notch_then_coucous_compact_island_and_the_open_panel() {
         let chat = Vec2::new(640.0, 360.0);
         assert_eq!(target(Shape::Closed, Tab::Chat, false, false, 0.0, chat), (Vec2::new(80.0, 24.0), 10.0));
-        assert_eq!(target(Shape::Compact, Tab::Chat, false, false, 0.0, chat), (Vec2::new(264.0, 38.5), 18.0));
+        assert_eq!(target(Shape::Compact, Tab::Chat, false, false, 0.0, chat), (Vec2::new(212.0, 38.5), 18.0));
         assert_eq!(target(Shape::Open, Tab::Home, false, false, 0.0, chat), (Vec2::new(760.0, 270.0), 22.0), "Início: the summary and the list");
         assert_eq!(target(Shape::Open, Tab::Claude, false, false, 0.0, chat), (Vec2::new(760.0, 160.0), 22.0), "a page of pills");
         assert_eq!(target(Shape::Open, Tab::Chat, false, false, 0.0, Vec2::new(900.0, 500.0)).0, Vec2::new(900.0, 500.0), "the conversation: its own size");

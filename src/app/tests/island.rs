@@ -97,6 +97,12 @@ fn the_cover_and_the_bars_sit_in_the_middle_or_at_the_right() {
     let middle = (cover + bars + 42.0) / 2.0;
     assert!((middle - (55.0 + grid.left()) / 2.0).abs() < 1.0, "in the middle: {middle} between 55 and {}", grid.left());
     assert!(bars + 42.0 < grid.left(), "clear of the minis");
+    // the compact island as it is: about 14 between Luna (her right at 55), the song and the minis, no wide gaps
+    let pill = Rect::from_min_size(Pos2::ZERO, Vec2::new(crate::app::island::COMPACT_W, crate::app::island::COMPACT_H));
+    let grid = mini_cells(pill, 1).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
+    let (cover, bars) = spread(pill, Some(grid));
+    let (before, after) = (cover - 55.0, grid.left() - (bars + 42.0));
+    assert!((10.0..=18.0).contains(&before) && (10.0..=18.0).contains(&after), "the gaps: {before} and {after}");
 }
 
 /// Asked ("ali a Luna não reage à música"): open on Início, while the song plays she dances too, and her dance asks for
