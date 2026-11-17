@@ -28,12 +28,14 @@ impl DrawingApp {
 
     /// How far the corner buttons step in, (left, right): past a docked column on that side.
     pub(crate) fn corner_inset(&self) -> (f32, f32) {
+        // the panel on the right (panes/) takes its width from the canvas's corner
+        let pane = self.pane_width();
         match self.dock.filter(|_| self.terminal_elevated.is_some()) {
             Some((right, _)) => {
                 let width = self.elevated_rect().width() + DOCK_MARGIN;
-                if right { (0.0, width) } else { (width, 0.0) }
+                if right { (0.0, width + pane) } else { (width, pane) }
             }
-            None => (0.0, 0.0),
+            None => (0.0, pane),
         }
     }
 

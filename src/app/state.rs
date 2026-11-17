@@ -366,6 +366,8 @@ pub(crate) struct DrawingApp {
     pub(crate) avatar: maestro::avatar::Avatar,
     /// The tasks (tasks.rs) and the agents panel's tabs.
     pub(crate) tasks: tasks::TaskBoard,
+    /// The panels on the window's right (panes/): which is open and what each keeps.
+    pub(crate) panes: panes::Panes,
     /// The workspaces (workspaces.rs): the list, the shells whose space is off view (terminal id →
     /// space, spec), each space's camera and selection while off view, and the sidebar's cards.
     pub(crate) spaces: workspaces::Workspaces,
