@@ -40,6 +40,11 @@ impl DrawingApp {
             ("voice_studio_url", url) if !url.trim().is_empty() => self.prefs.voice_studio_url = url.trim().to_string(),
             ("voice_studio_voice", voice) if !voice.trim().is_empty() => self.prefs.voice_studio_voice = voice.trim().to_string(),
             ("voice_studio_key", key) => self.prefs.voice_studio_key = key.trim().to_string(),
+            ("run_at_login", "on" | "ligado" | "off" | "desligado") => {
+                let enabled = matches!(value, "on" | "ligado");
+                crate::app::system::run_at_login::set_run_at_login(enabled)?;
+                self.prefs.run_at_login = enabled;
+            }
             ("close_to_background", "on" | "ligado") => self.prefs.close_to_background = true,
             ("close_to_background", "off" | "desligado") => self.prefs.close_to_background = false,
             ("avatar", "on" | "ligado") => self.prefs.avatar = true,

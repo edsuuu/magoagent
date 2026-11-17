@@ -114,10 +114,18 @@ pub(super) fn picture(painter: &Painter, rect: Rect, round: u8, texture: Option<
     painter.add(mesh);
 }
 
-/// A round button of the player: its press.
+/// A round button of the player: its press. `hint` is for screen readers only: the hover is enough on screen (asked:
+/// "tooltip nesses botões não precisa, só um hover já serve").
 fn round_button(ui: &mut egui::Ui, center: Pos2, side: f32, id: &str, hint: &str) -> egui::Response {
     let rect = Rect::from_center_size(center, Vec2::splat(side));
-    ui.interact(rect, ui.scope_id().with(("island_music", id)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(hint)
+    let response = ui.interact(rect, ui.scope_id().with(("island_music", id)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, hint));
+    response
+}
+
+/// Set for a frame when a quiet line's "Abrir Ajustes" is pressed (`needs`), taken by `island_music`.
+fn settings_asked() -> egui::Id {
+    egui::Id::unique("island_music_open_settings")
 }
 
 impl DrawingApp {
@@ -144,6 +152,10 @@ impl DrawingApp {
         }
         self.music_lists(ui, right, time, &mut state, &mut pressed);
         self.island.music = state;
+        if ui.ctx().data_mut(|data| data.remove_temp::<bool>(settings_asked())).unwrap_or(false) {
+            self.open_settings_at("Integrações");
+            self.raise_window = true;
+        }
         for words in pressed {
             self.spotify_press(&words);
         }
@@ -170,7 +182,7 @@ impl DrawingApp {
         let kind = painter.text(Pos2::new(name.right() + 6.0, name_y), egui::Align2::LEFT_CENTER, place, font(11.0), DIM);
         let luna_at = Pos2::new(kind.right() + if place.is_empty() { 8.0 } else { 15.0 }, name_y - 2.0);
         if let Some(groove) = self.luna_groove() {
-            crate::app::mascot::mago::paint_mago_dancing(&painter, "island-spotify-luna", luna_at, 16.0, GREEN, &groove, time);
+            crate::app::mascot::mago::paint_mago_dancing(&painter, "island-spotify-luna", luna_at, 16.0, self.luna_colour(GREEN), &groove, time);
             // the note floats up beside her while it plays
             if now.playing {
                 let rise = (time * 0.8).fract() as f32;
@@ -577,13 +589,27 @@ fn section(ui: &mut egui::Ui, text: &str) {
     ui.painter().text(Pos2::new(rect.left() + 6.0, rect.center().y + 2.0), egui::Align2::LEFT_CENTER, spaced.trim_end(), font(10.0), DIM_3);
 }
 
-/// Why a list is empty, in a quiet line.
+/// Why a list is empty, in a quiet line; when it sends the person to Ajustes › Integrações, a button that opens it
+/// (asked: "caso não tivesse a configuração de integração, poderia ter um botão para levar até lá").
 fn needs(ui: &mut egui::Ui, text: &str) {
     let width = ui.available_width() - 12.0;
     ui.add_space(6.0);
     let galley = ui.painter().layout(text.to_string(), font(10.5), DIM_3, width);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), galley.size().y + 4.0), Sense::hover());
     ui.painter().galley(Pos2::new(rect.left() + 6.0, rect.top()), galley, DIM_3);
+    if !text.contains("Ajustes › Integrações") {
+        return;
+    }
+    ui.add_space(8.0);
+    let words = ui.painter().layout_no_wrap("Abrir Ajustes › Integrações".into(), font(11.0), INK);
+    let (button, response) = ui.allocate_exact_size(Vec2::new(words.size().x + 24.0, 26.0), Sense::click());
+    let button = button.translate(Vec2::new(6.0, 0.0));
+    let response = response.on_hover_cursor(CursorIcon::PointingHand);
+    ui.painter().rect_filled(button, 13, if response.hovered() { TRACK } else { HOVER });
+    ui.painter().galley(button.center() - words.size() / 2.0, words, INK);
+    if response.clicked() {
+        ui.ctx().data_mut(|data| data.insert_temp(settings_asked(), true));
+    }
 }
 
 #[cfg(test)]

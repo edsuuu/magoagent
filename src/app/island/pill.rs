@@ -80,7 +80,8 @@ pub(crate) fn bars(groove: Option<&Groove>, time: f64) -> [f32; BARS] {
 /// The song's cover and the sound's bars in the `rect` of the compact island (`minis`: Some, with the agents' grid, or
 /// None without agents; spread by `spread`) or of the closed notch (`minis` is not asked: the cover at the left, the
 /// bars at the right, the wizard between). `cover` is the song's picture (its placeholder without one); `groove` is what
-/// Luna dances to, None while she doesn't; `tint` is the cover's colour (`spotify::accent`), the bars' as the Dynamic
+/// Luna dances to, None while she doesn't. A click on the cover or the bars is true: the island opens on the music's
+/// tab (asked: "se eu clicar na música ele me leva para a tab da música"); `tint` is the cover's colour (`spotify::accent`), the bars' as the Dynamic
 /// Island paints them (Spotify's green until the cover comes). While they move, the next frame is asked for.
 pub(super) fn spotify(
     ui: &egui::Ui,
@@ -92,7 +93,7 @@ pub(super) fn spotify(
     compact: Option<Option<Rect>>,
     groove: Option<&Groove>,
     time: f64,
-) {
+) -> bool {
     let painter = ui.painter();
     let (side, corner, bar, gap, tall) = if compact.is_some() {
         (COVER, COVER_CORNER, BAR, BAR_GAP, BARS_TALL)
@@ -121,4 +122,6 @@ pub(super) fn spotify(
     if playing {
         ui.ctx().request_repaint_after(crate::app::update::frame_spacing());
     }
+    let music = art.union(Rect::from_min_size(Pos2::new(bars_left, rect.center().y - tall / 2.0), Vec2::new(total, tall)));
+    ui.interact(music.expand(3.0), ui.scope_id().with("island_pill_music"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked()
 }
