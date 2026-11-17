@@ -28,7 +28,18 @@ impl DrawingApp {
 
     /// Where Claude Code writes the chat's session, by the folder as the agent names it.
     pub(crate) fn claude_transcript(cwd: &str, session: &str) -> Option<PathBuf> {
-        Some(claude_dir()?.join("projects").join(project_folder(cwd)).join(format!("{session}.jsonl")))
+        let file = format!("{session}.jsonl");
+        let here = claude_dir().map(|dir| dir.join("projects").join(project_folder(cwd)).join(&file));
+        // a Claude Code in WSL files it in the distro, by the folder as Linux names it (system/wsl.rs)
+        if cfg!(windows)
+            && here.as_ref().is_none_or(|path| !path.is_file())
+            && let Some(distro) = wsl_distro()
+            && let there = wsl_claude_dir(&distro).join("projects").join(project_folder(&linux_path(cwd))).join(&file)
+            && there.is_file()
+        {
+            return Some(there);
+        }
+        here
     }
 
     /// What the running answers printed since the last frame; an answer that ended leaves its
@@ -65,7 +76,11 @@ impl DrawingApp {
                             && value["subtype"] == "init"
                             && let Some(cwd) = value["cwd"].as_str()
                         {
-                            self.chats[i].cwd = cwd.to_string();
+                            // a Claude Code in WSL names it as Linux does (system/wsl.rs): the chat keeps Windows' name
+                            self.chats[i].cwd = match wsl_distro() {
+                                Some(distro) if cfg!(windows) && cwd.starts_with('/') => windows_path(&distro.name, cwd),
+                                _ => cwd.to_string(),
+                            };
                         }
                         if let Some(session) = value["session_id"].as_str().filter(|s| self.chats[i].session.as_deref() != Some(s)) {
                             self.chats[i].session = Some(session.to_string());

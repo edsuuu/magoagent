@@ -19,16 +19,17 @@ impl DrawingApp {
         if cfg!(test) {
             return;
         }
-        let Some(program) = crate::editor::lsp::which("claude") else { return };
+        let Some(cli) = agent_cli("claude") else { return };
         let Some(asked) = self.chats.iter().find(|chat| chat.id == id).map(|chat| chat.name.clone()) else { return };
         let (titles, ctx, id) = (self.chat_titles.clone(), ctx.cloned(), id.to_string());
         let message: String = message.chars().take(2000).collect();
         std::thread::spawn(move || {
-            let mut command = crate::editor::command(program);
+            let mut command = cli.command();
             // no tools, no MCP, no settings (their hooks), no session left in the person's list
             command.args(["-p", "--model", "haiku", "--no-session-persistence", "--tools", "", "--strict-mcp-config", "--setting-sources", ""]);
             command.args(["--system-prompt", TITLE_PROMPT]);
             command.current_dir(std::env::temp_dir());
+            let mut command = cli.finish(command);
             command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
             let Ok(mut child) = command.spawn() else { return };
             if let Some(mut stdin) = child.stdin.take() {
