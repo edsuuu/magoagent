@@ -221,6 +221,12 @@ pub(crate) fn paint_mini(painter: &Painter, id: &str, center: Pos2, body: f32, c
     painter.ctx().request_repaint_after(std::time::Duration::from_millis(33));
 }
 
+/// A poke on the wizard under `id` without drawing it (while it dances its motion is another): it counts towards dizziness.
+pub(crate) fn mago_poke(id: &str, time: f64) {
+    let key = motion_key(id);
+    MOTIONS.with(|motions| motions.borrow_mut().entry(key).or_insert_with(|| MagoMotion::seeded(key)).poke(time));
+}
+
 fn motion_key(id: &str) -> u64 {
     id.bytes().fold(0xcbf29ce484222325u64, |hash, byte| (hash ^ byte as u64).wrapping_mul(0x100000001b3))
 }

@@ -11,7 +11,7 @@ use crate::app::integrations::spotify::Now;
 use crate::app::integrations::spotify::groove::{Dance, Groove};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
-use crate::app::mascot::mago::{LUME, MagoState, mago_pokes, paint_mago_dancing, paint_mago_toward, paint_mini};
+use crate::app::mascot::mago::{LUME, MagoState, mago_poke, mago_pokes, paint_mago_dancing, paint_mago_toward, paint_mini};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::voice::VoiceState;
@@ -359,8 +359,17 @@ impl DrawingApp {
             let calm = dances_through(wanted.state) && (view.shape != Shape::Open || playing);
             // she dances only to a song heard here; not heard (or paused), she is awake and can be poked, with her own
             // faces (asked: "se eu abro a ilha ela tem que acordar", "no notch os olhos da Luna somem")
-            match self.luna_groove().filter(|groove| calm && groove.dance != Dance::Nap) {
-                Some(groove) => paint_mago_dancing(&painter, "island-main-dance", center, size, self.luna_colour(LUME), &groove, time),
+            // dancing she can still be poked dizzy (asked: "se a Luna está dançando eu não consigo clicar nela para ela ficar
+            // tonta"): the pokes go to her own motion, and dizzy she stops dancing until it passes
+            let dizzy = mago_pokes("island-main", time).1;
+            match self.luna_groove().filter(|groove| calm && groove.dance != Dance::Nap && !dizzy) {
+                Some(groove) => {
+                    let pointer = view.pointer.or_else(|| painter.ctx().pointer_latest_pos());
+                    if pointer.is_some_and(|at| at.distance(center) < size * 0.45) && painter.ctx().input(|input| input.pointer.primary_pressed()) {
+                        mago_poke("island-main", time);
+                    }
+                    paint_mago_dancing(&painter, "island-main-dance", center, size, self.luna_colour(LUME), &groove, time)
+                }
                 None => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),
             }
         }

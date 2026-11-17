@@ -461,3 +461,15 @@ fn in_its_turn_the_agent_talks_while_it_writes_and_shows_the_error_of_a_step() {
     assert_eq!(state(AgentState::Idle(Some(100.0)), &[user.clone(), step(true)]), MagoState::Sleeping, "long over");
     assert_eq!(state(AgentState::Waiting, &[user, step(true)]), MagoState::NeedsYou);
 }
+
+/// Asked: "se a Luna está dançando eu não consigo clicar nela para ela ficar tonta". The pokes while she dances (no
+/// drawing of her plain motion) still count: four quick ones and she is dizzy, which stops the dance (island/paint.rs).
+#[test]
+fn pokes_while_dancing_make_her_dizzy_too() {
+    let id = "tests-dancing-poke";
+    for index in 0..4 {
+        mago_poke(id, 10.0 + index as f64 * 0.2);
+    }
+    assert_eq!(mago_pokes(id, 10.7), (4, true));
+    assert!(!mago_pokes(id, 14.0).1, "it passes");
+}
