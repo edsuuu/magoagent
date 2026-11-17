@@ -62,6 +62,8 @@ impl DrawingApp {
             ("gnome_cursor", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return gnome_cursor(action),
             ("island_place", "top" | "topo") => self.put_island(crate::app::island::Place::Top),
             ("island_place", "bottom" | "embaixo" | "baixo") => self.put_island(crate::app::island::Place::Bottom),
+            ("island_place", "left" | "esquerda") => self.put_island(crate::app::island::Place::Left),
+            ("island_place", "right" | "direita") => self.put_island(crate::app::island::Place::Right),
             ("island_place", "reset" | "padrão" | "padrao") => self.reset_island(),
             // Limpar todos os dados (system/wipe.rs) is the person's alone: it cannot be undone
             ("wipe_data", _) => {
