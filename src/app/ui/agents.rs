@@ -333,19 +333,27 @@ impl DrawingApp {
         }
     }
 
-    /// Waiting ones first, then the ones that finished unseen; after the current one, round.
-    fn next_needing_attention(&mut self) {
+    /// The agents that need the person, in every workspace: the waiting ones first, then the ones that finished unseen
+    /// (each once).
+    pub(crate) fn needing_you(&self) -> Vec<String> {
         let rows = self.agent_rows();
         let waiting = rows.iter().filter(|r| matches!(r.state, AgentState::Waiting));
-        let unread = rows.iter().filter(|r| self.terminal_unread.contains(&r.id));
-        let queue: Vec<String> = waiting.chain(unread).map(|r| r.id.clone()).collect();
+        let unread = rows.iter().filter(|r| self.terminal_unread.contains(&r.id) && !matches!(r.state, AgentState::Waiting));
+        waiting.chain(unread).map(|r| r.id.clone()).collect()
+    }
+
+    /// ⌘⇧A and the sidebar's "Ir para o próximo": the next one of `needing_you` after the current one, round. Gives
+    /// the one it opened.
+    pub(crate) fn next_needing_attention(&mut self) -> Option<String> {
+        let queue = self.needing_you();
         let current = if self.chat_open { self.chat_agent.clone() } else { self.terminal_focus.clone() };
         let after = current.and_then(|id| queue.iter().position(|q| *q == id)).map_or(0, |p| p + 1);
         let Some(next) = queue.get(after % queue.len().max(1)).cloned() else {
             self.toast("Nenhum agente precisa de você");
-            return;
+            return None;
         };
         self.open_agent(&next);
+        Some(next)
     }
 
     /// In the chat, shows the agent's conversation; on the canvas, brings its terminal to the

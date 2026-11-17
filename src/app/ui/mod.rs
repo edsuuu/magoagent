@@ -3,6 +3,7 @@
 use crate::prelude::*;
 
 pub(crate) mod agents;
+pub(crate) mod attention;
 pub(crate) mod context;
 mod dialog;
 pub(crate) use dialog::*;
@@ -51,7 +52,7 @@ pub(crate) const GLASS_BUTTON: f32 = 30.0;
 pub(crate) const GLASS_GAP: f32 = 5.0;
 pub(crate) const GLASS_HEIGHT: f32 = 40.0;
 const GLASS_END: f32 = 6.5;
-/// The bottom right corner's pills (the floors, the plans' use, the minimap, the zoom): 2 smaller (asked).
+/// The corners' pills (the floors, Ver tudo with the zoom and the minimap, Desfazer and Refazer): 2 smaller (asked).
 pub(crate) const CORNER_HEIGHT: f32 = GLASS_HEIGHT - 2.0;
 pub(crate) const CORNER_BUTTON: f32 = GLASS_BUTTON - 2.0;
 /// Their icons, a little over the 16 the app's icons are drawn at.
@@ -379,11 +380,12 @@ pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], 
     changed
 }
 
-/// The zoom's width (−, the percentage, + in their glass), for the pills left of it.
-pub(crate) const ZOOM_WIDTH: f32 = 2.0 * CORNER_BUTTON + ZOOM_TEXT + 2.0 * GLASS_GAP + 2.0 * GLASS_END;
+/// The bottom right pill's width (Ver tudo, a hair, −, the percentage, +, a hair, the minimap's toggle), for the floors
+/// left of it.
+pub(crate) const CORNER_WIDTH: f32 = 4.0 * CORNER_BUTTON + ZOOM_TEXT + 2.0 + 6.0 * GLASS_GAP + 2.0 * GLASS_END;
 pub(crate) const ZOOM_TEXT: f32 = 48.0;
-/// The minimap's toggle: one corner button in its glass.
-pub(crate) const MINIMAP_WIDTH: f32 = CORNER_BUTTON + 2.0 * GLASS_END;
+/// The bottom left pill's: Desfazer and Refazer.
+pub(crate) const HISTORY_WIDTH: f32 = 2.0 * CORNER_BUTTON + GLASS_GAP + 2.0 * GLASS_END;
 
 pub(crate) fn group_frame(c: &UiColors) -> egui::Frame {
     egui::Frame::new().fill(c.surface_low).corner_radius(8)
