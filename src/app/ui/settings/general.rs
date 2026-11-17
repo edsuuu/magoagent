@@ -49,6 +49,10 @@ impl DrawingApp {
         }
         let hint = "Fechar a janela deixa o MagoAgent rodando, com os terminais e os agentes. Ele volta pelo ícone perto do relógio; Ctrl+Q sai de verdade.";
         toggle(ui, k, "Fechar mantém em segundo plano", hint, &mut self.prefs.close_to_background);
+        let hint = "O passo a passo que mostra onde fica cada parte do app.";
+        if row(ui, k, "Apresentação", hint, |ui| button(ui, k, "Ver a apresentação de novo")).clicked() {
+            self.start_tour();
+        }
 
         title(ui, k, "ILHA DO MAESTRO");
         let hint = "Uma pílula no topo da tela, por cima de tudo: os agentes, o que precisa de você, o chat e a voz.";

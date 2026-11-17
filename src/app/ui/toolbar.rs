@@ -39,6 +39,8 @@ impl DrawingApp {
             || self.design_confirm.is_some()
             || self.space_dialog.is_some()
             || self.welcome.is_some()
+            || self.tour.is_some()
+            || self.changelog.is_some()
             || self.floors_ui.is_open()
             || self.settings_open
             || self.export_open

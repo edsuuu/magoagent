@@ -374,6 +374,10 @@ pub(crate) struct DrawingApp {
     pub(crate) space_dialog: Option<workspaces::SpaceDialog>,
     /// The welcome slides over everything (ui/welcome/), while they are on.
     pub(crate) welcome: Option<crate::app::ui::welcome::Welcome>,
+    /// The first-use tour (ui/tour.rs), while it is on.
+    pub(crate) tour: Option<crate::app::ui::tour::Tour>,
+    /// The changelog's card (ui/changelog.rs): a new version, or what is new in this one.
+    pub(crate) changelog: Option<crate::app::ui::changelog::Changelog>,
     pub(crate) space_rename: Option<(String, String)>,
     /// Ajustes › Integrações (integrations/): what each one fetched, away from `prefs`.
     pub(crate) integrations: crate::app::integrations::Integrations,

@@ -143,6 +143,8 @@ impl DrawingApp {
         }
         self.prefs.welcome_seen = true;
         self.chat_open = self.prefs.start_in_chat;
+        // then the tour, once (ui/tour.rs)
+        self.tour_on_open(None);
     }
 
     pub(crate) fn welcome_ui(&mut self, ctx: &Context) {
