@@ -107,6 +107,11 @@ pub(crate) struct Prefs {
     pub(crate) start_in_chat: bool,
     /// The welcome slides (ui/welcome/) were seen to the end: they show once, after an install or an update.
     pub(crate) welcome_seen: bool,
+    /// The first-use tour (ui/tour.rs) was seen to the end or skipped: it shows once; Ajustes › Geral shows it again.
+    pub(crate) tour_seen: bool,
+    /// The notes of the version the app went to install (version, notes): shown once, "O que há de novo", on the first
+    /// opening of that version (ui/changelog.rs).
+    pub(crate) whats_new: Option<(String, String)>,
     /// Fechar mantém em segundo plano: the window's close hides it and the terminals and agents keep running;
     /// the tray (Windows) or opening the app again brings it back, Ctrl+Q quits.
     pub(crate) close_to_background: bool,
@@ -236,6 +241,8 @@ impl Default for Prefs {
             window_outline: WindowOutline::Animated,
             start_in_chat: true,
             welcome_seen: false,
+            tour_seen: false,
+            whats_new: None,
             close_to_background: true,
             pause_alerts_until: None,
             run_at_login: false,

@@ -48,7 +48,7 @@ GROUPS = [
     ("Janelas, espaços e andares", ("show_app", "show_screen", "resize_window", "close_window", "workspaces", "workspace_groups", "workspace_menu",
                                     "floors")),
     ("Ilha", ("island", "island_close_after", "island_color", "island_sound", "island_volume")),
-    ("Ajustes, integrações, voz e app", ("set_setting", "dictionary", "email", "integrations", "voice", "voice_call", "voice_studio_url", "voice_studio_voice", "update",
+    ("Ajustes, integrações, voz e app", ("set_setting", "dictionary", "email", "integrations", "voice", "voice_call", "voice_studio_url", "voice_studio_voice", "update", "tour",
                                          "docs", "loja", "magoagent")),
 ]
 

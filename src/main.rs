@@ -180,6 +180,11 @@ fn main() -> eframe::Result {
             if (app.script.is_none() || std::env::var_os("MAGOAGENT_WELCOME").is_some()) && (!app.prefs.welcome_seen || app.spaces.list.is_empty()) {
                 app.start_welcome();
             }
+            // the tour once after it (a test scene opens it on a step: MAGOAGENT_TOUR=<passo>, ui/tour.rs), and the
+            // notes of the version just installed (ui/changelog.rs)
+            let asked = std::env::var_os("MAGOAGENT_SCENE").and_then(|_| std::env::var("MAGOAGENT_TOUR").ok());
+            app.tour_on_open(asked.map(|step| step.trim().parse().unwrap_or(0)));
+            app.show_whats_new(env!("CARGO_PKG_VERSION"));
             if let Some(kept) = bad_prefs {
                 // after the drawing's own warning, if it had one
                 let earlier = std::mem::take(&mut app.status);

@@ -4,6 +4,7 @@ use crate::prelude::*;
 
 pub(crate) mod agents;
 pub(crate) mod attention;
+pub(crate) mod changelog;
 pub(crate) mod context;
 mod dialog;
 pub(crate) use dialog::*;
@@ -20,6 +21,7 @@ pub(crate) mod settings;
 pub(crate) mod sidebar;
 pub(crate) mod titlebar;
 mod toolbar;
+pub(crate) mod tour;
 pub(crate) mod welcome;
 
 mod folders;
