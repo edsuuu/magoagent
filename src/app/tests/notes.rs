@@ -574,3 +574,18 @@ fn a_drawing_from_outside_cannot_point_a_note_at_another_file_or_bring_its_own_a
     assert_ne!(note_file(&path, &other), PathBuf::from("relativo.md"));
     let _ = fs::remove_dir_all(dir);
 }
+
+#[test]
+fn the_capital_c_cedilla_keeps_its_cedilla() {
+    // the Assistant font drew Ç from an empty mark: "ESPAÇOS" painted as "ESPACOS"
+    let ctx = Context::default();
+    install_fonts(&ctx, false);
+    let mut heights = [0.0; 2];
+    let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+        for (index, letter) in ["C", "Ç"].into_iter().enumerate() {
+            let galley = ui.painter().layout_no_wrap(letter.into(), FontId::proportional(12.0), Color32::WHITE);
+            heights[index] = galley.rows[0].glyphs[0].uv_rect.size.y;
+        }
+    });
+    assert!(heights[1] > heights[0] + 1.0, "the cedilla hangs under the C: {heights:?}");
+}
