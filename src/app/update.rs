@@ -257,6 +257,7 @@ impl eframe::App for DrawingApp {
                 ctx.request_repaint();
             }
         }
+        self.chat_zoom_ui(&ctx);
         if self.chat_open {
             self.chat_screen(&ctx);
         } else if self.floors_ui.fx.engaged {

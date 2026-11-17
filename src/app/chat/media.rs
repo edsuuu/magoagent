@@ -1,5 +1,6 @@
 //! What the agent's words carry besides words: pictures (`![alt](path)`, a data address or a file
-//! it wrote) drawn in the conversation and files as cards; a click opens either with the system.
+//! it wrote) drawn in the conversation and files as cards; a click shows a picture big in the app (island/picture.rs)
+//! and opens a file with the system.
 
 use crate::app::browser::open_external;
 use crate::app::chat::direct::folder;
@@ -8,6 +9,7 @@ use crate::app::chat::list::Look;
 use crate::app::chat::markdown::prose_with;
 use crate::app::chat::segments::{Seg, data_uri, file_size, is_local, is_picture, middle, resolve};
 use crate::app::chat::{image_key, tint};
+use crate::app::island::picture::Shown;
 use crate::app::ui::Tip;
 use crate::prelude::*;
 use crate::transcript::Step;
@@ -126,12 +128,16 @@ impl DrawingApp {
             Color32::from_black_alpha(36)
         };
         ui.painter().rect_stroke(rect, 10, Stroke::new(1.0, edge), StrokeKind::Inside);
-        let response = response.on_hover_cursor(CursorIcon::PointingHand).tip("Clique para abrir");
+        let response = response.on_hover_cursor(CursorIcon::PointingHand).tip("Clique para ampliar");
         if response.clicked() {
-            // ponytail: a data-address picture has no file to open; the viewer (chat/viewer.rs) shows the images sent as such
-            if let Some(path) = &path {
-                open_external(&path.to_string_lossy());
-            }
+            // asked: "ela deveria abrir dentro do canvas e não no app do meu PC"
+            let (path, data) = (path.clone(), data_uri(src).map(str::to_string));
+            let shown = Shown::new(ui.ctx(), key, move || match (path, data) {
+                (Some(path), _) => fs::read(path).ok(),
+                (None, Some(data)) => crate::render::base64_decode(&data),
+                _ => None,
+            });
+            self.chat_pics.borrow_mut().zoom = Some(shown);
         }
     }
 
@@ -288,5 +294,44 @@ mod tests {
         assert_eq!(seen, 1);
         assert!(app.chat_images.borrow().values().all(|d| matches!(d.get(), Some(Some(pic)) if pic.size == [40, 20])));
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_click_on_the_agents_picture_shows_it_big_in_the_app_and_esc_closes_it() {
+        let ctx = Context::default();
+        let mut app = DrawingApp::default();
+        let png = std::env::temp_dir().join(format!("mago-zoom-{}.png", std::process::id()));
+        let mut bytes = Vec::new();
+        image::DynamicImage::new_rgb8(40, 20).write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png).unwrap();
+        fs::write(&png, bytes).unwrap();
+        let words = format!("![print]({})", png.to_string_lossy());
+        let frame = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+            let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), events, ..Default::default() };
+            ctx.run_ui(raw, |ui| {
+                app.chat_zoom_ui(ui.ctx());
+                let c = app.colors();
+                app.agent_words(ui, &words, 600.0, &c);
+            })
+            .textures_delta
+            .clear();
+        };
+        for _ in 0..50 {
+            frame(&mut app, vec![]);
+            if app.chat_images.borrow().values().all(|d| d.get().is_some()) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let at = Pos2::new(16.0, 10.0);
+        let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        frame(&mut app, vec![egui::Event::PointerMoved(at), press(true)]);
+        frame(&mut app, vec![press(false)]);
+        assert!(app.chat_pics.borrow().zoom.as_ref().is_some_and(|shown| !shown.island), "open over the app's window");
+        frame(&mut app, vec![]);
+        assert!(app.chat_pics.borrow().zoom.is_some(), "it stays open");
+        let escape = egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() };
+        frame(&mut app, vec![escape]);
+        assert!(app.chat_pics.borrow().zoom.is_none(), "Esc closes it");
+        let _ = fs::remove_file(png);
     }
 }

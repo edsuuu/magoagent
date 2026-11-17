@@ -49,6 +49,8 @@ pub(crate) fn decode(ctx: &Context, max: u32, bytes: impl FnOnce() -> Option<Vec
 pub(crate) struct ChatPics {
     /// The picture open over the chat.
     pub(crate) viewer: Option<Viewer>,
+    /// A picture the agent sent, clicked: shown big in the app (island/picture.rs), not by the system's viewer.
+    pub(crate) zoom: Option<crate::app::island::picture::Shown>,
     /// Pasted or dropped on the box: they go with the next message, as paths.
     pub(crate) attached: Vec<Attached>,
     /// The last thumbnail drawn (its ui, the pass, where it left the cursor, its card, the

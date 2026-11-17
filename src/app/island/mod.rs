@@ -29,7 +29,7 @@ mod marquee;
 pub(crate) mod minis;
 pub(crate) mod music;
 pub(crate) mod paint;
-mod picture;
+pub(crate) mod picture;
 pub(crate) mod pill;
 mod prompt;
 mod session;
