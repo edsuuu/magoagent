@@ -1,8 +1,10 @@
 use super::*;
 
 mod arrows;
+mod changelog;
 mod chat;
 mod chat_node;
+mod chats_view;
 mod conflicts;
 mod dialogs;
 mod drops;
@@ -32,12 +34,15 @@ mod notes_rail;
 mod outside;
 mod outside_message;
 mod pages;
+mod panes;
 mod persist;
 mod props;
 mod session;
 mod shapes;
+mod sidebar;
 mod terminals;
 mod tools;
+mod tour;
 mod typing;
 mod windows;
 

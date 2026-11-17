@@ -92,17 +92,20 @@ impl DrawingApp {
     /// Runs the agent's CLI hidden in the chat's folder; what it prints comes in `poll_cmds`.
     pub(super) fn start_cmd(&mut self, ctx: &Context, id: &str, args: Vec<String>, kind: Kind) {
         let Some(chat) = self.chat_of(id) else { return };
-        let Some(program) = crate::editor::lsp::which(&chat.agent) else {
-            self.chat_note(id, format!("{} não foi encontrado no PATH.", chat.agent));
+        wsl_settle();
+        let Some(cli) = agent_cli(&chat.agent) else {
+            self.chat_note(id, format!("{} não foi encontrado no PATH nem no WSL.", chat.agent));
             return;
         };
-        let mut command = crate::editor::command(program);
-        // a login may ask for the code the browser shows: its stdin stays open for the chat's box
-        let stdin = if matches!(kind, Kind::Login) { std::process::Stdio::piped() } else { std::process::Stdio::null() };
-        command.args(args).env("NO_COLOR", "1").stdin(stdin).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+        let mut command = cli.command();
+        command.args(args).env("NO_COLOR", "1");
         if let Some(dir) = folder(&chat.cwd).filter(|d| d.is_dir()) {
             command.current_dir(dir);
         }
+        let mut command = cli.finish(command);
+        // a login may ask for the code the browser shows: its stdin stays open for the chat's box
+        let stdin = if matches!(kind, Kind::Login) { std::process::Stdio::piped() } else { std::process::Stdio::null() };
+        command.stdin(stdin).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         let mut child = match command.spawn() {
             Ok(child) => child,
             Err(error) => return self.chat_note(id, format!("Não foi possível rodar {}: {error}", chat.agent)),

@@ -11,6 +11,7 @@ mod email;
 mod files;
 mod integrations;
 mod settings;
+mod sidebar;
 mod spotify;
 #[cfg(test)]
 mod tests;
@@ -24,7 +25,7 @@ impl DrawingApp {
     /// app's window comes to the front with it.
     pub(crate) fn act(&mut self, action: &str, args: &Value) -> Result<String, String> {
         let result = self.act_on(action, args);
-        if result.is_ok() && matches!(action, "ide_folder" | "open_path" | "chat_new" | "chat_open" | "chat_node") {
+        if result.is_ok() && matches!(action, "ide_folder" | "open_path" | "chat_new" | "chat_open" | "chat_node" | "chats_view") {
             self.bring_to_front();
         }
         result
@@ -39,6 +40,14 @@ impl DrawingApp {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
         match action {
             "update" => self.act_update(args["install"].as_bool().unwrap_or(false), args["confirmed"].as_bool().unwrap_or(false)),
+            "tour" => {
+                let steps = crate::app::ui::tour::STEPS.len();
+                self.start_tour_at(args["step"].as_u64().map_or(0, |step| step as usize).min(steps - 1));
+                Ok(format!(
+                    "A apresentação abriu na tela, no passo {} de {steps}; a pessoa avança, volta ou pula.",
+                    self.tour.as_ref().map_or(1, |tour| tour.step + 1)
+                ))
+            }
             "memory" => Ok(crate::app::system::memory::format(&self.memory.snapshot())),
             "ide_folder" => self.act_ide_folder(&text("path")),
             "open_default" => self.act_open_default(&text("path")),
@@ -85,6 +94,7 @@ impl DrawingApp {
             "chat_decide" => self.act_chat_decide(args),
             "disconnect" => self.act_disconnect(&text("a"), &text("b")),
             "chat_list" => Ok(self.act_chat_list()),
+            "chats_view" => self.act_chats_view(&text("state"), &text("filter"), args["query"].as_str()),
             "chat_new" => self.act_chat_new(&text("agent"), &text("folder")),
             "chat_provider" => {
                 let id = if text("chat").is_empty() { self.chat_agent.clone().ok_or("nenhum chat aberto")? } else { self.chat_named(&text("chat"))? };
@@ -174,6 +184,8 @@ impl DrawingApp {
                 self.prefs.minimap = args["open"].as_bool().unwrap_or(!self.prefs.minimap);
                 Ok(if self.prefs.minimap { "Minimapa aberto." } else { "Minimapa fechado." }.into())
             }
+            "sidebar" => self.act_sidebar(&text("action")),
+            "panel" => self.act_panel(args),
             "file_tree" => self.act_file_tree(args),
             "tasks" => self.act_tasks(args),
             "flow" => self.act_flow(args),

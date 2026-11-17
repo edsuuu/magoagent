@@ -39,7 +39,7 @@ impl DrawingApp {
         };
         let dark = self.dark();
         let c = self.colors();
-        let middle = self.sidebar_width() / 2.0;
+        let middle = self.toolbar_middle(ctx);
         let notes = self.loose_selected_notes();
         let size = notes.first().map_or(NOTE_FONT_MIN, |n| self.scene.elements[*n].note.font_size);
         let (mut stack, mut color, mut step) = (None, None, 0.0);

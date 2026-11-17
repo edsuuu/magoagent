@@ -372,7 +372,9 @@ impl DrawingApp {
         // while a song plays, its cover and the sound's bars fill the pill (asked: "como a Dynamic Island do iPhone")
         // playing or paused, as the Dynamic Island keeps the song while it pauses (its bars then rest as dots)
         // paused for a while, the song leaves the pill (`Spotify::shown`)
-        let now = self.integrations.spotify.shown(time);
+        // standing up on a side of the screen it is too narrow for the cover and the bars: the song stays its green mini
+        let upright = view.dock.upright();
+        let now = self.integrations.spotify.shown(time).filter(|_| !upright);
         // the bars hear the song whether or not Luna dances to it (`Dancer::groove` asks for the listening)
         let groove = now.filter(|now| now.playing).map(|now| self.integrations.spotify.dancer.groove(now.playing));
         if !compact {
@@ -390,11 +392,17 @@ impl DrawingApp {
             }
             return;
         }
-        aim(view, Pos2::new(rect.left() + super::COMPACT_SIDE, rect.center().y + 1.0), 30.0, state);
+        // standing up, the wizard at the top and the minis under it
+        let wizard = if upright {
+            Pos2::new(rect.center().x, rect.top() + super::minis::UPRIGHT_INSET)
+        } else {
+            Pos2::new(rect.left() + super::COMPACT_SIDE, rect.center().y + 1.0)
+        };
+        aim(view, wizard, 30.0, state);
         // the green mini of Spotify is the cover and the bars then, spread between the wizard and the other minis
         let spotify = |line: &Line| line.id.strip_prefix(crate::app::integrations::ITEM_PREFIX) == Some("spotify");
         let lines: Vec<&Line> = view.lines.iter().filter(|line| now.is_none() || !spotify(line)).collect();
-        let cells = mini_cells(rect, lines.len());
+        let cells = if upright { super::minis::upright_cells(rect, lines.len()) } else { mini_cells(rect, lines.len()) };
         let grid = cells.iter().copied().reduce(|grid, cell| grid.union(cell));
         for (line, cell) in lines.into_iter().zip(cells) {
             line.paint_mini(ui.painter(), &format!("island-mini-{}", line.id), cell.center(), cell.width(), time);
@@ -869,34 +877,55 @@ impl DrawingApp {
     }
 }
 
-/// The conversation's edges that size it, as (zone, cursor, pulls the width, pulls the height): both sides, the one
-/// away from the edge of the screen it is on (`dock`: the top one on the bottom edge, else the bottom one), `band`
-/// thick, and the corners where they meet. The sides start under the header, the top one lies over its first points.
+/// The conversation's edges that size it, as (zone, cursor, pulls the width, pulls the height): those away from the
+/// edge of the screen it is on (`dock`), `band` thick, and the corners where two of them meet. The sides start under the
+/// header, the top one (on the bottom edge of the screen) lies over its first points.
 pub(super) fn edge_zones(rect: Rect, dock: super::window::Dock, band: f32) -> Vec<(Rect, CursorIcon, bool, bool)> {
+    use super::window::Dock;
     let (left, right, top, bottom) = (rect.left(), rect.right(), rect.top(), rect.bottom());
     let zone = |x0: f32, y0: f32, x1: f32, y1: f32| Rect::from_min_max(Pos2::new(x0, y0), Pos2::new(x1, y1));
-    let from_top = dock == super::window::Dock::Bottom;
+    let (pull_left, pull_right) = (dock != Dock::Left, dock != Dock::Right);
+    let from_top = dock == Dock::Bottom;
     // the side zones run between the header (or the top band) and the bottom band (or the bottom)
     let (side_top, side_bottom) = if from_top { (top + band, bottom) } else { (top + PAGE_TOP, bottom - band) };
+    let mut zones = Vec::new();
+    if pull_left {
+        zones.push((zone(left, side_top, left + band, side_bottom), CursorIcon::ResizeHorizontal, true, false));
+    }
+    if pull_right {
+        zones.push((zone(right - band, side_top, right, side_bottom), CursorIcon::ResizeHorizontal, true, false));
+    }
     let (row_top, row_bottom) = if from_top { (top, top + band) } else { (bottom - band, bottom) };
+    let row_left = if pull_left { left + band } else { left };
+    let row_right = if pull_right { right - band } else { right };
+    zones.push((zone(row_left, row_top, row_right, row_bottom), CursorIcon::ResizeVertical, false, true));
     // the corners: up-right to down-left on the left at the bottom and on the right at the top, the other way round else
-    let (corner_left, corner_right) =
-        if from_top { (CursorIcon::ResizeNwSe, CursorIcon::ResizeNeSw) } else { (CursorIcon::ResizeNeSw, CursorIcon::ResizeNwSe) };
-    vec![
-        (zone(left, side_top, left + band, side_bottom), CursorIcon::ResizeHorizontal, true, false),
-        (zone(right - band, side_top, right, side_bottom), CursorIcon::ResizeHorizontal, true, false),
-        (zone(left + band, row_top, right - band, row_bottom), CursorIcon::ResizeVertical, false, true),
-        (zone(left, row_top, left + band, row_bottom), corner_left, true, true),
-        (zone(right - band, row_top, right, row_bottom), corner_right, true, true),
-    ]
+    if pull_left {
+        let cursor = if from_top { CursorIcon::ResizeNwSe } else { CursorIcon::ResizeNeSw };
+        zones.push((zone(left, row_top, left + band, row_bottom), cursor, true, true));
+    }
+    if pull_right {
+        let cursor = if from_top { CursorIcon::ResizeNeSw } else { CursorIcon::ResizeNwSe };
+        zones.push((zone(right - band, row_top, right, row_bottom), cursor, true, true));
+    }
+    zones
 }
 
 /// The conversation's size with the `pointer` on an edge that pulls its `width` and/or `height`: it grows around the
-/// point it hangs from (`window::hung`), so the far side goes as far as the pointer from that point: on both sides of
-/// its centre in width, down from the top (up from the bottom on the bottom edge of the screen).
+/// point it hangs from (`window::hung`), so the far side goes as far as the pointer from that point; the island centred
+/// on an axis grows on both sides of it.
 pub(super) fn pulled_to(rect: Rect, dock: super::window::Dock, pointer: Pos2, width: bool, height: bool) -> Vec2 {
-    let wide = 2.0 * (pointer.x - rect.center().x).abs();
-    let high = if dock == super::window::Dock::Bottom { rect.bottom() - pointer.y } else { pointer.y - rect.top() };
+    use super::window::Dock;
+    let wide = match dock {
+        Dock::Left => pointer.x - rect.left(),
+        Dock::Right => rect.right() - pointer.x,
+        _ => 2.0 * (pointer.x - rect.center().x).abs(),
+    };
+    let high = match dock {
+        Dock::Bottom => rect.bottom() - pointer.y,
+        Dock::Left | Dock::Right => 2.0 * (pointer.y - rect.center().y).abs(),
+        Dock::Top | Dock::Free => pointer.y - rect.top(),
+    };
     Vec2::new(if width { wide } else { rect.width() }, if height { high } else { rect.height() })
 }
 
@@ -904,8 +933,8 @@ pub(super) fn pulled_to(rect: Rect, dock: super::window::Dock, pointer: Pos2, wi
 pub(super) fn corners(round: u8, dock: super::window::Dock) -> egui::CornerRadius {
     use super::window::Dock;
     let corner = |square: bool| if square { 0 } else { round };
-    let (top, bottom) = (dock == Dock::Top, dock == Dock::Bottom);
-    egui::CornerRadius { nw: corner(top), ne: corner(top), sw: corner(bottom), se: corner(bottom) }
+    let (top, bottom, left, right) = (dock == Dock::Top, dock == Dock::Bottom, dock == Dock::Left, dock == Dock::Right);
+    egui::CornerRadius { nw: corner(top || left), ne: corner(top || right), sw: corner(bottom || left), se: corner(bottom || right) }
 }
 
 /// The wizard looking at `pointer`, or the window's own pointer when there is none.
@@ -928,12 +957,20 @@ pub(super) fn wash(painter: &Painter, card: Rect, state: MagoState) {
     wash_with(painter, card, color, strength, 0.0);
 }
 
-/// A wash of `color`, `shift` points to the side of the card's middle.
+/// A wash of `color` over the whole card, strongest under its bottom middle, `shift` points to the side (asked: "esse
+/// blur seria melhor se tivesse no card todo"): an ellipse as wide as the card, in layers.
 pub(super) fn wash_with(painter: &Painter, card: Rect, color: Color32, strength: f32, shift: f32) {
-    let center = Pos2::new(card.center().x + shift, card.bottom() + card.height() * 0.3);
+    let center = Pos2::new(card.center().x + shift, card.bottom() + card.height() * 0.15);
+    let reach = wash_reach(card);
     for step in 0..24 {
-        painter.circle_filled(center, 150.0 * (1.0 - step as f32 / 24.0 * 0.9), color.gamma_multiply(strength * 0.055));
+        let share = 1.0 - step as f32 / 24.0 * 0.9;
+        painter.add(egui::Shape::ellipse_filled(center, reach * share, color.gamma_multiply(strength * 0.055)));
     }
+}
+
+/// How far the wash reaches from its middle: past the card's sides and up over its top.
+pub(crate) fn wash_reach(card: Rect) -> Vec2 {
+    Vec2::new((card.width() * 0.62).max(150.0), (card.height() * 1.2).max(150.0))
 }
 
 /// Whether Luna keeps dancing to the song in `state`: only what needs the person (a question, a permission, an error)

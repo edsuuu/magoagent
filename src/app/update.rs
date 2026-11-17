@@ -153,6 +153,7 @@ impl eframe::App for DrawingApp {
         );
         self.voice_tick(&ctx);
         self.dictation_tick(&ctx);
+        wsl_choose(&self.prefs.wsl);
         self.check_agents();
         self.tasks_tick();
         self.usage_tick();
@@ -180,7 +181,7 @@ impl eframe::App for DrawingApp {
             // not focusable: Tab would park the keyboard on the canvas and turn the shortcuts and Space off
             // the workspaces' sidebar keeps the left strip (its clicks and the pages stay off it)
             let rect = ui.available_rect_before_wrap();
-            let rect = rect.with_min_x(rect.min.x + self.sidebar_width());
+            let rect = rect.with_min_x(rect.min.x + self.sidebar_width()).with_max_x(rect.max.x - self.pane_width());
             let response = ui.allocate_rect(rect, Sense::CLICK | Sense::DRAG);
             let painter = ui.painter_at(rect);
             self.handle_canvas(&response, rect);
@@ -233,6 +234,7 @@ impl eframe::App for DrawingApp {
         if TITLE_BAR > 0.0 {
             self.title_bar(&ctx);
         }
+        self.panes_ui(&ctx);
         self.note_color_ui(&ctx);
         self.links_popover_ui(&ctx);
         self.context_ui(&ctx);
@@ -270,6 +272,8 @@ impl eframe::App for DrawingApp {
             self.dock_grip(&ctx);
         }
         self.welcome_ui(&ctx);
+        self.tour_ui(&ctx);
+        self.changelog_ui(&ctx);
         if TITLE_BAR > 0.0 {
             crate::app::ui::titlebar::edge_cursor(&ctx);
         }

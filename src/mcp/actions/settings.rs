@@ -62,6 +62,8 @@ impl DrawingApp {
             ("gnome_cursor", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return gnome_cursor(action),
             ("island_place", "top" | "topo") => self.put_island(crate::app::island::Place::Top),
             ("island_place", "bottom" | "embaixo" | "baixo") => self.put_island(crate::app::island::Place::Bottom),
+            ("island_place", "left" | "esquerda") => self.put_island(crate::app::island::Place::Left),
+            ("island_place", "right" | "direita") => self.put_island(crate::app::island::Place::Right),
             ("island_place", "reset" | "padrão" | "padrao") => self.reset_island(),
             // Limpar todos os dados (system/wipe.rs) is the person's alone: it cannot be undone
             ("wipe_data", _) => {
@@ -109,6 +111,15 @@ impl DrawingApp {
             }
             ("chat_panel", "on" | "ligado") => self.prefs.chat_panel = true,
             ("chat_panel", "off" | "desligado") => self.prefs.chat_panel = false,
+            ("wsl", choice) => {
+                self.prefs.wsl = match choice.trim() {
+                    "" | "auto" | "automático" | "automatico" => String::new(),
+                    "off" | "desligado" => WSL_OFF.into(),
+                    name => name.to_string(),
+                };
+                wsl_choose(&self.prefs.wsl);
+                self.chat_installed = None;
+            }
             ("agent_hooks", "on" | "ligado") => self.prefs.agent_hooks = true,
             ("agent_hooks", "off" | "desligado") => self.prefs.agent_hooks = false,
             ("ok_mago", "on" | "ligado") => self.prefs.ok_mago = true,
@@ -200,6 +211,13 @@ mod chat_tests {
         app.act_setting("chat_autocompact", "200k").unwrap();
         app.act_setting("chat_panel", "on").unwrap();
         app.act_setting("agent_hooks", "on").unwrap();
+        // the WSL distro the agents run in (system/wsl.rs)
+        app.act_setting("wsl", "Ubuntu").unwrap();
+        assert_eq!(app.prefs.wsl, "Ubuntu");
+        app.act_setting("wsl", "desligado").unwrap();
+        assert_eq!(app.prefs.wsl, WSL_OFF);
+        app.act_setting("wsl", "auto").unwrap();
+        assert_eq!(app.prefs.wsl, "");
         let prefs = &app.prefs;
         assert_eq!((prefs.chat_agent.as_str(), prefs.chat_mode, prefs.chat_folder.as_str()), ("codex", 1, "C:/Projetos"));
         assert_eq!((prefs.chat_autocompact.as_str(), prefs.chat_panel, prefs.agent_hooks), ("200k", true, true));

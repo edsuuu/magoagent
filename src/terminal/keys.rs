@@ -79,3 +79,25 @@ pub(crate) fn paste_bytes(text: &str, bracketed: bool) -> Vec<u8> {
         text.into_bytes()
     }
 }
+
+/// What `lines` of wheel send to the program, as alacritty and Windows Terminal do: with mouse
+/// reporting on (Claude Code's fullscreen view keeps its own history on the alternate screen)
+/// one press of button 4/5 at `cell` (column, row) per line; on the alternate screen (less, man)
+/// arrow keys. None scrolls the history, as Shift always does. Positive is up.
+pub(crate) fn wheel_bytes(lines: i32, mode: TermMode, (col, row): (usize, usize), shift: bool) -> Option<Vec<u8>> {
+    if shift || lines == 0 {
+        return None;
+    }
+    let (button, arrow) = if lines > 0 { (64, b'A') } else { (65, b'B') };
+    let event = if mode.intersects(TermMode::MOUSE_MODE) && mode.contains(TermMode::SGR_MOUSE) {
+        format!("\x1b[<{button};{};{}M", col + 1, row + 1).into_bytes()
+    } else if mode.intersects(TermMode::MOUSE_MODE) {
+        // ponytail: the old X10 encoding stops at column/row 222 and UTF-8 mouse (1005) isn't read, as most programs ask for SGR
+        vec![0x1b, b'[', b'M', 32 + button, 33 + col.min(222) as u8, 33 + row.min(222) as u8]
+    } else if mode.contains(TermMode::ALT_SCREEN | TermMode::ALTERNATE_SCROLL) {
+        vec![0x1b, b'O', arrow]
+    } else {
+        return None;
+    };
+    Some(event.repeat(lines.unsigned_abs() as usize))
+}

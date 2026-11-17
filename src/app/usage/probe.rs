@@ -28,14 +28,6 @@ impl Agent {
             Agent::Codex => "Codex",
         }
     }
-
-    /// The ring's base color (the reference app's).
-    pub(crate) fn color(self) -> Color32 {
-        match self {
-            Agent::Claude => Color32::from_rgb(0xD9, 0x77, 0x57),
-            Agent::Codex => Color32::from_rgb(0x10, 0xA3, 0x7F),
-        }
-    }
 }
 
 /// One window of a plan: how much is used (0 to 1) and when it starts over (Unix seconds).
@@ -276,7 +268,8 @@ fn relative(seconds: i64) -> String {
 
 /// Reads one agent's plan on this thread: the CLI is asked, and killed at the end.
 fn read(agent: Agent) -> Result<Reading, String> {
-    let program = crate::editor::lsp::which(match agent {
+    // on Windows, maybe the one inside WSL (system/wsl.rs)
+    let program = agent_cli(match agent {
         Agent::Claude => "claude",
         Agent::Codex => "codex",
     })
@@ -313,9 +306,11 @@ fn read(agent: Agent) -> Result<Reading, String> {
 
 /// Starts `program`, sends it the `requests` (one JSON per line) and waits for the first line `answer`
 /// takes as its own, up to `READ_LIMIT`; the program is killed whatever comes.
-fn exchange(program: &std::path::Path, args: &[&str], requests: &[Value], answer: fn(&Value) -> Option<Result<Reading, String>>) -> Result<Reading, String> {
-    let mut child = crate::editor::command(program)
-        .args(args)
+fn exchange(program: &AgentCli, args: &[&str], requests: &[Value], answer: fn(&Value) -> Option<Result<Reading, String>>) -> Result<Reading, String> {
+    let mut command = program.command();
+    command.args(args);
+    let mut child = program
+        .finish(command)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())

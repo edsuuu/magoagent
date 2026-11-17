@@ -161,8 +161,8 @@ pub(crate) struct DrawingApp {
     /// The sidebar on its way open or folded: since when, from which width, toward which
     /// (negative before the first frame).
     pub(crate) sidebar_slide: (f64, f32, f32),
-    /// The bottom right row's pills (ui/usage_pill.rs, ui/floors.rs).
-    pub(crate) usage_ui: crate::app::usage::pill::UsagePill,
+    /// The plans' use at the sidebar's foot and its popover (usage/foot.rs).
+    pub(crate) usage_ui: crate::app::usage::foot::UsageCard,
     pub(crate) floors_ui: crate::app::floors::pill::FloorsUi,
     pub(crate) autosave: Option<PathBuf>,
     /// The thread that writes the autosave off the UI thread (started with the first write).
@@ -366,6 +366,8 @@ pub(crate) struct DrawingApp {
     pub(crate) avatar: maestro::avatar::Avatar,
     /// The tasks (tasks.rs) and the agents panel's tabs.
     pub(crate) tasks: tasks::TaskBoard,
+    /// The panels on the window's right (panes/): which is open and what each keeps.
+    pub(crate) panes: panes::Panes,
     /// The workspaces (workspaces.rs): the list, the shells whose space is off view (terminal id →
     /// space, spec), each space's camera and selection while off view, and the sidebar's cards.
     pub(crate) spaces: workspaces::Workspaces,
@@ -374,6 +376,10 @@ pub(crate) struct DrawingApp {
     pub(crate) space_dialog: Option<workspaces::SpaceDialog>,
     /// The welcome slides over everything (ui/welcome/), while they are on.
     pub(crate) welcome: Option<crate::app::ui::welcome::Welcome>,
+    /// The first-use tour (ui/tour.rs), while it is on.
+    pub(crate) tour: Option<crate::app::ui::tour::Tour>,
+    /// The changelog's card (ui/changelog.rs): a new version, or what is new in this one.
+    pub(crate) changelog: Option<crate::app::ui::changelog::Changelog>,
     pub(crate) space_rename: Option<(String, String)>,
     /// Ajustes › Integrações (integrations/): what each one fetched, away from `prefs`.
     pub(crate) integrations: crate::app::integrations::Integrations,

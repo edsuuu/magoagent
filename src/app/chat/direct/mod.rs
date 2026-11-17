@@ -218,7 +218,8 @@ impl DrawingApp {
     /// again every 10 s: one installed meanwhile shows up.
     pub(crate) fn installed_agents(&mut self) -> Vec<Preset> {
         if self.chat_installed.as_ref().is_none_or(|(at, _)| self.now - at > 10.0) {
-            let found = |p: &Preset| p.command.split_whitespace().next().is_some_and(|program| crate::editor::lsp::which(program).is_some());
+            // on Windows, also the ones inside WSL (system/wsl.rs)
+            let found = |p: &Preset| p.command.split_whitespace().next().is_some_and(|program| agent_cli(program).is_some());
             self.chat_installed = Some((self.now, self.prefs.presets.iter().filter(|p| found(p)).cloned().collect()));
         }
         self.chat_installed.as_ref().map(|(_, list)| list.clone()).unwrap_or_default()
@@ -375,10 +376,12 @@ impl DrawingApp {
             self.queue_message(id, prompt.to_string());
             return true;
         }
-        let Some(program) = crate::editor::lsp::which(&chat.agent) else {
-            self.toast(format!("{} não foi encontrado no PATH.", chat.agent));
+        wsl_settle();
+        let Some(cli) = agent_cli(&chat.agent) else {
+            self.toast(format!("{} não foi encontrado no PATH nem no WSL.", chat.agent));
             return false;
         };
+        let wsl = cli.wsl().is_some();
         let resume = chat.session.is_some();
         // the first message names it, as Claude Code titles a conversation: its first line now, Haiku's title
         // in a few seconds (a name given with Renomear stays)
@@ -393,23 +396,22 @@ impl DrawingApp {
             self.ask_chat_title(Some(ctx), id, &source);
         }
         let session = chat.session.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let mut command = crate::editor::command(program);
+        let mut command = cli.command();
         command.args(chat_args(&chat.agent, chat.mode, &session, resume));
         command.args(crate::app::chat::footer::tuning_args(&chat.agent, &chat.model, &chat.effort));
         if chat.agent != "codex" {
             command.args(crate::app::chat::context::autocompact_args(&self.prefs));
         }
         // the Maestro's hands: the app's MCP and who it is (chat/tools.rs)
-        command.args(crate::app::chat::tools::maestro_args(&chat.agent, &self.prefs, &chat));
+        command.args(crate::app::chat::tools::maestro_args(&chat.agent, &self.prefs, &chat, wsl));
         // Ajustes › Chat › Hooks nos agentes do app: its hooks report to the app as this chat
         if chat.agent != "codex"
-            && let Some(settings) = self.hook_settings()
+            && let Some(settings) = self.hook_settings(wsl)
         {
             command.arg("--settings").arg(settings);
         }
         // the bridge, as a terminal's shell has it: `magoagent list|ask|…` as this chat, by its own token
         command.envs(self.chat_env(id));
-        command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         if let Some(dir) = folder(&chat.cwd) {
             // the app's own folders (~/.magoagent, the old data/projetos) are made on the first message; a folder
             // elsewhere is the person's, never made here
@@ -423,6 +425,9 @@ impl DrawingApp {
             }
             command.current_dir(dir);
         }
+        // in WSL: by wsl.exe, its paths translated (system/wsl.rs)
+        let mut command = cli.finish(command);
+        command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
         let mut child = match command.spawn() {
             Ok(child) => child,
             Err(error) => {

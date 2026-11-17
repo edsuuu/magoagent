@@ -202,17 +202,19 @@ Conector {}: {}{}",
 
     fn spawn_report(&self, ctx: &Context, id: &str) {
         let Some(chat) = self.chats.iter().find(|c| c.id == id).cloned() else { return };
-        let (Some(session), Some(program)) = (chat.session.clone(), crate::editor::lsp::which("claude")) else { return };
-        let mut command = crate::editor::command(program);
+        let (Some(session), Some(cli)) = (chat.session.clone(), agent_cli("claude")) else { return };
+        let wsl = cli.wsl().is_some();
+        let mut command = cli.command();
         // sem gravar nada na sessão: o `/context` não vira mensagem na conversa
         command.args(["-p", "--output-format", "json", "--no-session-persistence", "--resume", &session]);
         command.args(crate::app::chat::footer::tuning_args(&chat.agent, &chat.model, &chat.effort));
-        command.args(crate::app::chat::tools::maestro_args(&chat.agent, &self.prefs, &chat));
+        command.args(crate::app::chat::tools::maestro_args(&chat.agent, &self.prefs, &chat, wsl));
         command.args(autocompact_args(&self.prefs));
-        command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
         if let Some(dir) = crate::app::chat::direct::folder(&chat.cwd).filter(|d| d.is_dir()) {
             command.current_dir(dir);
         }
+        let mut command = cli.finish(command);
+        command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
         let (tx, ctx, id) = (self.chat_ctx.tx.clone(), ctx.clone(), id.to_string());
         std::thread::spawn(move || {
             let result = command
@@ -232,13 +234,14 @@ Conector {}: {}{}",
     }
 
     pub(crate) fn spawn_servers(&self, ctx: &Context, id: &str) {
-        let Some(program) = crate::editor::lsp::which("claude") else { return };
-        let mut command = crate::editor::command(program);
+        let Some(cli) = agent_cli("claude") else { return };
+        let mut command = cli.command();
         command.args(["mcp", "list"]).env("NO_COLOR", "1");
-        command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
         if let Some(dir) = self.chats.iter().find(|c| c.id == id).and_then(|c| crate::app::chat::direct::folder(&c.cwd)).filter(|d| d.is_dir()) {
             command.current_dir(dir);
         }
+        let mut command = cli.finish(command);
+        command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
         let (tx, ctx, id) = (self.chat_ctx.tx.clone(), ctx.clone(), id.to_string());
         std::thread::spawn(move || {
             let list = command.output().map(|o| parse_mcp_list(&String::from_utf8_lossy(&o.stdout))).unwrap_or_default();

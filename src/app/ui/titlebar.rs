@@ -28,6 +28,14 @@ impl DrawingApp {
         Rect::from_min_size(Pos2::new(left, TOP_ROW_Y - TOP_BUTTON / 2.0), Vec2::splat(TOP_BUTTON))
     }
 
+    /// Where the right panels' button `k` (panes/: 0 Tarefas … 3 Fichário) sits in a window
+    /// `width` wide: 12 before the window's buttons (the window's edge on the Mac), on the top row.
+    pub(crate) fn pane_button(&self, width: f32, k: usize) -> Rect {
+        let captions = if TITLE_BAR > 0.0 { 3.0 * CAPTION_WIDTH } else { 0.0 };
+        let right = width - captions - 12.0 - (3 - k) as f32 * (TOP_BUTTON + TOP_GAP);
+        Rect::from_min_size(Pos2::new(right - TOP_BUTTON, TOP_ROW_Y - TOP_BUTTON / 2.0), Vec2::splat(TOP_BUTTON))
+    }
+
     /// The canvas's top-left buttons, as in the reference app: ☰ folds and opens the sidebar, the
     /// chat's beside it and, with the sidebar folded, the space in use by name (a click opens the
     /// sidebar, where Ajustes is). Gives where they end.
@@ -57,6 +65,23 @@ impl DrawingApp {
         }
         if round(ui, second, "top_chat", Icon::Composer, chat, if chat { "Voltar ao canvas" } else { "Abrir o chat" }) {
             self.chat_open = !chat;
+        }
+        // how many wait on the person, in an amber badge; over the chat, the title says what runs
+        let (running, waiting) = self.chats_counts();
+        if waiting > 0 {
+            let badge = second.right_top() + Vec2::new(-3.0, 4.0);
+            let count = p.layout_no_wrap(waiting.min(99).to_string(), FontId::proportional(10.0), Color32::from_rgb(0x1d, 0x1d, 0x1f));
+            let pill = Rect::from_center_size(badge, Vec2::new((count.size().x + 8.0).max(16.0), 16.0));
+            p.rect(pill, 8, crate::app::chat::list::AMBER, Stroke::new(1.5, if dark { Color32::from_gray(0x1a) } else { Color32::WHITE }), StrokeKind::Outside);
+            p.galley(pill.center() - count.size() / 2.0, count, Color32::from_rgb(0x1d, 0x1d, 0x1f));
+        }
+        if chat {
+            let at = Pos2::new(second.right() + TOP_GAP + 6.0, TOP_ROW_Y);
+            let title = crate::app::chat::list::bold(&p, at - Vec2::new(0.0, 9.0), "Chats", 14.0, ink);
+            let rest = format!(" · {running} rodando · {waiting} esperando");
+            p.text(Pos2::new(title.right(), TOP_ROW_Y), egui::Align2::LEFT_CENTER, rest, FontId::proportional(14.0), ink.gamma_multiply(0.6));
+            // the words, not a button: the bar under them still moves the window
+            return second.right();
         }
         let space = self.spaces.list.iter().find(|w| w.id == self.spaces.current).filter(|_| folded && !chat);
         let Some(space) = space else { return second.right() };
@@ -119,6 +144,7 @@ impl DrawingApp {
             self.title_buttons = Rect::from_min_max(first.min, Pos2::new(end, first.bottom()));
         });
         side("title_bar_right", right, width, &mut |ui, bar| {
+            self.pane_buttons(ui);
             let p = ui.painter().clone();
             p.rect_filled(Rect::from_min_max(Pos2::new(bar.right() - 3.0 * CAPTION_WIDTH, 0.0), Pos2::new(bar.right(), CAPTION_HEIGHT)), 0, ground);
             // right to left: close, maximize / restore, minimize
@@ -145,9 +171,26 @@ impl DrawingApp {
         #[cfg(windows)]
         {
             let stretch = |from: f32, to: f32| Rect::from_min_max(Pos2::new(from, EDGE), Pos2::new(to, TITLE_BAR));
-            let bare = [stretch(self.title_buttons.right() + 4.0, left), stretch(right, width - 3.0 * CAPTION_WIDTH)];
+            // up to the panels' buttons when they show
+            let end = self.panes.buttons.map_or(width - 3.0 * CAPTION_WIDTH, |buttons| buttons.left() - 4.0);
+            let bare = [stretch(self.title_buttons.right() + 4.0, left), stretch(right, end)];
             native_caption::set(&bare, ctx.pixels_per_point());
         }
+    }
+}
+
+/// What covers the whole window, the drawn bar too: Ajustes' veil, the welcome, the tour and the changelog's veil.
+/// The bar's stretches under them still move the window, and its buttons go back over them (`raise_window_buttons`).
+fn covers_the_bar(id: egui::Id) -> bool {
+    [crate::app::ui::settings::settings_veil(), egui::Id::unique("welcome"), egui::Id::unique("tour"), egui::Id::unique("changelog").with("veil")].contains(&id)
+}
+
+/// Minimize, maximize and close over a screen that covers the whole window (the welcome, the tour, the changelog): the
+/// bar's right side, where they are, goes right over `cover` (a sublayer: two layers that both ask to be on top keep
+/// their old order). On the Mac they are the system's, always over the app.
+pub(crate) fn raise_window_buttons(ctx: &Context, cover: egui::LayerId) {
+    if TITLE_BAR > 0.0 {
+        ctx.set_sublayer(cover, egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("title_bar_right")));
     }
 }
 
@@ -161,17 +204,21 @@ impl DrawingApp {
     pub(crate) fn caption_drag(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
         let (Some(screen), time) = (raw.screen_rect, raw.time.unwrap_or(0.0)) else { return };
         let maximized = raw.viewport().maximized == Some(true);
-        let buttons = self.title_buttons;
+        let (buttons, panes) = (self.title_buttons, self.panes.buttons);
         let empty = |pos: Pos2| {
             let bar = [egui::Id::unique("title_bar"), egui::Id::unique("title_bar_right")];
             let on_bar = match ctx.layer_id_at(pos) {
                 Some(layer) if bar.contains(&layer.id) => true,
-                Some(layer) if layer.id == crate::app::ui::settings::settings_veil() => {
+                Some(layer) if covers_the_bar(layer.id) => {
                     bar.iter().any(|id| ctx.memory(|memory| memory.area_rect(*id)).is_some_and(|rect| rect.contains(pos)))
                 }
                 _ => false,
             };
-            pos.y < TITLE_BAR && on_bar && !buttons.contains(pos) && pos.x < screen.right() - 3.0 * CAPTION_WIDTH
+            pos.y < TITLE_BAR
+                && on_bar
+                && !buttons.contains(pos)
+                && !panes.is_some_and(|rect| rect.expand(4.0).contains(pos))
+                && pos.x < screen.right() - 3.0 * CAPTION_WIDTH
         };
         raw.events.retain(|e| {
             let egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, .. } = e else { return true };

@@ -9,7 +9,7 @@ use crate::app::integrations::spotify::playback::{NEEDS_ACCOUNT, PlayContext, Pl
 use crate::app::integrations::spotify::queue::QueueItem;
 use crate::app::integrations::spotify::web::{
     Failure, Profile, liked_songs_uri, parse_contains, parse_devices, parse_player, parse_playlists, parse_profile, parse_queue, parse_saved, parse_search,
-    play_body, read_answer,
+    parse_songs, play_body, play_in_body, read_answer, songs_path,
 };
 
 fn fixture(text: &str) -> Value {
@@ -234,6 +234,72 @@ fn the_controls_go_to_soloist_or_to_the_account() {
     assert!(app.integrations.spotify.asked.is_empty(), "nothing to Soloist");
     app.spotify_search("").unwrap();
     assert!(!app.integrations.spotify.library.searching && app.integrations.spotify.library.found.is_none(), "an empty search clears it");
+}
+
+#[test]
+fn a_song_of_the_queue_plays_at_once_in_what_plays() {
+    // the Web API starts it in the playlist (the list goes on after it), not by skipping to it
+    let playlist = "spotify:playlist:1aaaaaaaaaaaaaaaaaaaaa";
+    assert_eq!(play_in_body(TRACK, playlist), json!({ "context_uri": playlist, "offset": { "uri": TRACK } }));
+    let mut app = app_with(Player::App, true);
+    assert_eq!(app.integrations.spotify.play_context(), None, "nothing says where it plays");
+    app.integrations.spotify.now.as_mut().unwrap().playback.context = Some(PlayContext { uri: playlist.into(), name: String::new() });
+    assert_eq!(app.integrations.spotify.play_context().as_deref(), Some(playlist));
+    app.integrations.spotify.now.as_mut().unwrap().playback.context = Some(PlayContext { uri: "spotify:collection".into(), name: String::new() });
+    assert_eq!(app.integrations.spotify.play_context(), Some(liked_songs_uri("ana")), "Liked Songs as the account's own");
+    app.spotify_press(&format!("jump {TRACK}"));
+    assert_eq!(app.integrations.spotify.library.web_asked, ["control"], "one call");
+    assert!(app.integrations.spotify.asked.is_empty(), "no next");
+    // without the account the player plays it
+    let mut soloist = app_with(Player::Soloist, false);
+    soloist.spotify_press(&format!("jump {TRACK}"));
+    assert_eq!(soloist.integrations.spotify.asked, [Command::PlayUri(TRACK.into())]);
+}
+
+#[test]
+fn an_opened_playlist_brings_its_songs_fifty_at_a_time() {
+    let playlist = "spotify:playlist:1aaaaaaaaaaaaaaaaaaaaa";
+    assert_eq!(songs_path(playlist, 50).as_deref(), Some("/playlists/1aaaaaaaaaaaaaaaaaaaaa/items?limit=50&offset=50"));
+    assert_eq!(songs_path(LIKED_SONGS, 0).as_deref(), Some("/me/tracks?limit=50&offset=0"));
+    assert_eq!(songs_path("spotify:track:abc", 0), None, "only a list opens");
+    // a page: its songs (`item` or the older `track`), and whether more follow
+    let page = fixture(&format!(
+        r#"{{"items":[{{"item":{{"uri":"{TRACK}","name":"Canção","artists":[{{"name":"Banda"}}]}}}}],"next":"https://api.spotify.com/v1/…"}}"#
+    ));
+    let (songs, more) = parse_songs(&page);
+    assert_eq!((songs.len(), songs[0].title.as_str(), more), (1, "Canção", true));
+    assert!(!parse_songs(&fixture(r#"{"items":[],"next":null}"#)).1);
+    // opened from the lists: the first page is asked once, the answer goes in, an old one is dropped
+    let mut app = app_with(Player::App, true);
+    let list = PlaylistItem { uri: playlist.into(), name: "Foco".into(), ..Default::default() };
+    app.integrations.spotify.library.playlists = vec![list];
+    app.spotify_press(&format!("open {playlist}"));
+    let spotify = &mut app.integrations.spotify;
+    assert_eq!(spotify.library.web_asked, ["songs"]);
+    spotify.more_songs();
+    assert_eq!(spotify.library.web_asked, ["songs"], "one page at a time");
+    let song = |index: usize| QueueItem::new(&format!("spotify:track:{index}"), &format!("Música {index}"), "Banda", "", None).unwrap();
+    spotify.take_reply(Reply::Songs(playlist.into(), 0, Ok(((0..50).map(song).collect(), true))), 0);
+    spotify.take_reply(Reply::Songs(playlist.into(), 0, Ok((vec![song(99)], false))), 0);
+    let opened = spotify.library.opened.as_ref().unwrap();
+    assert_eq!((opened.songs.len(), opened.more, opened.loading), (50, true, false), "the repeated page is dropped");
+    // the end of the scroll asks the next, from 50
+    spotify.more_songs();
+    assert_eq!(spotify.library.web_asked, ["songs", "songs"]);
+    spotify.take_reply(Reply::Songs(playlist.into(), 50, Ok((vec![song(50)], false))), 0);
+    assert_eq!(spotify.library.opened.as_ref().unwrap().songs.len(), 51);
+    spotify.more_songs();
+    assert_eq!(spotify.library.web_asked.len(), 2, "none follow");
+    // a song pressed plays in the list, with one call; Voltar closes it
+    app.spotify_press(&format!("playin {playlist} spotify:track:7"));
+    assert_eq!(app.integrations.spotify.library.web_asked.last(), Some(&"control"));
+    assert!(app.integrations.spotify.asked.is_empty(), "no next");
+    app.spotify_press("close");
+    assert!(app.integrations.spotify.library.opened.is_none());
+    // the end of the list asks a little before it is in sight
+    let clip = Rect::from_min_size(Pos2::ZERO, Vec2::new(300.0, 200.0));
+    assert!(crate::app::island::music::wants_more(clip, Rect::from_min_size(Pos2::new(0.0, 250.0), Vec2::new(300.0, 1.0))));
+    assert!(!crate::app::island::music::wants_more(clip, Rect::from_min_size(Pos2::new(0.0, 900.0), Vec2::new(300.0, 1.0))));
 }
 
 #[test]

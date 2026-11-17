@@ -1,0 +1,141 @@
+/* O site do MagoAgent: um quadro de pontos, títulos à mão (Excalifont) e cartões de vidro, como o app. */
+@font-face{font-family:Excalifont;src:url(fonts/Excalifont-Regular.ttf) format("truetype");font-display:swap}
+:root{
+  color-scheme:light dark;
+  --fundo:#f7f6f2;--ponto:rgba(30,30,30,.13);--vidro:rgba(255,255,255,.78);--vidro-solido:#fff;
+  --borda:rgba(20,20,30,.1);--texto:#1d1d1f;--suave:#5f6068;--destaque:#0a84ff;--destaque-texto:#fff;
+  --luna:#38bdf8;--olho:#2f2f38;--nota:#fde68a;--nota-texto:#3a2f05;--codigo:#efeee9;--sombra:0 10px 30px rgba(20,20,40,.08);
+  --mao:Excalifont,"Comic Sans MS",cursive;--interface:Assistant,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace
+}
+@media (prefers-color-scheme:dark){:root{
+  --fundo:#1e1e1e;--ponto:rgba(255,255,255,.09);--vidro:rgba(44,44,46,.82);--vidro-solido:#2c2c2e;
+  --borda:rgba(255,255,255,.08);--texto:#f5f5f7;--suave:#a1a1a8;--nota:#f5d76e;--codigo:#161617;--sombra:0 12px 34px rgba(0,0,0,.35)
+}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--fundo);color:var(--texto);font:17px/1.55 var(--interface);
+  background-image:radial-gradient(var(--ponto) 1.2px,transparent 1.3px);background-size:22px 22px;overflow-x:hidden}
+img{max-width:100%;height:auto;display:block}
+a{color:var(--destaque)}
+code,pre{font-family:var(--mono)}
+:focus-visible{outline:2px solid var(--destaque);outline-offset:3px;border-radius:6px}
+.mao{font-family:var(--mao);font-weight:400}
+.largura{max-width:1120px;margin:0 auto;padding:0 16px}
+.suave{color:var(--suave)}
+
+/* Topo */
+.topo{position:sticky;top:0;z-index:5;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);background:color-mix(in srgb,var(--fundo) 80%,transparent);border-bottom:1px solid var(--borda)}
+.topo .largura{display:flex;align-items:center;gap:16px;height:58px}
+.marca{display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--texto);font:1.35rem var(--mao);margin-right:auto;white-space:nowrap}
+.marca svg{width:26px;height:30px}
+.topo nav{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.topo nav a{color:var(--suave);text-decoration:none;font-weight:600;padding:6px 10px;border-radius:999px;white-space:nowrap}
+.topo nav a:hover,.topo nav a[aria-current]{color:var(--texto);background:var(--vidro)}
+@media (max-width:640px){.topo nav .some{display:none}}
+
+/* Botões */
+.botao{display:inline-flex;align-items:center;gap:8px;background:var(--destaque);color:var(--destaque-texto);text-decoration:none;font:600 1rem var(--interface);
+  padding:11px 20px;border-radius:12px;border:0;cursor:pointer;box-shadow:0 6px 18px rgba(10,132,255,.28);transition:transform .15s}
+.botao:hover{transform:translateY(-1px)}
+.botao.sec{background:var(--vidro);color:var(--texto);border:1px solid var(--borda);box-shadow:none}
+.botoes{display:flex;flex-wrap:wrap;gap:10px}
+
+/* Herói */
+.heroi{display:grid;grid-template-columns:1.25fr .75fr;align-items:center;gap:32px;padding-top:72px;padding-bottom:40px}
+.heroi h1{font:clamp(2.4rem,6vw,4.2rem)/1.05 var(--mao);margin:0 0 18px;letter-spacing:-.01em}
+.heroi h1 .sublinha{position:relative;white-space:nowrap}
+.heroi h1 .sublinha svg{position:absolute;left:-2%;bottom:-.18em;width:104%;height:.4em;overflow:visible}
+.heroi p.lead{font-size:1.2rem;color:var(--suave);max-width:36ch;margin:0 0 26px}
+.selo{display:inline-block;font:600 .8rem var(--interface);letter-spacing:.06em;text-transform:uppercase;color:var(--destaque);margin-bottom:14px}
+.palco{position:relative;display:grid;place-items:center;min-height:300px}
+.palco .luna{width:min(220px,60vw);filter:drop-shadow(0 18px 40px rgba(56,189,248,.45))}
+.palco .bilhete{position:absolute;font:1.05rem var(--mao);background:var(--nota);color:var(--nota-texto);padding:8px 12px;border-radius:4px;box-shadow:var(--sombra)}
+.palco .bilhete.um{top:6%;left:0;transform:rotate(-5deg)}
+.palco .bilhete.dois{bottom:8%;right:0;transform:rotate(4deg)}
+@media (max-width:820px){.heroi{grid-template-columns:1fr;padding-top:40px;text-align:left}.palco{min-height:240px}}
+
+/* A Luna: flutua, pisca e balança como quando dança */
+.luna .corpo{transform-origin:50% 90%;animation:danca 3.2s ease-in-out infinite}
+.luna .olhos{transform-origin:50% 60%;animation:pisca 5s infinite}
+@keyframes danca{0%,100%{transform:rotate(-3deg) translateY(0)}50%{transform:rotate(3deg) translateY(-6px)}}
+@keyframes pisca{0%,94%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
+@media (prefers-reduced-motion:reduce){.luna .corpo,.luna .olhos{animation:none}}
+
+/* Seções */
+section{padding:56px 0;scroll-margin-top:40px}
+h2{font:clamp(1.9rem,4vw,2.6rem)/1.15 var(--mao);margin:0 0 10px}
+h3{font-size:1.15rem;margin:0 0 6px}
+.intro{max-width:62ch;color:var(--suave);margin:0 0 28px}
+.cartao{background:var(--vidro);border:1px solid var(--borda);border-radius:18px;box-shadow:var(--sombra);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.grade{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.grade .cartao{padding:20px}
+.grade .cartao p{margin:0;color:var(--suave)}
+.icone{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:color-mix(in srgb,var(--destaque) 14%,transparent);color:var(--destaque);margin-bottom:12px}
+.icone svg{width:22px;height:22px}
+@media (max-width:900px){.grade{grid-template-columns:1fr 1fr}}
+@media (max-width:560px){.grade{grid-template-columns:1fr}}
+
+.print{margin:0;padding:8px;overflow:hidden}
+.print img{border-radius:12px}
+.print figcaption{padding:10px 8px 4px;color:var(--suave);font-size:.95rem}
+.prints{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+.prints .largo{grid-column:1/-1}
+@media (max-width:700px){.prints{grid-template-columns:1fr}}
+
+/* Corda tracejada entre seções, como as conexões do canvas */
+.corda{display:block;width:120px;height:46px;margin:0 auto;color:var(--suave);opacity:.6}
+
+/* Ilha */
+.ilha{display:flex;align-items:center;gap:12px;margin:8px auto 26px;width:max-content;max-width:100%;padding:10px 18px 10px 12px;border-radius:999px;background:#0b0b0d;color:#f5f5f7;box-shadow:0 14px 40px rgba(0,0,0,.35);overflow:hidden}
+.ilha .luna{width:30px;height:36px;flex:none}
+.ilha .chamas{display:flex;gap:6px}
+.ilha .chamas span{width:10px;height:14px;border-radius:50% 50% 45% 45%/65% 65% 35% 35%}
+.ilha .estado{font-size:.9rem;color:#a1a1a8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lista{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;padding:0;margin:0;list-style:none}
+.lista li{padding:16px 18px}
+.lista b{display:block;margin-bottom:2px}
+.lista span{color:var(--suave);font-size:.96rem}
+
+/* Maestro e MCP */
+.dupla{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}
+.dupla>*,.grade>*,.prints>*{min-width:0}
+@media (max-width:820px){.dupla{grid-template-columns:1fr}}
+.passos{counter-reset:passo;list-style:none;padding:0;margin:0 0 20px}
+.passos li{counter-increment:passo;position:relative;padding:0 0 14px 44px}
+.passos li::before{content:counter(passo);position:absolute;left:0;top:-2px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:1.1rem var(--mao);background:var(--nota);color:var(--nota-texto)}
+.ferramentas{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0;padding:0;list-style:none}
+.ferramentas li{font:.85rem var(--mono);padding:4px 9px;border-radius:8px;background:var(--codigo);border:1px solid var(--borda)}
+
+/* Comandos com botão de cópia */
+.comando{position:relative;margin:0 0 14px}
+.comando pre{margin:0;background:var(--codigo);border:1px solid var(--borda);border-radius:12px;padding:14px 92px 14px 14px;overflow-x:auto;font-size:.84rem;line-height:1.6}
+.copiar{position:absolute;top:8px;right:8px;font:600 .8rem var(--interface);padding:6px 10px;border-radius:8px;border:1px solid var(--borda);background:var(--vidro-solido);color:var(--texto);cursor:pointer}
+
+/* Instalar: abas */
+.instalar{padding:22px}
+.abas{display:flex;gap:6px;padding:4px;border-radius:12px;background:var(--codigo);width:max-content;max-width:100%;margin-bottom:22px;overflow-x:auto}
+.abas button{font:600 .98rem var(--interface);border:0;background:transparent;color:var(--suave);padding:8px 16px;border-radius:9px;cursor:pointer}
+.abas button[aria-selected=true]{background:var(--vidro-solido);color:var(--texto);box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.painel h3{margin-top:18px}
+.painel h3:first-child{margin-top:0}
+.painel[hidden]{display:none}
+
+/* Rodapé */
+footer{border-top:1px solid var(--borda);padding:28px 0 40px;color:var(--suave);font-size:.95rem}
+footer .largura{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center}
+footer .largura span{margin-right:auto}
+
+/* Changelog */
+.versao{padding:22px;margin-bottom:18px}
+.versao header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;margin-bottom:8px}
+.versao header h2{font-size:1.9rem;margin:0}
+.versao.destaque{border:2px solid var(--destaque)}
+.etiqueta{font:600 .75rem var(--interface);text-transform:uppercase;letter-spacing:.05em;padding:3px 9px;border-radius:999px;background:var(--destaque);color:var(--destaque-texto)}
+.notas h3,.notas h4{font-size:1.05rem;margin:16px 0 6px}
+.notas ul{padding-left:20px;margin:0 0 10px}
+.notas li{margin-bottom:6px}
+.notas code{background:var(--codigo);padding:1px 5px;border-radius:5px;font-size:.88em;overflow-wrap:anywhere}
+.notas p{margin:0 0 10px}
+.arquivos{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.arquivos a{font-size:.9rem;padding:8px 14px}

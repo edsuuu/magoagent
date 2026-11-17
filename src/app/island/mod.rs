@@ -27,7 +27,7 @@ mod keys;
 mod log;
 mod marquee;
 pub(crate) mod minis;
-mod music;
+pub(crate) mod music;
 pub(crate) mod paint;
 mod picture;
 pub(crate) mod pill;
@@ -53,6 +53,9 @@ pub(crate) const COMPACT_SIDE: f32 = 27.0;
 pub(crate) const MINIS_SIDE: f32 = 27.0;
 // asked: "essa barra da ilha está muito grande, diminui uns 1,5 px"
 pub(crate) const COMPACT_H: f32 = 38.5;
+/// Standing up on a side of the screen, the compact island is this tall (`COMPACT_H` wide): the wizard at the top, the
+/// minis at the bottom.
+pub(crate) const COMPACT_TALL: f32 = 128.0;
 pub(crate) const EXPANDED_W: f32 = 760.0;
 pub(crate) const CLOSED_W: f32 = 80.0;
 pub(crate) const CLOSED_H: f32 = 24.0;
@@ -185,6 +188,12 @@ impl Shape {
     fn animates_every_frame(self) -> bool {
         self != Shape::Closed
     }
+}
+
+/// The closed or compact island's `size` standing up on a side of the screen: the notch turned, the compact one
+/// `COMPACT_TALL` tall.
+pub(crate) fn upright(shape: Shape, size: Vec2) -> Vec2 {
+    if shape == Shape::Compact { Vec2::new(COMPACT_H, COMPACT_TALL) } else { Vec2::new(size.y, size.x) }
 }
 
 /// The island's size and corner for its `shape`; open, for what `tab` shows (`pinned`: a question waits, whose card is
@@ -589,7 +598,13 @@ impl DrawingApp {
             }
         }
         let close_after = self.prefs.island_close_after as f64;
+        // a page whose integration was turned off (Spotify's, GitHub's) gives its place to Início
+        let music_on = self.spotify_sources() != crate::app::integrations::spotify::Sources::default();
+        let github_on = self.prefs.integrations.github;
         let island = &mut self.island;
+        if (island.tab == Tab::Music && !music_on) || (island.tab == Tab::GitHub && !github_on) {
+            island.tab = Tab::Home;
+        }
         let busy = matches!(mood, Mood::Needs(_) | Mood::Working(_));
         if busy && !island.was_busy {
             island.machine.reveal(time);
@@ -630,7 +645,11 @@ impl DrawingApp {
             (Some(Shape::Open), Shape::Open) if asks.len() > asked_before => tones.push(sounds::ASK),
             _ => {}
         }
-        let (aim, radius) = target(shape, island.tab, !asks.is_empty(), island.settings, island.tall, island.body, chat);
+        let (mut aim, radius) = target(shape, island.tab, !asks.is_empty(), island.settings, island.tall, island.body, chat);
+        // on a side of the screen the closed and compact ones stand up; open, it is as anywhere
+        if island.dock.upright() && shape != Shape::Open {
+            aim = upright(shape, aim);
+        }
         // it grows on Coucou's spring (it overshoots a little and settles) and shrinks along its curve in 340 ms, with no
         // overshoot (`spring.rs`); pulled by an edge it follows the pointer at once
         if island.resizing {
@@ -760,6 +779,12 @@ mod tests {
         assert_eq!(talk_size(Some([900.0, 600.0]), 0, work), Vec2::new(900.0, 600.0), "pulled: its size, whatever was said");
         assert_eq!(talk_size(Some([100.0, 50.0]), 0, work), Vec2::new(420.0, 220.0), "never too small for its box");
         assert_eq!(talk_size(Some([5000.0, 5000.0]), 0, work), chat_most(work), "nor past the monitor");
+    }
+
+    #[test]
+    fn on_a_side_of_the_screen_the_closed_and_compact_islands_stand_up() {
+        assert_eq!(upright(Shape::Closed, Vec2::new(CLOSED_W, CLOSED_H)), Vec2::new(CLOSED_H, CLOSED_W));
+        assert_eq!(upright(Shape::Compact, Vec2::new(COMPACT_W, COMPACT_H)), Vec2::new(COMPACT_H, COMPACT_TALL));
     }
 
     #[test]

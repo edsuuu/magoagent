@@ -24,6 +24,10 @@ pub(crate) fn detected_shells() -> &'static [(String, String)] {
             if let Some(path) = git_bash {
                 shells.push(("Git Bash".into(), path.to_string_lossy().into_owned()));
             }
+            // each WSL distro (system/wsl.rs)
+            for distro in list_distros() {
+                shells.push((format!("WSL · {distro}"), wsl_shell(&distro)));
+            }
             shells
         } else {
             let listed = fs::read_to_string("/etc/shells").unwrap_or_default();

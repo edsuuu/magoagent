@@ -311,7 +311,7 @@ impl DrawingApp {
     }
 
     /// The owner's name now, else the one it had.
-    fn task_owner(&self, task: &Task) -> String {
+    pub(crate) fn task_owner(&self, task: &Task) -> String {
         match task.owner.as_str() {
             "" => "sem responsável".into(),
             id if self.agent_rows().iter().any(|r| r.id == id) => self.agent_label(id),

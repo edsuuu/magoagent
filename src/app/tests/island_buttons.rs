@@ -485,7 +485,7 @@ fn the_github_tab_reads_the_pull_request_picked() {
     assert_eq!(app.island.tab(), Tab::GitHub, "a row picks, the tab stays");
 }
 
-/// The Spotify tab: its height, aleatório pressed, and a song of the queue reached by skipping to it.
+/// The Spotify tab: its height, aleatório pressed, and a song of the queue played at once, not skipped to.
 #[test]
 fn the_spotify_tab_plays_what_is_pressed() {
     use crate::app::integrations::spotify::{Command, Now, Playback, Player, QueueItem, Track};
@@ -507,8 +507,24 @@ fn the_spotify_tab_plays_what_is_pressed() {
     let (left, bottom) = (page.left() + 16.0, page.bottom() - 12.0);
     click(&mut app, &ctx, &mut time, Pos2::new(left + 286.0 / 10.0, bottom - 48.0));
     assert_eq!(app.integrations.spotify.asked, [Command::Shuffle(true)]);
-    // the second song of A seguir: the player skips two
+    // the second song of A seguir: played at once (without the account, by the player)
     let list_x = page.left() + 318.0 + 10.0 + 120.0;
     click(&mut app, &ctx, &mut time, Pos2::new(list_x, page.top() + 80.0 + 36.0 + 1.0 + 18.0));
-    assert_eq!(app.integrations.spotify.asked, [Command::Shuffle(true), Command::Next, Command::Next]);
+    assert_eq!(app.integrations.spotify.asked, [Command::Shuffle(true), Command::PlayUri("spotify:track:2".into())]);
+}
+
+/// Spotify turned off in Ajustes: its tab leaves the header and the open page goes back to Início.
+#[test]
+fn turning_spotify_off_takes_its_tab_away() {
+    let (mut app, ctx, mut time) = opened();
+    app.prefs.integrations.spotify = true;
+    app.island_show_page(Tab::Music);
+    let inside = island_rect(&app).center();
+    rest(&mut app, &ctx, &mut time, inside, 0.5);
+    assert_eq!(app.island.tab(), Tab::Music);
+    app.prefs.integrations.spotify = false;
+    rest(&mut app, &ctx, &mut time, inside, 0.5);
+    assert_eq!(app.island.tab(), Tab::Home, "the page of a music that is off");
+    let lines: Vec<_> = app.integration_items().into_iter().map(|item| item.id).collect();
+    assert!(!lines.iter().any(|id| id.ends_with("spotify")), "no pill, so no tab: {lines:?}");
 }

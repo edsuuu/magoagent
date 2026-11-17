@@ -107,6 +107,11 @@ pub(crate) struct Prefs {
     pub(crate) start_in_chat: bool,
     /// The welcome slides (ui/welcome/) were seen to the end: they show once, after an install or an update.
     pub(crate) welcome_seen: bool,
+    /// The first-use tour (ui/tour.rs) was seen to the end or skipped: it shows once; Ajustes › Geral shows it again.
+    pub(crate) tour_seen: bool,
+    /// The notes of the version the app went to install (version, notes): shown once, "O que há de novo", on the first
+    /// opening of that version (ui/changelog.rs).
+    pub(crate) whats_new: Option<(String, String)>,
     /// Fechar mantém em segundo plano: the window's close hides it and the terminals and agents keep running;
     /// the tray (Windows) or opening the app again brings it back, Ctrl+Q quits.
     pub(crate) close_to_background: bool,
@@ -123,6 +128,9 @@ pub(crate) struct Prefs {
     pub(crate) recruit_model: String,
     /// How the agents the Maestro recruits run: in a terminal (Claude Code whole) or as a light chat of the app.
     pub(crate) agent_mode: AgentMode,
+    /// Ajustes › Agentes › WSL (app/system/wsl.rs): "" looks in the default distro when Windows has no agent, "off"
+    /// never, a distro's name runs the agents there.
+    pub(crate) wsl: String,
     pub(crate) chat_mode: usize,
     /// The day (since 1970) the app last looked for a newer release: once a day when it opens.
     pub(crate) update_checked_day: u64,
@@ -202,6 +210,8 @@ pub(crate) struct Prefs {
     pub(crate) agent_hooks: bool,
     /// The workspaces' sidebar folded away (ui/sidebar.rs).
     pub(crate) sidebar_hidden: bool,
+    /// The sidebar's "Agentes deste espaço" folded to its heading (ui/attention.rs).
+    pub(crate) sidebar_agents_closed: bool,
     /// Mostrar Tamanho: when a portal's header shows its width × height.
     pub(crate) portal_size: crate::app::browser::extras::SizeReadout,
     /// Points of zoom a notch of the wheel adds (Ajustes › Geral › Tela), 2 to 50.
@@ -234,6 +244,8 @@ impl Default for Prefs {
             window_outline: WindowOutline::Animated,
             start_in_chat: true,
             welcome_seen: false,
+            tour_seen: false,
+            whats_new: None,
             close_to_background: true,
             pause_alerts_until: None,
             run_at_login: false,
@@ -244,6 +256,7 @@ impl Default for Prefs {
             // the recruits run on Sonnet unless Ajustes says otherwise ("cli" goes back to the CLI's own)
             recruit_model: "sonnet".into(),
             agent_mode: AgentMode::Terminal,
+            wsl: String::new(),
             chat_mode: 0,
             update_checked_day: 0,
             chat_panel: false,
@@ -286,6 +299,7 @@ impl Default for Prefs {
             codex_voice: "juniper".into(),
             agent_hooks: false,
             sidebar_hidden: false,
+            sidebar_agents_closed: false,
             portal_size: Default::default(),
             zoom_step: 10,
             terminal: TermPrefs::default(),

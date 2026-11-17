@@ -28,6 +28,8 @@ pub(crate) enum Icon {
     Panel,
     Monitor,
     Map,
+    /// Four corners: Ver tudo.
+    Fit,
     /// Three lines: the sidebar's toggle.
     Menu,
     /// Ajustes.
@@ -68,6 +70,10 @@ pub(crate) enum Icon {
     Layers(bool),
     /// lucide's palette (the note's color button); `Palette` is the bolt.
     PaintPalette,
+    /// The right panels' buttons: Linha do tempo, Alterações, Fichário (Tarefas is `Todo`).
+    Clock,
+    Diff,
+    Book,
 }
 
 /// How far a corner of an icon's stroke curves away from its point (or half the shorter side, when less).
@@ -286,6 +292,11 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             let (ex, ey) = pts[0];
             line(&[(ex + 3.5, ey - 1.0), (ex, ey), (ex + 0.5, ey + 3.5)]);
         }
+        Icon::Fit => {
+            for (x, y) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+                line(&[(2.5 * x, 6.5 * y), (6.5 * x, 6.5 * y), (6.5 * x, 2.5 * y)]);
+            }
+        }
         Icon::Expand => {
             line(&[(1.5, -6.5), (6.5, -6.5), (6.5, -1.5)]);
             line(&[(6.5, -6.5), (1.5, -1.5)]);
@@ -381,6 +392,21 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             line(&[(-5.0, -6.0), (-5.0, 6.0)]);
             line(&[(5.0, -6.0), (5.0, 6.0)]);
             line(&[(-5.0, 0.0), (5.0, 0.0)]);
+        }
+        Icon::Clock => {
+            p.circle_stroke(c, 7.0, s);
+            line(&[(0.0, -4.0), (0.0, 0.0), (3.0, 2.0)]);
+        }
+        Icon::Diff => {
+            line(&[(-4.0, -6.5), (-4.0, -0.5)]);
+            line(&[(-7.0, -3.5), (-1.0, -3.5)]);
+            line(&[(1.0, 4.0), (7.0, 4.0)]);
+            line(&[(-6.0, 6.5), (6.0, -6.5)]);
+        }
+        Icon::Book => {
+            closed(&[(-6.0, -6.5), (5.5, -6.5), (5.5, 6.5), (-6.0, 6.5)]);
+            line(&[(-3.0, -6.5), (-3.0, 6.5)]);
+            line(&[(-0.5, -3.0), (3.0, -3.0)]);
         }
         Icon::Todo => {
             rect(-6.5, -6.5, 5.0, 5.0, 1);

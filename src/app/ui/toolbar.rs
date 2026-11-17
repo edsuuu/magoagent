@@ -39,9 +39,19 @@ impl DrawingApp {
             || self.design_confirm.is_some()
             || self.space_dialog.is_some()
             || self.welcome.is_some()
+            || self.tour.is_some()
+            || self.changelog.is_some()
             || self.floors_ui.is_open()
             || self.settings_open
             || self.export_open
+    }
+
+    /// How far right of the window's middle the toolbars (and the bars under them) are centered: over the canvas past
+    /// the sidebar, slid left in a narrow window so the toolbar keeps clear of the panels' buttons on its right.
+    pub(crate) fn toolbar_middle(&self, ctx: &Context) -> f32 {
+        let screen = ctx.content_rect();
+        let clear = self.pane_button(screen.width(), 0).left() - 8.0 - glass_width(Tool::TOOLBAR.len() + 1, &[1.0]) / 2.0;
+        (self.sidebar_width() / 2.0).min(clear - screen.center().x)
     }
 
     pub(crate) fn floating_controls(&mut self, ctx: &Context) {
@@ -65,7 +75,7 @@ impl DrawingApp {
         // (and the floors' overview, a stage of its own, has neither)
         let window_focus = (self.terminal_elevated.is_some() && self.dock.is_none()) || self.chat_open || self.floors_ui.overview;
         // the toolbars are centered over the canvas, which starts past the sidebar
-        let (dark, middle) = (self.dark(), self.sidebar_width() / 2.0);
+        let (dark, middle) = (self.dark(), self.toolbar_middle(ctx));
         let mut toolbar = if window_focus {
             // the window's bar goes up in the toolbar's place, in the title bar
             Rect::from_min_size(Pos2::new(0.0, TOP_ROW - 8.0), Vec2::ZERO)
@@ -160,22 +170,14 @@ impl DrawingApp {
 
         self.unlock_popup(ctx);
 
+        self.usage_poll(ctx);
         // the corners are the canvas's: a focused window has them out of its way until it lets go, and over the chat
         // there is no canvas to zoom or map
         if self.focused_window().is_none() && !self.chat_open {
-            self.footer(ctx);
-
-            // the minimap's toggle, left of the zoom, and the minimap over the row while open
-            // separate fixed-size areas: an anchored area that changes size jumps for a frame
+            // bottom right: Ver tudo, the zoom and the minimap's toggle in one glass, the floors left of it; the minimap
+            // over the row while open
+            let toggle = self.footer(ctx);
             let right = -CORNER_GAP - self.corner_inset().1;
-            let toggle = egui::Area::new(egui::Id::unique("minimap_toggle"))
-                .anchor(egui::Align2::RIGHT_BOTTOM, (right - ZOOM_WIDTH - PILL_GAP, -CORNER_GAP))
-                .show(ctx, |ui| {
-                    glass_row_sized(ui, MINIMAP_WIDTH, CORNER_HEIGHT, dark, |ui| {
-                        glass_button_sized(ui, self.prefs.minimap, Icon::Map, dark, CORNER_BUTTON).tip("Minimapa")
-                    })
-                })
-                .inner;
             if toggle.clicked() {
                 self.prefs.minimap = !self.prefs.minimap;
                 ctx.request_repaint();
@@ -188,13 +190,9 @@ impl DrawingApp {
                     self.prefs.minimap = false;
                 }
             }
-            // left of the toggle, right to left: the plans' use, then the floors (each gives how wide it drew)
-            let mut right = right - ZOOM_WIDTH - PILL_GAP - MINIMAP_WIDTH - PILL_GAP;
-            let usage = self.usage_pill(ctx, right);
-            if usage > 0.0 {
-                right -= usage + PILL_GAP;
-            }
-            self.floors_pill(ctx, right);
+            self.floors_pill(ctx, right - CORNER_WIDTH - PILL_GAP);
+            // bottom left: Desfazer and Refazer
+            self.history_pill(ctx);
         }
 
         if self.export_open {
@@ -248,49 +246,86 @@ impl DrawingApp {
         }
     }
 
-    /// The zoom, last in the bottom right row (the floors, the plan's use, the minimap's toggle,
-    /// the zoom), each in its glass.
-    fn footer(&mut self, ctx: &Context) {
+    /// The bottom right pill: Ver tudo, the zoom (−, the percentage, +) and the minimap's toggle, whose response it gives.
+    fn footer(&mut self, ctx: &Context) -> egui::Response {
         let dark = self.dark();
         let ink = glass_ink(dark);
         let tip = |r: egui::Response, text: &str| r.tip(keys_label(text));
-        let [zoom_out, zoom_reset, zoom_in] =
-            [("Diminuir zoom", AppAction::ZoomOut), ("Redefinir zoom", AppAction::ZoomReset), ("Aumentar zoom", AppAction::ZoomIn)]
-                .map(|(what, action)| self.tip_with_keys(what, action));
+        let [zoom_out, zoom_reset, zoom_in, fit] = [
+            ("Diminuir zoom", AppAction::ZoomOut),
+            ("Redefinir zoom", AppAction::ZoomReset),
+            ("Aumentar zoom", AppAction::ZoomIn),
+            ("Ver tudo", AppAction::FitAll),
+        ]
+        .map(|(what, action)| self.tip_with_keys(what, action));
         let anchor = (-CORNER_GAP - self.corner_inset().1, -CORNER_GAP);
-        egui::Area::new(egui::Id::unique("footer")).anchor(egui::Align2::RIGHT_BOTTOM, anchor).show(ctx, |ui| {
-            glass_row_sized(ui, ZOOM_WIDTH, CORNER_HEIGHT, dark, |ui| {
-                if tip(glass_button_sized(ui, false, Icon::Minus, dark, CORNER_BUTTON), &zoom_out).clicked() {
-                    self.zoom_step(-0.1);
-                }
-                let (rect, reset) = ui.allocate_exact_size(Vec2::new(ZOOM_TEXT, 20.0), Sense::click_and_drag());
-                let reset = reset.on_hover_cursor(CursorIcon::ResizeHorizontal);
-                // dragging sideways scrubs the zoom, 4 points to a 5% step, as in the reference app
-                if let (true, Some(pos)) = (reset.dragged(), reset.interact_pointer_pos()) {
-                    let key = reset.id.with("start");
-                    if reset.drag_started() {
-                        ui.data_mut(|d| d.insert_temp(key, (pos.x, self.zoom)));
+        egui::Area::new(egui::Id::unique("footer"))
+            .anchor(egui::Align2::RIGHT_BOTTOM, anchor)
+            .show(ctx, |ui| {
+                glass_row_sized(ui, CORNER_WIDTH, CORNER_HEIGHT, dark, |ui| {
+                    if tip(glass_button_sized(ui, false, Icon::Fit, dark, CORNER_BUTTON), &fit).clicked() {
+                        self.zoom_to_fit(false);
                     }
-                    if let Some((x, zoom)) = ui.data(|d| d.get_temp::<(f32, f32)>(key)) {
-                        let next = ((zoom + (pos.x - x) / 4.0 * 0.05) / 0.05).round() * 0.05;
+                    glass_divider(ui, dark);
+                    if tip(glass_button_sized(ui, false, Icon::Minus, dark, CORNER_BUTTON), &zoom_out).clicked() {
+                        self.zoom_step(-0.1);
+                    }
+                    let (rect, reset) = ui.allocate_exact_size(Vec2::new(ZOOM_TEXT, 20.0), Sense::click_and_drag());
+                    let reset = reset.on_hover_cursor(CursorIcon::ResizeHorizontal);
+                    // dragging sideways scrubs the zoom, 4 points to a 5% step, as in the reference app
+                    if let (true, Some(pos)) = (reset.dragged(), reset.interact_pointer_pos()) {
+                        let key = reset.id.with("start");
+                        if reset.drag_started() {
+                            ui.data_mut(|d| d.insert_temp(key, (pos.x, self.zoom)));
+                        }
+                        if let Some((x, zoom)) = ui.data(|d| d.get_temp::<(f32, f32)>(key)) {
+                            let next = ((zoom + (pos.x - x) / 4.0 * 0.05) / 0.05).round() * 0.05;
+                            let center = self.canvas_rect.center();
+                            self.zoom_at(next.max(0.1), center);
+                        }
+                    }
+                    if reset.hovered() {
+                        ui.painter().rect_filled(rect, 10, ink.gamma_multiply(0.1));
+                    }
+                    let percent = format!("{}%", (self.zoom * 100.0).round());
+                    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, percent, FontId::monospace(13.0), ink.gamma_multiply(0.85));
+                    if tip(reset, &zoom_reset).clicked() {
                         let center = self.canvas_rect.center();
-                        self.zoom_at(next.max(0.1), center);
+                        self.zoom_at(1.0, center);
                     }
-                }
-                if reset.hovered() {
-                    ui.painter().rect_filled(rect, 10, ink.gamma_multiply(0.1));
-                }
-                let percent = format!("{}%", (self.zoom * 100.0).round());
-                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, percent, FontId::monospace(13.0), ink.gamma_multiply(0.85));
-                if tip(reset, &zoom_reset).clicked() {
-                    let center = self.canvas_rect.center();
-                    self.zoom_at(1.0, center);
-                }
-                if tip(glass_button_sized(ui, false, Icon::Plus, dark, CORNER_BUTTON), &zoom_in).clicked() {
-                    self.zoom_step(0.1);
-                }
-            });
-        });
+                    if tip(glass_button_sized(ui, false, Icon::Plus, dark, CORNER_BUTTON), &zoom_in).clicked() {
+                        self.zoom_step(0.1);
+                    }
+                    glass_divider(ui, dark);
+                    glass_button_sized(ui, self.prefs.minimap, Icon::Map, dark, CORNER_BUTTON).tip("Minimapa")
+                })
+            })
+            .inner
+    }
+
+    /// The bottom left pill: Desfazer and Refazer, each off while there is nothing to undo or redo.
+    fn history_pill(&mut self, ctx: &Context) {
+        let dark = self.dark();
+        let [undo, redo] = [("Desfazer", AppAction::Undo), ("Refazer", AppAction::Redo)].map(|(what, action)| keys_label(&self.tip_with_keys(what, action)));
+        let (can_undo, can_redo) = (!self.undo.is_empty(), !self.redo.is_empty());
+        let anchor = (self.sidebar_width() + CORNER_GAP + self.corner_inset().0, -CORNER_GAP);
+        let (undone, redone) = egui::Area::new(egui::Id::unique("history_pill"))
+            .anchor(egui::Align2::LEFT_BOTTOM, anchor)
+            .show(ctx, |ui| {
+                glass_row_sized(ui, HISTORY_WIDTH, CORNER_HEIGHT, dark, |ui| {
+                    let button = |ui: &mut egui::Ui, on: bool, icon: Icon, tip: &str| {
+                        ui.add_enabled_ui(on, |ui| glass_button_sized(ui, false, icon, dark, CORNER_BUTTON).tip(tip).clicked()).inner
+                    };
+                    (button(ui, can_undo, Icon::Undo, &undo), button(ui, can_redo, Icon::Redo, &redo))
+                })
+            })
+            .inner;
+        if undone {
+            self.undo();
+        }
+        if redone {
+            self.redo();
+        }
     }
 
     pub(crate) fn hint(&self) -> Option<&'static str> {

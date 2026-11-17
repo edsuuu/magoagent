@@ -49,14 +49,17 @@ impl DrawingApp {
         }
         let hint = "Fechar a janela deixa o MagoAgent rodando, com os terminais e os agentes. Ele volta pelo ícone perto do relógio; Ctrl+Q sai de verdade.";
         toggle(ui, k, "Fechar mantém em segundo plano", hint, &mut self.prefs.close_to_background);
+        let hint = "O passo a passo que mostra onde fica cada parte do app.";
+        if row(ui, k, "Apresentação", hint, |ui| button(ui, k, "Ver a apresentação de novo")).clicked() {
+            self.start_tour();
+        }
 
         title(ui, k, "ILHA DO MAESTRO");
         let hint = "Uma pílula no topo da tela, por cima de tudo: os agentes, o que precisa de você, o chat e a voz.";
         toggle(ui, k, "Mostrar a ilha", hint, &mut self.prefs.island);
         // none chosen when it was let go somewhere else on the screen
         let now = self.island_place(ui.ctx()).and_then(|place| Place::ALL.iter().position(|each| *each == place)).unwrap_or(usize::MAX);
-        let hint =
-            "No topo ou embaixo (abre para cima). Solta perto do topo ou de baixo da tela, a ilha também gruda ali; em outro lugar, fica onde foi solta.";
+        let hint = "No topo, embaixo (abre para cima) ou numa lateral, onde fechada ela fica em pé. Solta perto de uma borda, a ilha também gruda nela.";
         if let Some(index) = row(ui, k, "Lugar da ilha", hint, |ui| choice(ui, k, "Lugar da ilha", &Place::NAMES, now)) {
             self.put_island(Place::ALL[index]);
         }

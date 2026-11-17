@@ -162,6 +162,12 @@ impl DrawingApp {
             .collect()
     }
 
+    /// A terminal running a WSL shell, on Windows.
+    fn wsl_terminals(&self) -> bool {
+        cfg!(windows)
+            && self.terminal_specs().into_iter().any(|(id, spec)| self.terminals.contains_key(id) && is_wsl_shell(self.prefs.terminal.resolve(&spec.look).2))
+    }
+
     /// Twice a second at most: which Claude Code session each terminal runs (its file says whether
     /// it works, rests or waits on a question), which terminals wait on one, and what may be typed
     /// into each (`TermHandle::ready`). Maps of terminals that went are pruned.
@@ -172,20 +178,23 @@ impl DrawingApp {
         self.waiting_checked = self.now;
         let claude = self.claude_terminals();
         let dir = crate::transcript::claude_dir();
+        // a WSL terminal's Claude Code files its sessions in the distro (system/wsl.rs)
+        let wsl = self.wsl_terminals().then(wsl_distro_in_use).flatten().map(|distro| (wsl_claude_dir(&distro), distro.name));
         if cfg!(test) {
             // a test reads what it just wrote: here, at once
-            self.agent_sessions = match &dir {
-                Some(dir) if !claude.is_empty() => {
-                    crate::transcript::assign(&claude, &crate::transcript::sessions(&dir.join("sessions")), crate::transcript::parents).into_iter().collect()
-                }
-                _ => Default::default(),
+            self.agent_sessions = if claude.is_empty() {
+                Default::default()
+            } else {
+                crate::transcript::assign(&claude, &crate::transcript::all_sessions(dir.as_deref(), wsl.as_ref()), crate::transcript::parents)
+                    .into_iter()
+                    .collect()
             };
         } else if claude.is_empty() {
             self.agent_sessions.clear();
         } else {
             // the files and the process list are read off this thread (transcript/watch.rs): what
             // it found last stays until it finds again, at most a check behind
-            self.session_watch.ask(claude, dir.clone());
+            self.session_watch.ask(claude, dir.clone(), wsl);
             if let Some(found) = self.session_watch.take() {
                 self.agent_sessions = found.into_iter().collect();
             }
@@ -333,19 +342,27 @@ impl DrawingApp {
         }
     }
 
-    /// Waiting ones first, then the ones that finished unseen; after the current one, round.
-    fn next_needing_attention(&mut self) {
+    /// The agents that need the person, in every workspace: the waiting ones first, then the ones that finished unseen
+    /// (each once).
+    pub(crate) fn needing_you(&self) -> Vec<String> {
         let rows = self.agent_rows();
         let waiting = rows.iter().filter(|r| matches!(r.state, AgentState::Waiting));
-        let unread = rows.iter().filter(|r| self.terminal_unread.contains(&r.id));
-        let queue: Vec<String> = waiting.chain(unread).map(|r| r.id.clone()).collect();
+        let unread = rows.iter().filter(|r| self.terminal_unread.contains(&r.id) && !matches!(r.state, AgentState::Waiting));
+        waiting.chain(unread).map(|r| r.id.clone()).collect()
+    }
+
+    /// ⌘⇧A and the sidebar's "Ir para o próximo": the next one of `needing_you` after the current one, round. Gives
+    /// the one it opened.
+    pub(crate) fn next_needing_attention(&mut self) -> Option<String> {
+        let queue = self.needing_you();
         let current = if self.chat_open { self.chat_agent.clone() } else { self.terminal_focus.clone() };
         let after = current.and_then(|id| queue.iter().position(|q| *q == id)).map_or(0, |p| p + 1);
         let Some(next) = queue.get(after % queue.len().max(1)).cloned() else {
             self.toast("Nenhum agente precisa de você");
-            return;
+            return None;
         };
         self.open_agent(&next);
+        Some(next)
     }
 
     /// In the chat, shows the agent's conversation; on the canvas, brings its terminal to the

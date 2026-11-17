@@ -8,7 +8,7 @@ use super::marquee::marquee;
 use super::paint::{CARD, CARD_FLAT, DIM, DIM_3, INK, font, semi};
 use crate::app::chat::list::clipped;
 use crate::app::integrations::spotify::controls::LIKED_SONGS;
-use crate::app::integrations::spotify::library::{ERROR_FOR_MS, PlaylistItem};
+use crate::app::integrations::spotify::library::{ERROR_FOR_MS, Opened, PlaylistItem};
 use crate::app::integrations::spotify::playback::Repeat;
 use crate::app::integrations::spotify::queue::QueueItem;
 use crate::app::integrations::spotify::{Now, Player};
@@ -74,11 +74,6 @@ fn clock(ms: u64) -> String {
 fn search_due(page: &Page, time: f64) -> Option<String> {
     let query = page.query.trim();
     (query.chars().count() >= 2 && query != page.asked.trim() && time - page.typed_at >= SEARCH_AFTER).then(|| query.to_string())
-}
-
-/// What a press on a song of the queue does: it is `index` songs ahead, so the player skips that many and one.
-fn skips_to(index: usize) -> Vec<String> {
-    vec!["next".to_string(); index + 1]
 }
 
 /// The two colours of a cover not come down yet, out of its name (each list item has its own).
@@ -383,8 +378,14 @@ impl DrawingApp {
         }
         let mut y = field.bottom() + 8.0;
         let searching = !state.query.trim().is_empty();
+        // an opened playlist's head: back to the lists, its name, Tocar
+        let opened = library.opened.as_ref().filter(|_| !searching && !state.devices);
+        if let Some(opened) = opened {
+            self.music_opened_head(ui, Rect::from_min_size(Pos2::new(inner.left(), y), Vec2::new(inner.width(), 24.0)), opened, pressed);
+            y += 32.0;
+        }
         // the lists' pills, while nothing is searched
-        if !searching && !state.devices {
+        if !searching && !state.devices && opened.is_none() {
             let mut x = inner.left();
             for list in List::EVERY {
                 let galley = ui.painter().layout_no_wrap(list.label().to_string(), font(11.5), DIM);
@@ -418,12 +419,14 @@ impl DrawingApp {
         ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
             ui.spacing_mut().item_spacing = Vec2::new(0.0, 1.0);
             ui.spacing_mut().scroll = crate::app::ui::scroll_style();
-            let salt = ("island_music_rows", searching, state.devices, state.list);
+            let salt = ("island_music_rows", searching, state.devices, state.list, opened.map(|opened| opened.playlist.uri.clone()));
             egui::ScrollArea::vertical().id_salt(salt).auto_shrink([false, false]).show(ui, |ui| {
                 if state.devices {
                     self.music_devices(ui, state, pressed);
                 } else if searching {
                     self.music_found(ui, state, pressed);
+                } else if let Some(opened) = opened {
+                    self.music_opened(ui, opened, pressed);
                 } else {
                     self.music_list(ui, state.list, pressed);
                 }
@@ -436,9 +439,9 @@ impl DrawingApp {
         let library = &self.integrations.spotify.library;
         match list {
             List::Next => {
-                for (index, item) in library.queue.iter().enumerate() {
+                for item in &library.queue {
                     if self.music_song(ui, item, false, pressed).clicked() {
-                        pressed.extend(skips_to(index));
+                        pressed.push(format!("jump {}", item.uri));
                     }
                 }
                 let note = library.queue_note.as_deref().unwrap_or("A fila está vazia.");
@@ -466,6 +469,52 @@ impl DrawingApp {
                     needs(ui, library.lists_note.as_deref().unwrap_or("Nenhuma música curtida ainda."));
                 }
             }
+        }
+    }
+
+    /// An opened playlist's head: ‹ back to the lists, its name and how many songs, and Tocar (the whole list).
+    fn music_opened_head(&self, ui: &mut egui::Ui, rect: Rect, opened: &Opened, pressed: &mut Vec<String>) {
+        let back = Rect::from_min_size(rect.min, Vec2::splat(rect.height()));
+        let response = ui.interact(back, ui.scope_id().with("island_music_back"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Voltar às playlists"));
+        ui.painter().rect_filled(back, 12, if response.hovered() { TRACK } else { HOVER });
+        ui.painter().text(back.center() - Vec2::new(1.0, 1.0), egui::Align2::CENTER_CENTER, "‹", font(17.0), INK);
+        if response.clicked() {
+            pressed.push("close".into());
+        }
+        let galley = ui.painter().layout_no_wrap("Tocar".to_string(), font(10.5), INK);
+        let chip =
+            Rect::from_min_max(Pos2::new(rect.right() - galley.size().x - 18.0, rect.center().y - 11.0), Pos2::new(rect.right(), rect.center().y + 11.0));
+        let play = ui.interact(chip, ui.scope_id().with("island_music_play_list"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+        play.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Tocar a playlist"));
+        ui.painter().rect_filled(chip, 11, if play.hovered() { Color32::from_rgb(0x3a, 0x3d, 0x43) } else { TRACK });
+        ui.painter().galley(Pos2::new(chip.left() + 9.0, chip.center().y - galley.size().y / 2.0), galley, INK);
+        if play.clicked() {
+            pressed.push(format!("play {}", opened.playlist.uri));
+        }
+        let text_x = back.right() + 10.0;
+        let width = (chip.left() - 8.0 - text_x).max(20.0);
+        let title = clipped(ui.painter(), opened.playlist.name.clone(), semi(12.5), INK, width);
+        ui.painter().galley(Pos2::new(text_x, rect.center().y - title.size().y / 2.0), title, INK);
+    }
+
+    /// An opened playlist's songs as far as they came: a press plays one in the list; near the end of the scroll the next
+    /// page is asked (50 at a time, as Spotify gives them).
+    fn music_opened(&self, ui: &mut egui::Ui, opened: &Opened, pressed: &mut Vec<String>) {
+        for item in &opened.songs {
+            if self.music_song(ui, item, true, pressed).clicked() && !item.uri.is_empty() {
+                pressed.push(format!("playin {} {}", opened.playlist.uri, item.uri));
+            }
+        }
+        // the end of the list: in sight, or nearly, it asks the next page
+        let (end, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
+        if opened.more && !opened.loading && wants_more(ui.clip_rect(), end) {
+            pressed.push("more".into());
+        }
+        if opened.loading {
+            needs(ui, "Carregando as músicas…");
+        } else if opened.songs.is_empty() {
+            needs(ui, "Nenhuma música nesta playlist.");
         }
     }
 
@@ -559,11 +608,11 @@ impl DrawingApp {
         response
     }
 
-    /// A playlist's row: on hover Tocar; a press on the row plays it too.
+    /// A playlist's row: a press opens it (its songs); on hover Tocar plays it whole.
     fn music_playlist(&self, ui: &mut egui::Ui, playlist: &PlaylistItem, pressed: &mut Vec<String>) {
         let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::click());
         let response = response.on_hover_cursor(CursorIcon::PointingHand);
-        if response.hovered() {
+        if ui.rect_contains_pointer(rect) {
             ui.painter().rect_filled(rect, 9, HOVER);
         }
         let art = Rect::from_min_size(Pos2::new(rect.left() + 6.0, rect.center().y - 15.0), Vec2::splat(30.0));
@@ -576,11 +625,14 @@ impl DrawingApp {
             picture(ui.painter(), art, 5, texture, &playlist.name);
         }
         let mut right = rect.right() - 8.0;
-        if response.hovered() {
+        let mut play = false;
+        if ui.rect_contains_pointer(rect) {
             let galley = ui.painter().layout_no_wrap("Tocar".to_string(), font(10.5), INK);
             let chip = Rect::from_min_max(Pos2::new(right - galley.size().x - 18.0, rect.center().y - 11.0), Pos2::new(right, rect.center().y + 11.0));
-            ui.painter().rect_filled(chip, 11, TRACK);
+            let chip_response = ui.interact(chip, ui.scope_id().with(("island_music_play", &playlist.uri)), Sense::click());
+            ui.painter().rect_filled(chip, 11, if chip_response.hovered() { Color32::from_rgb(0x3a, 0x3d, 0x43) } else { TRACK });
             ui.painter().galley(Pos2::new(chip.left() + 9.0, chip.center().y - galley.size().y / 2.0), galley, INK);
+            play = chip_response.clicked();
             right = chip.left() - 4.0;
         }
         let text_x = art.right() + 10.0;
@@ -593,10 +645,17 @@ impl DrawingApp {
         }
         let small = clipped(ui.painter(), small, font(10.5), DIM_3, width);
         ui.painter().galley(Pos2::new(text_x, rect.center().y + 1.0), small, DIM_3);
-        if response.clicked() {
+        if play {
             pressed.push(format!("play {}", playlist.uri));
+        } else if response.clicked() {
+            pressed.push(format!("open {}", playlist.uri));
         }
     }
+}
+
+/// Whether the end of a list (`end`) is in sight in `clip`, or close enough under it to ask the next page now.
+pub(crate) fn wants_more(clip: Rect, end: Rect) -> bool {
+    end.top() <= clip.bottom() + 4.0 * ROW_H
 }
 
 /// A list's title ("MÚSICAS"), small and spaced.
@@ -652,9 +711,7 @@ mod tests {
     }
 
     #[test]
-    fn a_song_of_the_queue_is_reached_by_skipping_to_it() {
-        assert_eq!(skips_to(0), ["next"]);
-        assert_eq!(skips_to(2), ["next", "next", "next"]);
+    fn each_cover_waiting_has_its_own_colours() {
         assert_ne!(placeholder("Evidências"), placeholder("Trem-Bala"), "each its own colours");
     }
 }
