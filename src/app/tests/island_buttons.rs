@@ -512,3 +512,19 @@ fn the_spotify_tab_plays_what_is_pressed() {
     click(&mut app, &ctx, &mut time, Pos2::new(list_x, page.top() + 80.0 + 36.0 + 1.0 + 18.0));
     assert_eq!(app.integrations.spotify.asked, [Command::Shuffle(true), Command::PlayUri("spotify:track:2".into())]);
 }
+
+/// Spotify turned off in Ajustes: its tab leaves the header and the open page goes back to Início.
+#[test]
+fn turning_spotify_off_takes_its_tab_away() {
+    let (mut app, ctx, mut time) = opened();
+    app.prefs.integrations.spotify = true;
+    app.island_show_page(Tab::Music);
+    let inside = island_rect(&app).center();
+    rest(&mut app, &ctx, &mut time, inside, 0.5);
+    assert_eq!(app.island.tab(), Tab::Music);
+    app.prefs.integrations.spotify = false;
+    rest(&mut app, &ctx, &mut time, inside, 0.5);
+    assert_eq!(app.island.tab(), Tab::Home, "the page of a music that is off");
+    let lines: Vec<_> = app.integration_items().into_iter().map(|item| item.id).collect();
+    assert!(!lines.iter().any(|id| id.ends_with("spotify")), "no pill, so no tab: {lines:?}");
+}

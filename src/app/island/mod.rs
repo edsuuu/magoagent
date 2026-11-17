@@ -598,7 +598,13 @@ impl DrawingApp {
             }
         }
         let close_after = self.prefs.island_close_after as f64;
+        // a page whose integration was turned off (Spotify's, GitHub's) gives its place to Início
+        let music_on = self.spotify_sources() != crate::app::integrations::spotify::Sources::default();
+        let github_on = self.prefs.integrations.github;
         let island = &mut self.island;
+        if (island.tab == Tab::Music && !music_on) || (island.tab == Tab::GitHub && !github_on) {
+            island.tab = Tab::Home;
+        }
         let busy = matches!(mood, Mood::Needs(_) | Mood::Working(_));
         if busy && !island.was_busy {
             island.machine.reveal(time);
