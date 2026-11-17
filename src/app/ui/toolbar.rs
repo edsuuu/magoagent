@@ -46,6 +46,14 @@ impl DrawingApp {
             || self.export_open
     }
 
+    /// How far right of the window's middle the toolbars (and the bars under them) are centered: over the canvas past
+    /// the sidebar, slid left in a narrow window so the toolbar keeps clear of the panels' buttons on its right.
+    pub(crate) fn toolbar_middle(&self, ctx: &Context) -> f32 {
+        let screen = ctx.content_rect();
+        let clear = self.pane_button(screen.width(), 0).left() - 8.0 - glass_width(Tool::TOOLBAR.len() + 1, &[1.0]) / 2.0;
+        (self.sidebar_width() / 2.0).min(clear - screen.center().x)
+    }
+
     pub(crate) fn floating_controls(&mut self, ctx: &Context) {
         let c = self.colors();
         // ☰, the chat's button and the space in use: beside the window buttons on macOS; elsewhere
@@ -67,11 +75,7 @@ impl DrawingApp {
         // (and the floors' overview, a stage of its own, has neither)
         let window_focus = (self.terminal_elevated.is_some() && self.dock.is_none()) || self.chat_open || self.floors_ui.overview;
         // the toolbars are centered over the canvas, which starts past the sidebar
-        let (dark, mut middle) = (self.dark(), self.sidebar_width() / 2.0);
-        // a narrow window: the toolbar slides left, clear of the panels' buttons on its right
-        let screen = ctx.content_rect();
-        let clear = self.pane_button(screen.width(), 0).left() - 8.0 - glass_width(Tool::TOOLBAR.len() + 1, &[1.0]) / 2.0;
-        middle = middle.min(clear - screen.center().x);
+        let (dark, middle) = (self.dark(), self.toolbar_middle(ctx));
         let mut toolbar = if window_focus {
             // the window's bar goes up in the toolbar's place, in the title bar
             Rect::from_min_size(Pos2::new(0.0, TOP_ROW - 8.0), Vec2::ZERO)
