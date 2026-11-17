@@ -6,10 +6,10 @@ use crate::app::island::{CLOSED_H, CLOSED_W, COMPACT_H, COMPACT_W, EXPANDED_W, T
 
 const SIZE: Vec2 = Vec2::new(1200.0, 800.0);
 
-fn chat(id: &str, name: &str) -> crate::app::chat::direct::Chat {
+fn chat(id: &str, agent: &str, name: &str) -> crate::app::chat::direct::Chat {
     crate::app::chat::direct::Chat {
         id: id.into(),
-        agent: "claude".into(),
+        agent: agent.into(),
         name: name.into(),
         cwd: "C:/p".into(),
         session: None,
@@ -25,7 +25,7 @@ fn chat(id: &str, name: &str) -> crate::app::chat::direct::Chat {
 fn app_with_island() -> DrawingApp {
     let mut app = DrawingApp::default();
     app.prefs.island = true;
-    app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
+    app.chats = vec![chat("a", "claude", "Claude Code · loja"), chat("b", "codex", "Codex · site")];
     app
 }
 
@@ -42,6 +42,14 @@ fn run(app: &mut DrawingApp, ctx: &Context, from: f64, to: f64, events: Vec<egui
         frame_at(app, ctx, time, events.clone());
         time += 0.05;
     }
+}
+
+/// One frame of the island; the texts it painted.
+fn painted(app: &mut DrawingApp, ctx: &Context, time: f64) -> Vec<String> {
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(time), events: vec![], ..Default::default() };
+    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
+    output.textures_delta.clear();
+    output.shapes.iter().filter_map(|shape| if let egui::Shape::Text(text) = &shape.shape { Some(text.galley.text().to_string()) } else { None }).collect()
 }
 
 /// One frame of the island, and the time it asked before the next one.
@@ -161,6 +169,21 @@ fn luna_dances_through_the_agents_work_and_stops_for_the_person() {
     for state in [MagoState::NeedsYou, MagoState::Asking, MagoState::Error] {
         assert!(!dances_through(state), "{state:?}");
     }
+}
+
+/// Asked ("o dono quer as duas: as do canvas (terminais do app rodando Claude Code e chats do app com agente claude) e
+/// as de fora"): Claude Code's page shows the app's Claude agents, each saying it is on the canvas, and not the others.
+#[test]
+fn the_claude_page_has_the_apps_agents_on_the_canvas() {
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    app.island_show_page(Tab::Claude);
+    run(&mut app, &ctx, 1.0, 1.4, vec![]);
+    assert_eq!(app.island.size().x, EXPANDED_W, "open on Claude Code");
+    let texts = painted(&mut app, &ctx, 1.5);
+    assert!(texts.iter().any(|text| text == "Claude Code · no canvas"), "{texts:?}");
+    assert!(texts.iter().any(|text| text == "loja"), "the chat's name in the grid: {texts:?}");
+    assert!(!texts.iter().any(|text| text.contains("site")), "the app's Codex is no Claude Code session ({:?}): {texts:?}", app.island.tab());
 }
 
 /// Asked ("se os hooks estão instalados aqui precisa saber"): the empty Claude Code page says so when they are in.

@@ -226,11 +226,11 @@ mod tests {
         assert_eq!(asks.len(), 1);
         let view = app.island_view(vec![], asks, crate::app::island::Mood::Needs(1), 1.0);
         assert!(
-            view.lines.iter().any(|line| line.kind == "Claude Code" && line.id.starts_with("pill:")),
+            view.lines.iter().any(|line| line.kind == "fora do app" && line.id.starts_with("pill:")),
             "{:?}",
             view.lines.iter().map(|line| &line.id).collect::<Vec<_>>()
         );
-        assert!(app.ask_line(&view).is_some_and(|line| line.kind == "Claude Code"), "the card is of the session's pill");
+        assert!(app.ask_line(&view).is_some_and(|line| line.kind == "fora do app"), "the card is of the session's pill");
     }
     #[test]
     fn a_session_from_a_terminal_is_on_home_when_the_island_opens() {
