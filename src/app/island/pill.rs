@@ -9,8 +9,8 @@ use super::music::{GREEN, picture};
 use crate::app::integrations::spotify::groove::Groove;
 
 /// The side of the cover and its corner on the compact island.
-const COVER: f32 = 26.0;
-const COVER_CORNER: u8 = 7;
+const COVER: f32 = 22.0;
+const COVER_CORNER: u8 = 6;
 /// The wizard on the compact island: its middle from the left edge and its size (`paint::island_small`); the last item
 /// ends as far from the right edge as the wizard starts from the left.
 const WIZARD_AT: f32 = 40.0;
@@ -23,12 +23,12 @@ const COVER_LEFT_SMALL: f32 = 4.0;
 /// The bars: how many, the side of each one and the room between them, how far their middle is from the right edge,
 /// and the tallest one.
 const BARS: usize = crate::app::integrations::spotify::groove::BANDS;
-const BAR: f32 = 2.0;
-const BAR_GAP: f32 = 2.0;
+const BAR: f32 = 2.5;
+const BAR_GAP: f32 = 3.0;
 const BAR_SMALL: f32 = 1.5;
 const BAR_GAP_SMALL: f32 = 1.5;
 const BARS_RIGHT_SMALL: f32 = 12.0;
-const BARS_TALL: f32 = 18.0;
+const BARS_TALL: f32 = 16.0;
 const BARS_TALL_SMALL: f32 = 11.0;
 /// The width the bars take on the compact island.
 const BARS_ROOM: f32 = BARS as f32 * BAR + (BARS - 1) as f32 * BAR_GAP;
@@ -55,7 +55,7 @@ pub(crate) fn bars(groove: Option<&Groove>, time: f64) -> [f32; BARS] {
     // the song heard: each bar is its own band, low to high (asked: "de acordo com a música no Spotify")
     if let Some(bands) = groove.and_then(|groove| groove.bands) {
         // a curve, so only the loud parts reach the top (asked: "a sensibilidade está muito alta")
-        return bands.map(|level| 0.08 + 0.92 * level.powf(1.6));
+        return bands.map(|level| level.powf(1.6));
     }
     let mut heights = [0.0; BARS];
     for (index, height) in heights.iter_mut().enumerate() {
@@ -88,6 +88,7 @@ pub(super) fn spotify(
     cover: Option<egui::TextureId>,
     tint: Option<Color32>,
     title: &str,
+    playing: bool,
     compact: Option<Option<Rect>>,
     groove: Option<&Groove>,
     time: f64,
@@ -98,19 +99,26 @@ pub(super) fn spotify(
     } else {
         (COVER_SMALL, COVER_CORNER_SMALL, BAR_SMALL, BAR_GAP_SMALL, BARS_TALL_SMALL)
     };
-    let total = BARS as f32 * bar + (BARS - 1) as f32 * gap;
+    let count = if compact.is_some() { BARS } else { BARS.div_ceil(2) };
+    let total = count as f32 * bar + (count - 1) as f32 * gap;
     let (cover_left, bars_left) = match compact {
         Some(minis) => spread(rect, minis),
         None => (rect.left() + COVER_LEFT_SMALL, rect.right() - BARS_RIGHT_SMALL - total / 2.0),
     };
     let art = Rect::from_min_size(Pos2::new(cover_left, rect.center().y - side / 2.0), Vec2::splat(side));
     picture(painter, art, corner, cover, title);
-    for (index, level) in bars(groove, time).into_iter().enumerate() {
+    // paused, the dots rest (as the Dynamic Island's), and nothing moves; the closed notch is small: its bars are the
+    // bands two by two
+    let levels = if playing { bars(groove, time) } else { [0.0; BARS] };
+    let levels: Vec<f32> = if compact.is_some() { levels.to_vec() } else { levels.chunks(2).map(|pair| pair.iter().copied().fold(0.0, f32::max)).collect() };
+    for (index, level) in levels.into_iter().enumerate() {
         let x = bars_left + index as f32 * (bar + gap) + bar / 2.0;
-        // a dot at its lowest, the tallest at its highest
-        let height = (tall * (0.18 + 0.82 * level)).max(bar);
+        // a round dot at rest, the tallest at its highest, from the middle line up and down
+        let height = bar + (tall - bar) * level.clamp(0.0, 1.0);
         let rise = Rect::from_center_size(Pos2::new(x, rect.center().y), Vec2::new(bar, height));
         painter.rect_filled(rise, bar / 2.0, tint.unwrap_or(GREEN));
     }
-    ui.ctx().request_repaint_after(crate::app::update::frame_spacing());
+    if playing {
+        ui.ctx().request_repaint_after(crate::app::update::frame_spacing());
+    }
 }

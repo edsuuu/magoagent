@@ -258,5 +258,5 @@ fn the_bars_take_the_covers_liveliest_colour() {
     let red = super::super::accent(&cover(&[[30, 30, 30, 255], [30, 30, 30, 255], [30, 30, 30, 255], [150, 20, 20, 255]]));
     assert!(red.r() > 200 && red.g() < 80 && red.b() < 80, "{red:?}");
     let grey = super::super::accent(&cover(&[[90, 90, 90, 255], [120, 120, 120, 255]]));
-    assert_eq!(grey, Color32::from_gray(0xe8));
+    assert_eq!(grey, Color32::from_gray(0xa8), "a grey cover: grey dots, as the Dynamic Island's");
 }

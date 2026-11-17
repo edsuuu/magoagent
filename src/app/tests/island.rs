@@ -79,16 +79,16 @@ fn the_cover_and_the_bars_sit_in_the_middle_or_at_the_right() {
     use crate::app::island::minis::mini_cells;
     use crate::app::island::pill::spread;
     let pill = Rect::from_min_size(Pos2::ZERO, Vec2::new(288.0, 40.0));
-    // the bars take 18 (five of 2 with 2 between); no agents: the pair ends as far from the right as the wizard starts from the left (25)
+    // the bars take 52 (ten of 2.5 with 3 between); no agents: the pair ends as far from the right as the wizard starts from the left (25)
     let (cover, bars) = spread(pill, None);
-    assert!(bars > cover + 26.0, "the bars after the cover");
-    assert!((bars + 18.0 - (288.0 - 25.0)).abs() < 1.0, "at the right: the bars end at {}", bars + 18.0);
+    assert!(bars > cover + 22.0, "the bars after the cover");
+    assert!((bars + 52.0 - (288.0 - 25.0)).abs() < 1.0, "at the right: the bars end at {}", bars + 52.0);
     // with agents: the pair's middle halfway between the wizard (55) and the minis' grid
     let grid = mini_cells(pill, 2).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
     let (cover, bars) = spread(pill, Some(grid));
-    let middle = (cover + bars + 18.0) / 2.0;
+    let middle = (cover + bars + 52.0) / 2.0;
     assert!((middle - (55.0 + grid.left()) / 2.0).abs() < 1.0, "in the middle: {middle} between 55 and {}", grid.left());
-    assert!(bars + 18.0 < grid.left(), "clear of the minis");
+    assert!(bars + 52.0 < grid.left(), "clear of the minis");
 }
 
 /// While the song plays the pill is alive and keeps asking for frames; paused, it asks for none.
@@ -110,7 +110,7 @@ fn the_pill_asks_for_frames_while_the_song_plays_and_not_paused() {
     let paused = frame_delay(&mut app, &ctx, 2.2);
     assert!(paused >= std::time::Duration::from_millis(60), "paused: only the wizard's slow blink ({paused:?})");
     app.integrations.spotify.now = None;
-    assert_eq!(paused, frame_delay(&mut app, &ctx, 2.4), "paused, the pill is the one with no song");
+    assert_eq!(paused, frame_delay(&mut app, &ctx, 2.4), "paused, the pill asks for no frame, as with no song");
 }
 
 #[test]

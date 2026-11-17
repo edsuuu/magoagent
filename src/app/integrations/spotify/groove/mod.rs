@@ -78,7 +78,7 @@ impl Dance {
 }
 
 /// How many frequency bands the sound is cut in (the island's bars).
-pub(crate) const BANDS: usize = 5;
+pub(crate) const BANDS: usize = 10;
 
 /// What Luna dances to, now.
 #[derive(Clone, Copy, Debug, PartialEq)]
