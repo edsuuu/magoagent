@@ -399,7 +399,7 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
     let TreeAsk::Name { at, kind, text, .. } = ask else { return Popover::Open };
     let c = menu_colors(dark);
     let uc = UiColors::new(dark);
-    let accent = if dark { Color32::from_rgb(0x0a, 0x84, 0xff) } else { Color32::from_rgb(0x00, 0x7a, 0xff) };
+    let accent = glass_accent(dark);
     let name = at.file_name().unwrap_or_default().to_string_lossy().into_owned();
     let (base, ext) = if *kind == NameKind::Rename { split_name(&name) } else { ("", "") };
     let (title, field) = match kind {
