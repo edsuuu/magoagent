@@ -76,11 +76,6 @@ fn search_due(page: &Page, time: f64) -> Option<String> {
     (query.chars().count() >= 2 && query != page.asked.trim() && time - page.typed_at >= SEARCH_AFTER).then(|| query.to_string())
 }
 
-/// What a press on a song of the queue does: it is `index` songs ahead, so the player skips that many and one.
-fn skips_to(index: usize) -> Vec<String> {
-    vec!["next".to_string(); index + 1]
-}
-
 /// The two colours of a cover not come down yet, out of its name (each list item has its own).
 fn placeholder(name: &str) -> (Color32, Color32) {
     const PAIRS: [((u8, u8, u8), (u8, u8, u8)); 5] = [
@@ -436,9 +431,9 @@ impl DrawingApp {
         let library = &self.integrations.spotify.library;
         match list {
             List::Next => {
-                for (index, item) in library.queue.iter().enumerate() {
+                for item in &library.queue {
                     if self.music_song(ui, item, false, pressed).clicked() {
-                        pressed.extend(skips_to(index));
+                        pressed.push(format!("jump {}", item.uri));
                     }
                 }
                 let note = library.queue_note.as_deref().unwrap_or("A fila está vazia.");
@@ -652,9 +647,7 @@ mod tests {
     }
 
     #[test]
-    fn a_song_of_the_queue_is_reached_by_skipping_to_it() {
-        assert_eq!(skips_to(0), ["next"]);
-        assert_eq!(skips_to(2), ["next", "next", "next"]);
+    fn each_cover_waiting_has_its_own_colours() {
         assert_ne!(placeholder("Evidências"), placeholder("Trem-Bala"), "each its own colours");
     }
 }
