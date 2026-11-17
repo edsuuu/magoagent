@@ -14,7 +14,7 @@ const COVER: f32 = 22.0;
 const COVER_CORNER: u8 = 6;
 /// The wizard on the compact island: its middle from the left edge and its size (`paint::island_small`); the last item
 /// ends as far from the right edge as the wizard starts from the left.
-const WIZARD_AT: f32 = 40.0;
+const WIZARD_AT: f32 = super::COMPACT_SIDE;
 const WIZARD: f32 = 30.0;
 /// The same on the closed notch, which is smaller.
 const COVER_SMALL: f32 = 16.0;

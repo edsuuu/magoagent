@@ -44,6 +44,9 @@ pub(crate) use window::*;
 /// The sizes of Coucou's island (core/layout.ts): the closed one, the open one and their corners.
 // asked: "essa ilha daria para diminuir o espaçamento": about 14 between Luna, the song and the minis
 pub(crate) const COMPACT_W: f32 = 212.0;
+/// How far the middle of the wizard and of the minis' grid (both 30 wide) are from the compact island's sides: 4 of room
+/// to the edge (asked: "perto da borda, eles podem ter um gap de 4px").
+pub(crate) const COMPACT_SIDE: f32 = 19.0;
 // asked: "essa barra da ilha está muito grande, diminui uns 1,5 px"
 pub(crate) const COMPACT_H: f32 = 38.5;
 pub(crate) const EXPANDED_W: f32 = 760.0;

@@ -387,7 +387,7 @@ impl DrawingApp {
             }
             return;
         }
-        aim(view, Pos2::new(rect.left() + 40.0, rect.center().y + 1.0), 30.0, state);
+        aim(view, Pos2::new(rect.left() + super::COMPACT_SIDE, rect.center().y + 1.0), 30.0, state);
         // the green mini of Spotify is the cover and the bars then, spread between the wizard and the other minis
         let spotify = |line: &Line| line.id.strip_prefix(crate::app::integrations::ITEM_PREFIX) == Some("spotify");
         let lines: Vec<&Line> = view.lines.iter().filter(|line| now.is_none() || !spotify(line)).collect();
