@@ -230,7 +230,8 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMot
     let lively = motion.lively();
     pen.flame(&flame(time as f32, lively, motion.sway), tint(LUME));
 
-    paint_eyes(&pen, motion, 1.0, 1.0, INK);
+    let (grow, spread) = small_eyes(size);
+    paint_eyes(&pen, motion, grow, spread, INK);
     paint_mouth(&pen, motion);
 
     for particle in &motion.particles {
@@ -239,6 +240,13 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMot
     if let (Some(badge), true) = (motion.badge, size >= 26.0) {
         paint_badge(&pen, badge, motion.badge_scale.value, time);
     }
+}
+
+/// How much bigger and farther apart the eyes are on a small Luna (the island's notch is 18): from as drawn at 26 and
+/// up to a mini one's at 14, so her faces still read (asked: "no notch os olhos da Luna somem").
+pub(super) fn small_eyes(size: f32) -> (f32, f32) {
+    let small = ((26.0 - size) / 12.0).clamp(0.0, 1.0);
+    (1.0 + (MINI_EYES - 1.0) * small, 1.0 + (MINI_SPREAD - 1.0) * small)
 }
 
 /// The eyes, `grow` times their size and `spread` times as far apart, in `ink`: pills where the gaze puts them on the
@@ -319,7 +327,8 @@ pub(super) fn paint_dancer(painter: &Painter, center: Pos2, size: f32, color: Co
     let (sin, cos) = body.turn.to_radians().sin_cos();
     let pen = Pen { painter, origin, scale, squash: body.scale, sin, cos, shift: body.shift * BOX };
     pen.flame(&flame(time as f32, false, 0.0), color);
-    paint_eyes(&pen, motion, 1.0, 1.0, MINI_INK);
+    let (grow, spread) = small_eyes(size);
+    paint_eyes(&pen, motion, grow, spread, MINI_INK);
     let Some(arms) = pose.arms.filter(|_| pose.arms_alpha > 0.01) else { return };
     let width = (ARM_WIDTH * BOX * scale).max(1.3);
     let fill = color.gamma_multiply(pose.arms_alpha.clamp(0.0, 1.0));
