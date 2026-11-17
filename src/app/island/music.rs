@@ -123,6 +123,12 @@ fn round_button(ui: &mut egui::Ui, center: Pos2, side: f32, id: &str, hint: &str
     response
 }
 
+/// The white ball at the end of a bar while the pointer is on it, as Spotify's (asked: "cadê a bolinha na ponta da
+/// barra quando eu deixo o mouse em cima").
+fn knob(painter: &Painter, at: Pos2) {
+    painter.circle_filled(at, 6.0, Color32::WHITE);
+}
+
 /// Set for a frame when a quiet line's "Abrir Ajustes" is pressed (`needs`), taken by `island_music`.
 fn settings_asked() -> egui::Id {
     egui::Id::unique("island_music_open_settings")
@@ -236,6 +242,9 @@ impl DrawingApp {
                 2,
                 if response.hovered() { GREEN } else { INK },
             );
+            if response.hovered() {
+                knob(&painter, Pos2::new(bar.left() + bar.width() * done, bar.center().y));
+            }
             if let Some(at) = response.interact_pointer_pos().filter(|_| response.clicked()) {
                 let fraction = ((at.x - bar.left()) / bar.width()).clamp(0.0, 1.0);
                 pressed.push(format!("seek {}", (fraction * duration as f32) as u64));
@@ -319,8 +328,15 @@ impl DrawingApp {
             }
             let level = state.dragging.unwrap_or(volume).clamp(0.0, 1.0);
             painter.rect_filled(track, 2, TRACK);
-            let lit = if response.hovered() || state.dragging.is_some() { GREEN } else { DIM };
-            painter.rect_filled(Rect::from_min_max(track.min, Pos2::new(track.left() + track.width() * level, track.bottom())), 2, lit);
+            let held = response.hovered() || state.dragging.is_some();
+            painter.rect_filled(
+                Rect::from_min_max(track.min, Pos2::new(track.left() + track.width() * level, track.bottom())),
+                2,
+                if held { GREEN } else { DIM },
+            );
+            if held {
+                knob(&painter, Pos2::new(track.left() + track.width() * level, track.center().y));
+            }
         }
     }
 
