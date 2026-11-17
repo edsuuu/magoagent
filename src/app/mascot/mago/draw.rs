@@ -47,8 +47,8 @@ const STEPS: usize = 8;
 /// whatever the base state gave (`MagoState::Idle` while dancing, `Sleeping` while napping). The rules are:
 /// - low energy → sleepy eyes (closed), unless she's already napping;
 /// - high energy peak → wide eyes;
-/// - bass hit close to phase 0 → open smile;
-/// - blink rate follows the beat: quicker as energy rises, syncing to `phase == 0` for a natural pulse.
+/// - bass hit close to phase 0 → open smile.
+/// Blinking stays the motion's own.
 pub(super) fn dance_expression(groove: &Groove) -> (EyeKind, f32, f32) {
     let energy = groove.energy.clamp(0.0, 1.0);
     let bass = groove.bass.clamp(0.0, 1.0);

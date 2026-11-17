@@ -408,3 +408,26 @@ fn the_mouth_follows_the_eyes() {
         assert!(mouth.at.y > left.at.y.max(right.at.y) + 0.05, "{look}: under the eyes");
     }
 }
+
+/// The song's face (`dance_face`) is a target: the eyes change, and the mouth eases there instead of jumping on each
+/// beat.
+#[test]
+fn the_songs_face_eases_in_over_the_states() {
+    let mut motion = MagoMotion::default();
+    motion.advance(MagoState::Idle, 0.0, None);
+    let rest = motion.mouth_curve.value;
+    motion.dance_face = Some((EyeKind::Wide, 0.06, 0.035));
+    motion.advance(MagoState::Idle, 0.016, None);
+    assert_eq!(motion.look.eye, EyeKind::Wide);
+    let early = motion.mouth_curve.value;
+    assert!(early > rest && early < 0.06, "on its way: {rest} → {early}");
+    let mut time = 0.016;
+    while time < 2.0 {
+        time += 0.016;
+        motion.advance(MagoState::Idle, time, None);
+    }
+    assert!((motion.mouth_curve.value - 0.06).abs() < 0.002 && (motion.mouth_open.value - 0.035).abs() < 0.002);
+    motion.dance_face = None;
+    motion.advance(MagoState::Idle, time + 0.016, None);
+    assert_eq!(motion.look.eye, Look::of(MagoState::Idle).eye, "the song over: the state's face again");
+}
