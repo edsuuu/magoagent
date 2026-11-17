@@ -39,6 +39,12 @@ fn rank(line: &Line) -> u8 {
     }
 }
 
+/// Whether a click on `line` opens its conversation right away: a chat of the app and a session outside have one (the
+/// island's, or the app's own chat screen); a terminal opens its card on the canvas instead, and an integration its tab.
+fn opens(line: &Line) -> bool {
+    line.chat || line.id.starts_with(PILL_PREFIX)
+}
+
 /// The lines Início lists: the sessions outside and the integrations always, the app's own agents only while something
 /// goes on with them (an idle chat is Chats' business).
 pub(super) fn feed_lines<'a>(lines: &'a [Line], hidden: &HashMap<String, u64>) -> (Vec<&'a Line>, usize) {
@@ -218,6 +224,11 @@ impl DrawingApp {
                 Tab::Home => self.feed_press(&line.id),
                 tab => {
                     (out.focus, out.tab, out.picked) = (Some(line.id.clone()), Some(tab), true);
+                    // asked ("clicar numa linha que é um chat ou sessão precisa abrir a conversa dela na hora"): a
+                    // second click would open it as its Abrir does; here the first does too
+                    if opens(line) {
+                        out.open_agent = Some(line.id.clone());
+                    }
                 }
             }
         }
@@ -294,6 +305,21 @@ mod tests {
         assert_eq!(ago(now - 3 * 3_600_000, now), "há 3 h");
         assert_eq!(ago(now - 30 * 3_600_000, now), "ontem");
         assert_eq!(ago(now - 3 * 86_400_000, now), "há 3 dias");
+    }
+
+    #[test]
+    fn a_chat_or_a_session_outside_opens_its_conversation_on_the_first_click() {
+        let mut chat = line("chat-a", AgentState::Working(0.0), 30);
+        chat.chat = true;
+        let mut terminal = line("terminal-b", AgentState::Working(0.0), 30);
+        terminal.canvas = true;
+        let mut pill = line("pill:code:/w/loja", AgentState::Working(0.0), 30);
+        pill.chat = false;
+        let tool = line("integration:github", AgentState::Idle(None), 0);
+        assert!(opens(&chat), "a chat: its conversation");
+        assert!(opens(&pill), "a session outside: its conversation, followed from its terminal");
+        assert!(!opens(&terminal), "a terminal: its card on the canvas");
+        assert!(!opens(&tool), "an integration: its tab");
     }
 
     #[test]

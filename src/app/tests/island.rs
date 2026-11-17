@@ -6,10 +6,10 @@ use crate::app::island::{CLOSED_H, CLOSED_W, COMPACT_H, COMPACT_W, EXPANDED_W, T
 
 const SIZE: Vec2 = Vec2::new(1200.0, 800.0);
 
-fn chat(id: &str, name: &str) -> crate::app::chat::direct::Chat {
+fn chat(id: &str, agent: &str, name: &str) -> crate::app::chat::direct::Chat {
     crate::app::chat::direct::Chat {
         id: id.into(),
-        agent: "claude".into(),
+        agent: agent.into(),
         name: name.into(),
         cwd: "C:/p".into(),
         session: None,
@@ -25,7 +25,7 @@ fn chat(id: &str, name: &str) -> crate::app::chat::direct::Chat {
 fn app_with_island() -> DrawingApp {
     let mut app = DrawingApp::default();
     app.prefs.island = true;
-    app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
+    app.chats = vec![chat("a", "claude", "Claude Code · loja"), chat("b", "codex", "Codex · site")];
     app
 }
 
@@ -42,6 +42,14 @@ fn run(app: &mut DrawingApp, ctx: &Context, from: f64, to: f64, events: Vec<egui
         frame_at(app, ctx, time, events.clone());
         time += 0.05;
     }
+}
+
+/// One frame of the island; the texts it painted.
+fn painted(app: &mut DrawingApp, ctx: &Context, time: f64) -> Vec<String> {
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(time), events: vec![], ..Default::default() };
+    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
+    output.textures_delta.clear();
+    output.shapes.iter().filter_map(|shape| if let egui::Shape::Text(text) = &shape.shape { Some(text.galley.text().to_string()) } else { None }).collect()
 }
 
 /// One frame of the island, and the time it asked before the next one.
@@ -161,6 +169,21 @@ fn luna_dances_through_the_agents_work_and_stops_for_the_person() {
     for state in [MagoState::NeedsYou, MagoState::Asking, MagoState::Error] {
         assert!(!dances_through(state), "{state:?}");
     }
+}
+
+/// Asked ("o dono quer as duas: as do canvas (terminais do app rodando Claude Code e chats do app com agente claude) e
+/// as de fora"): Claude Code's page shows the app's Claude agents, each saying it is on the canvas, and not the others.
+#[test]
+fn the_claude_page_has_the_apps_agents_on_the_canvas() {
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    app.island_show_page(Tab::Claude);
+    run(&mut app, &ctx, 1.0, 1.4, vec![]);
+    assert_eq!(app.island.size().x, EXPANDED_W, "open on Claude Code");
+    let texts = painted(&mut app, &ctx, 1.5);
+    assert!(texts.iter().any(|text| text == "Claude Code · no canvas"), "{texts:?}");
+    assert!(texts.iter().any(|text| text == "loja"), "the chat's name in the grid: {texts:?}");
+    assert!(!texts.iter().any(|text| text.contains("site")), "the app's Codex is no Claude Code session ({:?}): {texts:?}", app.island.tab());
 }
 
 /// Asked ("se os hooks estão instalados aqui precisa saber"): the empty Claude Code page says so when they are in.
@@ -428,4 +451,95 @@ fn the_mcp_opens_each_page_and_hides_the_summary() {
     assert!(app.act("set_setting", &serde_json::json!({ "name": "island_page", "value": "nenhuma" })).is_err());
     app.act("set_setting", &serde_json::json!({ "name": "island_feed", "value": "hide_all" })).unwrap();
     app.act("set_setting", &serde_json::json!({ "name": "island_feed", "value": "show_hidden" })).unwrap();
+}
+
+/// The island as drawn: hung from the top centre.
+fn island_rect(app: &DrawingApp) -> Rect {
+    let size = app.island.size();
+    Rect::from_min_size(Pos2::new((SIZE.x / 2.0 - size.x / 2.0).round(), 0.0), size)
+}
+
+/// A header button, counted from the right: 0 the close, 1 the sound, 2 the settings, 3 the voice, 4 the size.
+fn right_button(app: &DrawingApp, index: usize) -> Pos2 {
+    let rect = island_rect(app);
+    Pos2::new(rect.right() - 25.0 - index as f32 * 32.0, rect.top() + 25.0)
+}
+
+/// A click as the hand makes it: the pointer comes, rests, presses, lets go; then a few frames for it to settle.
+fn click(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2) {
+    let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    for events in [vec![egui::Event::PointerMoved(at)], vec![egui::Event::PointerMoved(at)], vec![press(true)], vec![press(false)]] {
+        frame_at(app, ctx, *time, events);
+        *time += 0.05;
+    }
+    rest(app, ctx, time, at, 0.5);
+}
+
+/// The pointer still at `at` for `seconds`.
+fn rest(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2, seconds: f64) {
+    let end = *time + seconds;
+    while *time < end {
+        frame_at(app, ctx, *time, vec![egui::Event::PointerMoved(at)]);
+        *time += 0.05;
+    }
+}
+
+/// The app, its island opened by clicking on the compact pill, and the time it is at.
+fn opened() -> (DrawingApp, Context, f64) {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.prefs.island = true;
+    app.chats = vec![chat("a", "claude", "Claude Code · loja"), chat("b", "codex", "Codex · site")];
+    let mut time = 1.0;
+    let notch = Pos2::new(SIZE.x / 2.0, 10.0);
+    while time < 2.0 {
+        frame_at(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
+        time += 0.05;
+    }
+    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "compact on hover: {}", app.island.size().x);
+    let press = |pressed| egui::Event::PointerButton { pos: notch, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    frame_at(&mut app, &ctx, time, vec![press(true)]);
+    time += 0.05;
+    frame_at(&mut app, &ctx, time, vec![press(false)]);
+    time += 0.05;
+    while time < 3.0 {
+        frame_at(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
+        time += 0.05;
+    }
+    assert!((app.island.size().x - EXPANDED_W).abs() < 1.0, "clicked to open: {}", app.island.size().x);
+    (app, ctx, time)
+}
+
+/// Opening the app's Ajustes from the island's settings page sets app.settings_open true, closes the island's
+/// settings page, and folds the island back to compact.
+#[test]
+fn the_islands_settings_link_opens_app_settings_closes_island_settings_and_folds_to_compact() {
+    let (mut app, ctx, mut time) = opened();
+    // open the island's settings page via the gear button
+    let gear = right_button(&app, 2);
+    click(&mut app, &ctx, &mut time, gear);
+    assert!(app.island.settings_open(), "the gear opens the island's settings page");
+    assert_eq!(app.island.size().x, EXPANDED_W, "the island is expanded");
+    // find and click the "Ajustes…" link in the island's settings page
+    // the settings page is drawn inside the page area (PAGE_TOP = 42 from top, 10 from bottom)
+    // the link is on the third row (centers[2]) at the right side of the page
+    let rect = island_rect(&app);
+    let page_top = rect.top() + 42.0; // PAGE_TOP
+    let page_bottom = rect.bottom() - 10.0;
+    let page_center_y = (page_top + page_bottom) / 2.0;
+    // the three rows: 20, 24, 18 with 10 gap = 82 total, centered on page_center_y
+    // top = page_center_y - 41, centers[0] = top + 10 = page_center_y - 31
+    // centers[1] = top + 10 + 20 + 10 + 12 = page_center_y + 1
+    // centers[2] = top + 10 + 20 + 10 + 24 + 10 + 9 = page_center_y + 32
+    let centers_2 = page_center_y + 32.0;
+    let text_width = 55.0; // approximate width of "Ajustes…" in 11.5 font
+    let link_at = Pos2::new(rect.right() - 16.0 - text_width, centers_2 - 8.0);
+    click(&mut app, &ctx, &mut time, link_at);
+    // the app's settings window is now open
+    assert!(app.settings_open, "app.settings_open is true");
+    // the island's settings page is closed
+    assert!(!app.island.settings_open(), "the island's settings page is closed");
+    // the island has folded back to compact
+    rest(&mut app, &ctx, &mut time, link_at, 0.5);
+    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "the island folded to compact: {:?}", app.island.size());
 }
