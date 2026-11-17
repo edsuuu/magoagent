@@ -156,6 +156,18 @@ pub(crate) fn folder_label(cwd: &str) -> String {
     cwd.rsplit(['/', '\\']).next().filter(|s| !s.is_empty()).unwrap_or(cwd).to_string()
 }
 
+/// Whether `cwd` is the app's own folder, the one a chat runs in with no folder picked (`file::projects_dir`).
+pub(crate) fn no_folder(cwd: &str) -> bool {
+    let plain = |path: &str| path.trim().trim_end_matches(['/', '\\']).replace('\\', "/").to_lowercase();
+    crate::file::projects_dir().is_some_and(|dir| plain(cwd) == plain(&dir.display().to_string()))
+}
+
+/// A chat's name: its agent and its folder's, only the agent with no folder picked (asked: "no chat fica .magoagent,
+/// não é para ter, é para ficar Nenhuma pasta").
+pub(crate) fn chat_name(agent: &str, cwd: &str) -> String {
+    if no_folder(cwd) { agent.to_string() } else { format!("{agent} · {}", folder_label(cwd)) }
+}
+
 /// One of Codex's events (`codex exec --json`) into the conversation: its words, the commands it
 /// runs and the files it changes as steps, its errors.
 pub(crate) fn codex_event(transcript: &mut Transcript, event: &Value, now: f64) {
@@ -292,7 +304,7 @@ impl DrawingApp {
         let Some(preset) = installed.get(form.agent).or(installed.first()) else { return };
         let agent = preset.command.split_whitespace().next().unwrap_or("claude").to_string();
         let id = uuid::Uuid::new_v4().simple().to_string();
-        let name = format!("{} · {}", preset.name, folder_label(&form.cwd));
+        let name = chat_name(&preset.name, &form.cwd);
         self.chats.push(Chat {
             id: id.clone(),
             agent,
@@ -331,7 +343,7 @@ impl DrawingApp {
         chat.mode = mode;
         // a name the person gave stays
         if !chat.named {
-            chat.name = format!("{} · {}", preset.name, folder_label(&chat.cwd));
+            chat.name = chat_name(&preset.name, &chat.cwd);
         }
         chat.model.clear();
         chat.effort.clear();

@@ -191,7 +191,7 @@ impl DrawingApp {
             chat.cwd = projects.display().to_string();
             chat.session = None;
             let agent = chat.name.split(" · ").next().unwrap_or(&chat.agent).to_string();
-            chat.name = format!("{agent} · {}", folder_label(&chat.cwd));
+            chat.name = super::chat_name(&agent, &chat.cwd);
         }
     }
 
