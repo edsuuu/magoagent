@@ -120,6 +120,11 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="size 1440 900; wait 2000; clic
 - Ajustes › Agentes › "Invocação dos agentes" (`Prefs.agent_mode`): Terminal recruta um Claude Code num terminal; Chat
   recruta um cartão de chat (`chat/recruit_card.rs`). O Maestro para de recrutar acima do teto de agentes ou perto do
   fim da janela de 5 h do plano (`app/usage/`).
+- WSL (`app/system/wsl.rs`; Ajustes › Agentes › WSL, `set_setting wsl`): no Windows com o claude/codex só dentro de uma
+  distro, chats, recrutas e o uso do plano rodam por `wsl.exe -d <distro> --cd <pasta> --exec env PATH=… <agente>`, com os
+  caminhos traduzidos (`C:\x` ↔ `/mnt/c/x`, `\\wsl.localhost\<distro>\…`). Hooks e MCP chamam o exe por `/mnt/c/…`, a
+  ponte cruza por `WSLENV` e o `magoagent` do WSL é o script em `<dados>/wsl`. Automático só olha o WSL quando o Windows
+  não tem nenhum dos dois agentes. Um Claude Code de fora, no WSL: `claude mcp add magoagent -- /mnt/c/…/magoagent.exe mcp`.
 - Não existe mais nó IDE: o campo `ide` de cenas antigas vira uma Árvore na mesma pasta (`Element::take_legacy_ide`).
 
 ## MCP
