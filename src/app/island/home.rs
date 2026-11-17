@@ -374,8 +374,7 @@ fn round_mark(painter: &Painter, center: Pos2, color: Color32, ok: bool) {
     if ok {
         painter.add(Shape::line(vec![center + Vec2::new(-3.0, 0.2), center + Vec2::new(-0.8, 2.4), center + Vec2::new(3.2, -2.4)], stroke));
     } else {
-        painter.line_segment([center + Vec2::new(-2.5, -2.5), center + Vec2::new(2.5, 2.5)], stroke);
-        painter.line_segment([center + Vec2::new(2.5, -2.5), center + Vec2::new(-2.5, 2.5)], stroke);
+        cross(painter, center, 2.5, stroke);
     }
 }
 

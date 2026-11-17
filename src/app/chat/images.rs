@@ -290,11 +290,6 @@ pub(crate) fn clipped(p: &Painter, text: String, size: f32, color: Color32, widt
     p.layout_job(job)
 }
 
-pub(crate) fn cross(p: &Painter, at: Pos2, r: f32, stroke: Stroke) {
-    p.line_segment([at + Vec2::new(-r, -r), at + Vec2::new(r, r)], stroke);
-    p.line_segment([at + Vec2::new(r, -r), at + Vec2::new(-r, r)], stroke);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,7 +3,7 @@
 //! 1:1, the wheel), dragging to move, a minimap and the previous and next image.
 
 use crate::app::chat::image_key;
-use crate::app::chat::images::{Decoding, clipped, cross, decode, details, picture};
+use crate::app::chat::images::{Decoding, clipped, decode, details, picture};
 use crate::prelude::*;
 use crate::transcript::ChatItem;
 

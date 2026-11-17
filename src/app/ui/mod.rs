@@ -357,6 +357,12 @@ pub(crate) fn maestro_crown(p: &Painter, at: Pos2, zoom: f32, color: Color32) {
     }
 }
 
+/// An X at `at`, its arms `r` out to each side.
+pub(crate) fn cross(p: &Painter, at: Pos2, r: f32, stroke: Stroke) {
+    p.line_segment([at + Vec2::new(-r, -r), at + Vec2::new(r, r)], stroke);
+    p.line_segment([at + Vec2::new(r, -r), at + Vec2::new(-r, r)], stroke);
+}
+
 /// Pills in a row, centered; the chosen one filled. Returns true when the choice changed.
 pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], c: &UiColors) -> bool {
     let mut changed = false;

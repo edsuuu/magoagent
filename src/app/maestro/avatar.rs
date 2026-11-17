@@ -387,9 +387,7 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sh
     // close
     let close = close_button(rect);
     painter.circle_filled(close.center(), 14.0, CLOSE);
-    let c = close.center();
-    painter.line_segment([c + Vec2::new(-4.5, -4.5), c + Vec2::new(4.5, 4.5)], Stroke::new(1.8, Color32::WHITE));
-    painter.line_segment([c + Vec2::new(-4.5, 4.5), c + Vec2::new(4.5, -4.5)], Stroke::new(1.8, Color32::WHITE));
+    cross(painter, close.center(), 4.5, Stroke::new(1.8, Color32::WHITE));
 }
 
 /// Codex: OpenAI's mark on a light disc (assets/editor-icons/NOTICE); grey when muted.
