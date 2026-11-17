@@ -293,10 +293,7 @@ fn paragraph(ui: &mut egui::Ui, spans: &[Span], size: f32, color: Color32, inden
         };
         select_job.append(&span.text, 0.0, format);
     }
-    ui.put(
-        Rect::from_min_size(rect.min + Vec2::new(indent, 0.0), galley.size()),
-        egui::Label::new(select_job).wrap().selectable(true),
-    );
+    ui.put(Rect::from_min_size(rect.min + Vec2::new(indent, 0.0), galley.size()), egui::Label::new(select_job).wrap().selectable(true));
     rect
 }
 
