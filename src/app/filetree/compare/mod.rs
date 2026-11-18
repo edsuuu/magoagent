@@ -229,45 +229,43 @@ impl Compare {
         rows
     }
 
-    /// The colored text of `column` (0 the HEAD's, 1 the file's) with the changed words of its modified lines stronger, made
-    /// again only when the text, the diff or the size moved.
+    /// The colored text of `column` (0 the HEAD's, 1 the file's), made again only when the text or the size moved. The
+    /// changed words are not in it: `Look::line` paints them as spans as tall as the row (`word_spans`).
     pub(crate) fn colored(&mut self, column: usize, font: &egui::FontId, row_h: f32) -> (u64, egui::text::LayoutJob) {
         let text = if column == 0 { &self.old } else { &self.new };
         let key = crate::editor::text::hash(text, font.size);
         if let Some(made) = self.jobs[column].as_ref().filter(|(made, _)| *made == key) {
             return made.clone();
         }
-        let starts: Vec<usize> = text
-            .split('\n')
-            .scan(0, |at, line| {
-                let start = *at;
-                *at += line.len() + 1;
-                Some(start)
-            })
-            .collect();
-        let mut job = highlight::layout(self.lang, text, font.clone(), row_h);
-        for item in &self.items[column] {
-            let Item::Line { row, partner: Some(other) } = item else { continue };
-            if row.kind != RowKind::Change {
-                continue;
-            }
-            let (line, marks) = match (column, row.left, row.right) {
-                (0, Some(line), _) => (line, word_marks_of(&self.old_lines, &self.new_lines, line, *other).0),
-                (1, _, Some(line)) => (line, word_marks_of(&self.old_lines, &self.new_lines, *other, line).1),
-                _ => continue,
-            };
-            let Some(&start) = starts.get(line) else { continue };
-            let word = if column == 0 { REMOVED_WORD } else { ADDED_WORD };
-            for mark in marks {
-                crate::editor::editor::restyle(&mut job, start + mark.start..start + mark.end, |format| format.background = word);
-            }
-        }
+        let job = highlight::layout(self.lang, text, font.clone(), row_h);
         self.jobs[column] = Some((key, job.clone()));
         (key, job)
     }
 }
 
-/// The changed words of old line `old` against new line `new`, as byte ranges of each.
-fn word_marks_of(old_lines: &[String], new_lines: &[String], old: usize, new: usize) -> (Vec<Range<usize>>, Vec<Range<usize>>) {
-    crate::editor::word_marks(old_lines.get(old).map_or("", String::as_str), new_lines.get(new).map_or("", String::as_str))
+/// The changed words of a modified line as the spans painted under it: marks with only blanks between them are one span
+/// (no holes at the spaces), blanks at a span's ends left out, and a line changed nearly whole has none (its row's color
+/// already says it).
+pub(crate) fn word_spans(text: &str, marks: Vec<Range<usize>>) -> Vec<Range<usize>> {
+    let mut spans: Vec<Range<usize>> = vec![];
+    for mark in marks {
+        let (start, end) = (mark.start.min(text.len()), mark.end.min(text.len()));
+        let Some(piece) = text.get(start..end) else { continue };
+        let trimmed = piece.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let start = start + (piece.len() - piece.trim_start().len());
+        let end = start + trimmed.len();
+        match spans.last_mut() {
+            Some(last) if text.get(last.end..start).is_some_and(|gap| gap.trim().is_empty()) => last.end = end,
+            _ => spans.push(start..end),
+        }
+    }
+    let content = text.chars().filter(|character| !character.is_whitespace()).count();
+    let marked: usize = spans.iter().map(|span| text[span.clone()].chars().filter(|character| !character.is_whitespace()).count()).sum();
+    if content == 0 || marked * 10 >= content * 7 {
+        return vec![];
+    }
+    spans
 }

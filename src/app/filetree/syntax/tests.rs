@@ -53,3 +53,14 @@ fn blade() {
     assert!(!found("blade", "@php\n  $a = ;\n@endphp\n").is_empty());
     assert!(!found("blade", "@if ($a >)\n@endif\n").is_empty());
 }
+
+/// Asked: "sintaxe do blade está bugada, `@foreach` sem `@endforeach` mas tem": what Blade itself takes as text or as a
+/// whole directive is no block left open.
+#[test]
+fn blade_escapes_and_one_line_directives_open_no_block() {
+    assert_eq!(found("blade", "Escreva @@foreach para mostrar a diretiva\n"), vec![], "`@@` is Blade's escape");
+    assert_eq!(found("blade", "@foreach ($a as $b)\n  @php($c = $b)\n  @slot('titulo', 'Lista')\n@endforeach\n"), vec![]);
+    assert_eq!(found("blade", "@foreach ($a as $b)\n<p>{{ $b }}</p>@endforeach\n<a href=\"mailto:a@b.com\">x</a>\n"), vec![]);
+    assert_eq!(found("blade", "@slot('titulo')\nLista\n"), vec![(0, 0, "`@slot` sem `@endslot`".to_string())], "a block slot still waits");
+    assert_eq!(found("blade", "@hasSection('menu')\n  @yield('menu')\n@endif\n@sectionMissing('x')\n@endif\n"), vec![], "closed by `@endif`");
+}

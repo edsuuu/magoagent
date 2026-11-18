@@ -315,3 +315,44 @@ fn a_search_across_lines_finds_what_one_line_cannot() {
     assert_eq!(Ask { regex: true, ..ask(r"^\s+montar") }.run_now(&dir).unwrap().len(), 1);
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// Asked: "na Árvore, se eu aperto Ctrl+Z para voltar, o foco vai para a última linha do arquivo". The first undo step is
+/// kept with the caret egui puts at the text's end; the caret goes instead to what the undo put back.
+#[test]
+fn ctrl_z_in_the_editor_leaves_the_caret_where_the_change_was() {
+    use crate::app::filetree::code::changed_at;
+    assert_eq!(changed_at("abXc", "abc"), 2, "a letter taken out: where it was");
+    assert_eq!(changed_at("abc", "abXYc"), 4, "text put back: its end");
+    assert_eq!(changed_at("aa", "aaa"), 3);
+    assert_eq!(changed_at("ção", "çã"), 2, "in characters");
+    let ctx = Context::default();
+    install_fonts(&ctx, false);
+    let dir = temp("undo");
+    let file = dir.join("a.txt");
+    let lines: Vec<String> = (1..=80).map(|n| format!("linha {n}")).collect();
+    fs::write(&file, lines.join("\n") + "\n").unwrap();
+    let mut app = DrawingApp::default();
+    let tree = tree_on(&mut app, &dir);
+    app.ft_open(&tree, file.clone(), true);
+    for index in 0..4 {
+        tree_frame(&mut app, &ctx, 100.0 + index as f64 * 0.02, vec![]);
+    }
+    let text_of = |app: &DrawingApp| match &app.filetrees.editors[&tree].tabs[0].body {
+        Body::Text(t) => t.text.clone(),
+        _ => panic!("not a text"),
+    };
+    // the caret to line 2, as a click puts it, and a letter typed there
+    if let Body::Text(t) = &mut app.filetrees.editors.get_mut(&tree).unwrap().tabs[0].body {
+        t.jump = Some((1, 7));
+    }
+    tree_frame(&mut app, &ctx, 101.0, vec![]);
+    tree_frame(&mut app, &ctx, 101.1, vec![egui::Event::Text("X".into())]);
+    assert!(text_of(&app).starts_with("linha 1\nlinha 2X\n"), "the letter was not typed: {:?}", &text_of(&app)[..20]);
+    tree_frame(&mut app, &ctx, 103.0, vec![key(Key::Z, Modifiers::COMMAND)]);
+    tree_frame(&mut app, &ctx, 103.1, vec![]);
+    assert!(text_of(&app).starts_with("linha 1\nlinha 2\nlinha 3"), "the undo did not take the letter out");
+    let id = egui::Id::unique(("ft_text", file.to_string_lossy().as_ref()));
+    let caret = egui::TextEdit::load_state(&ctx, id).and_then(|state| state.cursor.char_range()).map(|range| range.primary.index.0);
+    assert_eq!(caret, Some("linha 1\nlinha 2".chars().count()), "the caret stays where the letter was, not at the file's end");
+    let _ = fs::remove_dir_all(&dir);
+}

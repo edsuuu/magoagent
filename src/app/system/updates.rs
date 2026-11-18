@@ -162,8 +162,10 @@ pub(crate) fn later_holds(later: Option<i64>, now: i64, boot: Option<i64>) -> bo
     later.is_some_and(|at| now - at < LATER_MS && boot.is_none_or(|boot| boot < at))
 }
 
-/// When this computer started (ms since 1970), from how long it has been up; None where that is not known.
-pub(crate) fn boot_ms(now: i64) -> Option<i64> {
+/// When this computer started (ms since 1970), from how long it has been up; None where that is not known. By the real
+/// clock: the check's `now` may be a time asked for (the tests'), and the uptime is always today's.
+pub(crate) fn boot_ms() -> Option<i64> {
+    let now = now_ms();
     #[cfg(windows)]
     {
         // SAFETY: a plain call with no arguments
@@ -312,7 +314,7 @@ impl DrawingApp {
         match message {
             Msg::Checked(Ok(Some(release))) => {
                 if is_newer(&release.version, env!("CARGO_PKG_VERSION")) {
-                    let wanted = release.version != self.prefs.update_skipped && !later_holds(self.prefs.update_later, now, boot_ms(now));
+                    let wanted = release.version != self.prefs.update_skipped && !later_holds(self.prefs.update_later, now, boot_ms());
                     if self.updates.automatic && wanted && self.changelog.is_none() {
                         if changelog_allowed(self.script.is_some()) {
                             self.updates.offer = Some(release.clone());
