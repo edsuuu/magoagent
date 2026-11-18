@@ -148,6 +148,14 @@ impl DrawingApp {
         self.island.github = state;
     }
 
+    /// Ctrl+O on the tab: the pull request shown opens in the browser, as Abrir no navegador.
+    pub(super) fn github_open_shown(&self) {
+        let (Some(pulse), state) = (&self.integrations.github.pulse, &self.island.github) else { return };
+        if let Some(request) = shown(&pulse.listed(state.filter), state.picked.as_deref()).filter(|_| !state.activity) {
+            self.integrations.pressed.borrow_mut().push(format!("open {}", request.page()));
+        }
+    }
+
     /// The filters, the rows and the footer.
     fn github_list(&self, ui: &mut egui::Ui, card: Rect, pulse: &Pulse, list: &[&PullRequest], state: &mut Page) {
         let inner = card.shrink2(Vec2::new(12.0, 10.0));
@@ -177,6 +185,19 @@ impl DrawingApp {
         if list.is_empty() {
             ui.painter().text(rows.center(), egui::Align2::CENTER_CENTER, "Nenhum pull request neste filtro", font(12.0), DIM_3);
         }
+        // Ctrl+↓ and Ctrl+↑ pick the next and the one before, its row scrolled into sight
+        let step = ui.input_mut(|input| match (input.consume_key(Modifiers::CTRL, Key::ArrowDown), input.consume_key(Modifiers::CTRL, Key::ArrowUp)) {
+            (true, _) => 1,
+            (_, true) => -1,
+            _ => 0,
+        });
+        let mut reveal = None;
+        if step != 0 && !list.is_empty() {
+            let at = shown(list, state.picked.as_deref()).and_then(|request| list.iter().position(|other| other.id == request.id)).unwrap_or(0);
+            let next = (at as isize + step).clamp(0, list.len() as isize - 1) as usize;
+            (state.picked, state.activity) = (Some(list[next].id.clone()), false);
+            reveal = state.picked.clone();
+        }
         let shown_id = shown(list, state.picked.as_deref()).map(|request| request.id.clone()).filter(|_| !state.activity);
         let now = now_ms();
         ui.scope_builder(egui::UiBuilder::new().max_rect(rows), |ui| {
@@ -186,6 +207,9 @@ impl DrawingApp {
                 for request in list {
                     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::click());
                     let response = response.on_hover_cursor(CursorIcon::PointingHand);
+                    if reveal.as_deref() == Some(request.id.as_str()) {
+                        response.scroll_to_me(None);
+                    }
                     if response.hovered() || shown_id.as_deref() == Some(request.id.as_str()) {
                         ui.painter().rect_filled(rect, 10, HOVER);
                     }
@@ -379,7 +403,8 @@ impl DrawingApp {
             });
         });
         let mut x = inner.left();
-        let open = forms::chip(ui, Pos2::new(x, buttons_y), "Abrir no navegador", true);
+        let open =
+            forms::chip(ui, Pos2::new(x, buttons_y), "Abrir no navegador", true).on_hover_text("Ctrl+O · Ctrl+↓ e Ctrl+↑ passam de um pull request a outro");
         if open.clicked() {
             self.integrations.pressed.borrow_mut().push(format!("open {}", request.page()));
         }

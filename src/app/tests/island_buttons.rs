@@ -493,6 +493,20 @@ fn the_github_tab_shows_the_contribution_calendar() {
     painted(&mut app, &ctx, time, "Abrir no navegador");
 }
 
+/// Ctrl+↓ and Ctrl+↑ walk the GitHub tab's list, and Ctrl+O opens the one shown.
+#[test]
+fn the_github_tab_walks_its_list_by_the_keyboard() {
+    let (mut app, ctx, mut time) = github_tab();
+    let key = |key, modifiers| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
+    step(&mut app, &ctx, time, vec![key(egui::Key::ArrowDown, Modifiers::CTRL)]);
+    time += 0.05;
+    step(&mut app, &ctx, time, vec![]);
+    assert!(app.github_detail_loading("time/api#310"), "the second row is picked and read");
+    step(&mut app, &ctx, time + 0.05, vec![key(egui::Key::ArrowUp, Modifiers::CTRL), key(egui::Key::ArrowUp, Modifiers::CTRL)]);
+    step(&mut app, &ctx, time + 0.1, vec![key(egui::Key::O, Modifiers::CTRL)]);
+    assert_eq!(app.integrations.pressed.borrow().as_slice(), ["open https://github.com/ana-dev/loja/pull/42"], "back at the first, never before it");
+}
+
 /// The Spotify tab: its height, aleatório pressed, and a song of the queue played at once, not skipped to.
 #[test]
 fn the_spotify_tab_plays_what_is_pressed() {
