@@ -165,17 +165,21 @@ impl DrawingApp {
     }
 
     /// A terminal the Maestro recruits is a new agent: a name from AGENT_NAMES no terminal in any
-    /// workspace has, at random ("Fumaça 2" once all are taken).
+    /// workspace (the one on screen and the ones off view) nor any chat has, in any case, at random
+    /// ("Fumaça 2" once all are taken).
     pub(crate) fn agent_name(&self) -> String {
         use std::hash::BuildHasher;
         let roll = std::collections::hash_map::RandomState::new().hash_one(0u8) as usize;
-        let taken = |name: &str| {
-            self.scene.elements.iter().any(|e| e.terminal.as_ref().is_some_and(|t| t.name == name)) || self.chats.iter().any(|c| c.recruit && c.name == name)
-        };
+        let terminals = self.scene.elements.iter().filter_map(|e| e.terminal.as_ref()).chain(self.away.values().map(|(_, spec)| spec));
+        let names: Vec<&str> = terminals.map(|t| t.name.as_str()).chain(self.chats.iter().map(|c| c.name.as_str())).collect();
+        let taken = |name: &str| names.iter().any(|other| other.to_lowercase() == name.to_lowercase());
         let free: Vec<&str> = AGENT_NAMES.iter().copied().filter(|n| !taken(n)).collect();
         match free.get(roll % free.len().max(1)) {
             Some(name) => name.to_string(),
-            None => self.unique_terminal_name(AGENT_NAMES[roll % AGENT_NAMES.len()], None),
+            None => {
+                let base = AGENT_NAMES[roll % AGENT_NAMES.len()];
+                (2..).map(|count| format!("{base} {count}")).find(|name| !taken(name)).unwrap_or_default()
+            }
         }
     }
 

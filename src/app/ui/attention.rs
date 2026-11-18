@@ -2,7 +2,7 @@
 //! próximo, the same as ⌘⇧A) and "Agentes deste espaço" (one row per agent of the space on screen, foldable).
 
 use crate::app::hotkeys::local::AppAction;
-use crate::app::island::agent_color;
+use crate::app::mascot::identity::distinct_names;
 use crate::app::mascot::mago::{MagoState, paint_mini, paint_mini_still};
 use crate::app::ui::agents::{AMBER, AgentRow, AgentState};
 use crate::app::ui::sidebar::Tones;
@@ -155,8 +155,10 @@ impl DrawingApp {
                     t.muted,
                 );
             }
-            for row in &agents {
-                if self.agent_row_ui(ui, t, row) {
+            // no two by the same name (a chat and a terminal both "Claude Code"): the next take a number
+            let names = distinct_names(&agents.iter().map(|row| row.spec.label().to_string()).collect::<Vec<_>>());
+            for (row, name) in agents.iter().zip(names) {
+                if self.agent_row_ui(ui, t, row, name) {
                     picked = Some(Attention::Agent(row.id.clone()));
                 }
             }
@@ -165,18 +167,17 @@ impl DrawingApp {
         picked
     }
 
-    /// One agent: its mini wizard in its color, its name, and its state with the last thing it said. True when clicked.
-    fn agent_row_ui(&self, ui: &mut egui::Ui, t: &Tones, row: &AgentRow) -> bool {
+    /// One agent: its mini wizard in its color, its `name`, and its state with the last thing it said. True when clicked.
+    fn agent_row_ui(&self, ui: &mut egui::Ui, t: &Tones, row: &AgentRow, name: String) -> bool {
         let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), AGENT_ROW), Sense::click());
         let painter = ui.painter().clone();
         let on = self.selected.iter().any(|&index| self.scene.elements.get(index).is_some_and(|element| element.id == row.id));
         if on || ui.rect_contains_pointer(rect) {
             painter.rect_filled(rect, 7, if on { t.active } else { t.hover });
         }
-        let program = row.spec.command.split_whitespace().next().unwrap_or_default().to_lowercase();
         let mini = Pos2::new(rect.left() + 19.0, rect.center().y);
         // at rest it is drawn still, and one scrolled out of the list not at all: a sidebar at rest asks for no frames
-        let (id, color, state) = (format!("sidebar-{}", row.id), agent_color(&program, &row.id), MagoState::from_agent(row.state, self.now));
+        let (id, color, state) = (format!("sidebar-{}", row.id), self.agent_color(&row.id), MagoState::from_agent(row.state, self.now));
         if ui.is_rect_visible(rect) && matches!(state, MagoState::Idle | MagoState::Sleeping) {
             paint_mini_still(&painter, &id, mini, 20.0, color, state);
         } else if ui.is_rect_visible(rect) {
@@ -184,7 +185,7 @@ impl DrawingApp {
         }
         let text = Rect::from_min_max(Pos2::new(rect.left() + 36.0, rect.top()), Pos2::new(rect.right() - 6.0, rect.bottom()));
         let clipped = painter.with_clip_rect(text);
-        clipped.text(Pos2::new(text.left(), rect.top() + 12.0), egui::Align2::LEFT_CENTER, row.spec.label(), FontId::proportional(14.0), t.text);
+        clipped.text(Pos2::new(text.left(), rect.top() + 12.0), egui::Align2::LEFT_CENTER, name, FontId::proportional(14.0), t.text);
         let last = row.mission.clone().or_else(|| self.state_note(row));
         let sub = match last {
             Some(last) => format!("{} · {last}", state_word(row.state)),

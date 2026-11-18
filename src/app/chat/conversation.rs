@@ -104,7 +104,7 @@ impl DrawingApp {
                         .collect();
                     let state = if steps.last().is_some_and(|(.., failed)| *failed) { MagoState::Error } else { MagoState::from_agent(row.state, self.now) };
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(56.0, 52.0), Sense::hover());
-                    paint_mago_for(ui.painter(), &format!("{}-end", row.id), rect.center(), 52.0, state, time);
+                    paint_agent_mago(ui.painter(), &format!("{}-end", row.id), self.agent_color(&row.id), rect.center(), 52.0, state, time);
                 }
             }
             // a session outside the app before its first message, or one whose file the app does not read
@@ -114,7 +114,7 @@ impl DrawingApp {
             _ if only_chat => {
                 if crate::app::mascot::claude(&row.spec) {
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 130.0), Sense::hover());
-                    paint_mago_for(ui.painter(), &format!("{}-welcome", row.id), rect.center(), 130.0, MagoState::Idle, time);
+                    paint_agent_mago(ui.painter(), &format!("{}-welcome", row.id), self.agent_color(&row.id), rect.center(), 130.0, MagoState::Idle, time);
                 }
                 // which agent answers, chosen before the first message
                 let fresh = self.chats.iter().any(|c| c.id == row.id && c.session.is_none());

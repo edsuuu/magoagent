@@ -1,5 +1,6 @@
-//! The mascots: Luna (`mago/`), and whether an agent is Claude Code's.
+//! The mascots: Luna (`mago/`), each agent's colour and name (`identity.rs`), and whether an agent is Claude Code's.
 
+pub(crate) mod identity;
 pub(crate) mod mago;
 
 use crate::prelude::*;

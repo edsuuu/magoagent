@@ -131,13 +131,13 @@ fn pill_names(events: &[(&str, &str, &str)]) -> Vec<String> {
 #[test]
 fn claude_desktop_and_the_cli_are_told_apart_one_pill_per_folder() {
     // asked: "ele não está fazendo a diferenciação entre o Claude Code Desktop e o Claude Code CLI"
-    assert_eq!(pill_names(&[("s1", "C:/Users/eu/loja", "claude-desktop"), ("s2", "C:/Users/eu/loja", "cli")]), ["Claude Desktop · loja", "Claude Code · loja"]);
+    assert_eq!(pill_names(&[("s1", "C:/Users/eu/loja", "claude-desktop"), ("s2", "C:/Users/eu/loja", "cli")]), ["loja", "loja 2"]);
     // two sessions of the Desktop in two folders are two pills, as the CLI's are; one folder, one pill
     assert_eq!(
         pill_names(&[("s1", "C:/Users/eu/loja", "claude-desktop"), ("s2", "C:/Users/eu/site", "claude-desktop"), ("s3", "C:/Users/eu/loja", "claude-desktop")]),
-        ["Claude Desktop · loja", "Claude Desktop · site"]
+        ["loja", "site"]
     );
-    assert_eq!(pill_names(&[("s1", "C:/Users/eu/loja", "cli"), ("s2", "C:/Users/eu/site", "cli")]), ["Claude Code · loja", "Claude Code · site"]);
+    assert_eq!(pill_names(&[("s1", "C:/Users/eu/loja", "cli"), ("s2", "C:/Users/eu/site", "cli")]), ["loja", "site"]);
     // the Desktop's pills keep its colour and take no messages from the app (it is answered in its window)
     let mut app = island_app();
     for (session, cwd) in [("s1", "/a"), ("s2", "/b")] {
@@ -184,7 +184,7 @@ fn a_question_from_claude_desktop_reaches_the_island_and_the_answer_goes_back() 
         assert_eq!(asks[0].questions.len(), 2);
     }
     let pills = app.outside_pills();
-    assert_eq!((pills[0].name.as_str(), pills[0].color), ("Claude Desktop · loja", Color32::from_rgb(0xd9, 0x77, 0x57)));
+    assert_eq!((pills[0].label().as_str(), pills[0].color), ("Claude Desktop · loja", Color32::from_rgb(0xd9, 0x77, 0x57)));
     assert_eq!(pills[0].badge, Some(Badge::Approval), "the dot while something waits");
     assert_eq!(pills[0].state, crate::app::ui::agents::AgentState::Waiting);
     assert!(output.recv_timeout(Duration::from_millis(200)).is_err(), "the hook waits");
@@ -349,7 +349,7 @@ fn the_turn_going_on_or_ending_drops_the_card_and_the_badge_comes_and_goes() {
     let (reply, output) = mpsc::channel();
     app.take_hook("ext:s1", &hook("PreToolUse", "Bash", json!({ "command": "ls" })), None);
     assert_eq!(app.outside_pills()[0].state, crate::app::ui::agents::AgentState::Working(0.0));
-    assert_eq!(app.outside_pills()[0].name, "Claude Code · loja");
+    assert_eq!((app.outside_pills()[0].name.as_str(), app.outside_pills()[0].label().as_str()), ("loja", "Claude Code · loja"));
     app.take_hook("ext:s1", &hook("PermissionRequest", "Bash", json!({ "command": "ls" })), Some(reply));
     assert_eq!(app.person_asks.borrow().len(), 1);
     // answered in the terminal: the same call finished
