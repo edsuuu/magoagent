@@ -10,6 +10,7 @@ enum Areas {
         for name in order where names.contains(name) {
             switch name {
             // ÁREAS: um caso por área, ex.: case "island": IslandArea.start()
+            case "chat": ChatArea.start()
             case "canvas": CanvasArea.start()
             case "island": IslandArea.start()
             case "shell": ShellArea.start()

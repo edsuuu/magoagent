@@ -25,6 +25,8 @@ pub(crate) mod media;
 pub(crate) mod mini;
 pub(crate) mod mini_agents;
 pub(crate) mod mini_window;
+#[cfg(target_os = "macos")]
+mod native;
 pub(crate) mod node;
 pub(crate) mod node_ui;
 pub(crate) mod queue;
@@ -47,6 +49,11 @@ use crate::transcript::{ChatItem, Transcript, claude_dir};
 
 impl DrawingApp {
     pub(crate) fn chat_screen(&mut self, ctx: &Context) {
+        // on the Mac with the chat in SwiftUI (chat/native.rs) egui draws none of it
+        #[cfg(target_os = "macos")]
+        if crate::app::native::enabled("chat") {
+            return;
+        }
         if !self.chat_open {
             return;
         }

@@ -278,6 +278,11 @@ impl DrawingApp {
 
     /// Every frame: the pill (or the panel) over the canvas while a conversation was left open.
     pub(crate) fn mini_chat_ui(&mut self, ctx: &Context) {
+        // on the Mac with the chat in SwiftUI: no egui mini chat, only what SwiftUI sent that needs the frame (chat/native.rs)
+        #[cfg(target_os = "macos")]
+        if crate::app::native::enabled("chat") {
+            return self.native_chat_frame(ctx);
+        }
         if !self.mini.open {
             self.mini.opened_at = None;
         }
