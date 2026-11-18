@@ -151,24 +151,6 @@ impl eframe::App for DrawingApp {
         self.handle_shortcuts(&ctx);
         self.sync_filetrees(&ctx);
         self.sync_terminals(&ctx);
-        self.memory.update(
-            self.terminals
-                .iter()
-                .filter_map(|(id, session)| {
-                    let session = session.as_ref().ok()?;
-                    let name = self
-                        .scene
-                        .elements
-                        .iter()
-                        .find(|e| e.id == *id)
-                        .and_then(|e| e.terminal.as_ref())
-                        .or(self.away.get(id).map(|(_, spec)| spec))
-                        .map(|t| t.name.clone())
-                        .unwrap_or_else(|| id.clone());
-                    Some((name, session.shell_pid))
-                })
-                .collect(),
-        );
         self.voice_tick(&ctx);
         self.dictation_tick(&ctx);
         wsl_choose(&self.prefs.wsl);

@@ -206,7 +206,6 @@ impl Default for DrawingApp {
             bridge: None,
             script: None,
             perf: None,
-            memory: system::memory::Monitor::new(),
             context: None,
             rename: None,
             note_color: None,

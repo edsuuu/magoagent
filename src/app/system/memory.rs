@@ -1,10 +1,8 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::{
-        Arc, Mutex, RwLock,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+//! The memory of the app and of each terminal's processes, for the MCP's `memory`: measured when it is asked, on the
+//! action's own thread (`act_later`), never on a timer the whole session long.
+
+use crate::prelude::*;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct TerminalMemory {
@@ -16,18 +14,6 @@ pub(crate) struct TerminalMemory {
 pub(crate) struct Snapshot {
     pub app_bytes: Option<u64>,
     pub terminals: Vec<TerminalMemory>,
-}
-#[derive(Clone, Default)]
-pub(crate) struct Monitor {
-    input: Arc<Mutex<Vec<(String, u32)>>>,
-    output: Arc<RwLock<Snapshot>>,
-    started: Arc<AtomicBool>,
-    /// When it was last asked for (seconds since 1970): unasked for a while, the thread goes.
-    asked: Arc<std::sync::atomic::AtomicU64>,
-}
-
-fn now_secs() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |duration| duration.as_secs())
 }
 
 /// Whether `pid` is one of `roots` or comes from one (its parent, its parent's parent…).
@@ -44,43 +30,38 @@ fn descends(parents: &HashMap<u32, u32>, mut pid: u32, roots: &HashSet<u32>) -> 
     false
 }
 
-impl Monitor {
-    pub(crate) fn new() -> Self {
-        Self::default()
+/// The app's memory and each terminal's (its name, its shell's pid), read now: the process table and the size of the
+/// shells and of what comes from them, not of every process of the system. It reads `/proc` (Linux) or runs `ps`
+/// (macOS): never on the interface's thread.
+pub(crate) fn measure(terminals: &[(String, u32)]) -> Snapshot {
+    let parents = crate::transcript::process::parents();
+    let roots: HashSet<u32> = terminals.iter().map(|(_, pid)| *pid).collect();
+    let mut pids = parents.keys().copied().filter(|pid| descends(&parents, *pid, &roots)).collect::<Vec<_>>();
+    pids.extend(roots.iter().copied());
+    pids.sort_unstable();
+    pids.dedup();
+    let sizes = pids.into_iter().filter_map(|pid| process_memory(pid).map(|bytes| (pid, bytes))).collect::<HashMap<_, _>>();
+    Snapshot { app_bytes: process_memory(std::process::id()), terminals: summarize(&parents, &sizes, terminals) }
+}
+
+impl DrawingApp {
+    /// The terminals whose shell runs, by name, with the shell's pid: what `measure` is asked about.
+    pub(crate) fn memory_terminals(&self) -> Vec<(String, u32)> {
+        self.terminals
+            .iter()
+            .filter_map(|(id, session)| {
+                let session = session.as_ref().ok()?;
+                let spec = self.scene.elements.iter().find(|element| element.id == *id).and_then(|element| element.terminal.as_ref());
+                let name = spec.or(self.away.get(id).map(|(_, spec)| spec)).map_or_else(|| id.clone(), |spec| spec.name.clone());
+                Some((name, session.shell_pid))
+            })
+            .collect()
     }
-    pub(crate) fn update(&self, terminals: Vec<(String, u32)>) {
-        *self.input.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = terminals;
-        self.asked.store(now_secs(), Ordering::Relaxed);
-        if self.started.compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
-            let input = Arc::downgrade(&self.input);
-            let output = Arc::downgrade(&self.output);
-            let (started, asked) = (self.started.clone(), self.asked.clone());
-            std::thread::spawn(move || {
-                while let (Some(input), Some(output)) = (input.upgrade(), output.upgrade()) {
-                    // nobody looks (the tab closed, no agent asks): the measuring stops until the next ask
-                    if now_secs().saturating_sub(asked.load(Ordering::Relaxed)) > 10 {
-                        started.store(false, Ordering::Relaxed);
-                        break;
-                    }
-                    let terminals = input.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
-                    let parents = crate::transcript::process::parents();
-                    // only the shells and what comes from them: not every process of the system
-                    let roots: HashSet<u32> = terminals.iter().map(|(_, pid)| *pid).collect();
-                    let mut pids = parents.keys().copied().filter(|pid| descends(&parents, *pid, &roots)).collect::<Vec<_>>();
-                    pids.extend(roots.iter().copied());
-                    pids.sort_unstable();
-                    pids.dedup();
-                    let sizes = pids.into_iter().filter_map(|pid| process_memory(pid).map(|bytes| (pid, bytes))).collect::<HashMap<_, _>>();
-                    let rows = summarize(&parents, &sizes, &terminals);
-                    let app_bytes = process_memory(std::process::id());
-                    *output.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = Snapshot { app_bytes, terminals: rows };
-                    std::thread::sleep(std::time::Duration::from_secs(2));
-                }
-            });
-        }
-    }
-    pub(crate) fn snapshot(&self) -> Snapshot {
-        self.output.read().unwrap_or_else(|poisoned| poisoned.into_inner()).clone()
+
+    /// The MCP's `memory`, measured on the action's thread: the app goes on drawing meanwhile.
+    pub(crate) fn memory_job(&self) -> Box<dyn FnOnce() -> Result<String, String> + Send> {
+        let terminals = self.memory_terminals();
+        Box::new(move || Ok(format(&measure(&terminals))))
     }
 }
 

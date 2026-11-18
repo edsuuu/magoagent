@@ -501,3 +501,15 @@ fn windows_an_agent_stacks_go_around_it() {
     assert!(element_bounds(scene.elements.iter().find(|e| e.id == "tres").unwrap()).contains(label), "the label went along");
     assert_eq!(at("caixa"), Pos2::new(10.0, 10.0), "a shape is no window");
 }
+
+/// The memory is read when the MCP asks, on the action's own thread (no monitor scanning the processes every 2 s the
+/// whole session, from the interface's frame).
+#[test]
+fn memory_is_measured_when_asked_off_the_interface_thread() {
+    let mut app = crate::app::DrawingApp::default();
+    let job = app.act_later("memory", &json!({})).expect("the memory goes by a job, not the frame");
+    let report = std::thread::spawn(job).join().unwrap().unwrap();
+    assert!(report.starts_with("MagoAgent: ") && report.ends_with("Agentes: 0,0 MiB em 0 terminais"), "{report}");
+    // the app's own memory, read from the system
+    assert!(!report.contains("indisponível"), "{report}");
+}

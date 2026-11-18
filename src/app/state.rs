@@ -360,7 +360,6 @@ pub(crate) struct DrawingApp {
     pub(crate) script: Option<Script>,
     /// MAGOAGENT_PERF: frames and their CPU, measured (app/script.rs).
     pub(crate) perf: Option<system::script::Perf>,
-    pub(crate) memory: system::memory::Monitor,
     /// The right-click menu open now (ui/context.rs).
     pub(crate) context: Option<ui::context::ContextMenu>,
     /// Renomear: the element being renamed and the name typed so far.
