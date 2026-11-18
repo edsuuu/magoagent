@@ -12,6 +12,7 @@ enum Areas {
             // ÁREAS: um caso por área, ex.: case "island": IslandArea.start()
             case "canvas": CanvasArea.start()
             case "island": IslandArea.start()
+            case "shell": ShellArea.start()
             case "probe": ProbeArea.start()
             default: break
             }

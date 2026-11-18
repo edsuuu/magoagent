@@ -14,6 +14,9 @@ pub(crate) mod links;
 pub(crate) mod menu_look;
 pub(crate) use menu_look::*;
 mod menus;
+// not `pub`: the prelude globs `ui::*` and `app::native` (the bridge) must stay the one `native` it sees
+#[cfg(target_os = "macos")]
+mod native;
 pub(crate) mod nodes;
 pub(crate) mod palette;
 mod properties;

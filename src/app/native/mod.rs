@@ -148,6 +148,9 @@ impl DrawingApp {
         if enabled("island") {
             self.native_island();
         }
+        if enabled("shell") {
+            self.native_shell();
+        }
     }
 
     /// One envelope: its answer, or None when it runs on a thread (the answer comes through `LATER`).
@@ -191,6 +194,7 @@ impl DrawingApp {
             // Some(("island", verb)) => self.native_island_act(verb, args),
             Some(("canvas", verb)) => self.native_canvas_act(verb, args),
             Some(("island", verb)) => self.native_island_act(verb, args),
+            Some(("shell", verb)) => self.native_shell_act(verb, args),
             _ => Err(format!("ação de interface desconhecida: ui.{name}")),
         }
     }

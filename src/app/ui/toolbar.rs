@@ -402,7 +402,7 @@ impl DrawingApp {
 
 /// How long a toast stays: 3 s, and longer the more there is to read (a warning with where a file
 /// was kept takes more than a glance), up to 12 s.
-fn toast_seconds(text: &str) -> f64 {
+pub(super) fn toast_seconds(text: &str) -> f64 {
     (text.chars().count() as f64 / 18.0 + 1.5).clamp(3.0, 12.0)
 }
 
