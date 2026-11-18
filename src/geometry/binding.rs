@@ -76,6 +76,22 @@ pub(crate) fn bound_endpoint(target: &Element, binding: &Binding, other: Pos2) -
     hit(other).or_else(|| hit(focus + (other - focus) * 1e4)).unwrap_or(focus)
 }
 
+/// The middles of a box's four sides: top, bottom, left, right.
+fn edge_middles(frame: Rect) -> [Pos2; 4] {
+    [frame.center_top(), frame.center_bottom(), frame.left_center(), frame.right_center()]
+}
+
+/// closestEdgePins: of the middles of `a`'s and `b`'s sides, the two closest to each other.
+pub(crate) fn closest_edge_pins(a: Rect, b: Rect) -> (Pos2, Pos2) {
+    let pairs = edge_middles(a).into_iter().flat_map(|from| edge_middles(b).into_iter().map(move |to| (from, to)));
+    pairs.min_by(|x, y| x.0.distance(x.1).total_cmp(&y.0.distance(y.1))).unwrap_or((a.center(), b.center()))
+}
+
+/// closestEdgeMidpointToPoint: the middle of `frame`'s side closest to `point`.
+pub(crate) fn closest_edge_middle(frame: Rect, point: Pos2) -> Pos2 {
+    edge_middles(frame).into_iter().min_by(|x, y| x.distance(point).total_cmp(&y.distance(point))).unwrap_or(frame.center())
+}
+
 /// Glues every bound arrow to its shapes (also used by the MCP server before saving).
 pub(crate) fn resolve_bindings(elements: &mut [Element]) {
     for i in 0..elements.len() {
@@ -102,6 +118,16 @@ pub(crate) fn resolve_arrow(elements: &[Element], arrow: &mut Element) -> bool {
     }
     if let ElementKind::Line { points, .. } = &mut arrow.kind {
         let n = points.len();
+        // a rope ties right on its windows' edges, at the middle of the two sides closest to each other (as the
+        // reference app pins its ropes); an arrow stops short of its shapes (asked: "a linha de conexão ficou em
+        // cima, e não vinculada ao terminal")
+        if let (true, Some((from, _)), Some((to, _))) = (arrow.rope, &start, &end)
+            && n >= 2
+        {
+            let (a, b) = closest_edge_pins(element_bounds(from), element_bounds(to));
+            (points[0], points[n - 1]) = ([a.x, a.y], [b.x, b.y]);
+            return *arrow != before;
+        }
         if n >= 2 {
             let at = |k: usize| Pos2::new(points[k][0], points[k][1]);
             // a 2-point arrow aims at the other shape's anchor, longer ones at their neighbor point
