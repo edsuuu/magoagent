@@ -189,6 +189,11 @@ fn island_rect(app: &DrawingApp) -> Rect {
 }
 
 /// A header button of the island, counted from the right: 0 the close, 1 the sound, 2 the settings, 3 the voice, 4 the size.
+/// The island header's buttons at its right, right to left: Recolher, sound, Ajustes, Chat por voz (while the call is on
+/// in the code, `voice::CALL_ON`), then the conversation's size (`BIG_BUTTON`).
+const RIGHT_BUTTONS: usize = 3 + crate::app::voice::CALL_ON as usize;
+const BIG_BUTTON: usize = RIGHT_BUTTONS;
+
 fn right_button(app: &DrawingApp, index: usize) -> Pos2 {
     let rect = island_rect(app);
     Pos2::new(rect.right() - 25.0 - index as f32 * 32.0, rect.top() + 25.0)

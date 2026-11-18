@@ -45,8 +45,12 @@ pub(crate) fn call_engine(codex: bool, codex_here: bool, openai: bool, key: bool
 /// The voice chat (the call) is on: its buttons show and Ligar starts it, on VoiceStudio or OpenAI's
 /// API. Not on Codex's: its realtime voice answers 404 from ChatGPT, so
 /// with it chosen Ligar only says what to pick instead (`CODEX_CALL_UP`).
-// ponytail: switches in the code, not in Ajustes; CALL_ON false hides the call everywhere
-pub(crate) const CALL_ON: bool = true;
+// ponytail: switches in the code, not in Ajustes; CALL_ON false hides the call everywhere (asked: "do modo chat oculta o
+// modo voz e ditado por favor, e da ilha também"), true brings it back
+pub(crate) const CALL_ON: bool = false;
+/// Ditar in the chat's box (the chat, the canvas's chats, the island's mini chat): false hides it and the MCP's
+/// dictate_on says it is off, as `CALL_ON` does for the call.
+pub(crate) const DICTATION_ON: bool = false;
 /// Codex's realtime voice works (it doesn't: 404); true lets Ligar start `codex_call` again.
 pub(crate) const CODEX_CALL_UP: bool = false;
 

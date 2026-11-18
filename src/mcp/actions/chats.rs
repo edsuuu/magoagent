@@ -160,6 +160,7 @@ impl DrawingApp {
         let muted = self.voice.shared.muted.load(Ordering::Relaxed);
         match state {
             "dictate_on" | "dictate_off" if self.dictation.is_some() == (state == "dictate_on") => {}
+            "dictate_on" if !crate::app::voice::DICTATION_ON => return Err("O ditado está desligado por enquanto.".into()),
             "dictate_on" | "dictate_off" => self.dictate_toggle(),
             "on" if !crate::app::voice::CALL_ON => return Err("O chat por voz está desligado por enquanto.".into()),
             "on" | "off" if self.voice.on == (state == "on") => {}
