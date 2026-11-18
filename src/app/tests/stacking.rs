@@ -87,3 +87,29 @@ fn a_portals_bar_and_a_focused_terminals_grid_stack_with_their_cards() {
     app.terminal_focus = Some(terminal);
     assert_eq!(app.live_layers(&app.scene.elements[1]), vec![middle(egui::Id::unique("terminal_overlay"))]);
 }
+
+/// Asked: "cliquei em editar a nota e o texto saiu em cima do terminal". However its typing begins (here Enter on the
+/// selected note, with no press on it), the note typed in comes in front of the terminal over it: its card and text are
+/// drawn where the editor is, over the terminal.
+#[test]
+fn a_note_typed_in_comes_in_front_of_the_card_covering_it() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(100.0, 200.0), Vec2::splat(200.0)), "texto".into());
+    let (note_id, label_id) = (note.id.clone(), label.id.clone());
+    let mut terminal = app.new_element(ElementKind::Rectangle { x: 50.0, y: 120.0, width: 400.0, height: 150.0 });
+    terminal.terminal = Some(TerminalSpec { name: "Shell".into(), ..Default::default() });
+    app.scene.elements = vec![note, label, terminal];
+    app.selected = vec![0];
+    frame(&mut app, &ctx, vec![key_press(Key::Enter)]);
+    let (note_index, label_index) = (index_of(&app, &note_id), index_of(&app, &label_id));
+    assert_eq!((note_index, label_index), (1, 2), "the note and its text after the terminal");
+    assert_eq!(app.editing, Some(label_index), "still typing its text");
+    assert_eq!(app.selected, vec![note_index]);
+    assert_eq!(app.hit(Pos2::new(200.0, 230.0)), Some(note_index), "where the terminal covered it, the note is on top");
+    // typing on, nothing moves again
+    app.dirty = false;
+    frame(&mut app, &ctx, vec![]);
+    assert!(!app.dirty && app.editing == Some(label_index));
+}

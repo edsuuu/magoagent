@@ -180,11 +180,16 @@ impl DrawingApp {
         if !covered {
             return index;
         }
+        // the text typed in and the note pressed go by their place in the drawing too
+        let id_at = |app: &Self, place: Option<usize>| place.and_then(|place| app.scene.elements.get(place)).map(|element| element.id.clone());
+        let (editing, pressed) = (id_at(self, self.editing), id_at(self, self.note_press));
         self.keeping_selection(|app| {
             let (raised, rest): (Vec<_>, Vec<_>) =
                 std::mem::take(&mut app.scene.elements).into_iter().enumerate().partition(|(position, _)| mine.contains(position));
             app.scene.elements = rest.into_iter().chain(raised).map(|(_, element)| element).collect();
         });
+        let place_of = |app: &Self, id: Option<String>| id.and_then(|id| app.scene.elements.iter().position(|element| element.id == id));
+        (self.editing, self.note_press) = (place_of(self, editing), place_of(self, pressed));
         self.dirty = true;
         self.scene.elements.iter().position(|element| element.id == id).unwrap_or(index)
     }
