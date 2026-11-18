@@ -1,6 +1,7 @@
-//! O changelog num cartão no meio da tela: na primeira abertura do dia com uma versão nova (system/updates.rs), "Nova
-//! versão X" com as notas da release e Atualizar agora / Atualizar depois; na primeira abertura de uma versão que o app
-//! instalou, uma vez, "O que há de novo na X" só com Fechar. As notas em markdown simples (`render::markdown`).
+//! O changelog num cartão no meio da tela: com uma versão nova achada pelo app (system/updates.rs, ao abrir e a cada
+//! hora), num momento calmo (nenhum agente trabalhando, a janela na frente, nada sendo digitado), "Nova versão X" com as
+//! notas da release e Atualizar agora / Atualizar depois / Pular esta versão; na primeira abertura de uma versão que o
+//! app instalou, uma vez, "O que há de novo na X" só com Fechar. As notas em markdown simples (`render::markdown`).
 
 use super::settings::kit::{self, K};
 use crate::app::system::updates::{CLOSES_AND_REOPENS, UpdateState, installs_in_place};
@@ -24,6 +25,8 @@ const INSIDE: f32 = 22.0;
 pub(crate) enum ChangelogChoice {
     /// Atualizar depois, Fechar or Esc.
     Later,
+    /// Pular esta versão.
+    Skip,
     Now,
     /// Atualizar e reiniciar, after the warning that the app closes and reopens.
     Restart,
@@ -32,36 +35,95 @@ pub(crate) enum ChangelogChoice {
 }
 
 impl DrawingApp {
+    /// The new version found by the app's own check opens its card in a quiet moment: no agent working (asked: "espera o
+    /// agente terminar"), the window in front and nothing being typed. Held for the agents, it says so once.
+    fn open_offer(&mut self, ctx: &Context) {
+        let Some(release) = self.updates.offer.clone() else { return };
+        if self.changelog.is_some() || !matches!(self.updates.state, UpdateState::Available(_)) {
+            self.updates.offer = None;
+            return;
+        }
+        if self.agents_working() {
+            if self.updates.held_told.as_deref() != Some(release.version.as_str()) {
+                self.updates.held_told = Some(release.version.clone());
+                self.toast(format!("Versão {} do MagoAgent disponível: o aviso aparece quando os agentes terminarem.", release.version));
+            }
+            return;
+        }
+        // typing (a box of egui, a terminal): 2 s with no key first
+        let (time, typed) = ctx.input(|input| (input.time, input.events.iter().any(|event| matches!(event, egui::Event::Text(_) | egui::Event::Key { .. }))));
+        if typed {
+            self.updates.typed_at = Some(time);
+        }
+        let busy = ctx.egui_wants_keyboard_input() || self.updates.typed_at.is_some_and(|at| time - at < 2.0);
+        // a roteiro's window opens without the focus (a test of the card, MAGOAGENT_CHANGELOG)
+        let away = ctx.input(|input| input.viewport().focused == Some(false)) && self.script.is_none();
+        if away || busy {
+            ctx.request_repaint_after(std::time::Duration::from_millis(500));
+            return;
+        }
+        self.updates.offer = None;
+        self.changelog = Some(Changelog { version: release.version, notes: release.notes, installed: false });
+    }
+
+    /// Whether an agent is in the middle of a turn: a terminal's, a chat's or a session outside the app.
+    pub(crate) fn agents_working(&self) -> bool {
+        let working = |state: &crate::app::ui::agents::AgentState| matches!(state, crate::app::ui::agents::AgentState::Working(_));
+        self.agent_rows().iter().any(|row| working(&row.state)) || self.outside_pills().iter().any(|pill| working(&pill.state))
+    }
+
     /// The card waits for the welcome and the tour.
     pub(crate) fn changelog_ui(&mut self, ctx: &Context) {
         if self.welcome.is_some() || self.tour.is_some() {
             return;
         }
-        let Some(changelog) = self.changelog.clone() else { return };
+        self.open_offer(ctx);
+        let id = egui::Id::unique("changelog");
+        // where the card's top was put when it opened: it grows down from there, not jumping (the warning, the download)
+        let top_id = id.with("top");
+        let Some(changelog) = self.changelog.clone() else {
+            ctx.data_mut(|data| data.remove::<f32>(top_id));
+            return;
+        };
         let k = K::new(self.dark());
         let screen = ctx.content_rect();
         let confirming = self.updates.confirming && !changelog.installed;
+        // after Atualizar: the download on the card, then what went wrong
+        let (busy, failed) = match &self.updates.state {
+            UpdateState::Downloading(_) | UpdateState::Started(_) if !changelog.installed => (Some(self.updates.state_line()), None),
+            UpdateState::Failed(why) if !changelog.installed => (None, Some(format!("Não deu para atualizar: {why}."))),
+            _ => (None, None),
+        };
+        let size = match &self.updates.state {
+            UpdateState::Available(release) => release.size,
+            _ => None,
+        };
         let mut choice = None;
-        let id = egui::Id::unique("changelog");
         let veil = egui::Area::new(id.with("veil")).order(egui::Order::Foreground).fixed_pos(screen.min).movable(false).show(ctx, |ui| {
             let (rect, _) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
             ui.painter().rect_filled(rect, 0, Color32::from_black_alpha(120));
         });
         let shadow = egui::epaint::Shadow { offset: [0, 16], blur: 48, spread: 0, color: Color32::from_black_alpha(if k.dark { 160 } else { 70 }) };
         let frame = egui::Frame::new().fill(k.bg).corner_radius(14).stroke(Stroke::new(1.0, k.border)).shadow(shadow).inner_margin(INSIDE as i8);
-        egui::Area::new(id).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO).show(ctx, |ui| {
+        let top = ctx.data(|data| data.get_temp::<f32>(top_id));
+        let area = egui::Area::new(id).order(egui::Order::Foreground);
+        let area = match top {
+            Some(top) => area.pivot(egui::Align2::CENTER_TOP).fixed_pos(Pos2::new(screen.center().x, top)),
+            None => area.anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO),
+        };
+        let shown = area.show(ctx, |ui| {
             frame.show(ui, |ui| {
                 let width = WIDTH - 2.0 * INSIDE;
                 ui.set_width(width);
                 ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
-                let (title, line) = if changelog.installed {
-                    (format!("O que há de novo na {}", changelog.version), format!("Você já está na versão {}.", changelog.version))
-                } else {
-                    (format!("Nova versão {}", changelog.version), format!("Você usa a {}. Veja o que muda:", env!("CARGO_PKG_VERSION")))
-                };
+                let title =
+                    if changelog.installed { format!("O que há de novo na {}", changelog.version) } else { format!("Nova versão {}", changelog.version) };
                 text_line(ui, &title, kit::semibold(18.0), k.fg, width);
-                ui.add_space(4.0);
-                text_line(ui, &line, FontId::proportional(12.0), k.muted_fg, width);
+                if !changelog.installed {
+                    let download = size.map_or(String::new(), |bytes| format!(" · download de {} MB", (bytes + 500_000) / 1_000_000));
+                    ui.add_space(4.0);
+                    text_line(ui, &format!("Você está na {}{download}", env!("CARGO_PKG_VERSION")), FontId::proportional(12.0), k.muted_fg, width);
+                }
                 ui.add_space(14.0);
                 ui.spacing_mut().scroll = crate::app::ui::scroll_style();
                 egui::ScrollArea::vertical().max_height((screen.height() * 0.5).max(120.0)).auto_shrink([false, true]).show(ui, |ui| {
@@ -69,12 +131,22 @@ impl DrawingApp {
                     paint_notes(ui, &k, &changelog.notes);
                 });
                 ui.add_space(16.0);
-                if confirming {
+                if let Some(busy) = &busy {
+                    ui.horizontal(|ui| {
+                        ui.add(egui::Spinner::new().size(14.0).color(k.muted_fg));
+                        text_line(ui, busy, FontId::proportional(12.0), k.muted_fg, width - 24.0);
+                    });
+                    return;
+                }
+                if let Some(failed) = &failed {
+                    text_line(ui, failed, FontId::proportional(12.0), k.destructive, width);
+                    ui.add_space(12.0);
+                } else if confirming {
                     text_line(ui, CLOSES_AND_REOPENS, FontId::proportional(12.0), k.muted_fg, width);
                     ui.add_space(12.0);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let buttons: &[(&str, ChangelogChoice, bool)] = match (changelog.installed, confirming) {
+                    let buttons: &[(&str, ChangelogChoice, bool)] = match (changelog.installed || failed.is_some(), confirming) {
                         (true, _) => &[("Fechar", ChangelogChoice::Later, true)],
                         (false, true) => &[("Atualizar e reiniciar", ChangelogChoice::Restart, true), ("Cancelar", ChangelogChoice::Cancel, false)],
                         (false, false) => &[("Atualizar agora", ChangelogChoice::Now, true), ("Atualizar depois", ChangelogChoice::Later, false)],
@@ -85,13 +157,24 @@ impl DrawingApp {
                             choice = Some(*what);
                         }
                     }
+                    // the version let go: its card won't open by itself again
+                    if !changelog.installed && failed.is_none() && !confirming {
+                        ui.add_space(ui.available_width() - link_width(ui, SKIP));
+                        if skip_link(ui, &k).clicked() {
+                            choice = Some(ChangelogChoice::Skip);
+                        }
+                    }
                 });
             });
         });
+        if top.is_none() {
+            let height = shown.response.rect.height();
+            ctx.data_mut(|data| data.insert_temp(top_id, (screen.center().y - height / 2.0).max(screen.top() + 16.0)));
+        }
         ctx.move_to_top(veil.response.layer_id);
         ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, id));
         super::titlebar::raise_window_buttons(ctx, egui::LayerId::new(egui::Order::Foreground, id));
-        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
+        if busy.is_none() && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
             choice = Some(if confirming { ChangelogChoice::Cancel } else { ChangelogChoice::Later });
         }
         if let Some(choice) = choice {
@@ -99,11 +182,16 @@ impl DrawingApp {
         }
     }
 
-    /// Atualizar depois closes the card: the next day's first opening (or Ajustes › Sobre) shows the version again.
-    /// Atualizar agora goes by the same way as Sobre's button, the warning first when the app closes and reopens.
+    /// Atualizar depois closes the card for 6 h or until the computer restarts (`update_put_off`); Pular esta versão
+    /// for good; the version still waits in Ajustes › Sobre. Atualizar agora goes by the same way as Sobre's button,
+    /// the warning first when the app closes and reopens, and the card stays to show the download.
     pub(crate) fn changelog_choose(&mut self, choice: ChangelogChoice) {
+        let installed = self.changelog.as_ref().is_some_and(|changelog| changelog.installed);
         match choice {
-            ChangelogChoice::Later => {
+            ChangelogChoice::Later | ChangelogChoice::Skip if !installed && matches!(self.updates.state, UpdateState::Available(_)) => {
+                let _ = self.update_put_off(choice == ChangelogChoice::Skip);
+            }
+            ChangelogChoice::Later | ChangelogChoice::Skip => {
                 self.changelog = None;
                 self.updates.confirming = false;
             }
@@ -112,16 +200,37 @@ impl DrawingApp {
                 self.updates.confirming = true;
             }
             ChangelogChoice::Now | ChangelogChoice::Restart => {
-                self.changelog = None;
                 let in_place = matches!(&self.updates.state, UpdateState::Available(release) if installs_in_place(release));
-                match self.update_install() {
-                    Err(why) => self.toast(why),
-                    Ok(()) if in_place => self.toast("Baixando e conferindo a versão nova; depois o MagoAgent salva o trabalho, fecha e reabre sozinho."),
-                    Ok(()) => {}
+                if !in_place {
+                    self.changelog = None;
+                }
+                if let Err(why) = self.update_install() {
+                    self.changelog = None;
+                    self.toast(why);
                 }
             }
         }
     }
+}
+
+const SKIP: &str = "Pular esta versão";
+
+fn link_width(ui: &egui::Ui, text: &str) -> f32 {
+    ui.painter().layout_no_wrap(text.into(), FontId::proportional(12.0), Color32::WHITE).size().x
+}
+
+/// "Pular esta versão": a quiet link at the card's left, underlined under the pointer.
+fn skip_link(ui: &mut egui::Ui, k: &K) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(SKIP.into(), FontId::proportional(12.0), k.muted_fg);
+    let (rect, response) = ui.allocate_exact_size(galley.size(), Sense::click());
+    let response = response.on_hover_cursor(CursorIcon::PointingHand);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, SKIP));
+    let ink = if response.hovered() { k.fg } else { k.muted_fg };
+    if response.hovered() {
+        ui.painter().hline(rect.x_range(), rect.bottom(), Stroke::new(1.0, ink));
+    }
+    ui.painter().galley(rect.min, galley, ink);
+    response
 }
 
 /// One text, wrapped at `width`.

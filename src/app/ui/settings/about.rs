@@ -22,6 +22,12 @@ impl DrawingApp {
                 self.update_check(false);
             }
         });
+        let hint = "Sempre: ao abrir o app e a cada hora. Ao abrir: só quando o app abre. Nunca: só por este botão.";
+        let options = ["Sempre", "Ao abrir", "Nunca"];
+        let chosen = usize::from(self.prefs.update_check.min(2));
+        if let Some(index) = row(ui, k, "Procurar atualizações", hint, |ui| select(ui, k, "Procurar atualizações", &options, chosen)) {
+            self.prefs.update_check = index as u8;
+        }
         if self.updates.confirming && matches!(self.updates.state, UpdateState::Available(_)) {
             note(ui, k, CLOSES_AND_REOPENS);
             // every button in the card's padding, as the notes' one is: not stuck to its edge
@@ -66,7 +72,7 @@ impl DrawingApp {
         divider(ui, k);
         title(ui, k, "PRIVACIDADE");
         let rows = [
-            ("O app", "Não envia nada por conta própria. Olha por uma versão nova ao abrir, no máximo uma vez por dia."),
+            ("O app", "Não envia nada por conta própria. Olha por uma versão nova no GitHub como Procurar atualizações manda."),
             ("Agentes", "O Claude Code e o Codex instalados falam com os serviços deles, com o login de cada um."),
             ("Navegadores", "Sites comuns, cada navegador com o seu perfil."),
             ("Microfone", "Só fica aberto durante a chamada; o que você diz vai ao motor de Ajustes › Voz (o VoiceStudio do seu computador ou a OpenAI)."),

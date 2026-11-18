@@ -39,6 +39,9 @@ impl DrawingApp {
     fn act_on(&mut self, action: &str, args: &Value) -> Result<String, String> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
         match action {
+            "update" if args["later"].as_bool() == Some(true) || args["skip"].as_bool() == Some(true) => {
+                self.update_put_off(args["skip"].as_bool() == Some(true))
+            }
             "update" => self.act_update(args["install"].as_bool().unwrap_or(false), args["confirmed"].as_bool().unwrap_or(false)),
             "tour" => {
                 let steps = crate::app::ui::tour::STEPS.len();

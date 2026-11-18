@@ -9,9 +9,16 @@ use std::sync::mpsc::{Receiver, channel};
 
 const LATEST: &str = "https://api.github.com/repos/edsuuu/magoagent/releases/latest";
 pub(crate) const RELEASES_PAGE: &str = "https://github.com/edsuuu/magoagent/releases";
-const DAY_MS: i64 = 86_400_000;
-/// What the person is told before an update on Windows.
-pub(crate) const CLOSES_AND_REOPENS: &str = "Atualizar fecha e reabre o MagoAgent: ele salva o trabalho, encerra os terminais e agentes (inclusive os Claude Code e Codex abertos neles e o `magoagent mcp` de cada um), instala a nova versão e abre de novo com tudo no lugar.";
+const HOUR_MS: i64 = 3_600_000;
+/// With "Sempre" (`Prefs.update_check` 0) the app looks again every hour it stays open (asked: "a cada 1 hora faz um
+/// check no GitHub"); a check that failed (no network) is tried again sooner.
+pub(crate) const CHECK_EVERY_MS: i64 = HOUR_MS;
+pub(crate) const RETRY_MS: i64 = 30 * 60_000;
+/// "Atualizar depois" lasts this long (asked: "6 horas"), or until the computer restarts.
+pub(crate) const LATER_MS: i64 = 6 * HOUR_MS;
+/// What the person is told before an update that closes and reopens the app.
+pub(crate) const CLOSES_AND_REOPENS: &str =
+    "O MagoAgent salva o seu trabalho, encerra os terminais e agentes abertos, fecha e reabre já na versão nova, com tudo no lugar.";
 
 /// A release as the app uses it.
 #[derive(Clone, Debug, PartialEq)]
@@ -24,6 +31,8 @@ pub(crate) struct Release {
     pub(crate) installer: Option<String>,
     /// GitHub's `digest` of the installer (`sha256:<hex>`), which is checked before it runs.
     pub(crate) digest: Option<String>,
+    /// The installer's size in bytes, said on the card before it downloads.
+    pub(crate) size: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -59,6 +68,15 @@ pub(crate) struct Updates {
     automatic: bool,
     /// "Atualizar" was clicked once: the warning that the app closes and reopens is on screen.
     pub(crate) confirming: bool,
+    /// When the next check by itself is due (ms since 1970), with "Sempre".
+    pub(crate) next_check: Option<i64>,
+    /// A newer version found by the app's own check, its card waiting for a quiet moment (`changelog_ui`): no agent
+    /// working, the window in front, nothing being typed.
+    pub(crate) offer: Option<Release>,
+    /// The version whose card was said to wait for the agents (once per version).
+    pub(crate) held_told: Option<String>,
+    /// When a key was last pressed while a card waited (egui's seconds): it waits 2 s more.
+    pub(crate) typed_at: Option<f64>,
 }
 
 /// The release in GitHub's `releases/latest` answer; `None` when the repository has none.
@@ -93,6 +111,7 @@ fn parse_release_for(json: &str, local: bool, deb: bool) -> Result<Option<Releas
         notes: parsed["body"].as_str().unwrap_or_default().replace('\r', "").trim().to_string(),
         page: parsed["html_url"].as_str().unwrap_or(RELEASES_PAGE).to_string(),
         digest: asset.and_then(|asset| asset["digest"].as_str()).map(String::from),
+        size: asset.and_then(|asset| asset["size"].as_u64()),
         installer,
         version,
     }))
@@ -137,14 +156,44 @@ pub(crate) fn plain_notes(notes: &str) -> String {
     lines.join("\n").chars().take(4000).collect()
 }
 
-/// The local date of `ms` since 1970, in days: the day the first opening checks once.
-pub(crate) fn local_day(ms: i64) -> u64 {
-    (ms + crate::app::chat::viewer::local_offset(ms) * 1000).div_euclid(DAY_MS).max(0) as u64
+/// Whether "Atualizar depois", pressed at `later`, still holds at `now`: for `LATER_MS`, and not past a restart of the
+/// computer (`boot`, when it is known).
+pub(crate) fn later_holds(later: Option<i64>, now: i64, boot: Option<i64>) -> bool {
+    later.is_some_and(|at| now - at < LATER_MS && boot.is_none_or(|boot| boot < at))
 }
 
-/// Whether the opening on the local day `today` checks: the first of each day.
-pub(crate) fn checks_on_opening(checked_day: u64, today: u64) -> bool {
-    checked_day != today
+/// When this computer started (ms since 1970), from how long it has been up; None where that is not known.
+pub(crate) fn boot_ms(now: i64) -> Option<i64> {
+    #[cfg(windows)]
+    {
+        // SAFETY: a plain call with no arguments
+        let up = unsafe { windows::Win32::System::SystemInformation::GetTickCount64() };
+        Some(now - up as i64)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let uptime = fs::read_to_string("/proc/uptime").ok()?;
+        let seconds: f64 = uptime.split_whitespace().next()?.parse().ok()?;
+        Some(now - (seconds * 1000.0) as i64)
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        let _ = now;
+        None
+    }
+}
+
+/// On Windows, asks to be opened again when Windows Update restarts the computer with the app open (asked: "ao
+/// atualizar com o windows, salva o estado e reinicia o app"): the app comes back with the work it saved, and its first
+/// check finds the version waiting ("Atualizar depois" ends with the restart).
+pub(crate) fn reopen_after_windows_restarts() {
+    #[cfg(windows)]
+    {
+        use windows::Win32::System::Recovery::{REGISTER_APPLICATION_RESTART_FLAGS, RegisterApplicationRestart};
+        // not after a crash or a hang (1 | 2): only a restart for updates
+        // SAFETY: a constant empty command line
+        let _ = unsafe { RegisterApplicationRestart(windows::core::w!(""), REGISTER_APPLICATION_RESTART_FLAGS(1 | 2)) };
+    }
 }
 
 /// Whether the changelog's card may open by itself: never under a roteiro (MAGOAGENT_SCRIPT), unless a test scene asks
@@ -229,41 +278,54 @@ impl DrawingApp {
         Ok(())
     }
 
-    /// Once per frame: the first check of the day when the app opens, and whatever the thread answered.
+    /// Once per frame: the checks by themselves (on opening; with "Sempre", every hour) and whatever the thread answered.
     pub(crate) fn poll_updates(&mut self) {
-        self.poll_updates_on(local_day(now_ms()));
+        // never the network in a test
+        if !cfg!(test) {
+            self.schedule_checks(now_ms());
+        }
+        self.poll_updates_at(now_ms());
     }
 
-    /// The same on the local day `today`. A newer version found by the day's check opens the changelog's card
-    /// (ui/changelog.rs); Atualizar depois closes it, and the next check is the next day's.
-    pub(crate) fn poll_updates_on(&mut self, today: u64) {
-        // never the network in a test
-        if !self.updates.started && !cfg!(test) {
+    /// The check on opening (unless "Nunca") and, with "Sempre", the next one when it is due.
+    pub(crate) fn schedule_checks(&mut self, now: i64) {
+        if !self.updates.started {
             self.updates.started = true;
-            if checks_on_opening(self.prefs.update_checked_day, today) {
+            if self.prefs.update_check < 2 {
                 self.update_check(true);
             }
         }
+        let due = self.updates.next_check.is_some_and(|at| now >= at);
+        if due && self.prefs.update_check == 0 && self.updates.receiver.is_none() && !matches!(self.updates.state, UpdateState::Started(_)) {
+            self.update_check(true);
+        }
+    }
+
+    /// What the check's thread answered, at `now`. A newer version found by the app's own check waits for a quiet
+    /// moment to open the changelog's card (ui/changelog.rs), unless it was skipped or put off ("Atualizar depois").
+    pub(crate) fn poll_updates_at(&mut self, now: i64) {
         let Some(message) = self.updates.receiver.as_ref().and_then(|receiver| receiver.try_recv().ok()) else { return };
         self.updates.receiver = None;
+        if let Msg::Checked(answer) = &message {
+            self.updates.next_check = Some(now + if answer.is_err() { RETRY_MS } else { CHECK_EVERY_MS });
+        }
         match message {
             Msg::Checked(Ok(Some(release))) => {
-                self.prefs.update_checked_day = today;
                 if is_newer(&release.version, env!("CARGO_PKG_VERSION")) {
-                    if self.updates.automatic && changelog_allowed(self.script.is_some()) {
-                        self.changelog = Some(Changelog { version: release.version.clone(), notes: release.notes.clone(), installed: false });
-                    } else if self.updates.automatic {
-                        self.toast(format!("Versão {} do MagoAgent disponível: veja em Ajustes › Sobre.", release.version));
+                    let wanted = release.version != self.prefs.update_skipped && !later_holds(self.prefs.update_later, now, boot_ms(now));
+                    if self.updates.automatic && wanted && self.changelog.is_none() {
+                        if changelog_allowed(self.script.is_some()) {
+                            self.updates.offer = Some(release.clone());
+                        } else {
+                            self.toast(format!("Versão {} do MagoAgent disponível: veja em Ajustes › Sobre.", release.version));
+                        }
                     }
                     self.updates.state = UpdateState::Available(release);
                 } else {
                     self.updates.state = UpdateState::UpToDate(release);
                 }
             }
-            Msg::Checked(Ok(None)) => {
-                self.prefs.update_checked_day = today;
-                self.updates.state = UpdateState::NoRelease;
-            }
+            Msg::Checked(Ok(None)) => self.updates.state = UpdateState::NoRelease,
             // an automatic check that failed stays quiet; Sobre shows it when looked at
             Msg::Checked(Err(why)) => self.updates.state = UpdateState::Failed(why),
             // the .deb: installed with the person's password while the app stays open; then it reopens
@@ -305,8 +367,31 @@ impl DrawingApp {
         }
     }
 
-    /// The `update` action of the MCP: asks for a check (or the install) and says where it stands. On Windows the
-    /// install closes and reopens the app: without `confirmed` it only says so.
+    /// "Atualizar depois" (`skip` false: for `LATER_MS`, or until the computer restarts) or "Pular esta versão": the card
+    /// closes, and the version waits in Ajustes › Sobre.
+    pub(crate) fn update_put_off(&mut self, skip: bool) -> Result<String, String> {
+        let version = match &self.updates.state {
+            UpdateState::Available(release) => release.version.clone(),
+            _ => return Err("não há versão nova à espera".into()),
+        };
+        if skip {
+            self.prefs.update_skipped = version.clone();
+        } else {
+            self.prefs.update_later = Some(now_ms());
+        }
+        self.changelog = None;
+        self.updates.offer = None;
+        self.updates.confirming = false;
+        Ok(if skip {
+            format!("A versão {version} foi pulada: o aviso só volta numa versão mais nova (ela continua em Ajustes › Sobre).")
+        } else {
+            format!("O aviso da versão {version} volta em 6 horas, ou quando o computador reiniciar.")
+        })
+    }
+
+    /// The `update` action of the MCP: asks for a check (or the install), or puts the new version off (`later`) or skips
+    /// it (`skip`), and says where it stands. On Windows the install closes and reopens the app: without `confirmed` it
+    /// only says so.
     pub(crate) fn act_update(&mut self, install: bool, confirmed: bool) -> Result<String, String> {
         if install {
             let asks_to_close = matches!(&self.updates.state, UpdateState::Available(release) if installs_in_place(release));
@@ -426,11 +511,11 @@ mod tests {
         let mut app = DrawingApp::default();
         let (sender, receiver) = channel();
         app.updates.receiver = Some(receiver);
-        let newer = Release { version: "99.0.0".into(), notes: String::new(), page: String::new(), installer: None, digest: None };
+        let newer = Release { version: "99.0.0".into(), notes: String::new(), page: String::new(), installer: None, digest: None, size: None };
         sender.send(Msg::Checked(Ok(Some(newer.clone())))).unwrap();
         app.poll_updates();
         assert_eq!(app.updates.state, UpdateState::Available(newer));
-        assert!(app.prefs.update_checked_day > 0, "checked today");
+        assert!(app.updates.next_check.is_some(), "the next check is set");
         let (sender, receiver) = channel();
         app.updates.receiver = Some(receiver);
         sender.send(Msg::Checked(Ok(None))).unwrap();
@@ -441,8 +526,14 @@ mod tests {
     #[test]
     fn installing_on_windows_asks_for_the_go_ahead_first() {
         let mut app = DrawingApp::default();
-        let release =
-            Release { version: "99.0.0".into(), notes: String::new(), page: String::new(), installer: Some("https://github.com/x".into()), digest: None };
+        let release = Release {
+            version: "99.0.0".into(),
+            notes: String::new(),
+            page: String::new(),
+            installer: Some("https://github.com/x".into()),
+            digest: None,
+            size: None,
+        };
         app.updates.state = UpdateState::Available(release);
         if cfg!(windows) {
             let said = app.act_update(true, false).unwrap();

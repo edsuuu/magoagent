@@ -70,6 +70,9 @@ windows = { version = "0.62", features = [
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
     "Win32_System_Threading",
+    # updates: opened again after Windows Update restarts the PC, and when the PC started ("Atualizar depois")
+    "Win32_System_Recovery",
+    "Win32_System_SystemInformation",
 ] }
 
 # the island over every window: the X11 backend (XWayland in a Wayland session), the island's input shape, the cursor

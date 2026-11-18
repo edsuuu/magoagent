@@ -176,6 +176,9 @@ fn main() -> eframe::Result {
             app.load_chats();
             // the first thing after an update: how it ended
             app.show_update_result();
+            if app.script.is_none() {
+                app::system::updates::reopen_after_windows_restarts();
+            }
             // a roteiro drives the canvas
             app.chat_open = app.prefs.start_in_chat && app.script.is_none();
             // the welcome once, and always while there is no space to open (a roteiro asks for it by MAGOAGENT_WELCOME)
