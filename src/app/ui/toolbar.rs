@@ -38,6 +38,7 @@ impl DrawingApp {
             || self.filetree_dialog_open()
             || self.design_confirm.is_some()
             || self.space_dialog.is_some()
+            || self.chat_listing.removing.is_some()
             || self.welcome.is_some()
             || self.tour.is_some()
             || self.changelog.is_some()

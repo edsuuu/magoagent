@@ -247,6 +247,8 @@ pub(crate) struct ListState {
     /// The chat being renamed and the name typed so far, and its row on screen (the balloon hangs from it).
     pub(crate) renaming: Option<(String, String)>,
     pub(crate) renaming_at: std::cell::Cell<Option<Rect>>,
+    /// Remover chat asked on this chat: the dialog that confirms it is up (`remove_chat_dialog`).
+    pub(crate) removing: Option<String>,
 }
 
 /// The Maestro's subchats: for each row that is not a Maestro (`maestro[i]` false) but is roped to

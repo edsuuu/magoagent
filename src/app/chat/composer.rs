@@ -76,7 +76,9 @@ impl DrawingApp {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 // read before the box takes the key: Response::has_focus is false in the test window,
                 // and Shift lives on the key event, not the global modifiers
-                let enter = ui.memory(|m| m.has_focus(draft_id))
+                // a dialog over the chat (Remover chat) takes the Enter
+                let enter = !self.dialog_open()
+                    && ui.memory(|m| m.has_focus(draft_id))
                     && ui.input(|i| {
                         i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift))
                     });

@@ -681,3 +681,32 @@ fn a_table_in_the_chat_takes_the_columns_width_with_nothing_cut() {
         assert!(rows > 1 && !cut && rect.right() <= column + 1.0, "{header}: {rows} rows, cut {cut}, {rect:?} past {column}");
     }
 }
+
+/// Asked (D-010 of the egui review, the owner chose a confirmation): Remover chat asks first, saying the conversation goes
+/// for good; Esc keeps the chat, Enter (Remover) removes it.
+#[test]
+fn remover_chat_asks_first_and_only_remover_deletes_it() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.chats = vec![chat("a", "claude", "Claude Code · loja")];
+    app.chat_open = true;
+    let size = Vec2::new(1200.0, 800.0);
+    // the row's ⋯ › Remover chat
+    app.chat_listing.removing = Some("a".into());
+    // a new area takes its size in its first frame
+    chat_frame(&mut app, &ctx, size, vec![]);
+    let shown = chat_frame(&mut app, &ctx, size, vec![]);
+    assert!(painted(&shown, "Remover chat").is_some(), "the dialog asks");
+    assert!(shown.iter().any(|(text, _)| text.contains("excluídos permanentemente")), "and says it is for good");
+    chat_frame(&mut app, &ctx, size, vec![key_press(Key::Escape)]);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    assert_eq!((app.chats.len(), app.chat_listing.removing.as_deref()), (1, None), "Esc keeps it");
+    // the box keeps what is written: the Enter is the dialog's
+    app.chat_listing.removing = Some("a".into());
+    app.chat_draft = "não envia".into();
+    ctx.memory_mut(|memory| memory.request_focus(egui::Id::unique("chat_draft")));
+    chat_frame(&mut app, &ctx, size, vec![]);
+    chat_frame(&mut app, &ctx, size, vec![key_press(Key::Enter)]);
+    assert!(app.chats.iter().all(|chat| chat.id != "a"), "Remover removes it");
+    assert_eq!(app.chat_draft, "não envia");
+}
