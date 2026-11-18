@@ -75,6 +75,9 @@ pub(crate) fn dictated_into(draft: &mut String, text: &str) {
 impl DrawingApp {
     /// Ditar / Parar de ditar.
     pub(crate) fn dictate_toggle(&mut self) {
+        if !super::DICTATION_ON && self.dictation.is_none() {
+            return;
+        }
         if self.dictation.take().is_some() {
             // off: a lower tick, as the call's mute
             self.dictation_tone = if cfg!(test) { None } else { crate::voice::chime(crate::voice::CALL_MUTE) };
