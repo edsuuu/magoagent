@@ -2,6 +2,11 @@ use super::*;
 
 impl DrawingApp {
     pub(crate) fn handle_canvas(&mut self, response: &egui::Response, rect: Rect) {
+        // SwiftUI draws the canvas and sends its pointer (canvas/native.rs)
+        #[cfg(target_os = "macos")]
+        if crate::app::native::enabled("canvas") {
+            return;
+        }
         self.canvas_rect = rect;
         if self.design.is_some() && response.is_pointer_button_down_on() {
             self.design_exit();
@@ -44,97 +49,8 @@ impl DrawingApp {
                     if self.chat_open || !rect.contains(pos) || !(to_window || self.on_canvas(&ctx, pos, response.layer_id)) {
                         continue;
                     }
-                    self.context = None;
-                    // any press on the canvas dismisses the unlock button (its own clicks never get here)
-                    self.active_locked = None;
-                    self.note_press = None;
-                    self.mods = modifiers;
-                    self.last_pointer = Some(pos);
-                    // "Conectar" takes the click before anything else (the middle button still pans): a
-                    // node gets the rope, a locked one says why it doesn't, anywhere else cancels
-                    if button == egui::PointerButton::Primary
-                        && let Some(from) = self.connecting.take()
-                    {
-                        let world = self.to_world(pos);
-                        if let Some(index) = self.connect_target(&from, world) {
-                            let to = self.scene.elements[index].id.clone();
-                            self.connect(&from, &to);
-                        } else if self.scene.elements.iter().any(|element| {
-                            element.locked && element.id != from && (element.is_node() || element.created.is_some()) && element_bounds(element).contains(world)
-                        }) {
-                            self.toast("Nó bloqueado: desbloqueie para conectar");
-                            self.connecting = Some(from);
-                        }
-                        continue;
-                    }
-                    if self.editing.is_some() {
-                        self.finish_text();
-                        continue;
-                    }
-                    let world = self.to_world(pos);
-                    if let Some(index) = self.multi {
-                        // click on the last placed point finishes, any other click adds a point
-                        let points = self.line_points(index);
-                        let last = points.len().checked_sub(2).map(|point_index| points[point_index]);
-                        if last.is_some_and(|point| self.to_screen(Pos2::new(point[0], point[1])).distance(pos) <= 10.0) {
-                            self.finish_multi();
-                        } else if let Some(points) = self.line_points_mut(index) {
-                            let floating = *points.last().unwrap_or(&[world.x, world.y]);
-                            points.push(floating);
-                        }
-                        continue;
-                    }
-                    self.press_world = world;
-                    // macOS: the empty strip along the window buttons moves the window
-                    if cfg!(target_os = "macos") && pos.y - rect.top() < TOOLBAR_BOTTOM - 4.0 && self.hit(world).is_none() && self.tool == Tool::Select {
+                    if self.press_canvas(pos, button == egui::PointerButton::Middle, space, modifiers, pos.y - rect.top() < TOOLBAR_BOTTOM - 4.0) {
                         ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
-                        continue;
-                    }
-                    if button == egui::PointerButton::Middle || space || self.tool == Tool::Hand {
-                        self.panning = true;
-                        continue;
-                    }
-                    // an enlarged window: a press on the canvas around it puts it back, whatever the drawing tool (the hand and the middle button pan) (press_select)
-                    if let Some(index) = self.elevated_index().filter(|_| self.dock.is_none())
-                        && !self.terminal_frame(&self.scene.elements[index]).0.contains(pos)
-                    {
-                        self.press_select(pos, world, modifiers);
-                        continue;
-                    }
-                    match self.tool {
-                        Tool::Select => self.press_select(pos, world, modifiers),
-                        // the text tool labels a shape under it, leaves a window to the click, and writes on empty canvas
-                        Tool::Text => match self.hit(world).or_else(|| self.containing_shape(world)) {
-                            Some(index) if takes_label(&self.scene.elements[index]) => {
-                                let label = self.owner_label(index);
-                                self.begin_text_edit(label);
-                            }
-                            _ if self.window_at(world) => {
-                                self.select_tool(Tool::Select);
-                                self.press_select(pos, world, modifiers);
-                            }
-                            _ => self.start_text(world),
-                        },
-                        Tool::Eraser => {
-                            self.erasing = Some(Vec::new());
-                            self.erase_at(world);
-                        }
-                        Tool::Laser => {
-                            self.laser_down = true;
-                            self.laser.push((world, self.now));
-                        }
-                        Tool::Fill => self.fill_at(world),
-                        Tool::Lasso => self.lasso = Some(vec![world]),
-                        // a window is made on the empty canvas: a press on one already there picks it, as Seleção would
-                        Tool::Terminal | Tool::Portal | Tool::FileTree | Tool::Chat | Tool::Sticky if self.window_at(world) => {
-                            self.select_tool(Tool::Select);
-                            self.press_select(pos, world, modifiers);
-                        }
-                        _ => {
-                            let start = if matches!(self.tool, Tool::Draw | Tool::AutoShape) { world } else { self.snap_point(world) };
-                            self.drawing_start = Some(start);
-                            self.drawing_points = vec![[world.x, world.y]];
-                        }
                     }
                 }
                 // right click: the menu of what is under the pointer (ui/context.rs)
@@ -161,9 +77,113 @@ impl DrawingApp {
             self.release(self.last_pointer.unwrap_or(rect.center()));
         }
         let double = ctx.input(|input| input.pointer.button_double_clicked(egui::PointerButton::Primary));
+        if let (true, Some(pos)) = (double, ctx.input(|input| input.pointer.interact_pos())) {
+            let on_canvas = rect.contains(pos) && self.on_canvas(&ctx, pos, response.layer_id);
+            self.double_click_canvas(pos, rect.contains(pos), on_canvas);
+        }
+        self.update_bindings();
+    }
+
+    /// A primary or middle press on the canvas, by the tool (egui's and the native canvas's). `window_strip`: it fell in the
+    /// empty strip along the window buttons; true back means the window should be dragged from there.
+    pub(crate) fn press_canvas(&mut self, pos: Pos2, middle: bool, space: bool, modifiers: Modifiers, window_strip: bool) -> bool {
+        self.context = None;
+        // any press on the canvas dismisses the unlock button (its own clicks never get here)
+        self.active_locked = None;
+        self.note_press = None;
+        self.mods = modifiers;
+        self.last_pointer = Some(pos);
+        // "Conectar" takes the click before anything else (the middle button still pans): a
+        // node gets the rope, a locked one says why it doesn't, anywhere else cancels
+        if !middle && let Some(from) = self.connecting.take() {
+            let world = self.to_world(pos);
+            if let Some(index) = self.connect_target(&from, world) {
+                let to = self.scene.elements[index].id.clone();
+                self.connect(&from, &to);
+            } else if self.scene.elements.iter().any(|element| {
+                element.locked && element.id != from && (element.is_node() || element.created.is_some()) && element_bounds(element).contains(world)
+            }) {
+                self.toast("Nó bloqueado: desbloqueie para conectar");
+                self.connecting = Some(from);
+            }
+            return false;
+        }
+        if self.editing.is_some() {
+            self.finish_text();
+            return false;
+        }
+        let world = self.to_world(pos);
+        if let Some(index) = self.multi {
+            // click on the last placed point finishes, any other click adds a point
+            let points = self.line_points(index);
+            let last = points.len().checked_sub(2).map(|point_index| points[point_index]);
+            if last.is_some_and(|point| self.to_screen(Pos2::new(point[0], point[1])).distance(pos) <= 10.0) {
+                self.finish_multi();
+            } else if let Some(points) = self.line_points_mut(index) {
+                let floating = *points.last().unwrap_or(&[world.x, world.y]);
+                points.push(floating);
+            }
+            return false;
+        }
+        self.press_world = world;
+        // macOS: the empty strip along the window buttons moves the window
+        if cfg!(target_os = "macos") && window_strip && self.hit(world).is_none() && self.tool == Tool::Select {
+            return true;
+        }
+        if middle || space || self.tool == Tool::Hand {
+            self.panning = true;
+            return false;
+        }
+        // an enlarged window: a press on the canvas around it puts it back, whatever the drawing tool (the hand and the middle button pan) (press_select)
+        if let Some(index) = self.elevated_index().filter(|_| self.dock.is_none())
+            && !self.terminal_frame(&self.scene.elements[index]).0.contains(pos)
+        {
+            self.press_select(pos, world, modifiers);
+            return false;
+        }
+        match self.tool {
+            Tool::Select => self.press_select(pos, world, modifiers),
+            // the text tool labels a shape under it, leaves a window to the click, and writes on empty canvas
+            Tool::Text => match self.hit(world).or_else(|| self.containing_shape(world)) {
+                Some(index) if takes_label(&self.scene.elements[index]) => {
+                    let label = self.owner_label(index);
+                    self.begin_text_edit(label);
+                }
+                _ if self.window_at(world) => {
+                    self.select_tool(Tool::Select);
+                    self.press_select(pos, world, modifiers);
+                }
+                _ => self.start_text(world),
+            },
+            Tool::Eraser => {
+                self.erasing = Some(Vec::new());
+                self.erase_at(world);
+            }
+            Tool::Laser => {
+                self.laser_down = true;
+                self.laser.push((world, self.now));
+            }
+            Tool::Fill => self.fill_at(world),
+            Tool::Lasso => self.lasso = Some(vec![world]),
+            // a window is made on the empty canvas: a press on one already there picks it, as Seleção would
+            Tool::Terminal | Tool::Portal | Tool::FileTree | Tool::Chat | Tool::Sticky if self.window_at(world) => {
+                self.select_tool(Tool::Select);
+                self.press_select(pos, world, modifiers);
+            }
+            _ => {
+                let start = if matches!(self.tool, Tool::Draw | Tool::AutoShape) { world } else { self.snap_point(world) };
+                self.drawing_start = Some(start);
+                self.drawing_points = vec![[world.x, world.y]];
+            }
+        }
+        false
+    }
+
+    /// A double-click on the canvas at `pos` (egui's and the native canvas's): `inside` the canvas's rect, `on_canvas`
+    /// with nothing drawn over it there.
+    pub(crate) fn double_click_canvas(&mut self, pos: Pos2, inside: bool, on_canvas: bool) {
         // a lifted note or portal goes back on a double-click on its title, even while its text is typed
-        let mut back = false;
-        if let (true, Some(pos), Some(index)) = (double, ctx.input(|input| input.pointer.interact_pos()), self.elevated_index()) {
+        if let Some(index) = self.elevated_index() {
             let element = &self.scene.elements[index];
             let head = if element.portal.is_some() {
                 PORTAL_HEADER
@@ -177,65 +197,57 @@ impl DrawingApp {
             let (frame, zoom) = self.terminal_frame(element);
             if head > 0.0 && frame.contains(pos) && pos.y - frame.top() < head * zoom {
                 self.set_elevated(None);
-                back = true;
+                return;
             }
         }
         // a double-click on a group's pill opens its name
-        if let (true, Some(pos)) = (double && !back, ctx.input(|input| input.pointer.interact_pos()))
-            && let Some(gid) = self.group_pill_at(pos).filter(|_| rect.contains(pos))
-        {
+        if let Some(gid) = self.group_pill_at(pos).filter(|_| inside) {
             self.group_menu_action(&gid, "rename");
-            back = true;
+            return;
+        }
+        if self.tool != Tool::Select || !on_canvas {
+            return;
         }
         // a note's title lifts it, though the double-click's first click already put its text in focus
-        if let (true, Tool::Select, Some(pos)) = (double && !back, self.tool, ctx.input(|input| input.pointer.interact_pos()))
-            && rect.contains(pos)
-            && self.on_canvas(&ctx, pos, response.layer_id)
-        {
-            let world = self.to_world(pos);
-            if let Some(index) = self.hit(world).filter(|&index| self.scene.elements[index].created.is_some() && self.on_title(index, world)) {
-                self.toggle_lift(index);
-                back = true;
-            }
+        let world = self.to_world(pos);
+        if let Some(index) = self.hit(world).filter(|&index| self.scene.elements[index].created.is_some() && self.on_title(index, world)) {
+            self.toggle_lift(index);
+            return;
         }
-        if let (true, Tool::Select, None, Some(pos)) = (double && !back, self.tool, self.editing, ctx.input(|input| input.pointer.interact_pos()))
-            && rect.contains(pos)
-            && self.on_canvas(&ctx, pos, response.layer_id)
-        {
-            let world = self.to_world(pos);
-            // a transparent shape is hit only on its outline, but a double-click inside it labels it
-            let hit = self.hit(world).or_else(|| self.containing_shape(world));
-            match hit {
-                // lines: double-click; arrows: Cmd + double-click (plain double-click labels arrows in the reference app)
-                Some(index)
-                    if !self.scene.elements[index].rope
-                        && matches!(self.scene.elements[index].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) =>
-                {
-                    self.moving = false;
-                    self.point_drag = None;
-                    self.selected = vec![index];
-                    self.line_editor = Some(index);
-                    self.selected_point = None;
-                }
-                Some(index) if self.scene.elements[index].terminal.is_some() => self.double_click_terminal(index, world),
-                Some(index) if self.scene.elements[index].chat.is_some() => self.open_chat_node(index),
-                Some(index) if self.scene.elements[index].is_liftable() && self.on_title(index, world) => self.toggle_lift(index),
-                Some(index) if matches!(self.scene.elements[index].kind, ElementKind::Text { .. }) || self.scene.elements[index].created.is_some() => {
-                    self.moving = false;
-                    self.begin_text_edit(index);
-                }
-                Some(index) if takes_label(&self.scene.elements[index]) => {
-                    self.moving = false;
-                    let label = self.owner_label(index);
-                    self.begin_text_edit(label);
-                }
-                None if !self.window_at(world) => {
-                    self.marquee = None;
-                    self.start_text(world);
-                }
-                _ => {}
-            }
+        if self.editing.is_some() {
+            return;
         }
-        self.update_bindings();
+        // a transparent shape is hit only on its outline, but a double-click inside it labels it
+        let hit = self.hit(world).or_else(|| self.containing_shape(world));
+        match hit {
+            // lines: double-click; arrows: Cmd + double-click (plain double-click labels arrows in the reference app)
+            Some(index)
+                if !self.scene.elements[index].rope
+                    && matches!(self.scene.elements[index].kind, ElementKind::Line { arrow, .. } if !arrow || self.mods.command) =>
+            {
+                self.moving = false;
+                self.point_drag = None;
+                self.selected = vec![index];
+                self.line_editor = Some(index);
+                self.selected_point = None;
+            }
+            Some(index) if self.scene.elements[index].terminal.is_some() => self.double_click_terminal(index, world),
+            Some(index) if self.scene.elements[index].chat.is_some() => self.open_chat_node(index),
+            Some(index) if self.scene.elements[index].is_liftable() && self.on_title(index, world) => self.toggle_lift(index),
+            Some(index) if matches!(self.scene.elements[index].kind, ElementKind::Text { .. }) || self.scene.elements[index].created.is_some() => {
+                self.moving = false;
+                self.begin_text_edit(index);
+            }
+            Some(index) if takes_label(&self.scene.elements[index]) => {
+                self.moving = false;
+                let label = self.owner_label(index);
+                self.begin_text_edit(label);
+            }
+            None if !self.window_at(world) => {
+                self.marquee = None;
+                self.start_text(world);
+            }
+            _ => {}
+        }
     }
 }

@@ -7,6 +7,8 @@ pub(crate) mod drops;
 pub(crate) mod editing;
 pub(crate) mod lifted;
 pub(crate) mod minimap;
+#[cfg(target_os = "macos")]
+mod native;
 mod paint;
 pub(crate) mod pointer;
 mod selection;
