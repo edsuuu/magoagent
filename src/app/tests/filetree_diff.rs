@@ -267,6 +267,33 @@ fn the_columns_line_up_row_for_row_and_scroll_together() {
 }
 
 #[test]
+fn the_changed_words_are_whole_spans_and_a_line_changed_whole_has_none() {
+    use crate::app::filetree::compare::word_spans;
+    use crate::editor::word_marks;
+    // one word changed: one span, without the blanks around it
+    let (old, new) = ("let total = soma(a, b);", "let total = conta(a, b);");
+    let (removed, added) = word_marks(old, new);
+    assert_eq!(word_spans(old, removed).iter().map(|span| &old[span.clone()]).collect::<Vec<_>>(), ["soma(a,"]);
+    assert_eq!(word_spans(new, added).iter().map(|span| &new[span.clone()]).collect::<Vec<_>>(), ["conta(a,"]);
+    // words next to each other with spaces between: one span, no holes at the spaces
+    let line = "$a = 'um' . $b['c'] . fim();";
+    let start = line.find("'um'").unwrap();
+    let end = line.find("fim").unwrap() - 3;
+    let marks = vec![start..start + 5, start + 5..start + 7, start + 7..end];
+    assert_eq!(word_spans(line, marks), vec![start..end]);
+    // the line changed nearly whole (the user's case): its row's color says it, no word spans
+    let (old, new) = ("$sentSummary[] = $item;", "$sentSummary[] = 'resultado da função: ' . $item['output'];");
+    let (_, added) = word_marks(old, new);
+    assert!(word_spans(new, added).is_empty(), "never word by word");
+    let (old, new) = ("return x;", "throw new Erro('falhou');");
+    let (removed, added) = word_marks(old, new);
+    assert!(word_spans(old, removed).is_empty() && word_spans(new, added).is_empty());
+    // blanks only, or past the end, give nothing
+    assert!(word_spans("a  b", std::iter::once(1..3).collect()).is_empty());
+    assert!(word_spans("ab", std::iter::once(5..9).collect()).is_empty());
+}
+
+#[test]
 fn an_agent_turns_the_collapse_of_the_diff_on_and_off() {
     if crate::editor::command("git").arg("--version").output().is_err() {
         return;

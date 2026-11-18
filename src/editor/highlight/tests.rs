@@ -36,6 +36,18 @@ fn blade_and_html() {
 }
 
 #[test]
+fn blade_one_line_php_and_escapes_leave_the_rest_alone() {
+    // `@php(...)` is one line: what follows is markup again, not PHP to the end of the file
+    let t = styles(&BLADE, "@php($i = 0)\n<div class=\"x\">@foreach($a as $b)</div>");
+    assert!(t.contains(&("@php".into(), St::Keyword)) && t.contains(&("div".into(), St::Tag)) && t.contains(&("@foreach".into(), St::Keyword)), "{t:?}");
+    // a bare `@php` still runs to `@endphp`
+    assert!(styles(&BLADE, "@php\n$a = 1;\n@endphp").contains(&("@endphp".into(), St::Keyword)));
+    // `@@if` is the text `@if`, and an address is text
+    let t = styles(&BLADE, "@@if a@foreach.com");
+    assert!(!t.iter().any(|(text, _)| text == "@if" || text == "@foreach"), "{t:?}");
+}
+
+#[test]
 fn asm_sql_json() {
     let t = styles(&ASM, "_start:\n  mov rax, 60 ; exit\nsection .text");
     assert!(t.contains(&("_start".into(), St::Function)));

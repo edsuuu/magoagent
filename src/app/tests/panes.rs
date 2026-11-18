@@ -1,18 +1,24 @@
 //! The panels on the right (panes/): the title bar's buttons open and close them, and each one's
-//! gestures (a task made and concluded, the timeline filtered, a diff opened, the binder's pages).
+//! gestures (a diff opened; the Tarefas panel went).
 
 use super::filetree::{git, temp, tree_on};
 use super::*;
 use crate::app::panes::{PANE_WIDTH, PANES, Pane};
 use egui::accesskit::Role;
 
-const SCREEN: Vec2 = Vec2::new(1200.0, 800.0);
+pub(super) const SCREEN: Vec2 = Vec2::new(1200.0, 800.0);
 
 /// One frame of the title bar and the panel, with the canvas's keys; gives what it showed, from
 /// its accessibility tree: each widget's role, text and rect.
-fn pane_frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) -> Vec<(Role, String, Rect)> {
+pub(super) fn pane_frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) -> Vec<(Role, String, Rect)> {
+    pane_input(app, ctx, events, Modifiers::NONE)
+}
+
+/// `pane_frame` with keys held (Shift on a click).
+pub(super) fn pane_input(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>, modifiers: Modifiers) -> Vec<(Role, String, Rect)> {
     ctx.enable_accesskit();
     let time = Some(ctx.input(|i| i.time) + 0.05);
+    let events = [egui::Event::ModifiersChanged(modifiers)].into_iter().chain(events).collect();
     let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SCREEN)), time, events, ..Default::default() };
     let mut output = ctx.run_ui(raw, |_| {
         app.screen_keys(ctx);
@@ -34,7 +40,7 @@ fn pane_frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) -> 
         .collect()
 }
 
-fn pane_click(app: &mut DrawingApp, ctx: &Context, at: Pos2) -> Vec<(Role, String, Rect)> {
+pub(super) fn pane_click(app: &mut DrawingApp, ctx: &Context, at: Pos2) -> Vec<(Role, String, Rect)> {
     pane_frame(app, ctx, vec![egui::Event::PointerMoved(at), button(at, true)]);
     let shown = pane_frame(app, ctx, vec![button(at, false)]);
     // the pointer leaves, so no tooltip covers the next click
@@ -56,16 +62,16 @@ fn press_pane(app: &mut DrawingApp, ctx: &Context, k: usize) {
 }
 
 /// Where the widget of `role` whose text starts with `text` is.
-fn find(shown: &[(Role, String, Rect)], role: Role, text: &str) -> Option<Rect> {
+pub(super) fn find(shown: &[(Role, String, Rect)], role: Role, text: &str) -> Option<Rect> {
     shown.iter().find(|(r, t, _)| *r == role && t.starts_with(text)).map(|(_, _, rect)| *rect)
 }
 
-fn texts(shown: &[(Role, String, Rect)]) -> Vec<String> {
+pub(super) fn texts(shown: &[(Role, String, Rect)]) -> Vec<String> {
     shown.iter().map(|(_, text, _)| text.clone()).collect()
 }
 
 /// The panel opened by its button, settled.
-fn opened(pane: Pane) -> (Context, DrawingApp, Vec<(Role, String, Rect)>) {
+pub(super) fn opened(pane: Pane) -> (Context, DrawingApp, Vec<(Role, String, Rect)>) {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     settle(&mut app, &ctx);
@@ -97,13 +103,13 @@ fn each_button_opens_its_panel_and_closes_it_one_at_a_time() {
     pane_click(&mut app, &ctx, close.center());
     assert_eq!(app.panes.open, None, "the X closes it");
     // and Esc
-    press_pane(&mut app, &ctx, 1);
+    press_pane(&mut app, &ctx, 0);
     app.selected = vec![0];
     pane_frame(&mut app, &ctx, vec![key_press(Key::Escape)]);
     assert_eq!(app.panes.open, None, "Esc closes it first");
     assert_eq!(app.selected, vec![0], "and only it");
     // over the chat the buttons and the panel are hidden
-    app.set_pane(Some(Pane::Tasks));
+    app.set_pane(Some(Pane::Changes));
     app.chat_open = true;
     pane_frame(&mut app, &ctx, vec![]);
     assert_eq!((app.panes.buttons, app.pane_width()), (None, 0.0));
@@ -115,7 +121,7 @@ fn the_buttons_are_no_place_to_move_the_window() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     settle(&mut app, &ctx);
-    let at = app.pane_button(SCREEN.x, 2).center();
+    let at = app.pane_button(SCREEN.x, 0).center();
     let mut raw = egui::RawInput {
         screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SCREEN)),
         events: vec![egui::Event::PointerMoved(at), button(at, true)],
@@ -144,46 +150,17 @@ fn on_the_welcome_the_panel_buttons_hide_and_the_top_moves_the_window() {
     assert_eq!(raw.events.len(), 1, "the press in the middle of the top moves the window");
 }
 
+/// Asked: "a aba de tarefas, ali no canvas remove por favor". Only Alterações has a button; the tasks still reach the agents.
 #[test]
-fn a_task_is_made_for_an_agent_and_concluded_with_its_box() {
-    let (ctx, mut app, shown) = opened(Pane::Tasks);
-    let mut terminal = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
-    terminal.terminal = Some(TerminalSpec { name: "Revisor".into(), command: "claude".into(), ..Default::default() });
-    let agent = terminal.id.clone();
-    app.scene.elements.push(terminal);
-    assert!(texts(&shown).iter().any(|t| t == "Nenhuma tarefa aberta."));
-    // typed in the field, for the agent picked, with Enter
-    let field = find(&shown, Role::TextInput, "").unwrap();
-    pane_click(&mut app, &ctx, field.center());
-    app.panes.task_owner = agent.clone();
-    pane_frame(&mut app, &ctx, vec![egui::Event::Text("Revisar o login".into())]);
-    pane_frame(&mut app, &ctx, vec![key_press(Key::Enter)]);
-    let task = app.tasks.list.last().cloned().expect("a task");
-    assert_eq!((task.title.as_str(), task.owner.as_str(), task.requester.as_str()), ("Revisar o login", agent.as_str(), "você"));
-    assert!(app.panes.task_draft.is_empty());
+fn the_tasks_panel_is_gone_and_the_tasks_stay() {
+    assert_eq!(PANES.map(|pane| pane.2), ["Alterações"]);
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    settle(&mut app, &ctx);
     let shown = pane_frame(&mut app, &ctx, vec![]);
-    assert!(texts(&shown).iter().any(|t| t == "Revisar o login"), "{:?}", texts(&shown));
-    assert!(texts(&shown).iter().any(|t| t.starts_with("Revisor · Pendente")));
-    // a second one with the button
-    app.panes.task_draft = "Escrever os testes".into();
-    pane_click(&mut app, &ctx, find(&shown, Role::Button, "Criar").unwrap().center());
-    assert_eq!(app.tasks.list.len(), 2);
-    // the box concludes it: it leaves Abertas for Feitas
-    let shown = pane_frame(&mut app, &ctx, vec![]);
-    let boxes: Vec<Rect> = shown.iter().filter(|(r, ..)| *r == Role::CheckBox).map(|(.., rect)| *rect).collect();
-    assert_eq!(boxes.len(), 2);
-    pane_click(&mut app, &ctx, boxes[0].center());
-    let done: Vec<String> = app.tasks.list.iter().filter(|t| t.state.is_final()).map(|t| t.title.clone()).collect();
-    assert_eq!(done.len(), 1);
-    let shown = pane_frame(&mut app, &ctx, vec![]);
-    assert!(!texts(&shown).iter().any(|t| *t == done[0]), "no longer among the open ones");
-    let shown = pane_click(&mut app, &ctx, find(&shown, Role::Button, "Feitas 1").unwrap().center());
-    let shown = if texts(&shown).iter().any(|t| *t == done[0]) { shown } else { pane_frame(&mut app, &ctx, vec![]) };
-    assert!(texts(&shown).iter().any(|t| *t == done[0]), "{:?}", texts(&shown));
-    // unchecked, it reopens
-    let check = find(&shown, Role::CheckBox, "").unwrap();
-    pane_click(&mut app, &ctx, check.center());
-    assert!(app.tasks.list.iter().all(|t| !t.state.is_final()));
+    assert!(!texts(&shown).iter().any(|text| text == "Tarefas"), "{:?}", texts(&shown));
+    app.act("tasks", &json!({ "action": "create", "title": "Revisar o login" })).unwrap();
+    assert_eq!(app.tasks.list.len(), 1);
 }
 
 #[test]
@@ -215,8 +192,8 @@ fn a_changed_file_shows_its_lines_and_diff_and_opens_in_the_tree() {
     assert_eq!(app.change_line_counts(&dir.join("kept.txt")), Some((2, 1)));
     let row = find(&shown, Role::Button, "kept.txt").expect("the file's row");
     pane_click(&mut app, &ctx, row.center());
-    let diff = &app.panes.changes.diff;
-    assert!(diff.contains(&('-', "dois".into())) && diff.contains(&('+', "2".into())) && diff.contains(&('+', "quatro".into())), "{diff:?}");
+    let diff: Vec<(char, &str)> = app.panes.changes.diff.iter().map(|l| (l.mark, l.text.as_str())).collect();
+    assert!(diff.contains(&('-', "dois")) && diff.contains(&('+', "2")) && diff.contains(&('+', "quatro")), "{diff:?}");
     let shown = pane_frame(&mut app, &ctx, vec![]);
     assert!(find(&shown, Role::Button, "Descartar").is_none(), "no such action in the app");
     pane_click(&mut app, &ctx, find(&shown, Role::Button, "Abrir na Árvore").unwrap().center());

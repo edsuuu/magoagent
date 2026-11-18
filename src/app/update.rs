@@ -57,6 +57,12 @@ impl eframe::App for DrawingApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.save_on_exit();
         crate::mcp::bridge::remove_hook_endpoint();
+        // Linux: the pages' X11 windows live inside the app's; they go first, so GTK never draws in a window that is gone
+        #[cfg(target_os = "linux")]
+        if !self.portals.is_empty() {
+            self.portals.clear();
+            crate::app::system::gtk::call(std::time::Duration::from_secs(1), || ());
+        }
     }
 
     /// eframe clears every viewport with this one color: the avatar's and the call popup's windows
@@ -193,7 +199,9 @@ impl eframe::App for DrawingApp {
                 && self.terminal_elevated.is_none()
                 && !egui::Popup::is_any_open(&ctx)
                 && self.focus(&ctx) != crate::app::canvas::shortcuts::Focus::Dialog;
-            if (response.hovered() || over_window) && !self.chat_open && ctx.current_pass_index() == 0 {
+            // the wheel over a long note's text scrolls it, not the canvas (notes/scroll.rs)
+            let note_took = response.hovered() && !self.chat_open && ctx.current_pass_index() == 0 && self.note_wheel(&ctx);
+            if (response.hovered() || over_window) && !self.chat_open && ctx.current_pass_index() == 0 && !note_took {
                 let (scroll, zoom, pointer) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
                 let shift = ctx.input(|i| i.modifiers.shift);
                 if let Some(mouse) = ctx.input(|i| wheel_from_mouse(&i.raw.events)) {
@@ -282,11 +290,10 @@ impl eframe::App for DrawingApp {
         if !self.caption_hooked {
             self.caption_hooked = crate::app::ui::titlebar::native_caption::install(&*frame);
         }
-        #[cfg(not(target_os = "linux"))]
         self.sync_portals(&*frame, &ctx);
         #[cfg(not(target_os = "linux"))]
         self.sync_voice_page(&*frame, &ctx);
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         if let Some(path) = self.script.as_mut().and_then(Script::take_pages) {
             self.save_page_shots(&path);
         }

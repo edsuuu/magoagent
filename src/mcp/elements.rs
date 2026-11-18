@@ -70,6 +70,54 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
     Ok(created)
 }
 
+/// What an agent opens on the canvas (a terminal to run its tests or its API, a portal, a file tree) hangs from it, as
+/// `recruit` hangs its child: a rope from `caller` (the canvas terminal or chat card it runs in) to each window just
+/// `created`, so it reaches them (read_terminal, portal_*) and list_agents shows them. A caller this drawing does not
+/// have (a chat with no card here) is the app's to tie when the drawing comes in (`tie_to_terminal`). Back: the windows
+/// tied.
+pub(crate) fn tie_to_caller(scene: &mut Scene, caller: Option<&str>, created: &[Value]) -> Result<Vec<String>, String> {
+    let Some(caller) = caller.filter(|caller| scene.elements.iter().any(|e| e.id == *caller)) else { return Ok(Vec::new()) };
+    let window = |id: &str| scene.elements.iter().any(|e| e.id == id && e.id != caller && e.is_node());
+    let windows: Vec<String> = created.iter().filter_map(|c| c["id"].as_str()).filter(|id| window(id)).map(String::from).collect();
+    for id in windows.iter().map(String::as_str) {
+        // a line it bound to both already connects them
+        let ends = |e: &Element| [&e.ends.start, &e.ends.end].map(|end| end.as_ref().map(|b| b.element_id.clone()));
+        if scene.elements.iter().any(|e| matches!(ends(e), [Some(a), Some(b)] if (a == caller && b == id) || (a == id && b == caller))) {
+            continue;
+        }
+        // the app's own rope (`rope_between`): dashed, grey, no heads
+        let rope = json!({
+            "type": "arrow", "rope": true, "start": { "id": caller }, "end": { "id": id }, "startArrowhead": null, "endArrowhead": null,
+            "strokeColor": "#8a8a8a", "strokeWidth": 2, "strokeStyle": "dashed", "roughness": 0, "roundness": { "type": 2 },
+        });
+        add_elements(scene, &[rope])?;
+    }
+    Ok(windows)
+}
+
+/// A window an agent added over another window or a note moves to the free place nearest to the agent (to where it put
+/// it, when no window asked): it reads the canvas from a list, and stacked what it opened (asked: "a posição dos
+/// terminais, às vezes ele junta tudo na direita"). Its label goes with it.
+pub(crate) fn make_room(scene: &mut Scene, caller: Option<&str>, created: &[Value]) {
+    let around = caller.and_then(|id| scene.elements.iter().find(|e| e.id == id)).map(element_bounds);
+    let ids: Vec<&str> = created.iter().filter_map(|c| c["id"].as_str()).collect();
+    for (index_of, id) in ids.iter().copied().enumerate() {
+        let Some(index) = scene.elements.iter().position(|e| e.id == id && e.is_node()) else { continue };
+        let at = element_bounds(&scene.elements[index]);
+        // in the order it made them: the later one gives way
+        let later = &ids[index_of..];
+        let spot = free_spot_among(scene.elements.iter().filter(|e| !later.contains(&e.id.as_str())), at, around.unwrap_or(at));
+        let delta = spot.min - at.min;
+        if delta != Vec2::ZERO {
+            let label = format!("{id}-label");
+            for element in scene.elements.iter_mut().filter(|e| e.id == id || e.id == label) {
+                element.move_by(delta);
+            }
+        }
+    }
+    resolve_bindings(&mut scene.elements);
+}
+
 pub(crate) fn center_of(scene: &Scene, id: &str) -> Result<Pos2, String> {
     scene.elements.iter().find(|e| e.id == id).map(|e| element_bounds(e).center()).ok_or_else(|| format!("elemento `{id}` não existe"))
 }

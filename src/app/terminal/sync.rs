@@ -146,9 +146,7 @@ impl DrawingApp {
             UiCommand::PortalNavigate { id, url } => self.portal_navigate(&id, &url),
             UiCommand::PortalEval { id, script, reply } => self.portal_eval(&id, &script, reply),
             UiCommand::PortalHistory { id, action } => self.portal_history(&id, &action),
-            UiCommand::PortalShot { id, reply } => {
-                let _ = reply.send(self.portal_shot(&id));
-            }
+            UiCommand::PortalShot { id, reply } => self.portal_shot(&id, reply),
             UiCommand::WriteNote { id, text } => {
                 let label_id = format!("{id}-label");
                 self.snapshot();

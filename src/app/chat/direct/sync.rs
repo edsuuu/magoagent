@@ -6,9 +6,10 @@ impl DrawingApp {
         self.cmd_cancel(id);
         // stopped, not done: no celebration (nor the island opening for it)
         self.chat_ended.remove(id);
-        if let Some(mut run) = self.chat_runs.remove(id) {
-            let _ = run.child.kill();
-            let _ = run.child.wait();
+        if let Some(run) = self.chat_runs.remove(id) {
+            // its whole tree goes (on Windows `kill` would end only the wrapper, and the agent would go on writing to the
+            // session the next message resumes): ChatRun's drop
+            drop(run);
             self.chat_transcript(id).running.clear();
         }
     }

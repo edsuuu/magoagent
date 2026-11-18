@@ -3005,12 +3005,13 @@ dependencies = [
 
 [[package]]
 name = "magoagent"
-version = "0.0.29"
+version = "0.0.30"
 dependencies = [
  "alacritty_terminal",
  "block2 0.6.2",
  "cpal",
  "eframe",
+ "gdkx11",
  "gtk",
  "hayro",
  "image",
@@ -3037,6 +3038,7 @@ dependencies = [
  "tree-sitter-typescript",
  "ttf-parser",
  "uuid",
+ "webkit2gtk",
  "windows 0.62.2",
  "winit",
  "wry",

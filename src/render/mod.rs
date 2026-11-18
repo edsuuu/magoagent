@@ -74,7 +74,7 @@ pub(crate) fn paint_element(painter: &Painter, element: &Element, view: &View, f
     }
     if element.created.is_some() {
         // a sticky note without its text (replays): the card alone
-        paint_note(painter, element, "", false, view, faded);
+        paint_note(painter, element, "", false, view, faded, 0.0);
         return;
     }
     if let (Some(fill), Some(poly)) = (element.style.fill, shape_polygon(element)) {
@@ -320,9 +320,10 @@ fn paint_tape(painter: &Painter, bounds: Rect, place: &dyn Fn(Pos2) -> Pos2, alp
 
 /// A sticky note like the reference app's card: a soft shadow, the paper with a hairline edge, a
 /// header strip with the title, and the text as markdown. `body` is false while the
-/// editor types over the text.
-/// Returns where the text ends (the note's own points, y); without `body`, the top of its box.
-pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bool, view: &View, faded: bool) -> f32 {
+/// editor types over the text. `scroll`: how far down its text is scrolled (its points), a bar at the right edge
+/// saying where when the card cuts it.
+/// Returns where the text ends, unscrolled (the note's own points, y); without `body`, the top of its box.
+pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bool, view: &View, faded: bool, scroll: f32) -> f32 {
     let opacity = if faded { note.style.opacity / 3 } else { note.style.opacity };
     let alpha = opacity as f32 / 100.0;
     let (center, angle, zoom) = (note.center(), note.angle, view.zoom);
@@ -374,18 +375,20 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
         painter.with_clip_rect(card).galley(place(text_box.min), painter.layout_job(job), ink);
         return text_box.min.y;
     }
-    // ponytail: the text is clipped to the card, not scrolled; the editor scrolls it while typing
-    let clip = painter.with_clip_rect(card);
+    // the text under the header and above the buttons, scrolled by the wheel (app/notes/scroll.rs)
+    let text_area = Rect::from_two_pos(place(Pos2::new(b.min.x, b.min.y + NOTE_HEADER)), place(Pos2::new(b.max.x, text_box.max.y + NOTE_PAD)));
+    let clip = painter.with_clip_rect(card.intersect(text_area));
     let fs = note.note.font_size;
     if note.note.raw {
         // the markdown source as it is typed, in the editor's monospace
         let galley = painter.layout_job(markdown::edit_job(text, fs * zoom, ink, text_box.width() * zoom));
         let bottom = text_box.min.y + galley.size().y / zoom;
-        clip.galley(place(text_box.min), galley, ink);
+        clip.galley(place(text_box.min - Vec2::new(0.0, scroll)), galley, ink);
+        note_scroll_bar(painter, &place, text_box, bottom, scroll, ink, zoom);
         return bottom;
     }
     let (left, width, lh) = (text_box.min.x, text_box.width(), fs * markdown::NOTE_LINE);
-    let mut y = text_box.min.y;
+    let mut y = text_box.min.y - scroll;
     for line in markdown::lines(text) {
         y += match line {
             markdown::Line::Blank => lh,
@@ -441,7 +444,22 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
             }
         };
     }
-    y
+    note_scroll_bar(painter, &place, text_box, y + scroll, scroll, ink, zoom);
+    y + scroll
+}
+
+/// A note's text the card cuts (ending at `end`, its points, unscrolled): a thin bar at the right edge of `text_box`, as
+/// long as the share shown and as far down as the text is scrolled.
+fn note_scroll_bar(painter: &Painter, place: &dyn Fn(Pos2) -> Pos2, text_box: Rect, end: f32, scroll: f32, ink: Color32, zoom: f32) {
+    let (shown, whole) = (text_box.height(), end - text_box.min.y);
+    if whole <= shown + 0.5 || shown <= 0.0 {
+        return;
+    }
+    let length = (shown * shown / whole).max(16.0).min(shown);
+    let top = text_box.min.y + (shown - length) * (scroll / (whole - shown)).clamp(0.0, 1.0);
+    let x = text_box.max.x + NOTE_PAD / 2.0;
+    let bar = Rect::from_two_pos(place(Pos2::new(x - 1.5, top)), place(Pos2::new(x + 1.5, top + length)));
+    painter.rect_filled(bar, 1.5 * zoom, ink.gamma_multiply(0.3));
 }
 
 /// Paints one run of a note's text at `at` (points in the card) and returns its height in points.

@@ -132,6 +132,14 @@ pub(crate) fn text_ui(
             // and so does a click on its menu, which would reach the text under the menu
             let right = ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Secondary))
                 || (egui::Popup::is_any_open(ui.ctx()) && ui.input(|i| i.pointer.any_pressed()));
+            // an undo or a redo: egui puts back the caret it had when the step was kept (the file's end for the first
+            // one: asked "se eu aperto Ctrl+Z para voltar, o foco vai para a última linha do arquivo"), so the caret goes
+            // to what changed instead
+            let undoing = ui.memory(|m| m.has_focus(id))
+                && ui.input(|i| {
+                    i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Z | Key::Y, pressed: true, modifiers, .. } if modifiers.command))
+                });
+            let old = undoing.then(|| text.clone());
             let mut out = egui::TextEdit::multiline(text)
                 .id(id)
                 .frame(egui::Frame::NONE)
@@ -146,6 +154,14 @@ pub(crate) fn text_ui(
             if let Some(kept) = before.filter(|_| right) {
                 out.state.cursor.set_char_range(Some(kept));
                 out.state.clone().store(ui.ctx(), id);
+            }
+            if let Some(old) = old.filter(|old| old != text) {
+                let at = CCursor::new(changed_at(&old, text));
+                out.state.cursor.set_char_range(Some(CCursorRange::one(at)));
+                out.state.clone().store(ui.ctx(), id);
+                // in view, the least scroll that shows it (the text edit already asked for its own caret's place)
+                let caret = out.galley.pos_from_cursor(at).translate(out.galley_pos.to_vec2());
+                ui.scroll_to_rect(caret.expand2(Vec2::new(0.0, row_h)), None);
             }
             if want_focus {
                 resp.request_focus();
@@ -346,4 +362,14 @@ pub(crate) fn text_ui(
         click = Some(Click::Goto(line, col));
     }
     (changed, click)
+}
+
+/// Where the caret goes after an undo or a redo turned `old` into `new`: the end of what changed (the text put back, or
+/// where the text taken out was), in characters.
+pub(crate) fn changed_at(old: &str, new: &str) -> usize {
+    let prefix = old.chars().zip(new.chars()).take_while(|(a, b)| a == b).count();
+    let (old_count, new_count) = (old.chars().count(), new.chars().count());
+    let room = old_count.min(new_count) - prefix;
+    let suffix = old.chars().rev().zip(new.chars().rev()).take(room).take_while(|(a, b)| a == b).count();
+    new_count - suffix
 }

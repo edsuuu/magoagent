@@ -59,6 +59,14 @@ fn main() -> eframe::Result {
     // a shell that set NO_COLOR (agent hosts do) would hand every terminal of ours a colorless claude/ls
     // SAFETY: as above, no other thread yet
     unsafe { std::env::remove_var("NO_COLOR") };
+    // Linux: WebKitGTK's DMA-BUF renderer leaves the portals' pages black inside the app's X11 window (NVIDIA's GBM
+    // refuses its buffers); the older path draws them. WebKit reads it once, so here, before any thread; a value the
+    // person set stays. ponytail: every driver and the terminals' programs inherit it; only where GBM fails if it costs
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        // SAFETY: as above, no other thread yet
+        unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
+    }
     // a window app has no console on Windows: a panic also goes to crash.log in the data folder
     let console = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -87,7 +95,7 @@ fn main() -> eframe::Result {
         Some("atualizar") => std::process::exit(app::system::updater::cli(&args[1..])),
         // Limpar todos os dados: waits for the app to close, cleans, opens it again (app/system/wipe.rs)
         Some("limpar") => std::process::exit(app::system::wipe::cli(&args[1..])),
-        Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "connect" | "notify" | "help") => {
+        Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "terminal" | "connect" | "notify" | "help") => {
             attach_console();
             std::process::exit(cli(&args))
         }

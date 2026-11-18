@@ -1,6 +1,8 @@
 //! The card of a question or a permission on the open island: one card
-//! with its wash (cyan asking, amber for a permission), the wizard inside it at the left, and at 116 the agent, the
-//! question (or the command) and a row of round buttons.
+//! with its wash (cyan asking, amber for a permission), the wizard inside it at the left, and at 116 the agent and the
+//! permission's command with a row of round buttons, or the question whole with its options as rows (each label and what
+//! it means, wrapped: asked "fica com os ... e eu tenho que passar o mouse em cima de cada opção") and "Outro", a box for
+//! an answer of one's own; the card grows with them, and past the window's room they scroll.
 
 use super::paint::{AMBER, BLACK, CARD, DIM, INK, Out, View, aim, font, semi, wash_with};
 use crate::app::chat::list::clipped;
@@ -13,6 +15,8 @@ pub(super) const QUESTION_H: f32 = 200.0;
 pub(super) const APPROVAL_H: f32 = 160.0;
 /// A permission opened to read the whole request (`PersonAsk::details`).
 pub(super) const APPROVAL_OPEN_H: f32 = 380.0;
+/// The most a question's card grows to: the island's window always has 420 for it (`window::ROOM`).
+const QUESTION_MOST: f32 = 420.0;
 /// "Responder no terminal" and "ver tudo": light enough to read on the amber wash.
 const LINK: Color32 = Color32::from_rgb(0xd4, 0xd7, 0xdd);
 const CYAN: Color32 = Color32::from_rgb(0x22, 0xd3, 0xee);
@@ -24,6 +28,8 @@ enum Press {
     Done,
     Allow(bool),
     Terminal,
+    /// The words of "Outro" sent.
+    Other,
 }
 
 /// A button of the row: `.btn.primary` (ink on white), `.btn.secondary` (9% white) or the gray `.link-btn`.
@@ -92,29 +98,36 @@ impl DrawingApp {
         };
         let left = page.left() + 116.0;
         let width = page.right() - 16.0 - left;
+        if !approval {
+            let who = (name, color, doing);
+            let pressed = self.island_question(ui, &painter, page, ask, (left, width), who, outside.is_some(), out);
+            let send = match pressed {
+                None => return,
+                Some(Press::Option(option)) => ask.pick(option),
+                Some(Press::Other) => ask.answer_other(),
+                Some(Press::Terminal) => {
+                    if let Some((_, session)) = outside {
+                        self.outside.declined.borrow_mut().push((session, now_ms()));
+                    }
+                    asks.remove(index).send_terminal();
+                    return;
+                }
+                Some(Press::Done | Press::Allow(_)) => ask.next(),
+            };
+            if send {
+                asks.remove(index).send(true);
+            }
+            return;
+        }
         // the row's buttons, as `actions options`: wrapped, 6 apart (8 on a permission)
         let mut buttons: Vec<(String, Kind, Press, Option<String>, Option<&str>, bool)> = Vec::new();
-        let title = if approval {
-            buttons.push(("Negar".into(), Kind::Secondary, Press::Allow(false), None, Some("N"), false));
-            buttons.push(("Permitir".into(), Kind::Primary, Press::Allow(true), None, Some("Y"), false));
-            ask.summary()
-        } else {
-            let step = ask.step.min(ask.questions.len() - 1);
-            let question = &ask.questions[step];
-            for (option, (label, meaning)) in question.options.iter().enumerate() {
-                let on = ask.picked[step].contains(&option);
-                let kind = if on { Kind::Primary } else { Kind::Secondary };
-                buttons.push((label.clone(), kind, Press::Option(option), (!meaning.is_empty()).then(|| meaning.clone()), None, false));
-            }
-            if question.multiple {
-                buttons.push(("OK".into(), Kind::Primary, Press::Done, None, None, ask.picked[step].is_empty()));
-            }
-            question.text.clone()
-        };
+        buttons.push(("Negar".into(), Kind::Secondary, Press::Allow(false), None, Some("N"), false));
+        buttons.push(("Permitir".into(), Kind::Primary, Press::Allow(true), None, Some("Y"), false));
+        let title = ask.summary();
         if outside.is_some() {
             buttons.push(("Responder no terminal".into(), Kind::Link, Press::Terminal, None, None, false));
         }
-        let gap = if approval { 8.0 } else { 6.0 };
+        let gap = 8.0;
         let sizes: Vec<Vec2> = buttons.iter().map(|(label, kind, _, _, key, _)| button_size(ui, label, *kind, *key)).collect();
         let mut rows: Vec<Vec<usize>> = vec![Vec::new()];
         let mut used = 0.0;
@@ -130,24 +143,11 @@ impl DrawingApp {
         }
         let row_height = |row: &Vec<usize>| row.iter().map(|index| sizes[*index].y).fold(0.0, f32::max);
         let rows_height = rows.iter().map(row_height).sum::<f32>() + gap * (rows.len() - 1) as f32;
-        // the question in 600 15px, two lines at most (`.question-text`); the command in a one-line `.code` with "ver tudo"
-        // at its end, or opened: the whole request in a well that scrolls, as tall as the card leaves
+        // the command in a one-line `.code` with "ver tudo" at its end, or opened: the whole request in a well that
+        // scrolls, as tall as the card leaves
         let more = ui.painter().layout_no_wrap(if open { "recolher" } else { "ver tudo" }.to_string(), font(11.0), LINK);
-        let text = if approval {
-            clipped(ui.painter(), title.clone(), FontId::monospace(12.0), Color32::from_rgb(0xe8, 0xe9, 0xec), width - 20.0 - more.size().x - 10.0)
-        } else {
-            let mut job = egui::text::LayoutJob::simple(title.clone(), semi(15.0), INK, width);
-            job.wrap.max_rows = 2;
-            job.wrap.overflow_character = Some('…');
-            ui.painter().layout_job(job)
-        };
-        let text_height = if open {
-            (page.height() - 28.0 - 20.0 - 5.0 - rows_height).max(60.0)
-        } else if approval {
-            text.size().y + 10.0
-        } else {
-            text.size().y
-        };
+        let text = clipped(ui.painter(), title, FontId::monospace(12.0), Color32::from_rgb(0xe8, 0xe9, 0xec), width - 20.0 - more.size().x - 10.0);
+        let text_height = if open { (page.height() - 28.0 - 20.0 - 5.0 - rows_height).max(60.0) } else { text.size().y + 10.0 };
         // `.stack`: the three centred down the card, 5 apart
         let total = 15.0 + 5.0 + text_height + 5.0 + rows_height;
         let mut y = page.center().y - total / 2.0;
@@ -163,7 +163,7 @@ impl DrawingApp {
         let doing = clipped(&painter, doing, font(12.0), DIM, (page.right() - 40.0 - x).max(0.0));
         painter.galley(Pos2::new(x, y + 7.5 - doing.size().y / 2.0), doing, DIM);
         y += 15.0 + 5.0;
-        if approval {
+        {
             let well_width = if open { width } else { text.size().x + 20.0 + more.size().x + 10.0 };
             let well = Rect::from_min_size(Pos2::new(left, y), Vec2::new(well_width, text_height));
             painter.rect(well, 10, Color32::from_white_alpha(18), Stroke::new(1.0, Color32::from_white_alpha(15)), StrokeKind::Inside);
@@ -190,15 +190,11 @@ impl DrawingApp {
             if response.clicked() {
                 ask.open = !open;
             }
-        } else {
-            let area = Rect::from_min_size(Pos2::new(left, y), text.size());
-            painter.galley(area.min, text, INK);
-            ui.interact(area, ui.scope_id().with("island_ask_title"), Sense::hover()).on_hover_text(&title);
         }
         y += text_height + 5.0;
         // the row; an approval's clicks in its first 600 ms don't count (`CLICK_GUARD_MS`): it came up under a pointer
         // busy elsewhere
-        let guarded = approval && ask.guarded(time);
+        let guarded = ask.guarded(time);
         let mut pressed = None;
         for row in &rows {
             let height = row_height(row);
@@ -221,22 +217,159 @@ impl DrawingApp {
         if guarded {
             return;
         }
-        let send = match pressed {
-            None => return,
-            Some(Press::Option(option)) => ask.pick(option).then_some(true),
-            Some(Press::Done) => ask.next().then_some(true),
-            Some(Press::Allow(allow)) => Some(allow),
+        match pressed {
+            Some(Press::Allow(allow)) => asks.remove(index).send(allow),
             Some(Press::Terminal) => {
                 if let Some((_, session)) = outside {
                     self.outside.declined.borrow_mut().push((session, now_ms()));
                 }
                 asks.remove(index).send_terminal();
-                return;
             }
-        };
-        if let Some(allow) = send {
-            asks.remove(index).send(allow);
+            _ => {}
         }
+    }
+}
+
+impl DrawingApp {
+    /// A question's card from `top`: who asks, the question whole, its options as rows (the label and what it means,
+    /// wrapped, the number key at the left) and "Outro"; under them OK (a multiple choice) and "Responder no terminal"
+    /// (a session outside the app). Its height goes to `out.body`; what is taller than the window leaves scrolls.
+    #[allow(clippy::too_many_arguments)]
+    fn island_question(
+        &self,
+        ui: &mut egui::Ui,
+        painter: &Painter,
+        page: Rect,
+        ask: &mut crate::app::chat::decide::PersonAsk,
+        (left, width): (f32, f32),
+        (name, color, doing): (Option<String>, Color32, String),
+        outside: bool,
+        out: &mut Out,
+    ) -> Option<Press> {
+        let step = ask.step.min(ask.questions.len() - 1);
+        let question = ask.questions[step].clone();
+        // `agentWho`: its dot, its name, what it does
+        let top = page.top() + 14.0;
+        let mut x = left;
+        if let Some(name) = name {
+            painter.circle_filled(Pos2::new(x + 4.0, top + 7.5), 4.0, color);
+            x += 8.0 + 7.0;
+            let galley = painter.layout_no_wrap(name, semi(12.0), INK);
+            let right = x + galley.size().x;
+            painter.galley(Pos2::new(x, top + 7.5 - galley.size().y / 2.0), galley, INK);
+            x = right + 7.0;
+        }
+        let doing = clipped(painter, doing, font(12.0), DIM, (page.right() - 40.0 - x).max(0.0));
+        painter.galley(Pos2::new(x, top + 7.5 - doing.size().y / 2.0), doing, DIM);
+        // what the card holds, measured first: its height is the island's
+        let text = ui.painter().layout(question.text.clone(), semi(15.0), INK, width);
+        let hint = question.multiple.then(|| ui.painter().layout_no_wrap("Escolha uma ou mais".to_string(), font(11.0), DIM));
+        let words = width - 12.0 - 26.0 - 12.0;
+        let options: Vec<_> = question
+            .options
+            .iter()
+            .map(|(label, meaning)| {
+                let label = ui.painter().layout(label.clone(), semi(13.0), INK, words);
+                let meaning = (!meaning.is_empty()).then(|| ui.painter().layout(meaning.clone(), font(11.5), DIM, words));
+                let height = (9.0 + label.size().y + meaning.as_ref().map_or(0.0, |meaning| 2.0 + meaning.size().y) + 9.0).max(34.0);
+                (label, meaning, height)
+            })
+            .collect();
+        let other_id = egui::Id::unique(("island_ask_other", ask.chat.as_str(), step));
+        let other_h = super::prompt::bar_height(ui, other_id);
+        let gap = 6.0;
+        let content = text.size().y
+            + hint.as_ref().map_or(0.0, |hint| 4.0 + hint.size().y)
+            + 10.0
+            + options.iter().map(|(_, _, height)| height + gap).sum::<f32>()
+            + other_h;
+        let footer = question.multiple || outside;
+        let footer_h = if footer { 30.0 + 8.0 } else { 0.0 };
+        // the page's height (the island's less its header and margin), between the card it was and the window's room
+        let needed = 14.0 + 15.0 + 10.0 + content + footer_h + 14.0;
+        let margins = super::paint::PAGE_TOP + 10.0;
+        out.body = needed.clamp(QUESTION_H - margins, QUESTION_MOST - margins);
+        // the list, under who asks and over the footer, scrolling when it is taller than that
+        let bottom = page.bottom() - 14.0 - footer_h;
+        let area = Rect::from_min_max(Pos2::new(left, top + 15.0 + 10.0), Pos2::new(page.right() - 12.0, bottom.max(top + 40.0)));
+        let mut pressed = None;
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::top_down(egui::Align::Min)));
+        child.set_clip_rect(area.intersect(ui.clip_rect()));
+        child.spacing_mut().scroll = crate::app::ui::scroll_style();
+        let scroll = egui::ScrollArea::vertical().id_salt(("island_ask_list", ask.chat.as_str(), step)).max_height(area.height()).auto_shrink([false, true]);
+        scroll.show(&mut child, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(width, text.size().y), Sense::hover());
+            ui.painter().galley(rect.min, text, INK);
+            if let Some(hint) = hint {
+                ui.add_space(4.0);
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(width, hint.size().y), Sense::hover());
+                ui.painter().galley(rect.min, hint, DIM);
+            }
+            ui.add_space(10.0);
+            for (option, (label, meaning, height)) in options.into_iter().enumerate() {
+                let on = ask.picked[step].contains(&option);
+                let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), Sense::click());
+                let response = response.on_hover_cursor(CursorIcon::PointingHand);
+                let painter = ui.painter();
+                let ground = if on { CYAN.gamma_multiply(0.2) } else { Color32::from_white_alpha(if response.hovered() { 34 } else { 18 }) };
+                let edge = if on { CYAN.gamma_multiply(0.8) } else { Color32::from_white_alpha(14) };
+                painter.rect(rect, 10, ground, Stroke::new(1.0, edge), StrokeKind::Inside);
+                // the key that picks it (1 to 9), ticked when picked in a multiple choice
+                let key = Rect::from_center_size(Pos2::new(rect.left() + 12.0 + 9.0, rect.top() + 9.0 + label.rows[0].height() / 2.0), Vec2::splat(18.0));
+                let mark = if question.multiple && on { "✓".to_string() } else { (option + 1).to_string() };
+                painter.rect(key, 5, Color32::TRANSPARENT, Stroke::new(1.0, Color32::from_white_alpha(if on { 140 } else { 70 })), StrokeKind::Inside);
+                painter.text(key.center(), egui::Align2::CENTER_CENTER, mark, font(10.5), INK.gamma_multiply(if on { 1.0 } else { 0.7 }));
+                let x = rect.left() + 12.0 + 26.0;
+                let below = rect.top() + 9.0 + label.size().y;
+                painter.galley(Pos2::new(x, rect.top() + 9.0), label, INK);
+                if let Some(meaning) = meaning {
+                    painter.galley(Pos2::new(x, below + 2.0), meaning, DIM);
+                }
+                if response.clicked() {
+                    pressed = Some(Press::Option(option));
+                }
+                ui.add_space(gap);
+            }
+            // "Outro": the answer in one's own words, sent by Enter or its round button
+            let (bar, _) = ui.allocate_exact_size(Vec2::new(width, other_h), Sense::hover());
+            let painter = ui.painter().clone();
+            painter.rect(bar, 12, Color32::from_white_alpha(18), Stroke::new(1.0, Color32::from_white_alpha(14)), StrokeKind::Inside);
+            let send = Rect::from_center_size(Pos2::new(bar.right() - 8.0 - 12.0, bar.bottom() - 20.0), Vec2::splat(24.0));
+            let field = Rect::from_min_max(Pos2::new(bar.left() + 12.0, bar.top() + 6.0), Pos2::new(send.left() - 8.0, bar.bottom() - 6.0));
+            let hint = "Outro: escreva a sua resposta…";
+            let (_, sent) = super::prompt::send_field(ui, &painter, (field, send), &mut ask.other[step], other_id, hint, "island_ask_other_send");
+            if sent {
+                pressed = Some(Press::Other);
+            }
+        });
+        // the footer: OK for a multiple choice, the way to the terminal for a session outside the app
+        if footer {
+            let mut x = left;
+            let y = page.bottom() - 14.0 - 30.0;
+            if question.multiple {
+                let off = ask.picked[step].is_empty() && ask.other[step].trim().is_empty();
+                let size = button_size(ui, "OK", Kind::Primary, None);
+                let rect = Rect::from_min_size(Pos2::new(x, y + (30.0 - size.y) / 2.0), size);
+                let response = ui.interact(rect, ui.scope_id().with("island_ask_ok"), Sense::click());
+                paint_button(painter, rect, "OK", Kind::Primary, None, off, &response);
+                if response.clicked() && !off {
+                    pressed = Some(Press::Done);
+                }
+                x = rect.right() + 8.0;
+            }
+            if outside {
+                let label = "Responder no terminal";
+                let size = button_size(ui, label, Kind::Link, None);
+                let rect = Rect::from_min_size(Pos2::new(x, y + (30.0 - size.y) / 2.0), size);
+                let response = ui.interact(rect, ui.scope_id().with("island_ask_terminal"), Sense::click());
+                paint_button(painter, rect, label, Kind::Link, None, false, &response);
+                if response.clicked() {
+                    pressed = Some(Press::Terminal);
+                }
+            }
+        }
+        pressed
     }
 }
 

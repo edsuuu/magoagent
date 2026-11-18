@@ -36,7 +36,9 @@ printf 'Source: magoagent\n\nPackage: magoagent\nArchitecture: any\n' > "$work/d
 depends=$(cd "$work" && dpkg-shlibdeps -O "../../../$root/usr/bin/magoagent" 2>/dev/null | sed -n 's/^shlibs:Depends=//p')
 # o que o programa abre só ao rodar (dlopen: a janela pelo winit, o OpenGL pelo glutin, as fontes do sistema) não aparece
 # para o dpkg-shlibdeps: vai à mão, para o apt instalar tudo junto numa máquina sem esses pacotes
-runtime="libegl1, libgl1, libfontconfig1, libwayland-client0, libwayland-egl1, libx11-6, libx11-xcb1, libxcb1, libxcursor1, libxi6, libxrender1, libxkbcommon0, libxkbcommon-x11-0"
+# O navegador no quadro é o WebKitGTK: o binário já liga nele (o dpkg-shlibdeps o acha), mas ele vai à mão também, para
+# o pacote nunca sair sem ele; o libwebkit2gtk-4.1-0 traz o resto (JavaScriptCore, GStreamer, bubblewrap)
+runtime="libegl1, libgl1, libfontconfig1, libwayland-client0, libwayland-egl1, libx11-6, libx11-xcb1, libxcb1, libxcursor1, libxi6, libxrender1, libxkbcommon0, libxkbcommon-x11-0, libwebkit2gtk-4.1-0"
 depends="${depends:+$depends, }$runtime"
 size=$(du -sk "$root/usr" | cut -f1)
 cat > "$root/DEBIAN/control" <<EOF
@@ -46,7 +48,7 @@ Architecture: $arch
 Maintainer: edsuuu <111332935+edsuuu@users.noreply.github.com>
 Installed-Size: $size
 Depends: $depends
-Recommends: xdg-desktop-portal, git, libayatana-appindicator3-1
+Recommends: xdg-desktop-portal, git, libayatana-appindicator3-1, gstreamer1.0-libav
 Section: devel
 Priority: optional
 Homepage: https://github.com/edsuuu/magoagent

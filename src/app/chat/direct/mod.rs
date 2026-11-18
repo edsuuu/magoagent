@@ -87,6 +87,14 @@ pub(crate) struct ChatRun {
     pub(crate) since: f64,
 }
 
+impl ChatRun {
+    /// A run of a stand-in process, for the tests: nothing comes from it.
+    #[cfg(test)]
+    pub(crate) fn stand_in(child: std::process::Child, since: f64) -> Self {
+        Self { child, events: channel().1, since }
+    }
+}
+
 impl Drop for ChatRun {
     /// Closing the app (or dropping a chat) must not leave the agent running on its own.
     fn drop(&mut self) {
@@ -98,6 +106,17 @@ impl Drop for ChatRun {
             let _ = self.child.kill();
             let _ = self.child.wait();
         }
+    }
+}
+
+#[cfg(test)]
+impl ChatRun {
+    /// An answer the tests hold as running since `since`: its process (the test binary listing its tests) ends at
+    /// once and says nothing; the chat works until the run is taken out.
+    pub(crate) fn held(since: f64) -> Self {
+        let exe = std::env::current_exe().expect("the test binary");
+        let child = crate::editor::command(exe).arg("--list").stdout(std::process::Stdio::null()).spawn().expect("the test binary runs");
+        Self { child, events: channel().1, since }
     }
 }
 

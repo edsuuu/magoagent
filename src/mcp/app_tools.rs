@@ -94,6 +94,14 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["paths"] },
         }),
         json!({
+            "name": "open_as_note",
+            "description": "Abre um arquivo de texto (.md, .markdown ou .txt, até 1 MB) no canvas numa nota com o conteúdo, como o clique no cartão do arquivo no chat: do tamanho de ler (560 de largura, alta como o texto até quase a altura da vista), ao lado do cartão do chat `chat` (ou no meio da vista), selecionada e com o canvas nela. O mesmo arquivo de novo vai à nota que já o tem. A nota é um editor (markdown) que a pessoa redimensiona pelas bordas e cantos e rola com a roda; para mudar o tamanho dela use note com o id, width e height.",
+            "inputSchema": { "type": "object", "properties": {
+                "path": { "type": "string" },
+                "chat": name("o chat ao lado de cujo cartão a nota abre; vazio: o chat aberto, ou o meio da vista"),
+            }, "required": ["path"] },
+        }),
+        json!({
             "name": "resize_window",
             "description": "Redimensiona uma janela: `target` é o nome de um terminal, navegador ou árvore de arquivos do canvas (state enlarge amplia, shrink volta ao canvas, ou width/height em pontos), ou `app` para a janela do MagoAgent (state maximize, restore, minimize, ou width/height).",
             "inputSchema": { "type": "object", "properties": {
@@ -109,13 +117,22 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
         }),
         json!({
+            "name": "create_terminal",
+            "description": "Abre um terminal no canvas à sua direita (com o lugar tomado, no lugar livre mais perto de você; a resposta diz onde), já ligado a você por uma corda (ao seu terminal ou ao seu cartão de chat), rodando `command` como se fosse digitado (ex.: cargo test, npm run dev): use para rodar testes, uma API ou um servidor que você vai acompanhar. A resposta diz o nome dele. Ligado a você, ele aparece em list_agents com o estado (trabalhando, parado, encerrado), read_terminal lê a tela, ask_agent com raw manda teclas (\\x03 para parar) e terminal_processes mostra o que roda nele. Sem corda não há terminal: só de dentro de um terminal da Luna ou de um chat do MagoAgent.",
+            "inputSchema": { "type": "object", "properties": {
+                "command": { "type": "string", "description": "o que roda nele; vazio: só o shell" },
+                "name": { "type": "string", "description": "opcional; padrão o programa do comando (cargo, npm…)" },
+                "cwd": { "type": "string", "description": "a pasta; padrão a sua" },
+            } },
+        }),
+        json!({
             "name": "terminal_restart",
             "description": "Reinicia o terminal com esse nome (o shell e o comando dele começam de novo).",
             "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
         }),
         json!({
             "name": "terminal_menu",
-            "description": "As opções do cartão de um terminal, as mesmas do menu do botão direito: copy devolve (e põe na área de transferência) o que está selecionado, paste cola `text`, select_all e clear_selection, rename dá o nome `value`, monitor liga ou desliga (`value` on ou off) o aviso de quando o trabalho termina, blur esconde a tela do terminal atrás de um véu (off tira), reload e unload (descarrega o shell até recarregar), use_size, use_font e use_theme fazem do tamanho, do tamanho de fonte e do tema deste terminal os padrões dos novos, copy_element, duplicate, lock (`value` on ou off) e delete.",
+            "description": "As opções do cartão de um terminal, as mesmas do menu do botão direito: copy devolve (e põe na área de transferência) o que está selecionado, paste cola `text`, select_all e clear_selection, rename dá o nome `value`, monitor liga ou desliga (`value` on ou off) o aviso de quando o trabalho termina, blur esconde a tela do terminal atrás de um véu (off tira), reload e unload (descarrega o shell até recarregar), use_size, use_font e use_theme fazem do tamanho, do tamanho de fonte e do tema deste terminal os padrões dos novos, copy_element, duplicate (a cópia fica ligada a você por corda), lock (`value` on ou off) e delete.",
             "inputSchema": { "type": "object", "properties": {
                 "name": { "type": "string", "description": "o nome do terminal" },
                 "action": { "type": "string", "enum": ["copy", "paste", "select_all", "clear_selection", "rename", "monitor", "blur", "reload", "unload", "use_size", "use_font", "use_theme", "copy_element", "duplicate", "lock", "delete"] },
@@ -198,7 +215,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "portal_copy_screenshot",
-            "description": "Copiar Captura de Tela: põe a imagem da página aberta do navegador na área de transferência da pessoa (só no Windows por enquanto). Para ver a página você mesmo, use portal_screenshot.",
+            "description": "Copiar Captura de Tela: põe a imagem da página aberta do navegador na área de transferência da pessoa (no Windows e no Linux; ainda não no macOS). Para ver a página você mesmo, use portal_screenshot.",
             "inputSchema": { "type": "object", "properties": { "portal": { "type": "string" } }, "required": ["portal"] },
         }),
         json!({
@@ -274,6 +291,14 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "name": "chat_send",
             "description": "Manda uma mensagem a um chat, como se a pessoa a escrevesse lá; o agente dele responde no chat.",
             "inputSchema": { "type": "object", "properties": { "chat": chat, "text": { "type": "string" } }, "required": ["chat", "text"] },
+        }),
+        json!({
+            "name": "chat_queue",
+            "description": "A mensagem que a pessoa deixou na fila de um agente (escrita enquanto um chat ainda respondia, ou enquanto um terminal esperava numa pergunta ou permissão), mostrada no fim da conversa com Enviar agora e Editar. `action` list (o padrão) diz o que está na fila; send_now a manda já, como o botão Enviar agora (Ctrl+Shift+Enter): num chat a resposta em curso para onde está e a mensagem vai como a próxima; num terminal esperando um menu, ele recebe Esc (recusa o pedido) e a mensagem entra assim que ele voltar ao prompt; edit a devolve à caixa da conversa, como Editar.",
+            "inputSchema": { "type": "object", "properties": {
+                "agent": name("o nome do chat ou do terminal, como list_agents mostra; vazio: a conversa aberta"),
+                "action": { "type": "string", "enum": ["list", "send_now", "edit"] },
+            } },
         }),
         json!({
             "name": "chat_command",
@@ -386,11 +411,30 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "panel",
-            "description": "Os painéis à direita da janela (os botões na barra de título): tasks (Tarefas: criar, filtrar Abertas/Feitas, concluir) e changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff). Um aberto por vez, ao lado do canvas. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto.",
+            "description": "O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.",
             "inputSchema": { "type": "object", "properties": {
-                "name": { "type": "string", "enum": ["tasks", "changes"] },
+                "name": { "type": "string", "enum": ["changes"] },
                 "open": { "type": "boolean" },
+                "width": { "type": "number", "description": "a largura do painel em pixels (de 300 até deixar 360 ao canvas); 0 volta à padrão" },
+                "worktree": name("Alterações: o worktree a mostrar (nome da pasta, ramo ou caminho); todos: as Árvores do canvas"),
             } },
+        }),
+        json!({
+            "name": "changes_review",
+            "description": "A revisão do painel Alterações, como num pull request. worktrees lista os worktrees dos repositórios das Árvores do canvas (o principal e os dos agentes, em .magoagent/worktrees) com o ramo, o escolhido com *; com `worktree`, escolhe um (todos volta às Árvores). comment junta à revisão um comentário nas linhas `from` a `to` do arquivo alterado `path` (o caminho a partir da pasta, ou o fim dele), com o trecho do diff e o que está errado em `note`; list mostra os comentários numerados; remove tira o de número `index`; clear tira todos. send manda a revisão ao agente `agent` (nome ou id; vazio: o escolhido no painel ou o primeiro que trabalha na pasta) numa mensagem só: cada comentário com arquivo:linhas, o trecho e a nota, e a observação geral `note`; usa os comentários juntados ou, com `comments`, só esses (e os juntados ficam). pr pede ao agente uma análise de PR de todo o diff do worktree escolhido (ou das pastas das Árvores): bugs, riscos, testes faltando, por arquivo:linha. `worktree` em qualquer ação escolhe antes o worktree.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["worktrees", "comment", "list", "remove", "clear", "send", "pr"] },
+                "worktree": name("o worktree (nome da pasta, ramo ou caminho); todos: as Árvores do canvas"),
+                "path": name("comment: o arquivo alterado"),
+                "from": { "type": "integer", "description": "comment: a primeira linha (a primeira do arquivo é 1)" },
+                "to": { "type": "integer", "description": "comment: a última linha (vazio: só `from`)" },
+                "note": name("comment: o que está errado; send: a observação geral"),
+                "index": { "type": "integer", "description": "remove: o número do comentário, como list mostra" },
+                "agent": name("send, pr: o agente que recebe (nome ou id)"),
+                "comments": { "type": "array", "description": "send: os comentários a mandar no lugar dos juntados", "items": { "type": "object", "properties": {
+                    "path": { "type": "string" }, "from": { "type": "integer" }, "to": { "type": "integer" }, "note": { "type": "string" },
+                }, "required": ["path", "from", "note"] } },
+            }, "required": ["action"] },
         }),
         json!({
             "name": "file_tree",
