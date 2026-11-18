@@ -50,7 +50,12 @@ pub(crate) fn tabs_ui(ui: &mut egui::Ui, ed: &Editor, strip: Rect, clip: Rect, z
         } else if r.hovered() {
             sp.rect_filled(chip, cr(6.0 * z), c.fg.gamma_multiply(0.07));
         }
-        icons::file_on(&sp, &tab.path, Pos2::new(chip.left() + 13.0 * z, chip.center().y), 0.875 * z, !dark);
+        let icon_at = Pos2::new(chip.left() + 13.0 * z, chip.center().y);
+        if matches!(tab.body, crate::app::filetree::editor::Body::Compare(_)) {
+            icons::paint_on(&sp, icons::DIFF, Rect::from_center_size(icon_at, Vec2::splat(14.0 * z)), !dark);
+        } else {
+            icons::file_on(&sp, &tab.path, icon_at, 0.875 * z, !dark);
+        }
         // unsaved text shows its dot until the pointer is on the X; the tab forward always has its X
         if dirty[i] && !over_x {
             sp.circle_filled(slot.center(), 3.0 * z, Color32::from_rgb(0xf0, 0x88, 0x3e));
