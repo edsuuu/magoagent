@@ -250,8 +250,10 @@ pub(crate) struct DrawingApp {
     /// The first message of each recruit chat, sent when the chat can take it (maestro/mod.rs).
     pub(crate) chat_starts: Vec<(String, String)>,
     pub(crate) chat_nodes_read: f64,
-    /// The areas that paint a window in front over a tree's or chat card's live parts (canvas/cover.rs).
+    /// The areas that paint a card in front over another card's live parts (canvas/cover.rs), this frame's and the last
+    /// one's (a page's holes leave out both: egui still counts last frame's areas).
     pub(crate) covers: Vec<egui::LayerId>,
+    pub(crate) covers_before: Vec<egui::LayerId>,
     /// What each recruit chat had done at the last look (tool calls, working), and what popped of it (chat/recruit_card.rs).
     pub(crate) recruit_seen: std::collections::HashMap<String, (usize, bool)>,
     pub(crate) recruit_popups: Vec<chat::recruit_card::RecruitPopup>,

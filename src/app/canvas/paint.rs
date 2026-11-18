@@ -19,6 +19,35 @@ impl DrawingApp {
         if dark && self.scene.background == WHITE { CANVAS_DARK } else { themed(rgba(self.scene.background), dark) }
     }
 
+    /// Sticky note `index` with its text, where its frame is (on the canvas, or lifted); also over the live parts of a
+    /// window under it (canvas/cover.rs).
+    pub(crate) fn paint_note_card(&self, painter: &Painter, index: usize) {
+        let element = &self.scene.elements[index];
+        let label = note_label(&self.scene.elements, index);
+        let text = label.and_then(|label_index| match &self.scene.elements[label_index].kind {
+            ElementKind::Text { value, .. } => Some(value.as_str()),
+            _ => None,
+        });
+        // the frame sets where and how big the card is
+        let (frame, zoom) = self.terminal_frame(element);
+        let view = View {
+            origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom,
+            zoom,
+            text_zoom: self.text_zoom_at(zoom),
+            dark: self.dark(),
+            background: self.ground(),
+        };
+        let faded = self.erasing.as_ref().is_some_and(|erased| erased.contains(&index));
+        // its text, or the placeholder of a note without one (left empty, its text was dropped)
+        let body = label.is_none_or(|label_index| self.editing != Some(label_index));
+        let shown = self.shown_note(element);
+        let end = paint_note(painter, &shown, text.unwrap_or(""), body, &view, faded, self.note_scroll_offset(&element.id));
+        // typing, the editor scrolls: what the card hides is known again once it rests
+        if body {
+            self.note_painted(&shown, end);
+        }
+    }
+
     pub(crate) fn paint_scene(&self, painter: &Painter, rect: Rect) {
         let dark = self.dark();
         painter.rect_filled(rect, 0.0, self.ground());
@@ -95,10 +124,10 @@ impl DrawingApp {
             painter.extend(Shape::dashed_line(&points, Stroke::new(2.0 * self.zoom, PRIMARY), 8.0 * self.zoom, 7.0 * self.zoom));
         }
         self.paint_groups(painter);
-        // windows over the drawings (a portal's page is native and always on top, so its bar
-        // and the other windows go there too), and the enlarged one last, over everything it covers
+        // the cards (windows and notes) over the drawings, among themselves in the drawing's order, as their live parts
+        // and pages stack (canvas/cover.rs, browser/sync.rs); and the enlarged one last, over everything it covers
         let mut order: Vec<usize> = (0..self.scene.elements.len()).collect();
-        order.sort_by_key(|&index| self.scene.elements[index].is_node());
+        order.sort_by_key(|&index| self.scene.elements[index].is_card());
         let lift = self.lift_index();
         // the part of the world on screen: a drawing outside it costs nothing (its rough strokes, hatching and text)
         let seen = Rect::from_two_pos(self.to_world(rect.min), self.to_world(rect.max));
@@ -161,28 +190,7 @@ impl DrawingApp {
                 continue; // a note paints its own text, or the editor types over it
             }
             if element.created.is_some() {
-                let label = note_label(&self.scene.elements, index);
-                let text = label.and_then(|label_index| match &self.scene.elements[label_index].kind {
-                    ElementKind::Text { value, .. } => Some(value.as_str()),
-                    _ => None,
-                });
-                // on the canvas, or lifted: the frame sets where and how big the card is
-                let (frame, zoom) = self.terminal_frame(element);
-                let view = View {
-                    origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom,
-                    zoom,
-                    text_zoom: self.text_zoom_at(zoom),
-                    dark: view.dark,
-                    background: view.background,
-                };
-                // its text, or the placeholder of a note without one (left empty, its text was dropped)
-                let body = label.is_none_or(|label_index| self.editing != Some(label_index));
-                let shown = self.shown_note(element);
-                let end = paint_note(painter, &shown, text.unwrap_or(""), body, &view, faded, self.note_scroll_offset(&element.id));
-                // typing, the editor scrolls: what the card hides is known again once it rests
-                if body {
-                    self.note_painted(&shown, end);
-                }
+                self.paint_note_card(painter, index);
                 continue;
             }
             // a note's card goes by its frame (enlarged, it is not where it is in the world), above
@@ -278,7 +286,7 @@ impl DrawingApp {
         let handle_fill = if dark { Color32::from_rgb(18, 18, 18) } else { Color32::WHITE };
         let two_point_line = self.single_line().is_some_and(|index| self.line_points(index).len() == 2);
         let selected: Vec<&Element> = self.selected.iter().filter_map(|index| self.scene.elements.get(*index)).collect();
-        let card = |element: &Element| element.is_node() || element.created.is_some();
+        let card = Element::is_card;
         // a note's text is grouped with it and goes along
         // and a rope picked along with its windows has no box of its own
         let with_card = |element: &&Element| {

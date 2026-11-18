@@ -123,7 +123,7 @@ impl DrawingApp {
                 // a hidden workspace's page stays loaded, out of sight
                 let shown = i < self.scene.elements.len();
                 let (rect, zoom) = if shown { (self.portal_page_rect(e), self.terminal_frame(e).1) } else { (None, 1.0) };
-                Some((e.id.clone(), urls, spec.active_tab(), rect, zoom))
+                Some((e.id.clone(), urls, spec.active_tab(), rect, zoom, self.cards_in_front(i)))
             })
             .collect();
         self.portals.retain(|id, _| live.iter().any(|(live, ..)| live == id));
@@ -145,10 +145,14 @@ impl DrawingApp {
                 size: wry::dpi::LogicalSize::new((max.x - min.x) as f64, (max.y - min.y) as f64).into(),
             }
         };
-        // parts of the cards (the portals' bars, a focused terminal's grid), not floating UI
-        let cards: Vec<egui::Id> =
-            live.iter().map(|(id, ..)| egui::Id::unique(("portal_chrome", id.as_str()))).chain([egui::Id::unique("terminal_overlay")]).collect();
-        for (id, urls, active, rect, zoom) in live {
+        // parts of the cards (the portals' bars, a tree's panels, a focused terminal's grid, the cards painted again over
+        // them), not floating UI: they stack with their cards, and a card in front of a page leaves its hole anyway
+        let card_parts: Vec<egui::Id> = (self.scene.elements.iter().filter(|element| element.is_card()).flat_map(|element| self.live_layers(element)))
+            .chain(self.covers.iter().chain(&self.covers_before).copied())
+            .map(|layer| layer.id)
+            .chain([egui::Id::unique("terminal_overlay")])
+            .collect();
+        for (id, urls, active, rect, zoom, fronts) in live {
             let events = self.portal_events.0.clone();
             let extras = self.tab_extras(&id);
             let view = self.portals.entry(id.clone()).or_insert_with(|| PortalView {
@@ -188,7 +192,7 @@ impl DrawingApp {
                 view.shown = None;
             }
             view.tabs = tabs;
-            let mut holes = rect.map_or(Vec::new(), |r| Self::page_holes(ctx, r, &cards));
+            let mut holes = rect.map_or(Vec::new(), |r| Self::page_holes(ctx, r, &card_parts, &fronts));
             // the selection box stays on top: its outline cuts through the page
             if let (Some(r), Some(m)) = (rect, marquee) {
                 holes.extend(marquee_edges(m).into_iter().map(|e| e.intersect(r)).filter(|e| e.width() >= 1.0 && e.height() >= 1.0));

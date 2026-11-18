@@ -93,6 +93,7 @@ impl DrawingApp {
             });
         } else if let Some((index, corner, free)) = self.window_grip(pos) {
             // a window's edge or corner resizes it from the band, selected or not, before its body or title
+            let index = self.raise_card(index);
             let from = local_bounds(&self.scene.elements[index]);
             let corners = [from.left_top(), from.right_top(), from.right_bottom(), from.left_bottom()];
             self.selected = self.with_card_text(&[index]);
@@ -109,7 +110,7 @@ impl DrawingApp {
                 pin: corners[corner],
             });
         } else if let Some(index) = self.hit(world) {
-            let index = self.raise_note(index);
+            let index = self.raise_card(index);
             if !self.drags(index, world, modifiers.shift) {
                 let element = &self.scene.elements[index];
                 if element.terminal.is_some() {
@@ -158,11 +159,12 @@ impl DrawingApp {
         }
     }
 
-    /// A pressed sticky note comes to the front with its text, as a node does in the reference app
-    /// (a fichário's pages keep their order); the note's new index.
-    pub(crate) fn raise_note(&mut self, index: usize) -> usize {
+    /// A pressed card (a window or a note) comes to the front with its text, as a node does in the reference app, when
+    /// a later card covers it (the drawings lie under the cards anyway; a fichário's pages keep their order); its new
+    /// index.
+    pub(crate) fn raise_card(&mut self, index: usize) -> usize {
         let element = &self.scene.elements[index];
-        if element.created.is_none() || element.note.stacked {
+        if !element.is_card() || element.note.stacked {
             return index;
         }
         let mine = self.with_card_text(&[index]);
@@ -174,7 +176,7 @@ impl DrawingApp {
             .iter()
             .enumerate()
             .skip(index + 1)
-            .any(|(position, other)| !mine.contains(&position) && element_bounds(other).intersects(bounds));
+            .any(|(position, other)| !mine.contains(&position) && other.is_card() && element_bounds(other).intersects(bounds));
         if !covered {
             return index;
         }
