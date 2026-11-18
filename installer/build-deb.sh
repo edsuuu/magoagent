@@ -18,7 +18,7 @@ install -m 644 assets/icon.png "$root/usr/share/icons/hicolor/512x512/apps/magoa
 cat > "$root/usr/share/applications/magoagent.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=MagoAgent
+Name=MagoAgent AlphaVersion
 Comment=Quadro branco com agentes de IA
 Exec=magoagent
 Icon=magoagent

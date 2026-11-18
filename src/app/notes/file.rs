@@ -12,7 +12,7 @@ const READ_MAX_HEIGHT: f32 = 720.0;
 /// The share of the view's height the note takes at most.
 const READ_VIEW_SHARE: f32 = 0.8;
 /// Between the chat's card and the note beside it.
-const BESIDE: f32 = 40.0;
+const BESIDE: f32 = 60.0;
 
 /// The text files a note opens: markdown (formatted) and plain text (as typed).
 pub(crate) fn opens_as_note(path: &Path) -> bool {
