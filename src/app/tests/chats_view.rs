@@ -170,12 +170,14 @@ fn the_chat_button_shows_who_waits_and_the_title_what_runs() {
     assert!(at(&texts, "Chats").is_none(), "no title over the canvas");
     app.chat_open = true;
     let texts = shown(&mut app, &ctx, vec![]);
-    assert!(at(&texts, "Chats").is_some() && at(&texts, " · 2 rodando · 1 esperando").is_some(), "{texts:?}");
+    // macOS has no title bar: the title would sit under the chat's header, so only the buttons are there
+    let titled = crate::app::ui::TITLE_BAR > 0.0;
+    assert_eq!(at(&texts, "Chats").is_some() && at(&texts, " · 2 rodando · 1 esperando").is_some(), titled, "{texts:?}");
     // answered, the badge goes
     app.answer_person("revisor", true);
     let texts = shown(&mut app, &ctx, vec![]);
     assert!(!texts.iter().any(|(text, rect)| text == "1" && rect.center().distance(button.right_top()) < 14.0));
-    assert!(at(&texts, " · 1 rodando · 0 esperando").is_some());
+    assert_eq!(at(&texts, " · 1 rodando · 0 esperando").is_some(), titled);
 }
 
 #[test]

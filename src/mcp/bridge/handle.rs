@@ -323,10 +323,11 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             // agent is the Maestro, as it was before it had a token: no caller)
             let mut args = request["args"].clone();
             let action = request["action"].as_str().unwrap_or_default();
-            // a terminal that is no Maestro reaches only the trees roped to it (and its own tasks): what
+            // a terminal that is no Maestro reaches only the trees roped to it, its own tasks and the shared notes (memory,
+            // binder: a recruit writes what it learned there, in the files the Maestro reads): what
             // changes the whole app, or acts on a name anywhere on the canvas, is for a Maestro or a chat
             if chat.is_none() && nodes.iter().any(|n| n.id == from && !n.maestro) {
-                if !matches!(action, "file_tree" | "tasks" | "memory") {
+                if !matches!(action, "file_tree" | "tasks" | "memory" | "binder") {
                     return Err("Só um terminal da Luna (ou um chat) pode usar essa ação; um terminal comum só mexe nas árvores ligadas a ele.".into());
                 }
                 if action == "file_tree" {

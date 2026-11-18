@@ -224,6 +224,23 @@ fn a_child_agent_builds_nothing_but_still_notifies() {
 }
 
 #[test]
+fn a_recruit_may_use_the_binder_but_not_the_whole_app() {
+    let node = |id: &str, maestro: bool| Node { id: id.into(), kind: NodeKind::Terminal, name: id.into(), text: String::new(), links: vec![], maestro };
+    let shared = std::sync::Mutex::new(Shared { nodes: vec![node("pai", true), node("filho", false)], ..Default::default() });
+    let (sender, commands) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for command in commands {
+            if let UiCommand::Act { reply, .. } = command {
+                let _ = reply.send(Ok("ok".into()));
+            }
+        }
+    });
+    let act = |action: &str| handle(&json!({ "cmd": "act", "action": action, "args": {}, "from": "filho" }), &shared, &sender);
+    assert_eq!(act("binder"), Ok("ok".into()));
+    assert!(act("workspaces").unwrap_err().starts_with("Só um terminal da Luna"));
+}
+
+#[test]
 fn a_rope_leaves_from_the_edge_even_over_the_other_window() {
     let a = rect_element(0.0, 0.0, 100.0, 100.0, None);
     let center = Binding { element_id: a.id.clone(), fixed: [0.5, 0.5], inside: false };

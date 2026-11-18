@@ -78,6 +78,10 @@ impl DrawingApp {
             p.rect(pill, 8, crate::app::chat::list::AMBER, Stroke::new(1.5, if dark { Color32::from_gray(0x1a) } else { Color32::WHITE }), StrokeKind::Outside);
             p.galley(pill.center() - count.size() / 2.0, count, Color32::from_rgb(0x1d, 0x1d, 0x1f));
         }
+        // on the Mac the buttons sit in the list's top row, which says Conversas, + and « itself
+        if chat && TITLE_BAR == 0.0 {
+            return second.right();
+        }
         if chat {
             let at = Pos2::new(second.right() + TOP_GAP + 6.0, TOP_ROW_Y);
             let title = crate::app::chat::list::bold(&p, at - Vec2::new(0.0, 9.0), "Chats", 14.0, ink);

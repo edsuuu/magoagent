@@ -19,15 +19,20 @@ pub(crate) fn text_needs_halo(elements: &[Element], text: &Element) -> bool {
         (area.left_bottom(), area.left_top()),
     ];
     elements.iter().filter(|e| e.id != text.id).any(|e| {
-        let path = match &e.kind {
-            ElementKind::Line { .. } => line_path(e),
-            ElementKind::FreeDraw { points } => points.clone(),
+        // a straight line's and a freehand's own points, no copy; only a curve samples its path
+        let path: std::borrow::Cow<[[f32; 2]]> = match &e.kind {
+            ElementKind::Line { points, .. } if !e.rope && !(e.style.round && points.len() > 2) => points.into(),
+            ElementKind::Line { .. } => line_path(e).into(),
+            ElementKind::FreeDraw { points } => points.into(),
             _ => return false,
         };
-        path.windows(2).any(|w| {
-            let (a, b) = (Pos2::new(w[0][0], w[0][1]), Pos2::new(w[1][0], w[1][1]));
-            area.contains(a) || area.contains(b) || edges.iter().any(|(c, d)| segment_intersection(a, b, [c.x, c.y], [d.x, d.y]).is_some())
-        })
+        // a path whose box misses the text's can neither have a point in it nor cross its edges
+        let reach = path.iter().fold(Rect::NOTHING, |reach, point| reach.union(Rect::from_min_max((*point).into(), (*point).into())));
+        reach.intersects(area)
+            && path.windows(2).any(|w| {
+                let (a, b) = (Pos2::new(w[0][0], w[0][1]), Pos2::new(w[1][0], w[1][1]));
+                area.contains(a) || area.contains(b) || edges.iter().any(|(c, d)| segment_intersection(a, b, [c.x, c.y], [d.x, d.y]).is_some())
+            })
     })
 }
 

@@ -172,7 +172,7 @@ impl DrawingApp {
                     "Mostrar Tamanho",
                     SizeReadout::ALL.iter().map(|s| tick(&format!("portal:size:{}", s.key()), s.label(), self.prefs.portal_size == *s)).collect(),
                 ),
-                entry("portal:shot", "Copiar Captura de Tela", None, false, cfg!(windows) && !p.unloaded),
+                entry("portal:shot", "Copiar Captura de Tela", None, false, cfg!(any(windows, target_os = "macos")) && !p.unloaded),
                 entry("portal:mute", if p.muted { "Ativar som" } else { "Silenciar" }, None, false, !p.unloaded),
                 sub("Armazenamento", StorageScope::ALL.iter().map(|s| tick(&format!("portal:storage:{}", s.key()), s.label(), p.storage == *s)).collect()),
                 Entry::Sep,

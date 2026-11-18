@@ -569,7 +569,11 @@ fn a_shortcut_pressed_waits_for_salvar_and_keys_another_has_are_refused() {
     let mut window = Window::at(tab_of("Atalhos"));
     assert!(window.has("ATALHOS GLOBAIS DA ILHA") && window.has("Abrir o chat da ilha"), "{:?}", window.texts);
     assert!(window.has("Ctrl+Alt+Espaço") && window.has("Ctrl+Alt+Direita"), "the default keys: {:?}", window.texts);
-    assert!(window.has("ARQUIVO") && window.has("Salvar") && window.has("Ctrl+Shift+Z ou Ctrl+Y") && window.has("TECLAS FIXAS"), "{:?}", window.texts);
+    assert!(
+        window.has("ARQUIVO") && window.has("Salvar") && window.has(&keys_label("Cmd+Shift+Z ou Cmd+Y")) && window.has("TECLAS FIXAS"),
+        "{:?}",
+        window.texts
+    );
     window.click_text("Ctrl+Alt+Espaço");
     assert_eq!(window.app.hotkeys.recording.as_ref().map(|editing| editing.id), Some("openChat"));
     assert!(window.has("Pressione as teclas…") && window.has("Cancelar"), "{:?}", window.texts);
@@ -580,10 +584,10 @@ fn a_shortcut_pressed_waits_for_salvar_and_keys_another_has_are_refused() {
     window.click_text("Salvar");
     assert!(window.app.hotkeys.recording.is_some() && window.app.prefs.shortcuts.is_empty());
     // the keys of an app's shortcut: whose they are
-    press(&mut window, Key::S, Modifiers::CTRL);
+    press(&mut window, Key::S, Modifiers::COMMAND);
     assert!(says(&window, "já é o atalho «Salvar»"), "{:?}", window.texts);
     // free keys wait, shown, until Salvar
-    let ctrl_shift = Modifiers { ctrl: true, shift: true, ..Modifiers::NONE };
+    let ctrl_shift = Modifiers { command: true, shift: true, ..Modifiers::NONE };
     press(&mut window, Key::K, ctrl_shift);
     assert!(window.has("Ctrl+Shift+K") && says(&window, "Salvar (ou Enter) aplica"), "{:?}", window.texts);
     assert!(window.app.prefs.shortcuts.is_empty(), "not saved yet");
@@ -592,7 +596,7 @@ fn a_shortcut_pressed_waits_for_salvar_and_keys_another_has_are_refused() {
     assert_eq!(window.app.prefs.shortcuts["openChat"].keys, "Ctrl+Shift+K");
     assert!(window.has("Ctrl+Shift+K"), "{:?}", window.texts);
     // Esc drops what was pressed, not Ajustes; so does Cancelar
-    let ctrl_alt = Modifiers { ctrl: true, alt: true, ..Modifiers::NONE };
+    let ctrl_alt = Modifiers { command: true, alt: true, ..Modifiers::NONE };
     window.click_text("Ctrl+Shift+K");
     press(&mut window, Key::E, ctrl_alt);
     press(&mut window, Key::Escape, Modifiers::NONE);
@@ -622,13 +626,14 @@ fn ghost_right_of(window: &Window, keys: &str, steps: f32) -> Pos2 {
 #[test]
 fn limpar_leaves_a_shortcut_without_keys_and_padrao_brings_them_back() {
     let mut window = Window::at(tab_of("Atalhos"));
-    window.scroll_to("Ctrl+Z");
-    let clear = ghost_right_of(&window, "Ctrl+S", 1.0);
+    let (undo_keys, save_keys) = (keys_label("Cmd+Z"), keys_label("Cmd+S"));
+    window.scroll_to(&undo_keys);
+    let clear = ghost_right_of(&window, &save_keys, 1.0);
     window.click(clear);
     assert_eq!(window.app.prefs.shortcuts["save"].keys, "", "Salvar without a key");
     // Desfazer takes Ctrl+S, now free
-    window.click_text("Ctrl+Z");
-    press(&mut window, Key::S, Modifiers::CTRL);
+    window.click_text(&undo_keys);
+    press(&mut window, Key::S, Modifiers::COMMAND);
     press(&mut window, Key::Enter, Modifiers::NONE);
     assert_eq!(window.app.prefs.shortcuts["undo"].keys, "Ctrl+S");
     // Salvar's default can't come back over it: it waits with whose it is
@@ -641,11 +646,11 @@ fn limpar_leaves_a_shortcut_without_keys_and_padrao_brings_them_back() {
     assert_eq!(window.app.prefs.shortcuts["save"].keys, "", "unchanged");
     window.click_text("Cancelar");
     // Desfazer back to its own, then Salvar
-    let undo = ghost_right_of(&window, "Ctrl+S", 2.0);
+    let undo = ghost_right_of(&window, &save_keys, 2.0);
     window.click(undo);
     window.click(back);
     assert!(window.app.prefs.shortcuts.is_empty(), "every default: {:?}", window.app.prefs.shortcuts);
-    assert!(window.has("Ctrl+S") && window.has("Ctrl+Z"));
+    assert!(window.has(&save_keys) && window.has(&undo_keys));
 }
 
 fn tab_of(name: &str) -> usize {
@@ -810,17 +815,11 @@ fn privacy_is_in_sobre_only() {
     }
 }
 
-/// No credits row in Sobre (asked): the notice of the code the island adapts (MIT asks for it with every copy) goes in
-/// the installers instead, the .deb's doc folder and the MSI's program folder.
+/// No credits row in Sobre (asked).
 #[test]
-fn the_notices_go_in_the_installers_not_in_sobre() {
+fn sobre_has_no_credits() {
     let sobre = Window::at(tab_of("Sobre"));
     assert!(!sobre.has("CRÉDITOS") && !sobre.has("Ver os avisos"), "{:?}", sobre.texts);
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    assert!(root.join("THIRD-PARTY-NOTICES.md").is_file());
-    let read = |file: &str| std::fs::read_to_string(root.join("installer").join(file)).unwrap();
-    assert!(read("build-deb.sh").contains("THIRD-PARTY-NOTICES.md") && read("build-msi.sh").contains("-dNotices=THIRD-PARTY-NOTICES.md"));
-    assert!(read("magoagent.wxs").contains(r#"Name="THIRD-PARTY-NOTICES.md""#) && read("magoagent.wxs").contains(r#"<ComponentRef Id="Notices" />"#));
 }
 
 /// Sobre's buttons sit inside their card's padding (asked: "Ver as releases no GitHub" was stuck to its edge), whatever

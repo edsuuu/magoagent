@@ -372,7 +372,10 @@ fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Fo
         }
         egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
             for path in &found {
-                if ui.scope(|ui| row(ui, &folder_label(path), same_folder(cwd, path))).response.tip(path.as_str()).clicked() {
+                // the row's own click: the scope around it (for the tip) never has one, and a recent folder did nothing
+                let picked = ui.scope(|ui| row(ui, &folder_label(path), same_folder(cwd, path)));
+                picked.response.tip(path.as_str());
+                if picked.inner {
                     act = Some(FooterAct::FolderPick(path.clone()));
                 }
             }
@@ -585,10 +588,12 @@ impl DrawingApp {
 
     /// The chat's folder, while no message went (the agent's session lives in the folder).
     pub(crate) fn chat_set_folder(&mut self, dir: &str) {
-        let Some(chat) = self.current_chat_mut() else { return };
-        if chat.session.is_some() {
+        // the conversation lives in its folder: said, not a pick that does nothing
+        if self.current_chat_mut().is_some_and(|chat| chat.session.is_some()) {
+            self.toast("Esta conversa já começou na pasta dela: para usar outra pasta, abra uma conversa nova.".to_string());
             return;
         }
+        let Some(chat) = self.current_chat_mut() else { return };
         chat.cwd = dir.trim().to_string();
         // a name the person gave stays
         if !chat.named {

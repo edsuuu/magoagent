@@ -44,6 +44,18 @@ foram conferidos no código do ramo `porte-referencia`; se o código andou, proc
   (os `apt-get` já são condicionados a `runner.os == 'Linux'`, `ci.yml:52-54`). A release do Mac fica para o dono decidir
   (a release é rascunho por decisão dele).
 
+### 2.1 PATH do app aberto pelo Finder (prioridade A)
+
+Aberto pelo Finder, pelo Dock ou depois de reiniciar, o app recebe só o PATH do launchd (`/usr/bin:/bin:/usr/sbin:/sbin`) e
+não o do shell. Resultado: "claude não foi encontrado no PATH nem no WSL" ao mandar mensagem (`src/app/chat/commands/exec.rs:97`,
+`src/app/chat/direct/mod.rs:387`), porque `agent_cli` (`src/app/system/wsl.rs:196`) só procura com `crate::editor::lsp::which`
+(`src/editor/lsp/rpc.rs:42`), que lê o `PATH` do processo. O `claude` fica em `~/.local/bin`; `codex` e `node` no nvm.
+
+Corrigir no início do `main` (só `cfg(target_os = "macos")`, uma vez, antes de qualquer thread): rodar `$SHELL -lic 'printf %s "$PATH"'`
+(com tempo-limite curto) e, se der certo, juntar o resultado ao `PATH` do processo. Se falhar, acrescentar ao menos
+`~/.local/bin`, `/opt/homebrew/bin` e `/usr/local/bin`. Teste puro: a junção de PATHs sem repetir pastas.
+(Hoje, contornado na máquina do dono por um LaunchAgent `~/Library/LaunchAgents/local.path-env.plist` com `launchctl setenv PATH`.)
+
 ## 3. Permissões do macOS e o que já é multiplataforma
 
 | Recurso | Quando precisa | O que fazer |
