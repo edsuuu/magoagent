@@ -223,11 +223,21 @@ impl DrawingApp {
                 break;
             }
             let color = ci_mark(branch.ci).map_or(DIM_3, |(_, color)| color);
-            ui.painter().circle_filled(Pos2::new(x + 3.5, foot_y), 3.5, color);
             let name = branch.repo.rsplit('/').next().unwrap_or(&branch.repo);
             let words = clipped(ui.painter(), format!("{name} {}", ci_words(branch.ci)), font(11.0), DIM, inner.right() - x - 12.0);
             let width = words.size().x;
-            ui.painter().galley(Pos2::new(x + 12.0, foot_y - words.size().y / 2.0), words, DIM);
+            // a click opens its Actions, where a red branch is explained
+            let rect = Rect::from_min_size(Pos2::new(x - 3.0, foot_y - 9.0), Vec2::new(12.0 + width + 6.0, 18.0));
+            let response = ui
+                .interact(rect, ui.scope_id().with(("github_main", &branch.repo)), Sense::click())
+                .on_hover_cursor(CursorIcon::PointingHand)
+                .on_hover_text(format!("Abrir as Actions de {} ({})", branch.repo, branch.branch));
+            if response.clicked() {
+                self.integrations.pressed.borrow_mut().push(format!("open {}", branch.actions_page()));
+            }
+            let ink = if response.hovered() { INK } else { DIM };
+            ui.painter().circle_filled(Pos2::new(x + 3.5, foot_y), 3.5, color);
+            ui.painter().galley_with_override_text_color(Pos2::new(x + 12.0, foot_y - words.size().y / 2.0), words, ink);
             x += 12.0 + width + 14.0;
         }
     }

@@ -432,6 +432,38 @@ fn the_github_tab_reads_the_pull_request_picked() {
     assert_eq!(app.island.tab(), Tab::GitHub, "a row picks, the tab stays");
 }
 
+/// The GitHub tab: the app opened on it with the recorded pulse, and the texts of a frame with where they are.
+fn github_tab() -> (DrawingApp, Context, f64) {
+    use crate::app::integrations::github::{BranchCi, CiState, GitHub, Pulse};
+    let (mut app, ctx, mut time) = opened();
+    app.prefs.integrations.github = true;
+    app.integrations.github = GitHub::with_token("ghp_0123456789abcdefghijABCDEFGHIJ012345");
+    let recorded: Value = serde_json::from_str(include_str!("../integrations/fixtures/github_pulse.json")).unwrap();
+    let mut pulse = Pulse::parse(&recorded).unwrap();
+    pulse.main =
+        vec![BranchCi { repo: "ana-dev/loja".into(), url: "https://github.com/ana-dev/loja".into(), branch: "main".into(), ci: CiState::Failure, head: None }];
+    app.integrations.github.pulse = Some(pulse);
+    app.island_show_page(Tab::GitHub);
+    let inside = island_rect(&app).center();
+    rest(&mut app, &ctx, &mut time, inside, 1.0);
+    (app, ctx, time)
+}
+
+/// Where `text` was painted in the last frame.
+fn painted(app: &mut DrawingApp, ctx: &Context, time: f64, text: &str) -> Rect {
+    let texts = island_frame(app, ctx, time, vec![]);
+    texts.iter().find(|(painted, _)| painted == text).map(|(_, rect)| *rect).unwrap_or_else(|| panic!("{text:?} not painted: {texts:?}"))
+}
+
+/// A default branch under the list opens its repository's Actions, where the failed run is.
+#[test]
+fn the_github_tab_opens_a_main_branchs_actions() {
+    let (mut app, ctx, mut time) = github_tab();
+    let at = painted(&mut app, &ctx, time, "loja falhou").center();
+    click(&mut app, &ctx, &mut time, at);
+    assert_eq!(app.integrations.pressed.borrow().as_slice(), ["open https://github.com/ana-dev/loja/actions"]);
+}
+
 /// The Spotify tab: its height, aleatório pressed, and a song of the queue played at once, not skipped to.
 #[test]
 fn the_spotify_tab_plays_what_is_pressed() {

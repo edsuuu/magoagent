@@ -78,6 +78,13 @@ pub(crate) struct BranchCi {
     pub(crate) head: Option<String>,
 }
 
+impl BranchCi {
+    /// The repository's Actions, where a failed run of the branch is.
+    pub(crate) fn actions_page(&self) -> String {
+        format!("{}/actions", self.url.trim_end_matches('/'))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Default)]
 pub(crate) struct Pulse {
     pub(crate) login: String,
@@ -493,7 +500,7 @@ impl GitHub {
             };
             let url = match alert {
                 // the repository's Actions, where the failed run is
-                Alert::MainFailed(_) => pulse.main.iter().find(|branch| &branch.repo == id).map(|branch| format!("{}/actions", branch.url)),
+                Alert::MainFailed(_) => pulse.main.iter().find(|branch| &branch.repo == id).map(BranchCi::actions_page),
                 _ => pulse.mine.iter().chain(&pulse.to_review).find(|request| &request.id == id).map(PullRequest::page),
             };
             self.notice = Some(Notice { text, failure, url: url.unwrap_or_default(), at: now, seen: None });
