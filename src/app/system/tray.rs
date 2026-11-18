@@ -27,7 +27,7 @@ struct Items {
 #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 fn build() -> Option<(tray_icon::TrayIcon, Items)> {
     use tray_icon::menu::{Menu, MenuItem};
-    let picture = image::load_from_memory(include_bytes!("../../../assets/icon.png")).ok()?.thumbnail(64, 64).into_rgba8();
+    let picture = image::load_from_memory(crate::app_icon()).ok()?.thumbnail(64, 64).into_rgba8();
     let (width, height) = picture.dimensions();
     let icon = tray_icon::Icon::from_rgba(picture.into_raw(), width, height).ok()?;
     let show = MenuItem::new("Mostrar MagoAgent", true, None);

@@ -5,6 +5,9 @@
 
 use crate::prelude::*;
 
+/// The DEV badge, the orange of the icon's star.
+const DEV_BADGE: Color32 = Color32::from_rgb(0xf0, 0xa0, 0x20);
+
 /// Windows' caption buttons are 46 wide; the close one turns this red under the pointer.
 const CAPTION_WIDTH: f32 = 46.0;
 /// How tall they are: their block is the reference app's window overlay, a tone apart from the canvas.
@@ -141,6 +144,12 @@ impl DrawingApp {
         let first = self.top_button(0);
         side("title_bar", from, left, &mut |ui, _| {
             let end = self.top_buttons(ui);
+            if crate::file::development() {
+                // the build of the repo, as its icon says too (painted only: the stretch still moves the window)
+                let chip = Rect::from_center_size(Pos2::new(end + 26.0, first.center().y), Vec2::new(36.0, 18.0));
+                ui.painter().rect_filled(chip, 9.0, DEV_BADGE);
+                ui.painter().text(chip.center(), egui::Align2::CENTER_CENTER, "DEV", FontId::proportional(11.0), Color32::from_rgb(0x1e, 0x1e, 0x22));
+            }
             self.title_buttons = Rect::from_min_max(first.min, Pos2::new(end, first.bottom()));
         });
         side("title_bar_right", right, width, &mut |ui, bar| {
