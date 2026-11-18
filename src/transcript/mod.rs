@@ -161,9 +161,11 @@ pub(crate) fn claude_dir() -> Option<PathBuf> {
     std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from).or_else(|| std::env::home_dir().map(|h| h.join(".claude")))
 }
 
-/// The folder name Claude Code files a working directory's sessions under.
+/// The folder name Claude Code files a working directory's sessions under: a dash for every UTF-16 unit that is no
+/// ASCII letter or digit, as Claude Code counts them (an emoji is two).
+// ponytail: Claude Code cuts a name over 200 and adds a hash of its own, found here only by the hook's `transcript_path`; port the hash if it matters
 pub(crate) fn project_folder(cwd: &str) -> String {
-    cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect()
+    cwd.encode_utf16().map(|unit| char::from_u32(unit.into()).filter(char::is_ascii_alphanumeric).unwrap_or('-')).collect()
 }
 
 /// A Claude Code process as ~/.claude/sessions/<pid>.json describes it.

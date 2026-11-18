@@ -71,7 +71,7 @@ impl DrawingApp {
     pub(super) fn island_session(&mut self, ui: &mut egui::Ui, page: Rect, view: &View, time: f64, out: &mut Out) {
         self.follow_session(time);
         let Some(id) = self.island.session.as_ref().map(|session| session.id.clone()) else { return };
-        let (writable, pending) = (self.outside_takes_messages(&id), self.outside_pending(&id));
+        let (writable, pending, unread) = (self.outside_takes_messages(&id), self.outside_pending(&id), self.outside_unread(&id));
         let Some(session) = self.island.session.as_ref() else { return };
         let line = view.lines.iter().find(|line| line.id == session.id);
         let state = line.map_or(AgentState::Ended, |line| line.state);
@@ -88,8 +88,7 @@ impl DrawingApp {
                 out.picture = self.island_log(ui, log, &messages, matches!(state, AgentState::Working(_)), time).or(out.picture.take());
             }
             None => {
-                let words = "A conversa desta sessão não pode ser lida daqui.";
-                painter.text(log.center(), egui::Align2::CENTER_CENTER, words, font(12.0), DIM);
+                painter.text(log.center(), egui::Align2::CENTER_CENTER, unread, font(12.0), DIM);
             }
         }
         // whose it is, at the right over the box, as the app's chat shows its agent and model

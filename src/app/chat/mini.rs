@@ -205,6 +205,20 @@ impl DrawingApp {
     pub(crate) fn send_from_box(&mut self, ctx: &Context, id: &str, text: String) {
         // the pictures above the box go first, as the paths Claude Code reads
         let prompt = self.attached_prompt(&text);
+        // a session outside the app: to its terminal (maestro/message.rs); refused, the words stay with why
+        if id.starts_with(crate::app::maestro::outside::PILL_PREFIX) {
+            match self.outside_message(id, &prompt) {
+                Ok(delivery) => {
+                    self.chat_pics.get_mut().attached.clear();
+                    self.toast(delivery.notice());
+                }
+                Err(why) => {
+                    self.chat_draft = text;
+                    self.toast(why);
+                }
+            }
+            return;
+        }
         if self.is_chat(id) {
             if self.chat_submit(ctx, id, &text, &prompt) {
                 self.chat_pics.get_mut().attached.clear();

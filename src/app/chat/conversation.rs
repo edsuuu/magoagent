@@ -107,6 +107,10 @@ impl DrawingApp {
                     paint_mago_for(ui.painter(), &format!("{}-end", row.id), rect.center(), 52.0, state, time);
                 }
             }
+            // a session outside the app before its first message, or one whose file the app does not read
+            _ if row.id.starts_with(crate::app::maestro::outside::PILL_PREFIX) => {
+                ui.label(egui::RichText::new(self.outside_unread(&row.id)).size(13.0).color(look.muted));
+            }
             _ if only_chat => {
                 if crate::app::mascot::claude(&row.spec) {
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 130.0), Sense::hover());
