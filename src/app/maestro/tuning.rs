@@ -139,12 +139,15 @@ mod tests {
         let said = recruit(&mut app, &with_tuning("claude", "opus", "xhigh"), Some(AgentMode::Terminal));
         assert!(said.contains("(um terminal; modelo Opus 5.5 · esforço Extra)"), "{said}");
         let spec = terminals(&app).pop().unwrap();
-        assert_eq!(spec.command, "claude --model opus --effort xhigh");
+        // and the temporary folder's rule after them (maestro/temp_folder.rs)
+        let told = |command: &str, prefs: &Prefs| crate::app::maestro::temp_folder::with_temp_rule(command, prefs);
+        assert_eq!(spec.command, told("claude --model opus --effort xhigh", &app.prefs));
+        assert!(spec.command.contains("--append-system-prompt"));
         assert_eq!(crate::app::terminal::card::recruit_tag(&spec).as_deref(), Some("Opus 5.5 · Extra"));
         // no model picked: Ajustes' for the recruits, read back all the same
         app.prefs.recruit_model = "haiku".into();
         let said = recruit(&mut app, "claude --effort low \"x\"", Some(AgentMode::Terminal));
-        assert_eq!(terminals(&app).pop().unwrap().command, "claude --model haiku --effort low \"x\"");
+        assert_eq!(terminals(&app).pop().unwrap().command, told("claude --model haiku --effort low \"x\"", &app.prefs));
         assert!(said.contains("modelo Haiku 5.5 · esforço Baixo"), "{said}");
         // a shell or a Maestro's terminal has no tag
         assert_eq!(crate::app::terminal::card::recruit_tag(&TerminalSpec { command: "cargo test".into(), ..Default::default() }), None);

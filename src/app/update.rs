@@ -151,24 +151,6 @@ impl eframe::App for DrawingApp {
         self.handle_shortcuts(&ctx);
         self.sync_filetrees(&ctx);
         self.sync_terminals(&ctx);
-        self.memory.update(
-            self.terminals
-                .iter()
-                .filter_map(|(id, session)| {
-                    let session = session.as_ref().ok()?;
-                    let name = self
-                        .scene
-                        .elements
-                        .iter()
-                        .find(|e| e.id == *id)
-                        .and_then(|e| e.terminal.as_ref())
-                        .or(self.away.get(id).map(|(_, spec)| spec))
-                        .map(|t| t.name.clone())
-                        .unwrap_or_else(|| id.clone());
-                    Some((name, session.shell_pid))
-                })
-                .collect(),
-        );
         self.voice_tick(&ctx);
         self.dictation_tick(&ctx);
         wsl_choose(&self.prefs.wsl);
@@ -279,13 +261,7 @@ impl eframe::App for DrawingApp {
         }
         let _ = frame;
         let idle = !self.in_gesture() && self.multi.is_none() && self.editing.is_none();
-        if self.prefs != self.saved_prefs {
-            // beside this drawing (`prefs_path` in the app): a test with a drawing of its own never writes the person's
-            if let Some(path) = self.autosave.as_ref().map(|autosave| autosave.with_file_name("preferences.json")) {
-                let _ = serde_json::to_string_pretty(&prefs_for_file(&self.prefs, &self.saved_prefs)).map(|json| write_atomic(&path, json));
-            }
-            self.saved_prefs = self.prefs.clone();
-        }
+        self.save_prefs_when_due(&ctx);
         let now = ctx.input(|i| i.time);
         self.laser.retain(|(_, t)| now - *t < 1.0);
         if let Some(id) = self.reveal.front() {

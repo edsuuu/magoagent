@@ -262,3 +262,32 @@ fn the_agents_at_rest_in_the_list_ask_for_no_frames() {
     let causes = ctx.repaint_causes();
     assert!(!causes.iter().any(|cause| cause.file.contains("mascot")), "an ended agent's wizard is still: {causes:?}");
 }
+
+/// Asked: "Um botão para ser como acordeão para deixar fechado os agentes que foram disparados". A Maestro's recruits
+/// go under it, folded to "2 agentes" until opened; the click is kept, and the MCP opens and folds them by its name.
+#[test]
+fn a_maestros_recruits_fold_under_it_among_the_agents_of_the_space() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let maestro = terminal(&mut app, "Maestro", "claude", 0.0);
+    for (name, x) in [("Ana", 600.0), ("Bia", 1200.0)] {
+        let recruit = terminal(&mut app, name, "claude", x);
+        app.scene.elements.last_mut().unwrap().terminal.as_mut().unwrap().maestro = false;
+        app.rope_between(&maestro, &recruit, false);
+    }
+    side(&mut app, &ctx, vec![]);
+    let painted = side(&mut app, &ctx, vec![]);
+    assert!(found(&painted, "Maestro").is_some() && found(&painted, "Ana").is_none() && found(&painted, "Bia").is_none(), "folded: {painted:?}");
+    let fold = found(&painted, "2 agentes").unwrap_or_else(|| panic!("the fold under the Maestro: {painted:?}"));
+    assert!(fold.top() > found(&painted, "Maestro").unwrap().top());
+    let painted = press(&mut app, &ctx, "2 agentes");
+    assert!(app.team_open(&maestro), "kept in the preferences");
+    let (ana, bia) = (found(&painted, "Ana").expect("open"), found(&painted, "Bia").expect("open"));
+    assert!(ana.top() > fold.top() && bia.top() > ana.top() && ana.left() > found(&painted, "Maestro").unwrap().left(), "under it, indented");
+    let said = app.act("sidebar", &json!({ "action": "team_close", "team": "maestro" })).unwrap();
+    assert!(!app.team_open(&maestro) && said.contains("2 agentes"), "{said}");
+    app.act("sidebar", &json!({ "action": "team_open", "team": "all" })).unwrap();
+    assert!(app.team_open(&maestro));
+    assert!(app.act("sidebar", &json!({ "action": "team_open", "team": "ninguém" })).is_err());
+    assert!(app.act("sidebar", &json!({ "action": "team_open" })).is_err(), "says which");
+}

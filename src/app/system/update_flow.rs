@@ -66,8 +66,9 @@ impl DrawingApp {
             return Err("o desenho salvo não confere com o da tela".into());
         }
         // beside the drawing, like chats.json: a test's drawing never writes in the person's data folder
-        let json = serde_json::to_string_pretty(&prefs_for_file(&self.prefs, &self.saved_prefs)).map_err(|error| error.to_string())?;
-        write_atomic(&path.with_file_name("preferences.json"), json).map_err(|error| format!("preferências: {error}"))?;
+        // on the writer's thread, after the ones on their way, and waited for
+        write_prefs(path.with_file_name("preferences.json"), self.prefs.clone(), self.saved_prefs.clone(), true)
+            .map_err(|error| format!("preferências: {error}"))?;
         self.saved_prefs = self.prefs.clone();
         self.try_save_chats().map_err(|error| format!("chats: {error}"))?;
         for chat in self.chats.iter().filter(|chat| chat.agent == "codex").map(|chat| chat.id.clone()).collect::<Vec<_>>() {

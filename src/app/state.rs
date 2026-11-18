@@ -102,6 +102,8 @@ pub(crate) struct DrawingApp {
     pub(crate) bind_pulse: std::cell::Cell<Option<(String, f64)>>,
     pub(crate) prefs: Prefs,
     pub(crate) saved_prefs: Prefs,
+    /// When the preferences first changed since they were last written (seconds of the frame clock).
+    pub(crate) prefs_changed_at: Option<f64>,
     /// Ajustes (⌘,), and the quick start being edited in it.
     pub(crate) settings_open: bool,
     pub(crate) settings_edit: Option<usize>,
@@ -365,7 +367,6 @@ pub(crate) struct DrawingApp {
     pub(crate) script: Option<Script>,
     /// MAGOAGENT_PERF: frames and their CPU, measured (app/script.rs).
     pub(crate) perf: Option<system::script::Perf>,
-    pub(crate) memory: system::memory::Monitor,
     /// The right-click menu open now (ui/context.rs).
     pub(crate) context: Option<ui::context::ContextMenu>,
     /// Renomear: the element being renamed and the name typed so far.

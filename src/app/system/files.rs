@@ -188,7 +188,43 @@ impl DrawingApp {
         }
     }
 
+    /// The preferences on disk once they stopped changing: 0.5 s after the first change not written (2 s while the
+    /// pointer is held, a window or a slider being dragged), on the writer's thread. Before, a drag wrote them (fsync
+    /// and the keychain) every frame.
+    pub(crate) fn save_prefs_when_due(&mut self, ctx: &Context) {
+        if self.prefs == self.saved_prefs {
+            self.prefs_changed_at = None;
+            return;
+        }
+        let now = ctx.input(|input| input.time);
+        let since = *self.prefs_changed_at.get_or_insert(now);
+        let due = if ctx.input(|input| input.pointer.any_down()) { 2.0 } else { 0.5 };
+        if now - since >= due {
+            let _ = self.save_prefs(false);
+        } else {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(due - (now - since)));
+        }
+    }
+
+    /// Writes the preferences beside this drawing (a test with a drawing of its own never writes the person's), on
+    /// the writer's thread; with `wait`, once they are on disk.
+    pub(crate) fn save_prefs(&mut self, wait: bool) -> Result<(), String> {
+        let written = match self.autosave.as_ref().map(|autosave| autosave.with_file_name("preferences.json")) {
+            Some(path) => write_prefs(path, self.prefs.clone(), self.saved_prefs.clone(), wait),
+            None => Ok(()),
+        };
+        self.saved_prefs = self.prefs.clone();
+        self.prefs_changed_at = None;
+        written
+    }
+
     pub(crate) fn save_on_exit(&mut self) {
+        // the preferences not yet written, and the ones on their way
+        if self.prefs != self.saved_prefs {
+            let _ = self.save_prefs(true);
+        } else {
+            prefs_written();
+        }
         self.finish_autosave(true);
         self.finish_text();
         // what was typed in a file tree's editor pane

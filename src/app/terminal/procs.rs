@@ -9,7 +9,7 @@ use std::collections::HashMap;
 /// How many processes the list shows: the rest is no use to read in a popover.
 const MAX_ROWS: usize = 200;
 const REFRESH_SECONDS: f64 = 3.0;
-const POPOVER_WIDTH: f32 = 260.0;
+const POPOVER_WIDTH: f32 = 280.0;
 
 /// A process under a terminal's shell.
 #[derive(Clone, Debug, PartialEq)]
@@ -122,50 +122,79 @@ impl DrawingApp {
             .fixed_pos(Pos2::new(button.right(), button.top() - 6.5))
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
-                egui::Frame::new().fill(colors.bg).corner_radius(6).stroke(Stroke::new(1.0, colors.border)).shadow(egui::epaint::Shadow::NONE).show(ui, |ui| {
-                    ui.set_width(POPOVER_WIDTH);
-                    ui.spacing_mut().item_spacing = Vec2::ZERO;
-                    let (head, _) = ui.allocate_exact_size(Vec2::new(POPOVER_WIDTH, 28.0), Sense::hover());
-                    ui.painter().text(
-                        head.left_center() + Vec2::new(12.0, 0.0),
-                        egui::Align2::LEFT_CENTER,
-                        "Processos",
-                        FontId::proportional(13.0),
-                        colors.text,
-                    );
-                    if !rows.is_empty() {
-                        let count = format!("{} · {} MB", rows.len(), (total as f64 / 1048576.0).round());
-                        ui.painter().text(head.right_center() - Vec2::new(12.0, 0.0), egui::Align2::RIGHT_CENTER, count, FontId::monospace(11.0), colors.muted);
-                    }
-                    ui.painter().hline(head.x_range(), head.bottom(), Stroke::new(1.0, colors.border));
-                    if rows.is_empty() {
-                        let (empty, _) = ui.allocate_exact_size(Vec2::new(POPOVER_WIDTH, 46.0), Sense::hover());
-                        ui.painter().text(empty.center(), egui::Align2::CENTER_CENTER, "Nenhum processo filho", FontId::proportional(12.0), colors.muted);
-                    }
-                    egui::ScrollArea::vertical().max_height(320.0).auto_shrink([false, true]).show(ui, |ui| {
-                        for (k, row) in rows.iter().enumerate() {
-                            let (r, _) = ui.allocate_exact_size(Vec2::new(POPOVER_WIDTH, 38.0), Sense::hover());
-                            if k > 0 {
-                                ui.painter().hline(r.x_range(), r.top(), Stroke::new(1.0, colors.border));
-                            }
-                            ui.painter().text(r.left_top() + Vec2::new(12.0, 7.0), egui::Align2::LEFT_TOP, &row.name, FontId::proportional(12.0), colors.text);
-                            let detail = format!("PID {}   {}", row.pid, memory_text(row.bytes));
-                            ui.painter().text(r.left_top() + Vec2::new(12.0, 21.0), egui::Align2::LEFT_TOP, detail, FontId::monospace(11.0), colors.muted);
-                            let x = Rect::from_center_size(Pos2::new(r.right() - 22.0, r.center().y), Vec2::splat(20.0));
-                            let response = ui.interact(x, egui::Id::unique(("stop_process", row.pid)), Sense::click());
-                            if response.hovered() {
-                                ui.painter().circle_filled(x.center(), 10.0, colors.hover);
-                            }
-                            let c = x.center();
-                            let s = Stroke::new(1.3, if response.hovered() { colors.text } else { colors.muted });
-                            ui.painter().add(Shape::line(vec![c + Vec2::new(-3.0, -3.0), c + Vec2::new(3.0, 3.0)], s));
-                            ui.painter().add(Shape::line(vec![c + Vec2::new(-3.0, 3.0), c + Vec2::new(3.0, -3.0)], s));
-                            if response.on_hover_cursor(CursorIcon::PointingHand).tip(format!("Parar {} (PID {})", row.name, row.pid)).clicked() {
-                                stop = Some(row.pid);
-                            }
+                egui::Frame::new().fill(colors.bg).corner_radius(10).stroke(Stroke::new(1.0, colors.border)).shadow(egui::epaint::Shadow::NONE).show(
+                    ui,
+                    |ui| {
+                        ui.set_width(POPOVER_WIDTH);
+                        ui.spacing_mut().item_spacing = Vec2::ZERO;
+                        let painter = ui.painter().clone();
+                        // the heading: the button's icon, "Processos" in semibold and how many with their memory in a chip
+                        let (head, _) = ui.allocate_exact_size(Vec2::new(POPOVER_WIDTH, 38.0), Sense::hover());
+                        paint_menu_icon_sized(&painter, MenuIcon::Server, Pos2::new(head.left() + 20.0, head.center().y), colors.muted, 13.0);
+                        let title = FontId::new(13.0, egui::FontFamily::Name(SYSTEM_SEMIBOLD.into()));
+                        painter.text(head.left_center() + Vec2::new(34.0, 0.0), egui::Align2::LEFT_CENTER, "Processos", title, colors.text);
+                        if !rows.is_empty() {
+                            let count = format!("{} · {} MB", rows.len(), (total as f64 / 1048576.0).round());
+                            let galley = painter.layout_no_wrap(count, FontId::monospace(10.5), colors.muted);
+                            let chip = Rect::from_min_size(
+                                Pos2::new(head.right() - 12.0 - galley.size().x - 14.0, head.center().y - 10.0),
+                                Vec2::new(galley.size().x + 14.0, 20.0),
+                            );
+                            painter.rect_filled(chip, 10.0, colors.hover);
+                            painter.galley(chip.center() - galley.size() / 2.0, galley, colors.muted);
                         }
-                    });
-                });
+                        painter.hline(head.x_range(), head.bottom(), Stroke::new(1.0, colors.border));
+                        if rows.is_empty() {
+                            let (empty, _) = ui.allocate_exact_size(Vec2::new(POPOVER_WIDTH, 56.0), Sense::hover());
+                            painter.text(empty.center(), egui::Align2::CENTER_CENTER, "Nenhum processo filho", FontId::proportional(12.0), colors.muted);
+                        }
+                        egui::ScrollArea::vertical().max_height(320.0).auto_shrink([false, true]).show(ui, |ui| {
+                            ui.add_space(4.0);
+                            for row in &rows {
+                                let (slot, _) = ui.allocate_exact_size(Vec2::new(POPOVER_WIDTH, 44.0), Sense::hover());
+                                // each row a rounded line of its own, lit under the pointer
+                                let r = slot.shrink2(Vec2::new(4.0, 1.0));
+                                let painter = ui.painter();
+                                if ui.rect_contains_pointer(r) {
+                                    painter.rect_filled(r, ITEM_RADIUS, colors.hover);
+                                }
+                                let x = Rect::from_center_size(Pos2::new(r.right() - 16.0, r.center().y), Vec2::splat(22.0));
+                                // its memory at the right, before the stop button; the name cut short of it
+                                let memory = painter.layout_no_wrap(memory_text(row.bytes), FontId::monospace(11.0), colors.text);
+                                let memory_at = Pos2::new(x.left() - 8.0 - memory.size().x, r.center().y - memory.size().y / 2.0);
+                                let words = Rect::from_min_max(Pos2::new(r.left() + 10.0, r.top()), Pos2::new(memory_at.x - 10.0, r.bottom()));
+                                let clipped = painter.with_clip_rect(words.intersect(painter.clip_rect()));
+                                clipped.text(
+                                    Pos2::new(words.left(), r.center().y - 1.0),
+                                    egui::Align2::LEFT_BOTTOM,
+                                    &row.name,
+                                    FontId::proportional(12.5),
+                                    colors.text,
+                                );
+                                clipped.text(
+                                    Pos2::new(words.left(), r.center().y + 2.0),
+                                    egui::Align2::LEFT_TOP,
+                                    format!("PID {}", row.pid),
+                                    FontId::monospace(10.5),
+                                    colors.muted,
+                                );
+                                painter.galley(memory_at, memory, colors.text);
+                                let response = ui.interact(x, egui::Id::unique(("stop_process", row.pid)), Sense::click());
+                                if response.hovered() {
+                                    ui.painter().circle_filled(x.center(), 11.0, colors.hover);
+                                }
+                                let c = x.center();
+                                let s = Stroke::new(1.4, if response.hovered() { colors.text } else { colors.muted });
+                                ui.painter().add(Shape::line(vec![c + Vec2::new(-3.5, -3.5), c + Vec2::new(3.5, 3.5)], s));
+                                ui.painter().add(Shape::line(vec![c + Vec2::new(-3.5, 3.5), c + Vec2::new(3.5, -3.5)], s));
+                                if response.on_hover_cursor(CursorIcon::PointingHand).tip(format!("Parar {} (PID {})", row.name, row.pid)).clicked() {
+                                    stop = Some(row.pid);
+                                }
+                            }
+                            ui.add_space(4.0);
+                        });
+                    },
+                );
             });
         if let Some(pid) = stop {
             match self.stop_terminal_process(&id, pid) {
