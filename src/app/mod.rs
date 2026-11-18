@@ -15,6 +15,8 @@ pub(crate) mod island;
 pub(crate) mod maestro;
 pub(crate) mod mascot;
 pub(crate) use mascot::mago::{MagoState, paint_mago_for};
+#[cfg(target_os = "macos")]
+pub(crate) mod native;
 pub(crate) mod notes;
 pub(crate) mod panes;
 mod state;

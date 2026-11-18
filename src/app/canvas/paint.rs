@@ -20,6 +20,11 @@ impl DrawingApp {
     }
 
     pub(crate) fn paint_scene(&self, painter: &Painter, rect: Rect) {
+        // SwiftUI draws the canvas (canvas/native.rs)
+        #[cfg(target_os = "macos")]
+        if crate::app::native::enabled("canvas") {
+            return;
+        }
         let dark = self.dark();
         painter.rect_filled(rect, 0.0, self.ground());
         // the open chat is a screen of its own: nothing of the drawing shows, under it or in the
