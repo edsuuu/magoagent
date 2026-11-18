@@ -167,3 +167,42 @@ fn minimap_covers_drawing_and_centers_on_click() {
     app.pan_to(Pos2::new(3050.0, 2050.0));
     assert_eq!(app.to_screen(Pos2::new(3050.0, 2050.0)), app.canvas_rect.center());
 }
+
+/// The note editor's text as it shows (what is inked), from the live preview.
+fn shown_while_typing(text: &str, caret: Option<usize>) -> (String, Vec<markdown::Ornament>) {
+    let live = markdown::live_text(text, 14.0, Color32::BLACK, 300.0, caret.map(|at| markdown::Caret { head: at, anchor: at }));
+    let shown = live
+        .job
+        .sections
+        .iter()
+        .filter(|section| section.format.color != Color32::TRANSPARENT)
+        .map(|section| &live.job.text[section.byte_range.start.0..section.byte_range.end.0])
+        .collect();
+    (shown, live.ornaments)
+}
+
+#[test]
+fn only_what_the_caret_is_on_shows_its_markdown() {
+    let text = "# Título\nTexto **forte** e `código`\n- item";
+    // the editor without the keys: the note as it rests
+    assert_eq!(shown_while_typing(text, None), ("Título\nTexto forte e código\n item".into(), vec![markdown::Ornament::Bullet(36)]));
+    // on the heading: its hashes, faint, and the rest as it rests
+    assert_eq!(shown_while_typing(text, Some(3)).0, "# Título\nTexto forte e código\n item");
+    // inside the bold: its stars; the code's ticks stay hidden
+    assert_eq!(shown_while_typing(text, Some(17)).0, "Título\nTexto **forte** e código\n item");
+    // on the item: its dash instead of the bullet
+    assert_eq!(shown_while_typing(text, Some(37)), ("Título\nTexto forte e código\n- item".into(), Vec::new()));
+}
+
+#[test]
+fn the_live_preview_keeps_every_character_where_the_caret_counts_them() {
+    let text = "## Plano\n- [x] feito ~~antes~~\n> citação\n---\n[site](https://x.dev) *fim*";
+    for caret in [None, Some(0), Some(12), Some(40)] {
+        let live = markdown::live_text(text, 14.0, Color32::BLACK, 300.0, caret.map(|at| markdown::Caret { head: at, anchor: at }));
+        assert_eq!(live.job.text, text, "the galley holds every typed character, hidden or not");
+        assert_eq!(live.bold.text, text);
+    }
+    let (shown, ornaments) = shown_while_typing(text, None);
+    assert_eq!(shown, "Plano\n feito antes\n citação\n\nsite fim");
+    assert_eq!(ornaments, vec![markdown::Ornament::Task(12, true), markdown::Ornament::Quote(31), markdown::Ornament::Rule(41)]);
+}
