@@ -84,6 +84,9 @@ const CLOSED_WING: f32 = 30.0;
 const CLOSED_WING_SONG: f32 = 48.0;
 const COMPACT_WING: f32 = 54.0;
 const COMPACT_WING_WIDE: f32 = 104.0;
+/// Open around a notch, its header is the notch's row (asked: "deixar os botões separando quando estivesse na posição da
+/// câmera"): each wing holds the tabs at the left (seven at most, 35 apart from 14 in) or the buttons at the right.
+const HEADER_WING: f32 = 14.0 + 7.0 * 35.0 + 6.0;
 /// The conversation at least this big, in points.
 const CHAT_MIN: (f32, f32) = (420.0, 300.0);
 const EXPANDED_CORNER: f32 = 22.0;
@@ -251,14 +254,16 @@ pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, settings: bool, tall:
 }
 
 /// The island of `size` on a screen whose camera notch is `notch` big: it grows out of the notch, which it hides, as
-/// black as it is. Closed and compact it is the notch with a wing each side (closed as tall as it; compact as tall as it
-/// always is), wider while a `song` shows or the `voice` talks; open, its panel starts under the notch's row.
+/// black as it is. Closed and compact it is the notch with a wing each side, as tall as it (asked: "não pegou a proporção
+/// de altura"), wider while a `song` shows or the `voice` talks; open, its header is the notch's row, so it is as tall as
+/// anywhere and at least wide enough for the tabs and the buttons each side of the camera.
 pub(crate) fn around_notch(shape: Shape, size: Vec2, notch: Vec2, song: bool, voice: bool) -> Vec2 {
     let wings = |wing: f32| notch.x + 2.0 * wing;
     match shape {
         Shape::Closed => Vec2::new(wings(if song { CLOSED_WING_SONG } else { CLOSED_WING }), notch.y),
-        Shape::Compact => Vec2::new(wings(if song || voice { COMPACT_WING_WIDE } else { COMPACT_WING }), size.y.max(notch.y)),
-        Shape::Open => Vec2::new(size.x.max(notch.x), size.y + notch.y),
+        Shape::Compact => Vec2::new(wings(if song || voice { COMPACT_WING_WIDE } else { COMPACT_WING }), notch.y),
+        // ponytail: a conversation narrower than this widens around a notch; split the header by its real width if it bothers
+        Shape::Open => Vec2::new(size.x.max(wings(HEADER_WING)), size.y),
     }
 }
 
@@ -646,9 +651,7 @@ impl DrawingApp {
             .filter(|_| self.island.dock == window::Dock::Top)
             .and_then(|anchor| notch_at(window::probe(anchor)).filter(|notch| (notch.center().x - anchor[0]).abs() < 1.0))
             .map(|notch| notch.size());
-        // the row of the notch above the open panel is in the window too
-        let band = Vec2::new(0.0, self.island.notch.map_or(0.0, |notch| notch.y));
-        self.island.cap = window_cap(chat + band, chat_most(work) + band, self.island.resizing);
+        self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
         // GitHub's alerts, as the reference sounds them: a review asked for and checks that passed (a failure is the error of
         // its red wizard, below); one that waited more than a few seconds (the island was off) is dropped
         if let Some((alert, at)) = self.integrations.github.ring.take()
@@ -1009,9 +1012,13 @@ mod tests {
             |shape: Shape, tab: Tab, song: bool, voice: bool| around_notch(shape, target(shape, tab, false, false, false, 0.0, chat).0, notch, song, voice);
         assert_eq!(sized(Shape::Closed, Tab::Home, false, false), Vec2::new(179.0 + 60.0, 32.0), "the notch and the face's wings, as tall");
         assert_eq!(sized(Shape::Closed, Tab::Home, true, false), Vec2::new(179.0 + 96.0, 32.0), "a song: room for its cover");
-        assert_eq!(sized(Shape::Compact, Tab::Home, false, false), Vec2::new(179.0 + 108.0, COMPACT_H));
+        assert_eq!(sized(Shape::Compact, Tab::Home, false, false), Vec2::new(179.0 + 108.0, 32.0), "compact as tall as the notch too");
         assert_eq!(sized(Shape::Compact, Tab::Home, false, true), sized(Shape::Compact, Tab::Home, true, false), "the voice and a song: wide");
-        assert_eq!(sized(Shape::Open, Tab::Home, false, false), Vec2::new(EXPANDED_W, FEED_H + 32.0), "the panel under the notch's row");
+        assert_eq!(sized(Shape::Open, Tab::Home, false, false), Vec2::new(EXPANDED_W, FEED_H), "the header on the notch's row: no band over it");
+        // a narrow conversation widens until the tabs and the buttons fit beside the camera
+        let narrow = around_notch(Shape::Open, Vec2::new(CHAT_MIN.0, CHAT_MIN.1), notch, false, false);
+        assert_eq!(narrow, Vec2::new(179.0 + 2.0 * HEADER_WING, CHAT_MIN.1));
+        assert!(narrow.x <= EXPANDED_W, "never wider than the open island is anyway");
         // the wings hold what goes in them: the face (18) with room, the wizard (30) and the minis' grid (30) 12 from the edges
         const { assert!(CLOSED_WING >= 18.0 + 12.0 && COMPACT_WING >= 12.0 + 30.0 + 12.0) };
     }

@@ -34,6 +34,8 @@ pub(super) const BLACK: Color32 = Color32::from_rgb(0x0b, 0x0c, 0x0e);
 pub(super) const HOVER: Color32 = Color32::from_rgb(0x1b, 0x1d, 0x21);
 /// The header's height under the 8 above it: what the pages start under.
 pub(super) const PAGE_TOP: f32 = 42.0;
+/// The middle of the header's row, from the panel's top.
+const HEADER_MID: f32 = 8.0 + 17.0;
 
 /// What the island shows this frame.
 pub(super) struct View {
@@ -347,8 +349,10 @@ impl DrawingApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
                 ui.set_opacity(open);
                 ui.set_clip_rect(rect.intersect(ui.clip_rect()));
-                // around a notch the panel starts under its row
-                let panel = view.notch.map_or(rect, |notch| rect.with_min_y(rect.top() + notch.y));
+                // around a notch the header is its row, the tabs left of the camera and the buttons right of it (asked:
+                // "um espaço cinza enorme no topo que daria para remover"): the panel starts above so its header's middle
+                // is the notch's
+                let panel = view.notch.map_or(rect, |notch| rect.with_min_y(rect.top() + notch.y / 2.0 - HEADER_MID));
                 self.island_open(ui, panel, view, form, look, colors, time, &mut out);
             });
             if view.shape == Shape::Open {
@@ -435,7 +439,8 @@ impl DrawingApp {
         } else {
             Pos2::new(rect.left() + super::COMPACT_SIDE, rect.center().y + 1.0)
         };
-        aim(view, wizard, 30.0, state);
+        // as tall as a notch (32) she keeps 3 above and below
+        aim(view, wizard, view.notch.map_or(30.0, |notch| 30.0f32.min(notch.y - 6.0)), state);
         // the green mini of Spotify is the cover and the bars then, spread between the wizard and the other minis
         let spotify = |line: &Line| line.id.strip_prefix(crate::app::integrations::ITEM_PREFIX) == Some("spotify");
         let lines: Vec<&Line> = view.lines.iter().filter(|line| now.is_none() || !spotify(line)).collect();
@@ -570,7 +575,7 @@ impl DrawingApp {
     /// The tabs at the left (Início, the conversation, Chats, Claude Code, GitHub and Spotify when they are on, the new
     /// chat); the voice, the settings and the close at the right.
     fn island_header(&self, ui: &mut egui::Ui, rect: Rect, view: &View, out: &mut Out, time: f64) {
-        let center_y = rect.top() + 8.0 + 17.0;
+        let center_y = rect.top() + HEADER_MID;
         let pinned = !view.asks.is_empty();
         let tabs = header_tabs(&view.lines);
         let count = tabs.len();
@@ -599,7 +604,9 @@ impl DrawingApp {
         // the call's note between them
         if !view.voice_note.is_empty() {
             let left = rect.left() + 14.0 + count as f32 * 35.0 + 10.0;
-            let galley = clipped(ui.painter(), view.voice_note.clone(), font(11.0), DIM_3, rect.right() - 150.0 - left);
+            // around a notch it stops before the camera
+            let end = view.notch.map_or(rect.right() - 150.0, |notch| rect.center().x - notch.x / 2.0 - 8.0);
+            let galley = clipped(ui.painter(), view.voice_note.clone(), font(11.0), DIM_3, end - left);
             ui.painter().galley(Pos2::new(left, center_y - galley.size().y / 2.0), galley, DIM_3);
         }
         // right to left: close, settings, voice; dim, the ink when on (`.header-actions button.on`), 14 apart
