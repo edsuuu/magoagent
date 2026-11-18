@@ -381,14 +381,15 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
     // a name longer than the column pushes what it was given along, never under it
     let column = column.max(name.size().x);
     p.galley(Pos2::new(name_x, cy - name.size().y / 2.0), name, look.text);
-    // what its answer says, at the line's end: measured first, the input is cut before it
+    // what its answer says, at the line's end: measured first, the input is cut before it; why it failed in red, in at
+    // most half the row (its card has it whole)
     let mut tail: Vec<(String, Color32)> = Vec::new();
     match live {
         Live::Running => tail.push(("· rodando".into(), GREEN)),
         Live::Waiting => tail.push(("· aguardando você".into(), AMBER)),
         Live::Done => {
             if let Some(note) = &step.note {
-                tail.push((format!("· {note}"), look.muted));
+                tail.push((format!("· {note}"), if step.failed { RED } else { look.muted }));
             }
             if let Some((added, removed)) = step.diff.filter(|_| step.note.is_none()) {
                 tail.push(("·".into(), look.muted));
@@ -400,9 +401,10 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
     // the chevron at the right edge, what comes before it cut short of it
     chevron(p, Pos2::new(rect.right() - 6.0, cy), 11.0, 2.4, look.muted, openness);
     let end = rect.right() - 14.0;
-    let tail: Vec<_> = tail.into_iter().map(|(text, color)| p.layout_no_wrap(text, font.clone(), color)).collect();
-    let tail_width: f32 = tail.iter().map(|g| g.size().x + 8.0).sum();
     let what_x = name_x + column + 8.0;
+    let half = ((end - what_x) * 0.5).max(40.0);
+    let tail: Vec<_> = tail.into_iter().map(|(text, color)| clipped(p, text, font.clone(), color, half)).collect();
+    let tail_width: f32 = tail.iter().map(|g| g.size().x + 8.0).sum();
     let what_color = if live_now { look.text.gamma_multiply(0.9) } else { look.soft };
     let what = clipped(p, step.what.clone(), font.clone(), what_color, (end - what_x - tail_width).max(0.0));
     let mut x = what_x + what.size().x + 8.0;
@@ -418,6 +420,24 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
         ui.painter().galley(Pos2::new(name_x, line.center().y - g.size().y / 2.0), g, look.muted);
     }
     response.clicked()
+}
+
+/// A file a step touched: its path in the code colour, a click opens it in a tree on the canvas (underlined under the
+/// pointer); a path no longer there is only words.
+fn file_link_label(ui: &mut egui::Ui, file: &str, c: &UiColors) {
+    let path = PathBuf::from(file);
+    let text = egui::RichText::new(file).monospace().size(12.0).color(c.code);
+    if !path.is_file() {
+        ui.label(text);
+        return;
+    }
+    let response = ui.add(egui::Label::new(text).sense(Sense::click())).on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Abrir na Árvore de Arquivos");
+    if response.hovered() {
+        ui.painter().hline(response.rect.x_range(), response.rect.bottom() - 1.0, Stroke::new(1.0, c.code));
+    }
+    if response.clicked() {
+        crate::app::filetree::link::ask_open(ui.ctx(), crate::app::filetree::link::FileLink { path, line: None }, None);
+    }
 }
 
 /// How many lines of what a step printed its card shows.
@@ -452,12 +472,22 @@ fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColo
     };
     let mut lines = vec![format!("{} · {state}{took}", step.name)];
     lines.extend(step.cwd.as_ref().map(|cwd| format!("Pasta: {cwd}")));
-    if !step.files.is_empty() {
-        lines.push(format!("Arquivos: {}", step.files.join(", ")));
-    }
     let frame = egui::Frame::new().inner_margin(egui::Margin { left: 27, right: 0, top: 0, bottom: 4 }).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.label(egui::RichText::new(lines.join("\n")).monospace().size(12.0).color(look.muted));
+        // its files, each a link to it in a tree on the canvas (filetree/link.rs)
+        if !step.files.is_empty() {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.label(egui::RichText::new("Arquivos: ").monospace().size(12.0).color(look.muted));
+                for (index, file) in step.files.iter().enumerate() {
+                    if index > 0 {
+                        ui.label(egui::RichText::new(", ").monospace().size(12.0).color(look.muted));
+                    }
+                    file_link_label(ui, file, c);
+                }
+            });
+        }
         let input = if step.input.is_empty() { &step.what } else { &step.input };
         if !input.is_empty() {
             code_card(ui, if step.name == "Bash" { "comando" } else { "entrada" }, input, c, look.dark);

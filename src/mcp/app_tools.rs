@@ -80,6 +80,15 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["path"] },
         }),
         json!({
+            "name": "file_link",
+            "description": "Um link para um arquivo, como o clique num caminho que o chat mostra (`src/app/x.rs:120`) ou na marca de link de um desenho: `open` abre o arquivo numa Árvore de Arquivos do canvas (a que já tem o projeto dele, senão uma nova ao lado de quem pediu), escolhido na árvore e aberto no painel de código na `line`; a tela do chat fecha, a câmera vai até a árvore e ela fica com o teclado, e um botão \"Voltar\" aparece no alto. `back` é esse Voltar: devolve a tela de antes (o chat aberto, ou a câmera onde estava). Um caminho relativo parte da pasta de quem pediu.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["open", "back"] },
+                "path": { "type": "string", "description": "o arquivo; aceita `caminho:linha` e `caminho#L120`" },
+                "line": { "type": "number", "description": "linha a mostrar, a partir de 1" },
+            }, "required": ["action"] },
+        }),
+        json!({
             "name": "open_default",
             "description": "Abre um arquivo ou pasta no programa padrão do sistema (programas executáveis, como .exe, .bat e .sh, não são iniciados).",
             "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] },
@@ -193,6 +202,13 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["action"] },
         }),
         json!({
+            "name": "organize_canvas",
+            "description": "Organizar o canvas (o mesmo do menu do canvas): os terminais, chats, notas, árvores, navegadores, grupos e desenhos do canvas, ou só os `elements`, em fileiras com 60 px entre eles e os ligados por corda ou seta lado a lado; formas e traços perto uns dos outros ou ligados por seta seguem juntos, como um desenho. Cordas e setas presas acompanham; os bloqueados ficam onde estão. Um passo de desfazer, e a vista mostra tudo no fim. Use quando o canvas estiver bagunçado, as janelas encostadas ou a pessoa pedir para arrumar.",
+            "inputSchema": { "type": "object", "properties": {
+                "elements": { "type": "array", "items": { "type": "string" }, "description": "só estes (ids ou nomes de nós, 2 ou mais); vazio: o canvas todo" },
+            } },
+        }),
+        json!({
             "name": "portal_tab",
             "description": "As abas de um navegador: new abre uma aba com `url`, close fecha a aba `index` (vazio: a aberta), select mostra a aba `index` (a partir de 0).",
             "inputSchema": { "type": "object", "properties": {
@@ -289,7 +305,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "chat_send",
-            "description": "Manda uma mensagem a um chat, como se a pessoa a escrevesse lá; o agente dele responde no chat.",
+            "description": "Manda uma mensagem a um chat, como se a pessoa a escrevesse lá; o agente dele responde no chat. Para um agente que o seu chat recrutou, ela entra na fila dele como pergunta sua, e a resposta dele chega no seu chat quando ele terminar, sem você esperar.",
             "inputSchema": { "type": "object", "properties": { "chat": chat, "text": { "type": "string" } }, "required": ["chat", "text"] },
         }),
         json!({

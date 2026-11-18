@@ -6,9 +6,10 @@ use crate::app::browser::open_external;
 use crate::app::chat::direct::folder;
 use crate::app::chat::images::{Pic, decode, picture};
 use crate::app::chat::list::Look;
-use crate::app::chat::markdown::prose_with;
+use crate::app::chat::markdown::{code_words, prose_with};
 use crate::app::chat::segments::{Seg, data_uri, file_size, is_local, is_picture, middle, resolve};
 use crate::app::chat::{image_key, tint};
+use crate::app::filetree::link::{FileLink, ask_open, opens_in_tree, with_link_base};
 use crate::app::island::picture::Shown;
 use crate::app::ui::Tip;
 use crate::prelude::*;
@@ -37,20 +38,25 @@ impl DrawingApp {
     }
 
     /// `agent_words` in the look of `ui` (the island's is always dark), each paragraph in a bubble when `bubbles`.
+    /// The files its words name are links to them in a tree on the canvas (filetree/link.rs).
     pub(crate) fn agent_words_in(&self, ui: &mut egui::Ui, text: &str, width: f32, c: &UiColors, bubbles: bool) {
         let dark = ui.visuals().dark_mode;
-        prose_with(ui, text, c, dark, width, bubbles, &mut |ui, seg| match seg {
-            Seg::Image { src, .. } => self.chat_picture(ui, src, c),
-            Seg::File { label, path, linked } => {
-                let path = resolve(path, self.chat_folder().as_deref());
-                // a path in backticks that isn't a file is just a word
-                if *linked || path.exists() {
-                    self.chat_file_card(ui, &path, label, c);
-                } else {
-                    ui.label(egui::RichText::new(label).monospace().size(13.0).color(Look::new(ui.visuals().dark_mode, c).soft));
+        let ctx = ui.ctx().clone();
+        with_link_base(&ctx, self.chat_folder(), self.chat_agent.clone(), || {
+            prose_with(ui, text, c, dark, width, bubbles, &mut |ui, seg| match seg {
+                Seg::Image { src, .. } => self.chat_picture(ui, src, c),
+                Seg::File { label, path: written, linked } => {
+                    let path = resolve(written, self.chat_folder().as_deref());
+                    // a path in backticks that isn't a file is just a word in the code colour; with its line
+                    // (`src/x.rs:12`), a link to it there
+                    if *linked || path.exists() {
+                        self.chat_file_card(ui, &path, label, c);
+                    } else {
+                        code_words(ui, written, c);
+                    }
                 }
-            }
-            _ => {}
+                _ => {}
+            })
         });
     }
 
@@ -161,16 +167,20 @@ impl DrawingApp {
         let response = self.card(ui, &path.to_string_lossy(), &name, &detail, meta.is_none(), c);
         let text = path.to_string_lossy().into_owned();
         let as_note = meta.as_ref().is_some_and(|m| m.is_file()) && crate::app::notes::file::opens_as_note(path);
+        // a page, a picture or a PDF opens in the system's program; code and other text in a tree on the canvas
+        let in_tree = opens_in_tree(path);
         if response.clicked() && meta.is_some() {
             if as_note {
                 let ask = (path.to_path_buf(), self.chat_agent.clone());
                 ui.ctx().data_mut(|d| d.insert_temp(egui::Id::unique(NOTE_ASK), ask));
+            } else if in_tree {
+                ask_open(ui.ctx(), FileLink { path: path.to_path_buf(), line: None }, self.chat_agent.clone());
             } else {
                 open_external(&text);
             }
         }
         crate::app::ui::menu_look::context_menu(&response, |ui| {
-            if as_note && crate::app::ui::menu_look::menu_row(ui, Some(Icon::Open), "Abrir no programa padrão", "", None) {
+            if (as_note || in_tree) && crate::app::ui::menu_look::menu_row(ui, Some(Icon::Open), "Abrir no programa padrão", "", None) {
                 open_external(&text);
                 ui.close();
             }

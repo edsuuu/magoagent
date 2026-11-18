@@ -2,7 +2,7 @@
 
 <!-- gerado por docs/mcp.py a partir do tools/list do app: não edite à mão -->
 
-O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.32) e tem **106 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
+O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.32) e tem **108 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
 
 ## Ligar
 
@@ -18,7 +18,7 @@ Um terminal comum (que não é o da Luna) só mexe nas árvores ligadas a ele po
 
 ### `add_elements`
 
-Adiciona elementos (objetos JSON com type, x, y, width, height, cores, text, points). Extras: `label: {text, fontSize?}` em formas e setas; `start: {id}` / `end: {id}` em setas para ligá-las a formas (os pontos são calculados sozinhos). Um terminal, navegador ou árvore de arquivos que você abre aqui (type terminal, portal, filetree) já nasce ligado a você por uma corda (ao seu terminal ou ao seu cartão de chat): list_agents o mostra e read_terminal lê a tela do terminal; posto em cima de outra janela ou nota, ele vai para o lugar livre mais perto de você. Para rodar testes ou uma API e acompanhar, prefira create_terminal. Devolve os ids criados (e em `linked` os ligados a você).
+Adiciona elementos (objetos JSON com type, x, y, width, height, cores, text, points). Extras: `label: {text, fontSize?}` em formas e setas; `start: {id}` / `end: {id}` em setas para ligá-las a formas (os pontos são calculados sozinhos); `link` em formas, textos e notas (um arquivo, com a linha: "/projeto/src/x.rs:120") põe no desenho uma marca que abre o arquivo na Árvore de Arquivos. Um terminal, navegador ou árvore de arquivos que você abre aqui (type terminal, portal, filetree) já nasce ligado a você por uma corda (ao seu terminal ou ao seu cartão de chat): list_agents o mostra e read_terminal lê a tela do terminal; posto em cima de outra janela ou nota, ele vai para o lugar livre mais perto de você. Para rodar testes ou uma API e acompanhar, prefira create_terminal. Devolve os ids criados (e em `linked` os ligados a você).
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -26,7 +26,7 @@ Adiciona elementos (objetos JSON com type, x, y, width, height, cores, text, poi
 
 ### `update_elements`
 
-Altera elementos existentes: cada item tem `id` mais os campos a trocar (x, y, width, height, text, strokeColor, backgroundColor, angle, start/end...). Setas ligadas acompanham as formas movidas. Também move e redimensiona janelas (terminais, navegadores e árvores de arquivos) por x, y, width e height, sem mexer no que rodam.
+Altera elementos existentes: cada item tem `id` mais os campos a trocar (x, y, width, height, text, strokeColor, backgroundColor, angle, start/end, link (null tira)...). Setas ligadas acompanham as formas movidas. Também move e redimensiona janelas (terminais, navegadores e árvores de arquivos) por x, y, width e height, sem mexer no que rodam.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -42,7 +42,7 @@ Apaga elementos pelos ids.
 
 ### `get_scene`
 
-Lista os elementos do desenho atual (id, tipo, posição, tamanho, cores, texto, vínculos de setas) e a área ocupada.
+Lista os elementos do desenho atual (id, tipo, posição, tamanho, cores, texto, vínculos de setas, link para arquivo) e a área ocupada.
 
 Sem parâmetros.
 
@@ -105,6 +105,14 @@ Grupos do canvas (o quadro tracejado com nome em volta de vários elementos; o m
 | `group` | string |  |
 | `name` | string |  |
 | `color` | string |  |
+
+### `organize_canvas`
+
+Organizar o canvas (o mesmo do menu do canvas): os terminais, chats, notas, árvores, navegadores, grupos e desenhos do canvas, ou só os `elements`, em fileiras com 60 px entre eles e os ligados por corda ou seta lado a lado; formas e traços perto uns dos outros ou ligados por seta seguem juntos, como um desenho. Cordas e setas presas acompanham; os bloqueados ficam onde estão. Um passo de desfazer, e a vista mostra tudo no fim. Use quando o canvas estiver bagunçado, as janelas encostadas ou a pessoa pedir para arrumar.
+
+| Parâmetro | Tipo | O que é |
+|---|---|---|
+| `elements` | array | só estes (ids ou nomes de nós, 2 ou mais); vazio: o canvas todo |
 
 ### `minimap`
 
@@ -276,13 +284,15 @@ Manda um prompt a um agente conectado (outro terminal do canvas, ou um chat), es
 
 ### `recruit_agent`
 
-Cria um agente novo (um terminal) abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você; ele ganha um nome (a resposta diz qual) e você fala com ele com ask_agent. Só de dentro de um terminal do MagoAgent. Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).
+Cria um agente novo abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você: um chat do app ou um terminal com o Claude Code, como a pessoa escolheu em Ajustes › Agentes › Invocação dos agentes. Ele ganha um nome (a resposta diz qual, o modelo e o esforço) e você fala com ele com ask_agent. Só de dentro de um terminal ou chat do MagoAgent. Escolha sempre model e effort à altura da tarefa e diga à pessoa o que escolheu. Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `command` | string | o que roda nele; padrão claude (ex.: codex) |
+| `command` | string | o agente e a tarefa; padrão claude (ex.: codex, ou claude "revise o diff") |
+| `model` | string | o modelo que você escolhe para a tarefa: haiku (simples e rápido), sonnet (o dia a dia) ou opus (o difícil e longo); no Codex, um modelo da lista dele (ex.: gpt-5-codex); sem isto vale o de Ajustes |
+| `effort` | string: `low`, `medium`, `high`, `xhigh`, `max` | o esforço que você escolhe para a tarefa: low, medium, high, xhigh ou max |
 | `worktree` | boolean | true: num git worktree próprio, num ramo dele |
-| `mode` | string: `terminal`, `chat` | terminal: Claude Code completo num terminal; chat: conversa leve num chat do app (usa o login do CLI, gasta bem menos memória); sem isto vale o ajuste Invocação dos agentes |
+| `mode` | string: `terminal`, `chat` | só quando a pessoa pedir com essas palavras ("em terminal", "em chat"); sem isto vale o ajuste Invocação dos agentes, o que ela escolheu: não passe por conta própria. terminal: Claude Code completo num terminal; chat: conversa leve num chat do app |
 
 ### `create_terminal`
 
@@ -553,7 +563,7 @@ A área de Chats fora do canvas (o botão de chat da barra de título): tudo o q
 
 ### `chat_send`
 
-Manda uma mensagem a um chat, como se a pessoa a escrevesse lá; o agente dele responde no chat.
+Manda uma mensagem a um chat, como se a pessoa a escrevesse lá; o agente dele responde no chat. Para um agente que o seu chat recrutou, ela entra na fila dele como pergunta sua, e a resposta dele chega no seu chat quando ele terminar, sem você esperar.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -716,6 +726,16 @@ Abre à vista da pessoa um arquivo ou pasta pelo caminho: uma pasta na Árvore d
 | Parâmetro | Tipo | O que é |
 |---|---|---|
 | `path` (obrigatório) | string |  |
+| `line` | number | linha a mostrar, a partir de 1 |
+
+### `file_link`
+
+Um link para um arquivo, como o clique num caminho que o chat mostra (`src/app/x.rs:120`) ou na marca de link de um desenho: `open` abre o arquivo numa Árvore de Arquivos do canvas (a que já tem o projeto dele, senão uma nova ao lado de quem pediu), escolhido na árvore e aberto no painel de código na `line`; a tela do chat fecha, a câmera vai até a árvore e ela fica com o teclado, e um botão "Voltar" aparece no alto. `back` é esse Voltar: devolve a tela de antes (o chat aberto, ou a câmera onde estava). Um caminho relativo parte da pasta de quem pediu.
+
+| Parâmetro | Tipo | O que é |
+|---|---|---|
+| `action` (obrigatório) | string: `open`, `back` |  |
+| `path` | string | o arquivo; aceita `caminho:linha` e `caminho#L120` |
 | `line` | number | linha a mostrar, a partir de 1 |
 
 ### `open_default`

@@ -16,6 +16,7 @@ pub(crate) mod relay;
 pub(crate) mod session_window;
 pub(crate) mod skills;
 pub(crate) mod timeline;
+pub(crate) mod tuning;
 
 use crate::prelude::*;
 use std::sync::mpsc::Sender;
@@ -116,22 +117,30 @@ impl DrawingApp {
         terminal.style = node_style(terminal.style);
         let id = terminal.id.clone();
         self.snapshot();
-        if chat_mode {
+        // the model and effort it runs, said with the dispatch (tuning.rs)
+        let (kind, (agent, model, effort)) = if chat_mode {
             let spec = self.new_recruit_chat(&id, &name, &cwd, raw);
             terminal.chat = Some(spec);
+            let chat = self.chats.iter().find(|chat| chat.id == id);
+            ("um chat do app", chat.map(|chat| (chat.agent.clone(), chat.model.clone(), chat.effort.clone())).unwrap_or_default())
         } else {
+            let tuning = crate::app::maestro::tuning::of_command(&command, "claude");
             let mut spec = TerminalSpec { name: name.clone(), cwd, command, maestro: false, ..Default::default() };
             // its agent only in WSL (system/wsl.rs): the terminal opens in that distro
             if let Some(distro) = spec.command.split_whitespace().next().and_then(agent_cli).as_ref().and_then(|cli| cli.wsl()) {
                 spec.look.shell = wsl_shell(&distro.name);
             }
             terminal.terminal = Some(spec);
-        }
+            ("um terminal", tuning)
+        };
+        let tuning = crate::app::maestro::tuning::describe(&agent, &model, &effort);
         self.scene.elements.push(terminal);
         // one Cmd+Z takes back the recruit and its rope together
         self.rope_between(from, &id, false);
         self.publish_nodes();
-        let _ = reply.send(Ok(format!("Agente \"{name}\" criado {side} e conectado; fale com ele com `magoagent ask \"{name}\" …`.{own}")));
+        let who = self.speaker(from);
+        self.agent_event(&id, EventKind::Started, format!("recrutado por {who} ({kind}): {tuning}"));
+        let _ = reply.send(Ok(format!("Agente \"{name}\" criado {side} e conectado ({kind}; {tuning}); fale com ele com `magoagent ask \"{name}\" …`.{own}")));
     }
 
     /// The chat of a recruit (same id as its card), its first message queued: `raw` is the recruit's command, its
@@ -296,8 +305,9 @@ pub(crate) struct RecruitFlags {
 }
 
 /// Reads the flags the command starts with (`--model x`, `--effort x`, `--permission-mode x`, also `--flag=x`, and
-/// `--dangerously-skip-permissions`) and gives the rest, the prompt. A flag it does not know ends the reading, so it
-/// stays in the prompt; a value it cannot use (an effort that does not exist) is dropped, the flag read all the same.
+/// `--dangerously-skip-permissions`; Codex's `-m x` and `-c model_reasoning_effort=x`) and gives the rest, the prompt. A
+/// flag it does not know ends the reading, so it stays in the prompt; a value it cannot use (an effort that does not
+/// exist) is dropped, the flag read all the same.
 // ponytail: only flags before the prompt; `claude "x" --model y` keeps the flag in the prompt
 pub(crate) fn recruit_flags(rest: &str) -> (RecruitFlags, &str) {
     let mut flags = RecruitFlags::default();
@@ -313,17 +323,23 @@ pub(crate) fn recruit_flags(rest: &str) -> (RecruitFlags, &str) {
             rest = after.trim_start();
             continue;
         }
-        if !matches!(name, "--model" | "--effort" | "--permission-mode") {
+        if !matches!(name, "--model" | "-m" | "--effort" | "-c" | "--permission-mode") {
             return (flags, rest);
         }
         let (value, after) = match inline {
             Some(v) => (v, after),
             None => after.trim_start().split_once(char::is_whitespace).unwrap_or((after.trim_start(), "")),
         };
+        // Codex's settings: its effort is one, any other ends the reading
+        let (name, value) = match (name, value.strip_prefix("model_reasoning_effort=")) {
+            ("-c", Some(effort)) => ("--effort", effort),
+            ("-c", None) => return (flags, rest),
+            (name, _) => (name, value),
+        };
         let value = value.trim_matches('"');
         match name {
-            "--model" if !value.is_empty() => flags.model = Some(value.into()),
-            "--effort" if ["low", "medium", "high", "xhigh", "max", "ultra"].contains(&value) => flags.effort = Some(value.into()),
+            "--model" | "-m" if !value.is_empty() => flags.model = Some(value.into()),
+            "--effort" if crate::app::maestro::tuning::EFFORTS.contains(&value) => flags.effort = Some(value.into()),
             "--permission-mode" => flags.mode = Some(usize::from(value == "bypassPermissions")),
             _ => {}
         }

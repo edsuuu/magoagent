@@ -82,7 +82,7 @@ impl DrawingApp {
             None => ("Sem tarefa ainda.".into(), muted),
         };
         // in the chat's Markdown (no ** nor ` painted), as far as the card has rows for
-        let colors = UiColors { text: ink, surface_low: light.gamma_multiply(0.1), ..self.colors() };
+        let colors = UiColors { text: ink, surface_low: light.gamma_multiply(0.1), code: crate::app::ui::code_ink(light), ..self.colors() };
         let galleys = md_galleys(painter, &text, 10.5 * zoom, ink, body.width(), rows, &colors);
         // one row: in the middle of what is left under the header
         let y = if rows == 1 { body.center().y - galleys.0.size().y / 2.0 } else { body.top() };
@@ -122,7 +122,10 @@ impl DrawingApp {
                     let width = inner.width() - 14.0;
                     ui.set_max_width(width);
                     ui.spacing_mut().item_spacing.y = 4.0;
-                    ui.label(egui::RichText::new("Tarefa").size(12.0).color(look.muted));
+                    // with the model and effort the Maestro picked (asked: "precisa ficar descritível o modelo e o effort que o Maestro escolhe")
+                    let tuning =
+                        self.chats.iter().find(|chat| chat.id == id).map(|chat| crate::app::maestro::tuning::describe(&chat.agent, &chat.model, &chat.effort));
+                    ui.label(egui::RichText::new(tuning.map_or("Tarefa".into(), |tuning| format!("Tarefa · {tuning}"))).size(12.0).color(look.muted));
                     match self.recruit_prompt(id) {
                         Some(task) => self.agent_words_in(ui, task.trim(), width, &c, false),
                         None => {

@@ -260,6 +260,9 @@ pub(crate) fn local_bounds(e: &Element) -> Rect {
     }
 }
 
+/// Between windows the app places: a new one and the one that opens it, and Organizar o canvas.
+pub(crate) const WINDOW_GAP: f32 = 60.0;
+
 /// Where a window the size of `want` goes among `elements`: at `want` when that is free, else in the rings around
 /// `around` (the window that opens it, or `want` itself), lined up with its edges 60 away: first below, right, left and
 /// above it, then its corners, then the next ring out, overlapping no window or note. What an agent opens stays around
@@ -267,7 +270,7 @@ pub(crate) fn local_bounds(e: &Element) -> Rect {
 /// `CLEAR` away from every window and note: 20 left them touching (asked: "precisa ver o espaçamento das coisas no
 /// canvas, para não ficar tudo grudado").
 pub(crate) fn free_spot_among<'a>(elements: impl Iterator<Item = &'a Element>, want: Rect, around: Rect) -> Rect {
-    const GAP: f32 = 60.0;
+    const GAP: f32 = WINDOW_GAP;
     // under the rings' gap, so the spot lined up beside the window that opens it stays free of it
     const CLEAR: f32 = GAP - 4.0;
     let taken: Vec<Rect> = elements.filter(|e| e.is_node() || e.created.is_some()).map(|e| element_bounds(e).expand(CLEAR)).collect();

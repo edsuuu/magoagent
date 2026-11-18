@@ -35,16 +35,27 @@ fn press(app: &mut DrawingApp, ctx: &Context, text: &str) -> Vec<(String, Rect)>
     side(app, ctx, vec![])
 }
 
-/// Two agents on the canvas, each with news for the person.
+/// A terminal on the canvas running `command`.
+fn terminal(app: &mut DrawingApp, name: &str, command: &str, x: f32) -> String {
+    let mut element = app.new_element(ElementKind::Rectangle { x, y: 0.0, width: 400.0, height: 300.0 });
+    element.terminal = Some(TerminalSpec { name: name.into(), command: command.into(), ..Default::default() });
+    app.scene.elements.push(element);
+    app.scene.elements.last().unwrap().id.clone()
+}
+
+/// A permission the hook of agent `id` holds for the person, as Claude Code's PermissionRequest brings it.
+fn asks_permission(app: &mut DrawingApp, id: &str) {
+    let asks = json!({ "hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_input": { "command": "ls" }, "session_id": "s" });
+    let (reply, _answer) = std::sync::mpsc::channel();
+    app.take_hook(id, &asks, Some(reply));
+}
+
+/// Two agents on the canvas, each asking the person for a permission.
 fn two_agents(app: &mut DrawingApp) -> (String, String) {
-    let mut add = |name: &str, x: f32| {
-        let mut element = app.new_element(ElementKind::Rectangle { x, y: 0.0, width: 400.0, height: 300.0 });
-        element.terminal = Some(TerminalSpec { name: name.into(), command: "claude".into(), ..Default::default() });
-        app.terminal_unread.insert(element.id.clone());
-        app.scene.elements.push(element);
-        app.scene.elements.last().unwrap().id.clone()
-    };
-    (add("Revisor", 0.0), add("Testador", 2000.0))
+    let (first, second) = (terminal(app, "Revisor", "claude", 0.0), terminal(app, "Testador", "claude", 2000.0));
+    asks_permission(app, &first);
+    asks_permission(app, &second);
+    (first, second)
 }
 
 #[test]
@@ -55,9 +66,9 @@ fn the_card_counts_who_needs_you_in_every_space() {
     assert!(found(&side(&mut app, &ctx, vec![]), "Nada esperando por você").is_some(), "nobody waits: the green notice");
     two_agents(&mut app);
     // one more in a space off view
-    let spec = TerminalSpec { name: "Longe".into(), ..Default::default() };
+    let spec = TerminalSpec { name: "Longe".into(), command: "claude".into(), ..Default::default() };
     app.away.insert("longe".into(), ("outro".into(), spec));
-    app.terminal_unread.insert("longe".into());
+    asks_permission(&mut app, "longe");
     let painted = side(&mut app, &ctx, vec![]);
     assert!(found(&painted, "3 agentes precisam de você").is_some(), "{painted:?}");
     assert!(found(&painted, "Ir para o próximo").is_some() && found(&painted, &keys_label("Cmd ⇧ A")).is_some(), "the button and its keys");
@@ -76,12 +87,46 @@ fn ir_para_o_proximo_goes_round_the_ones_that_need_you() {
     press(&mut app, &ctx, "Ir para o próximo");
     assert_eq!(app.terminal_focus.as_ref(), Some(&first), "the first one, selected and taking keys");
     assert_eq!(app.selected, [0]);
+    // answered in its terminal, it leaves the count
+    app.hooks.pending.retain(|(event, _)| event.id != first);
     let painted = side(&mut app, &ctx, vec![]);
-    assert!(found(&painted, "1 agente precisa de você").is_some(), "seen, it leaves the count: {painted:?}");
+    assert!(found(&painted, "1 agente precisa de você").is_some(), "{painted:?}");
     // the MCP's button does the same
     assert_eq!(app.act("sidebar", &json!({ "action": "next" })).unwrap(), "Testador em foco.");
     assert_eq!(app.terminal_focus.as_ref(), Some(&second));
+    app.hooks.pending.clear();
     assert!(app.act("sidebar", &json!({ "action": "next" })).unwrap_err().contains("Nenhum agente"));
+}
+
+/// Asked: "'Agentes precisam de você' — em 90% dos casos não precisa: foram agentes novos, shells que o Maestro abriu. Ali
+/// deve aparecer apenas quando o Maestro me chamar, para ser mais claro". A new agent, one that finished unseen, a shell
+/// and a chat at rest call nobody; the Maestro asking the person (`ask_person`) does, and so does a permission.
+#[test]
+fn only_an_agent_asking_the_person_counts_as_needing_them() {
+    use crate::app::ui::agents::{AgentState, calls_person};
+    assert!(calls_person(AgentState::Waiting, true, false), "an agent's question or permission");
+    assert!(calls_person(AgentState::Idle(None), true, true), "a permission its hook holds");
+    assert!(!calls_person(AgentState::Waiting, false, false), "a shell on a menu");
+    for state in [AgentState::Idle(None), AgentState::Idle(Some(1.0)), AgentState::Working(1.0), AgentState::Active(1.0), AgentState::Ended] {
+        assert!(!calls_person(state, true, false), "{state:?}");
+    }
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    // the Maestro's chat, a new agent, one that finished unseen and a shell it opened (tests running)
+    app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &[Preset::new("Claude Code", "claude")]);
+    let luna = app.chat_agent.clone().unwrap();
+    terminal(&mut app, "Novo", "claude", 0.0);
+    let done = terminal(&mut app, "Pronto", "claude", 1000.0);
+    let shell = terminal(&mut app, "Testes", "cargo test", 2000.0);
+    app.terminal_unread.extend([done, shell]);
+    side(&mut app, &ctx, vec![]);
+    assert!(found(&side(&mut app, &ctx, vec![]), "Nada esperando por você").is_some(), "nobody calls");
+    assert!(app.needing_you().is_empty() && app.space_counts().values().all(|(_, needs)| *needs == 0));
+    // the Maestro asks the person
+    let (reply, _answer) = std::sync::mpsc::channel();
+    app.person_asks.borrow_mut().push(crate::app::chat::decide::PersonAsk::new(luna.clone(), &json!({ "tool_name": "AskUserQuestion" }), reply));
+    assert!(found(&side(&mut app, &ctx, vec![]), "1 agente precisa de você").is_some());
+    assert_eq!(app.needing_you(), [luna]);
 }
 
 /// Asked: "precisa ter uma opção x para ocultar ou remover". The green notice's × hides it for good; somebody waiting

@@ -100,8 +100,11 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          screenshot tira um print do app para você ver como está (\"como está?\" → tire o print e descreva); review abre as \
          mudanças da pasta na Árvore de Arquivos para a pessoa revisar com você; \
          remember guarda o que você aprende sobre como ela trabalha (preferências, jeito, nomes), para as próximas conversas; \
-         add_elements e view desenham no canvas; recruit_agent, ask_agent e connect montam e dirigem um time de agentes: no canvas você é o cartão da Luna, e o que está ligado a ele por corda \
-         (terminais e outros chats) é o time que você comanda; create_terminal abre um terminal ligado ao seu cartão rodando um comando (testes, uma API) e read_terminal o acompanha; list_agents diz quem são, chat_node põe o seu cartão no canvas e disconnect tira alguém do time; \
+         add_elements e view desenham no canvas: ao desenhar sobre o código que a pessoa pediu para abrir ou ver na IDE do canvas, ponha em cada caixa ou nota \
+         `link` com o caminho do arquivo de que ela fala (\"/caminho/x.rs:120\" com a linha): o desenho ganha uma marca que, clicada, já a leva ao arquivo na Árvore \
+         (file_link faz o mesmo e volta); recruit_agent, ask_agent e connect montam e dirigem um time de agentes: no canvas você é o cartão da Luna, e o que está ligado a ele por corda \
+         (terminais e outros chats) é o time que você comanda; o que um agente do seu time termina (a tarefa do recrutamento, o que você mandou por chat_send, um ask_agent que passou do tempo) \
+         chega neste chat sozinho, numa mensagem \"Resposta de\" com o nome dele: conte à pessoa o que importa; create_terminal abre um terminal ligado ao seu cartão rodando um comando (testes, uma API) e read_terminal o acompanha; list_agents diz quem são, chat_node põe o seu cartão no canvas e disconnect tira alguém do time; \
          workspaces lista, mostra, cria, renomeia e remove os espaços de trabalho (um por projeto; trocar de espaço não para os agentes). \
          \"O que tem para mim?\", \"alguém precisa de mim?\": chame demands e diga as demandas da mais urgente para a menos, cada uma \
          com os pontos de atenção que a ferramenta trouxe (nunca invente outros); a pessoa permite ou nega um pedido de permissão \
@@ -118,6 +121,7 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          \"Me manda um print\" é o screenshot mostrado aqui, sem open_path.",
         chat.cwd
     );
+    prompt.push_str(&crate::app::maestro::tuning::recruit_brief(prefs));
     prompt.push_str(
         " Tarefas: ao delegar trabalho a um agente, crie a tarefa com tasks (action create, owner com o nome dele e send true para entregá-la); \
          ao trazer as demandas, cite as tarefas travadas (aguardando aprovação, bloqueadas, que falharam) com os pontos de atenção que demands e tasks trouxeram, \

@@ -1,5 +1,6 @@
 use super::*;
 
+mod arrange;
 mod arrows;
 mod changelog;
 mod changes_pane;
@@ -11,6 +12,7 @@ mod chats_view;
 mod conflicts;
 mod dialogs;
 mod drops;
+mod file_links;
 mod filetree;
 mod filetree_annotate;
 mod filetree_branch;
@@ -46,6 +48,7 @@ mod props;
 mod session;
 mod shapes;
 mod sidebar;
+mod team;
 mod terminals;
 mod tools;
 mod tour;

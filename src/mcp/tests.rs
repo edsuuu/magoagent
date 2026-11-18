@@ -15,6 +15,22 @@ fn late_frame_goes_behind_its_contents() {
 }
 
 #[test]
+fn a_drawing_takes_a_link_to_a_file_get_scene_shows_it_and_null_takes_it_off() {
+    let mut scene = Scene::default();
+    let box_ = json!({ "type": "rectangle", "id": "b", "x": 0, "y": 0, "link": "/p/src/fila.rs:42", "label": { "text": "Fila" } });
+    let note = json!({ "type": "stickynote", "id": "n", "x": 300, "y": 0, "text": "O webhook", "link": "/p/src/webhook.rs" });
+    add_elements(&mut scene, &[box_, note]).unwrap();
+    assert_eq!(by_id(&scene, "b").link.as_deref(), Some("/p/src/fila.rs:42"));
+    assert_eq!(by_id(&scene, "n").link.as_deref(), Some("/p/src/webhook.rs"));
+    assert_eq!(by_id(&scene, "b-label").link, None, "the shape's, not its label's");
+    let described: Value = serde_json::from_str(&crate::mcp::calls::describe(&scene)).unwrap();
+    let links: Vec<&str> = described["elements"].as_array().unwrap().iter().filter_map(|element| element["link"].as_str()).collect();
+    assert_eq!(links, ["/p/src/fila.rs:42", "/p/src/webhook.rs"]);
+    update_elements(&mut scene, &[json!({ "id": "b", "link": "/p/src/fila.rs:7" }), json!({ "id": "n", "link": null })]).unwrap();
+    assert_eq!((by_id(&scene, "b").link.as_deref(), by_id(&scene, "n").link.as_deref()), (Some("/p/src/fila.rs:7"), None));
+}
+
+#[test]
 fn an_ide_from_mcp_is_a_file_tree_on_its_folder() {
     let mut scene = Scene::default();
     add_elements(&mut scene, &[json!({ "type": "ide", "id": "i", "x": 0, "y": 0, "root": "/tmp/loja", "name": "loja" })]).unwrap();
@@ -250,6 +266,7 @@ fn every_app_action_is_a_tool_once() {
         "voice_call",
         "portal_tab",
         "canvas_group",
+        "organize_canvas",
         "history",
         "demands",
         "outside_message",

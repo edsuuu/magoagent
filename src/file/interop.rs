@@ -48,7 +48,7 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                 "isDeleted": false,
                 "boundElements": bound.get(e.id.as_str()).cloned().map(Value::Array).unwrap_or(Value::Null),
                 "updated": 0,
-                "link": null,
+                "link": e.link,
                 "locked": e.locked,
             });
             let relative = |points: &[[f32; 2]]| -> Value {
@@ -274,6 +274,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     cwd: str_field(v, "cwd"),
                     folded: None,
                 }),
+                link: v["link"].as_str().map(str::trim).filter(|link| !link.is_empty()).map(String::from),
                 note: serde_json::from_value(v["note"].clone()).unwrap_or_default(),
                 rope: v["rope"] == true,
                 ends: ArrowEnds {
