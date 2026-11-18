@@ -151,10 +151,12 @@ fn the_title_bar_holds_the_top_buttons_and_moves_the_window() {
     time -= 0.05;
     sent.extend(press(&mut app, &ctx, &mut time, Pos2::new(840.0, 28.0), true));
     assert!(sent.contains(&egui::ViewportCommand::Maximized(true)), "{sent:?}");
-    // the caption buttons: close is the last 46 of the bar, minimize two to its left
-    let sent = press(&mut app, &ctx, &mut time, Pos2::new(1200.0 - 23.0, 10.0), true);
+    // the window's buttons: close at the right, minimize two to its left (Windows' 46 wide; GNOME's round, on the top row)
+    let caption = |k: usize| crate::app::ui::titlebar::caption_button(1200.0, k);
+    assert!(caption(0).right() <= 1200.0 && caption(2).right() <= caption(1).left() + 0.5, "{:?}", [caption(0), caption(1), caption(2)]);
+    let sent = press(&mut app, &ctx, &mut time, Pos2::new(caption(0).center().x, 10.0), true);
     assert!(sent.contains(&egui::ViewportCommand::Close), "{sent:?}");
-    let sent = press(&mut app, &ctx, &mut time, Pos2::new(1200.0 - 46.0 * 2.5, 10.0), true);
+    let sent = press(&mut app, &ctx, &mut time, Pos2::new(caption(2).center().x, 10.0), true);
     assert!(sent.contains(&egui::ViewportCommand::Minimized(true)), "{sent:?}");
 }
 
@@ -238,7 +240,8 @@ fn the_window_buttons_stay_over_the_welcome() {
         time += 0.1;
         frame(&mut app, time, vec![]);
     }
-    let close = Pos2::new(1200.0 - 23.0, 19.0);
+    let caption = |k: usize| crate::app::ui::titlebar::caption_button(1200.0, k).center();
+    let close = caption(0);
     assert_eq!(ctx.layer_id_at(close).map(|layer| layer.id), Some(egui::Id::unique("title_bar_right")), "Fechar over the welcome");
     assert_eq!(ctx.layer_id_at(Pos2::new(600.0, 400.0)).map(|layer| layer.id), Some(egui::Id::unique("welcome")));
     let press = |app: &mut DrawingApp, time: &mut f64, at: Pos2| {
@@ -247,7 +250,7 @@ fn the_window_buttons_stay_over_the_welcome() {
         *time += 1.0;
         sent
     };
-    let minimize = Pos2::new(1200.0 - 46.0 * 2.5, 19.0);
+    let minimize = caption(2);
     assert_eq!(press(&mut app, &mut time, minimize), vec![egui::ViewportCommand::Minimized(true)]);
     assert_eq!(press(&mut app, &mut time, Pos2::new(300.0, TITLE_BAR / 2.0)), vec![egui::ViewportCommand::StartDrag]);
     assert!(press(&mut app, &mut time, close).contains(&egui::ViewportCommand::Close));
@@ -286,4 +289,36 @@ fn the_window_edge_keeps_its_resize_cursor_over_a_panel() {
     });
     output.textures_delta.clear();
     assert_eq!(output.platform_output.cursor_icon, CursorIcon::ResizeEast);
+}
+
+/// Asked: "porque o do Chrome fica diferente do nosso app, está com os botões do Windows". On Linux the window's buttons
+/// are GNOME's, as Chrome draws them: no block of their own, round and gray under the pointer (close too, never red), on
+/// the top row with the canvas's buttons.
+#[cfg(target_os = "linux")]
+#[test]
+fn the_linux_window_buttons_are_gnomes_round_ones() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let close = crate::app::ui::titlebar::caption_button(1200.0, 0);
+    let shapes = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0))), events, ..Default::default() };
+        let mut output = ctx.run_ui(raw, |_| app.title_bar(&ctx));
+        output.textures_delta.clear();
+        output.shapes.into_iter().map(|clipped| clipped.shape).collect::<Vec<_>>()
+    };
+    let red = |shapes: &[Shape]| shapes.iter().any(|shape| matches!(shape, Shape::Rect(rect) if rect.fill == Color32::from_rgb(0xe8, 0x11, 0x23)));
+    shapes(&mut app, vec![]);
+    let at = Pos2::new(close.center().x, crate::app::ui::TOP_ROW + 16.0);
+    let drawn = shapes(&mut app, vec![egui::Event::PointerMoved(at)]);
+    let drawn = [drawn, shapes(&mut app, vec![])].concat();
+    assert!(!red(&drawn), "close is not Windows' red");
+    let round = drawn.iter().any(|shape| matches!(shape, Shape::Circle(circle) if circle.center.distance(at) < 1.0 && (circle.radius - 12.0).abs() < 0.5));
+    assert!(round, "a round button under the pointer, on the top row");
+    // the three in 8 + 3 × 32 from the window's edge: no 3 × 46 block of Windows
+    assert!(1200.0 - crate::app::ui::titlebar::caption_button(1200.0, 2).left() <= 104.5);
+    let blocks = drawn
+        .iter()
+        .filter(|shape| matches!(shape, Shape::Rect(rect) if rect.rect.width() >= 3.0 * 46.0 - 1.0 && rect.rect.top() <= 0.0 && rect.rect.right() >= 1199.0))
+        .count();
+    assert_eq!(blocks, 0, "no ground of their own");
 }
