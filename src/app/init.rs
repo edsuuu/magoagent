@@ -130,6 +130,7 @@ impl Default for DrawingApp {
             island: Default::default(),
             portal_stills: Default::default(),
             portal_motion: Default::default(),
+            portal_snaps: Default::default(),
             chat_agent: None,
             chat_draft: String::new(),
             maestro_note: None,

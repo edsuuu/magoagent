@@ -50,6 +50,11 @@ impl DrawingApp {
                     self.toast("Captura de tela copiada.");
                 }
                 PortalEvent::Copied { picture: Err(error) } => self.toast(error),
+                PortalEvent::Still { portal, picture: (w, h, rgba) } => {
+                    if let Some(snap) = self.portal_snaps.get_mut(&portal) {
+                        snap.1 = Some(egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba));
+                    }
+                }
             }
         }
         // Linux on Wayland: the portals show only their address (webkit.rs)
@@ -115,6 +120,7 @@ impl DrawingApp {
         self.portals.retain(|id, _| live.iter().any(|(live, ..)| live == id));
         self.portal_stills.retain(|id, _| live.iter().any(|(live, ..)| live == id));
         self.portal_motion.retain(|id, _| live.iter().any(|(live, ..)| live == id));
+        self.portal_snaps.retain(|id, _| live.iter().any(|(live, ..)| live == id));
         let marquee = self.marquee.zip(self.last_pointer).map(|(start, end)| Rect::from_two_pos(self.to_screen(start), end));
         self.annotations.retain(|id, _| live.iter().any(|(live, ..)| live == id));
         if self.design.as_ref().is_some_and(|d| !live.iter().any(|(live, ..)| *live == d.portal)) {
@@ -222,6 +228,59 @@ impl DrawingApp {
                         holes = vec![r];
                     }
                     ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE / 2.0));
+                }
+            }
+            // Linux: the same, with the picture WebKit took while the page stood still (`portal_snaps`): at each new size
+            // and zoom WebKitGTK drew the page black for a moment, and a zoom of the canvas flickered (asked: "quando dou
+            // zoom e tiro zoom no canvas com o navegador aberto fica piscando preto")
+            #[cfg(target_os = "linux")]
+            {
+                let moved = rect.map(|r| {
+                    let at = self.portal_motion.entry(id.clone()).or_insert((r, f64::MIN));
+                    if at.0 != r {
+                        *at = (r, self.now);
+                    }
+                    self.now - at.1
+                });
+                let stage = motion(moved);
+                if stage == Motion::Moving {
+                    if !self.portal_stills.contains_key(&id)
+                        && let Some(image) = self.portal_snaps.get(&id).and_then(|snap| snap.1.clone())
+                    {
+                        self.portal_stills.insert(id.clone(), ctx.load_texture(format!("portal_still_{id}"), image, egui::TextureOptions::LINEAR));
+                    }
+                    // with no picture yet the card shows its page box: never the page flickering
+                    for tab in &view.tabs {
+                        let _ = tab.webview.set_visible(false);
+                    }
+                    view.shown = None;
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE));
+                    continue;
+                }
+                match (stage, rect) {
+                    (Motion::Unseen, Some(r)) => {
+                        holes = vec![r];
+                        ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE / 2.0));
+                    }
+                    (Motion::Back, _) => ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE / 2.0)),
+                    _ => {
+                        self.portal_stills.remove(&id);
+                    }
+                }
+                // standing still and shown: its picture again, once a second at most (asked on a frame; none while idle)
+                if stage == Motion::Still && rect.is_some() && view.shown.is_some() {
+                    let snap = self.portal_snaps.entry(id.clone()).or_insert((f64::MIN, None));
+                    if self.now - snap.0 >= SNAP_EVERY
+                        && let Some(tab) = view.tabs.get(active)
+                    {
+                        snap.0 = self.now;
+                        let (events, portal) = (self.portal_events.0.clone(), id.clone());
+                        tab.webview.picture(move |picture| {
+                            if let Some((w, h, rgba, _)) = picture {
+                                let _ = events.send(PortalEvent::Still { portal, picture: (w, h, rgba) });
+                            }
+                        });
+                    }
                 }
             }
             // with the screen's scale: on another monitor the same points are other pixels
