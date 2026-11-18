@@ -51,8 +51,15 @@ impl DrawingApp {
                 muted,
             );
         }
-        // while the canvas moves, the page's picture moves with the card (`sync_portals`, Windows)
-        if let (Some(still), Some(r)) = (self.portal_stills.get(&element.id), self.portal_page_rect(element)) {
+        // while the canvas moves, the page's picture moves with the card (`sync_portals`): from the very frame the card
+        // moves on Linux, whose picture is taken standing still (`portal_snaps`), before the page is cut away
+        let page_rect = self.portal_page_rect(element);
+        if let Some(r) = page_rect {
+            self.portal_painted.borrow_mut().insert(element.id.clone(), r);
+        }
+        let moved_now = self.portal_motion.get(&element.id).is_some_and(|(at, _)| page_rect != Some(*at));
+        let snap = self.portal_snaps.get(&element.id).and_then(|snap| snap.1.as_ref()).filter(|_| moved_now);
+        if let (Some(still), Some(r)) = (self.portal_stills.get(&element.id).or(snap), page_rect) {
             painter.image(still.id(), r, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
         }
     }

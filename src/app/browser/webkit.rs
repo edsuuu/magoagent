@@ -79,6 +79,10 @@ pub(crate) struct GtkPage {
     holder: u32,
     /// The app's window, which takes the keyboard back from the page.
     parent: u32,
+    /// The box (window pixels) and zoom last sent, and whether it was last shown: the same again sends GTK nothing,
+    /// as each place and each show has WebKit lay the page out and draw it again.
+    placed: std::cell::Cell<Option<([i32; 4], f32, f32)>>,
+    visible: std::cell::Cell<bool>,
 }
 
 impl Drop for GtkPage {
@@ -107,9 +111,11 @@ impl GtkPage {
 
     /// Puts the page over `page` (window points at `scale` pixels a point), its zoom the card's.
     pub(crate) fn place(&self, page: Rect, zoom: f32, scale: f32) -> wry::Result<()> {
-        let [x, y, width, height] = page_pixels(page, scale);
-        let bounds =
-            wry::Rect { position: wry::dpi::PhysicalPosition::new(x, y).into(), size: wry::dpi::PhysicalSize::new(width as u32, height as u32).into() };
+        let pixels = page_pixels(page, scale);
+        if self.placed.replace(Some((pixels, zoom, scale))) == Some((pixels, zoom, scale)) {
+            return Ok(());
+        }
+        let bounds = bounds_of(pixels);
         self.with(move |page| {
             use gtk::prelude::WidgetExt;
             use wry::WebViewExtUnix;
@@ -119,8 +125,17 @@ impl GtkPage {
     }
 
     pub(crate) fn set_visible(&self, visible: bool) -> wry::Result<()> {
+        if self.visible.replace(visible) == visible {
+            return Ok(());
+        }
+        let placed = self.placed.get().map(|(pixels, ..)| bounds_of(pixels));
         self.with(move |page| {
             let _ = page.set_visible(visible);
+            // shown, GTK lays out the window that holds the page at its own size, 200×200 (wry sets only the X11
+            // window's): the page stayed that small in a black box until the next zoom. Its box once more after
+            if let (true, Some(bounds)) = (visible, placed) {
+                let _ = page.set_bounds(bounds);
+            }
         })
     }
 
@@ -240,13 +255,13 @@ pub(super) fn new_tab_view(
     });
     match made {
         Some(Ok(holder)) => {
-            let webview = GtkPage { number: uid, url: seen, holder, parent: parent as u32 };
+            let webview = GtkPage { number: uid, url: seen, holder, parent: parent as u32, placed: Default::default(), visible: Default::default() };
             Ok(TabView { webview, uid, url: url.into(), loading: true, secret: None })
         }
         Some(Err(error)) => Err(error),
         None => {
             // still being made: it goes once it is (after the making, in GTK's order)
-            drop(GtkPage { number: uid, url: seen, holder: 0, parent: 0 });
+            drop(GtkPage { number: uid, url: seen, holder: 0, parent: 0, placed: Default::default(), visible: Default::default() });
             Err("o navegador não respondeu".into())
         }
     }
@@ -348,6 +363,18 @@ pub(super) fn cut_page(page: &GtkPage, origin: Pos2, holes: &[Rect], pixels_per_
     let holes: Vec<_> = holes.iter().map(|hole| crate::app::island::x11::pixels(hole.translate(-origin.to_vec2()), pixels_per_point)).collect();
     if page.holder != 0 {
         crate::app::island::x11::cut(page.holder, &holes);
+    }
+}
+
+/// wry's box for `[x, y, width, height]` window pixels.
+fn bounds_of([x, y, width, height]: [i32; 4]) -> wry::Rect {
+    wry::Rect { position: wry::dpi::PhysicalPosition::new(x, y).into(), size: wry::dpi::PhysicalSize::new(width as u32, height as u32).into() }
+}
+
+/// Cuts the whole page away, keeping its place, size and drawing: the card's picture shows instead until `cut_page`.
+pub(super) fn veil(page: &GtkPage) {
+    if page.holder != 0 {
+        crate::app::island::x11::veil(page.holder);
     }
 }
 

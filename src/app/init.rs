@@ -135,6 +135,7 @@ impl Default for DrawingApp {
             portal_stills: Default::default(),
             portal_motion: Default::default(),
             portal_snaps: Default::default(),
+            portal_painted: Default::default(),
             chat_agent: None,
             chat_draft: String::new(),
             maestro_note: None,
