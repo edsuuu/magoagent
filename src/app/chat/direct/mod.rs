@@ -87,6 +87,14 @@ pub(crate) struct ChatRun {
     pub(crate) since: f64,
 }
 
+impl ChatRun {
+    /// A run of a stand-in process, for the tests: nothing comes from it.
+    #[cfg(test)]
+    pub(crate) fn stand_in(child: std::process::Child, since: f64) -> Self {
+        Self { child, events: channel().1, since }
+    }
+}
+
 impl Drop for ChatRun {
     /// Closing the app (or dropping a chat) must not leave the agent running on its own.
     fn drop(&mut self) {

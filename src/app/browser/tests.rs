@@ -59,3 +59,36 @@ fn display_url_drops_the_scheme() {
     assert_eq!(display_url("http://localhost:3000"), "localhost:3000");
     assert_eq!(display_url("about:blank"), "about:blank");
 }
+
+/// Linux: a page's box goes to WebKitGTK in whole pixels inside the card's box, at the screen's scale, never empty.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_linux_page_takes_whole_pixels_inside_its_card() {
+    let page = Rect::from_min_max(Pos2::new(10.4, 20.0), Pos2::new(110.6, 70.9));
+    assert_eq!(webkit::page_pixels(page, 1.0), [11, 20, 99, 50]);
+    assert_eq!(webkit::page_pixels(page, 1.5), [17, 30, 149, 75]);
+    assert_eq!(webkit::page_pixels(Rect::from_min_max(Pos2::new(5.0, 5.0), Pos2::new(5.5, 5.2)), 1.0), [5, 5, 1, 1]);
+    // the canvas's zoom and the screen's scale, less what GTK already scales
+    assert_eq!(webkit::page_zoom(0.5, 2.0, 2), 0.5);
+    assert_eq!(webkit::page_zoom(1.0, 1.25, 1), 1.25);
+    assert_eq!(webkit::page_zoom(1.0, 2.0, 0), 2.0);
+}
+
+/// Linux: the page's picture from Cairo loses its row padding, and a region of it is cut at the picture's scale.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_linux_page_picture_is_unpadded_and_cropped() {
+    let padded = [1, 2, 3, 4, 0, 0, 0, 0, 5, 6, 7, 8];
+    assert_eq!(webkit::rows(&padded, 1, 2, 8), Some(vec![1, 2, 3, 4, 5, 6, 7, 8]));
+    assert_eq!(webkit::rows(&padded, 2, 2, 4), None);
+    assert_eq!(webkit::rows(&padded, 0, 2, 8), None);
+    // a 4x2 picture whose pixels are numbered
+    let picture: Vec<u8> = (0..8u8).flat_map(|pixel| [pixel; 4]).collect();
+    let numbers = |rgba: Vec<u8>| rgba.chunks(4).map(|pixel| pixel[0]).collect::<Vec<_>>();
+    let (width, height, rgba) = webkit::crop(4, 2, &picture, [1.0, 0.0, 2.0, 2.0], 1.0).unwrap();
+    assert_eq!((width, height, numbers(rgba)), (2, 2, vec![1, 2, 5, 6]));
+    let (width, height, rgba) = webkit::crop(4, 2, &picture, [0.5, 0.5, 1.0, 0.5], 2.0).unwrap();
+    assert_eq!((width, height, numbers(rgba)), (2, 1, vec![5, 6]));
+    assert!(webkit::crop(4, 2, &picture, [10.0, 0.0, 2.0, 2.0], 1.0).is_none());
+    assert!(webkit::crop(4, 2, &picture[..16], [0.0, 0.0, 2.0, 2.0], 1.0).is_none());
+}

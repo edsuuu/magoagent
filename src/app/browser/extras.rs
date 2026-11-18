@@ -92,7 +92,7 @@ pub(crate) const USER_AGENTS: [(&str, bool, &str); 7] = [
 ];
 
 /// The label of the default row: what the system's webview is.
-const DEFAULT_AGENT: &str = if cfg!(target_os = "macos") { "Padrão (WebKit)" } else { "Padrão (Chromium)" };
+const DEFAULT_AGENT: &str = if cfg!(windows) { "Padrão (Chromium)" } else { "Padrão (WebKit)" };
 
 /// Chrome's desktop agent at a Chromium version ("131.0.2903.70"), the preset's without one.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -153,7 +153,7 @@ pub(crate) fn store_id(name: &str) -> [u8; 16] {
 }
 
 /// What a page is made with beyond its address.
-#[cfg(not(target_os = "linux"))]
+#[derive(Clone)]
 pub(crate) struct TabExtras {
     pub(crate) user_agent: String,
     pub(crate) muted: bool,
@@ -163,7 +163,6 @@ pub(crate) struct TabExtras {
 }
 
 /// The builder with the user agent, the mute and (macOS) the data store of `extras`.
-#[cfg(not(target_os = "linux"))]
 pub(crate) fn tune<'a>(mut builder: wry::WebViewBuilder<'a>, extras: &TabExtras) -> wry::WebViewBuilder<'a> {
     if !extras.user_agent.is_empty() {
         builder = builder.with_user_agent(extras.user_agent.clone());
@@ -191,10 +190,12 @@ pub(crate) struct PortalExtras {
     pub(crate) copy: Vec<String>,
     /// Portals whose pages run the mute script on the next frame.
     pub(crate) mute: Vec<String>,
+    /// Linux: whether the app's window had the keyboard last frame (`sync_portals`).
+    #[cfg(target_os = "linux")]
+    pub(crate) had_keyboard: bool,
 }
 
 impl DrawingApp {
-    #[cfg(not(target_os = "linux"))]
     pub(crate) fn tab_extras(&self, id: &str) -> TabExtras {
         let spec = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.clone()).unwrap_or_default();
         let space = self.current_space().map_or("principal", |s| s.id.as_str());
@@ -213,7 +214,6 @@ impl DrawingApp {
     /// a page is made. The mute only needs its script run again.
     pub(crate) fn portal_extras_changed(&mut self, id: &str, old: Option<&PortalSpec>, new: &PortalSpec) {
         let Some(old) = old else { return };
-        #[cfg(not(target_os = "linux"))]
         if old.user_agent != new.user_agent || old.storage != new.storage {
             self.portals.remove(id);
         }
@@ -223,7 +223,6 @@ impl DrawingApp {
     }
 
     /// The mute script in every page of a portal (a page made later has it from `tune`).
-    #[cfg(not(target_os = "linux"))]
     pub(crate) fn portal_apply_mute(&self, id: &str) {
         let Some(spec) = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.as_ref()) else { return };
         let script = mute_script(spec.muted);
@@ -232,27 +231,24 @@ impl DrawingApp {
         }
     }
 
-    /// Each frame: mutes asked for, pictures copied.
+    /// Each frame: mutes asked for, pictures asked for the clipboard (they come back as `PortalEvent::Copied`).
     pub(crate) fn portal_extras_tick(&mut self, ctx: &Context) {
-        #[cfg(not(target_os = "linux"))]
         for id in std::mem::take(&mut self.portal_extras.mute) {
             self.portal_apply_mute(&id);
         }
         for id in std::mem::take(&mut self.portal_extras.copy) {
-            match self.page_rgba(&id) {
-                Ok((w, h, rgba)) => {
-                    ctx.copy_image(egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba));
-                    self.toast("Captura de tela copiada.");
-                }
-                Err(error) => self.toast(error),
-            }
+            let (events, ctx) = (self.portal_events.0.clone(), ctx.clone());
+            self.page_picture(&id, move |picture| {
+                let _ = events.send(PortalEvent::Copied { picture });
+                ctx.request_repaint();
+            });
         }
     }
 
-    /// Copiar Captura de Tela: the open page's picture on the clipboard, a frame later.
+    /// Copiar Captura de Tela: the open page's picture on the clipboard, once the system has it.
     pub(crate) fn portal_copy_shot(&mut self, id: &str) -> Result<String, String> {
-        if !cfg!(windows) {
-            return Err("a captura da página só existe no Windows por enquanto".into());
+        if cfg!(target_os = "macos") {
+            return Err("a captura da página ainda não existe no macOS".into());
         }
         let spec = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.as_ref()).ok_or("não é um navegador")?;
         if spec.unloaded {

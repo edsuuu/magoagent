@@ -1,6 +1,6 @@
 //! What the agent's words carry besides words: pictures (`![alt](path)`, a data address or a file
-//! it wrote) drawn in the conversation and files as cards; a click shows a picture big in the app (island/picture.rs)
-//! and opens a file with the system.
+//! it wrote) drawn in the conversation and files as cards; a click shows a picture big in the app (island/picture.rs),
+//! opens a text file (.md, .txt) on the canvas in a note (notes/file.rs) and any other file with the system.
 
 use crate::app::browser::open_external;
 use crate::app::chat::direct::folder;
@@ -20,6 +20,15 @@ const CARD_MAX: f32 = 360.0;
 const ICON: f32 = 32.0;
 /// A picture in the conversation: its widest and tallest.
 const PICTURE_MAX: Vec2 = Vec2::new(420.0, 320.0);
+
+/// A text file's card clicked asks for its note through the context (the card is drawn by `&self`): the file and the
+/// chat it was in.
+const NOTE_ASK: &str = "chat_file_note_ask";
+
+/// The text file a card asked to open in a note this frame, with its chat (`chat_nodes_tick` opens it).
+pub(crate) fn take_note_ask(ctx: &Context) -> Option<(PathBuf, Option<String>)> {
+    ctx.data_mut(|d| d.remove_temp::<(PathBuf, Option<String>)>(egui::Id::unique(NOTE_ASK)))
+}
 
 impl DrawingApp {
     /// The agent's words: markdown in bubbles, with its pictures and files drawn in between.
@@ -134,8 +143,9 @@ impl DrawingApp {
         }
     }
 
-    /// A file named by the agent: a card with its name, kind and weight; a click opens it, a right
-    /// click copies its path or shows its folder. `label` empty: the file's own name.
+    /// A file named by the agent: a card with its name, kind and weight; a click opens it (a text file in a note on the
+    /// canvas, asked: "abrir no canvas em uma nota"), a right click copies its path, shows its folder or opens it in the
+    /// system's program. `label` empty: the file's own name.
     pub(crate) fn chat_file_card(&self, ui: &mut egui::Ui, path: &Path, label: &str, c: &UiColors) {
         let meta = fs::metadata(path).ok();
         let name =
@@ -150,10 +160,20 @@ impl DrawingApp {
         };
         let response = self.card(ui, &path.to_string_lossy(), &name, &detail, meta.is_none(), c);
         let text = path.to_string_lossy().into_owned();
+        let as_note = meta.as_ref().is_some_and(|m| m.is_file()) && crate::app::notes::file::opens_as_note(path);
         if response.clicked() && meta.is_some() {
-            open_external(&text);
+            if as_note {
+                let ask = (path.to_path_buf(), self.chat_agent.clone());
+                ui.ctx().data_mut(|d| d.insert_temp(egui::Id::unique(NOTE_ASK), ask));
+            } else {
+                open_external(&text);
+            }
         }
         crate::app::ui::menu_look::context_menu(&response, |ui| {
+            if as_note && crate::app::ui::menu_look::menu_row(ui, Some(Icon::Open), "Abrir no programa padrão", "", None) {
+                open_external(&text);
+                ui.close();
+            }
             if crate::app::ui::menu_look::menu_row(ui, Some(Icon::Duplicate), "Copiar caminho", "", None) {
                 ui.ctx().copy_text(text.clone());
                 ui.close();

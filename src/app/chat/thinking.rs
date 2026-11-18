@@ -64,15 +64,32 @@ pub(crate) fn spinner(p: &Painter, center: Pos2, size: f32, color: Color32, t: f
     }
 }
 
-/// `text` at `left` (centered on its y), with a shine that sweeps across it every 2 s.
-pub(crate) fn shimmer(p: &Painter, left: Pos2, text: &str, font: FontId, base: Color32, bright: Color32, t: f64) -> f32 {
+/// `text` at `left` (centered on its y), with a shine that sweeps across it every 2 s; cut with "…" where it would
+/// pass `max_width` (a chat's long title ran under the stop button and out of the mini chat). Its width painted.
+pub(crate) fn shimmer(p: &Painter, left: Pos2, text: &str, font: FontId, base: Color32, bright: Color32, t: f64, max_width: f32) -> f32 {
     let galley = p.layout_no_wrap(text.into(), font.clone(), base);
-    let width = galley.size().x;
+    let mut letters: Vec<_> = text.chars().map(|ch| p.layout_no_wrap(ch.to_string(), font.clone(), base)).collect();
+    if letters.iter().map(|letter| letter.size().x).sum::<f32>() > max_width {
+        let ellipsis = p.layout_no_wrap("…".into(), font.clone(), base);
+        let mut used = ellipsis.size().x;
+        let kept = letters
+            .iter()
+            .take_while(|letter| {
+                used += letter.size().x;
+                used <= max_width
+            })
+            .count();
+        letters.truncate(kept);
+        // where not even the "…" fits, nothing
+        if ellipsis.size().x <= max_width {
+            letters.push(ellipsis);
+        }
+    }
+    let width: f32 = letters.iter().map(|letter| letter.size().x).sum();
     let top = left.y - galley.size().y / 2.0;
     let sweep = ((t % 2.0) / 2.0) as f32 * (width + 80.0) - 40.0;
     let mut x = left.x;
-    for ch in text.chars() {
-        let g = p.layout_no_wrap(ch.to_string(), font.clone(), base);
+    for g in letters {
         let mid = x - left.x + g.size().x / 2.0;
         let near = (1.0 - (mid - sweep).abs() / 40.0).clamp(0.0, 1.0);
         let w = g.size().x;

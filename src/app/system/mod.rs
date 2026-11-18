@@ -3,6 +3,8 @@
 pub(crate) mod deb_update;
 pub(crate) mod download;
 pub(crate) mod files;
+#[cfg(target_os = "linux")]
+pub(crate) mod gtk;
 pub(crate) mod mcp_register;
 pub(crate) mod memory;
 pub(crate) mod run_at_login;

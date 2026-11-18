@@ -5,7 +5,7 @@
 //!   type texto · key J cmd shift alt · hold cmd (the clicks after it are Ctrl+clicks; `hold` alone lets go) · paste /imagem.png
 //!   drop x y /arquivo · wait ms · shot /caminho.png · size w h · minimize · quit
 //! They go in through raw input, the same path as a real mouse. `shot` saves what egui drew;
-//! native web pages are not in it (capture the window from outside for those). A `wait` lets the
+//! native web pages are not in it (macOS and Linux save each page beside it, `<shot>-<id>.png`). A `wait` lets the
 //! app idle as it would, so MAGOAGENT_PERF (`Perf`) measures it.
 
 use crate::prelude::*;
@@ -20,8 +20,8 @@ pub(crate) struct Script {
     shooting: Arc<AtomicBool>,
     /// The modifiers a `hold` keeps down: every frame's input says so again (the window's own events would let go).
     held: Modifiers,
-    /// The path of the last `shot`, so the app also saves the native pages next to it (macOS).
-    #[cfg(target_os = "macos")]
+    /// The path of the last `shot`, so the app also saves the native pages next to it (macOS, Linux).
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     pages: Option<String>,
 }
 
@@ -68,7 +68,7 @@ impl Script {
     }
 
     /// The path of a `shot` that asked for the native pages too, once.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     pub(crate) fn take_pages(&mut self) -> Option<String> {
         self.pages.take()
     }
@@ -80,7 +80,7 @@ impl Script {
             until: 0.0,
             shooting: Default::default(),
             held: Modifiers::NONE,
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
             pages: None,
         }
     }
@@ -209,7 +209,7 @@ impl Script {
             ["wait", ..] => self.until = now + number(1) as f64 / 1000.0,
             ["shot", path] => {
                 let (path, shooting) = (path.to_string(), self.shooting.clone());
-                #[cfg(target_os = "macos")]
+                #[cfg(any(target_os = "macos", target_os = "linux"))]
                 {
                     self.pages = Some(path.clone());
                 }

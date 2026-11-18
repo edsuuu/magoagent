@@ -33,13 +33,13 @@ process.terminate()
 
 GROUPS = [
     ("Canvas e desenho", ("add_elements", "update_elements", "delete_elements", "get_scene", "clear_canvas", "set_background", "view", "screenshot",
-                          "focus_canvas", "canvas_drop", "canvas_group", "minimap", "sidebar", "panel", "theme", "window_outline", "history", "open_file", "save_file")),
-    ("Notas e fichário", ("create_note", "read_note", "write_note", "note", "note_buttons", "note_stack", "binder")),
+                          "focus_canvas", "canvas_drop", "canvas_group", "minimap", "sidebar", "panel", "changes_review", "theme", "window_outline", "history", "open_file", "save_file")),
+    ("Notas e fichário", ("create_note", "read_note", "write_note", "note", "note_buttons", "note_stack", "binder", "open_as_note")),
     ("Agentes, terminais e a Luna", ("list_agents", "ask_agent", "recruit_agent", "create_terminal", "connect", "disconnect", "connection_history", "read_terminal",
                                       "terminal_find", "terminal_look", "terminal_menu", "terminal_processes", "terminal_restart", "notify",
                                       "ask_person", "remember", "review", "demands", "outside_message", "timeline", "tasks", "skills", "maestro_comment", "avatar",
                                       "avatar_follow", "flow", "usage", "usage_refresh", "memory")),
-    ("Chats", ("chat_new", "chat_open", "chats_view", "chat_send", "chat_list", "chat_search", "chat_rename", "chat_provider", "chat_command", "chat_context",
+    ("Chats", ("chat_new", "chat_open", "chats_view", "chat_send", "chat_queue", "chat_list", "chat_search", "chat_rename", "chat_provider", "chat_command", "chat_context",
                "chat_decide", "chat_node", "mini_chat")),
     ("Árvore de Arquivos e editor", ("file_tree", "ide_open", "ide_search", "ide_folder", "open_path", "open_default", "set_folder")),
     ("Navegador (portais)", ("create_portal", "portal_navigate", "portal_read", "portal_click", "portal_fill", "portal_eval", "portal_scroll",

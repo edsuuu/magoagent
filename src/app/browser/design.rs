@@ -4,6 +4,8 @@
 //! overlay (design.js) lives in the page; the app keeps each region's picture (macOS: the page's
 //! snapshot) and the annotations of every portal.
 
+#[cfg(target_os = "linux")]
+use super::webkit::snapshot;
 use crate::prelude::*;
 
 /// The overlay's script; `__CONFIG__` becomes the nonce, the agents, the annotations and whether
@@ -58,7 +60,6 @@ pub(crate) struct Region {
 /// Enviar, held until the person says so in the app's own dialog: the page draws the composer,
 /// so it could make up a region, a comment and the click.
 #[derive(Clone, Debug)]
-#[cfg_attr(target_os = "linux", allow(dead_code))] // no portals on Linux
 pub(crate) struct DesignConfirm {
     pub(crate) portal: String,
     pub(crate) agent: String,
@@ -247,13 +248,9 @@ impl DrawingApp {
     /// kept annotations. `panel` opens the annotations' composer at once.
     pub(crate) fn arm_design(&mut self, id: &str, panel: bool) {
         self.design_exit();
-        #[cfg(not(target_os = "linux"))]
         self.arm_tab(id, panel);
-        #[cfg(target_os = "linux")]
-        let _ = (id, panel);
     }
 
-    #[cfg(not(target_os = "linux"))]
     fn arm_tab(&mut self, id: &str, panel: bool) {
         let agents: Vec<Value> = self.design_agents(id).into_iter().map(|(id, name)| json!({ "id": id, "name": name })).collect();
         let nonce = uuid::Uuid::new_v4().simple().to_string();
@@ -303,7 +300,6 @@ impl DrawingApp {
     /// The address of a portal's open tab.
     fn portal_url(&self, portal: &str) -> String {
         // the address the page is at now: a single-page app changes it without a load
-        #[cfg(not(target_os = "linux"))]
         if let Some(url) = self.open_tab_view(portal).and_then(|t| t.webview.url().ok()).filter(|u| !u.is_empty()) {
             return url;
         }
@@ -328,7 +324,6 @@ impl DrawingApp {
 
     /// A message from the overlay in a tab's page: it must come from the armed tab and carry its
     /// secret, so no other page can drive Design.
-    #[cfg(not(target_os = "linux"))]
     pub(crate) fn design_message(&mut self, portal: &str, tab: u64, message: &str, ctx: &Context) {
         if message.len() > MESSAGE_MAX || !self.design.as_ref().is_some_and(|d| d.portal == portal && d.tab == tab) {
             return;
@@ -349,8 +344,8 @@ impl DrawingApp {
                 design.seq += 1;
                 design.region = Some(Region { rect, png: None, view: pair(&msg["view"]) });
                 self.portal_script(portal, &format!("window.__magoDesign&&window.__magoDesign.region({})", json!(rect)));
-                // the picture of the region comes back on its own (macOS); elsewhere there is none
-                #[cfg(target_os = "macos")]
+                // the picture of the region comes back on its own (macOS, Linux); on Windows there is none
+                #[cfg(any(target_os = "macos", target_os = "linux"))]
                 if let Some(view) = self.open_tab_view(portal) {
                     let seq = self.design.as_ref().map_or(0, |d| d.seq);
                     let events = self.portal_events.0.clone();
@@ -399,7 +394,6 @@ impl DrawingApp {
     }
 
     /// The picture of a region came back: it goes with the region, if that is still the one drawn.
-    #[cfg(not(target_os = "linux"))]
     pub(crate) fn design_shot(&mut self, portal: &str, seq: u64, png: Option<Vec<u8>>) {
         let Some(design) = self.design.as_mut().filter(|d| d.portal == portal && d.seq == seq) else { return };
         let Some(region) = design.region.as_mut() else { return };
@@ -410,7 +404,6 @@ impl DrawingApp {
 
     /// Send: the kept annotations and the region, in one prompt with each picture, for the picked
     /// agent with the comment. Design ends; the text waits for the app's dialog (design_confirm_ui).
-    #[cfg(not(target_os = "linux"))]
     fn design_send(&mut self, portal: &str, agent: &str, comment: &str) {
         let region = self.design.take().and_then(|d| d.region);
         let Some((_, agent_name)) = self.design_agents(portal).into_iter().find(|(id, _)| id == agent) else {
@@ -516,7 +509,6 @@ mod tests {
 
     /// Enviar from the page only holds the text: the app's dialog sends it, Cancelar keeps the
     /// annotations, and each annotation says the page it was on when that is another.
-    #[cfg(not(target_os = "linux"))]
     #[test]
     fn the_page_send_waits_for_the_apps_dialog() {
         let mut app = DrawingApp::default();
@@ -569,7 +561,6 @@ rode isso"
         assert_eq!(page_text(&"a".repeat(PAGE_TEXT + 10)).chars().count(), PAGE_TEXT + 1);
     }
 
-    #[cfg(not(target_os = "linux"))]
     #[test]
     fn an_enter_does_not_confirm_the_send() {
         let ctx = Context::default();

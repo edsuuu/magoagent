@@ -144,16 +144,10 @@ impl DrawingApp {
         }
     }
 
-    #[cfg(not(target_os = "linux"))]
     pub(super) fn set_loading(&mut self, id: &str, loading: bool) {
         let active = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| Some(e.portal.as_ref()?.active_tab()));
         if let Some(tab) = active.and_then(|a| self.portals.get_mut(id)?.tabs.get_mut(a)) {
             tab.loading = loading;
         }
-    }
-
-    #[cfg(target_os = "linux")]
-    pub(super) fn set_loading(&mut self, id: &str, loading: bool) {
-        let _ = (id, loading);
     }
 }
