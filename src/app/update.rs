@@ -193,7 +193,9 @@ impl eframe::App for DrawingApp {
                 && self.terminal_elevated.is_none()
                 && !egui::Popup::is_any_open(&ctx)
                 && self.focus(&ctx) != crate::app::canvas::shortcuts::Focus::Dialog;
-            if (response.hovered() || over_window) && !self.chat_open && ctx.current_pass_index() == 0 {
+            // the wheel over a long note's text scrolls it, not the canvas (notes/scroll.rs)
+            let note_took = response.hovered() && !self.chat_open && ctx.current_pass_index() == 0 && self.note_wheel(&ctx);
+            if (response.hovered() || over_window) && !self.chat_open && ctx.current_pass_index() == 0 && !note_took {
                 let (scroll, zoom, pointer) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
                 let shift = ctx.input(|i| i.modifiers.shift);
                 if let Some(mouse) = ctx.input(|i| wheel_from_mouse(&i.raw.events)) {

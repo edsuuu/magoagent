@@ -119,7 +119,7 @@ impl DrawingApp {
 }
 
 /// A note file's text, unless it is too big or not text.
-fn note_text(path: &Path) -> Option<String> {
+pub(crate) fn note_text(path: &Path) -> Option<String> {
     let small = fs::metadata(path).is_ok_and(|metadata| metadata.len() <= NOTE_MAX);
     small.then(|| fs::read(path).ok().and_then(|bytes| String::from_utf8(bytes).ok()))?.map(|text| text.replace("\r\n", "\n").trim_end().to_string())
 }

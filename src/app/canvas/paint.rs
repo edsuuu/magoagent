@@ -168,7 +168,12 @@ impl DrawingApp {
                     View { origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom, zoom, dark: view.dark, background: view.background };
                 // its text, or the placeholder of a note without one (left empty, its text was dropped)
                 let body = label.is_none_or(|label_index| self.editing != Some(label_index));
-                paint_note(painter, &self.shown_note(element), text.unwrap_or(""), body, &view, faded);
+                let shown = self.shown_note(element);
+                let end = paint_note(painter, &shown, text.unwrap_or(""), body, &view, faded, self.note_scroll_offset(&element.id));
+                // typing, the editor scrolls: what the card hides is known again once it rests
+                if body {
+                    self.note_painted(&shown, end);
+                }
                 continue;
             }
             if is_arrow_label(&self.scene.elements, element) && self.editing != Some(index) {

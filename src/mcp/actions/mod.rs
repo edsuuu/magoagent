@@ -25,7 +25,7 @@ impl DrawingApp {
     /// app's window comes to the front with it.
     pub(crate) fn act(&mut self, action: &str, args: &Value) -> Result<String, String> {
         let result = self.act_on(action, args);
-        if result.is_ok() && matches!(action, "ide_folder" | "open_path" | "chat_new" | "chat_open" | "chat_node" | "chats_view") {
+        if result.is_ok() && matches!(action, "ide_folder" | "open_path" | "open_as_note" | "chat_new" | "chat_open" | "chat_node" | "chats_view") {
             self.bring_to_front();
         }
         result
@@ -64,6 +64,14 @@ impl DrawingApp {
                 self.drop_on_canvas(&paths, at)
             }
             "open_path" => self.act_open_path(&text("path"), args["line"].as_u64().map(|l| l as usize), &text("asker")),
+            "open_as_note" => {
+                let path = folder(&text("path")).filter(|_| !text("path").is_empty()).ok_or("diga `path`: o arquivo a abrir na nota")?;
+                let chat = match text("chat").as_str() {
+                    "" => self.chat_agent.clone().filter(|id| self.is_chat(id)),
+                    name => Some(self.chat_named(name)?),
+                };
+                self.open_file_as_note(&path, chat.as_deref())
+            }
             "resize_window" => self.act_resize(&text("target"), &text("state"), args["width"].as_f64(), args["height"].as_f64()),
             "close_window" => {
                 let index = self.node_named(&text("name"))?;
@@ -140,6 +148,7 @@ impl DrawingApp {
                 }
                 Ok("Comando rodando no chat.".into())
             }
+            "chat_queue" => self.act_chat_queue(&text("agent"), &text("action")),
             "chat_rename" => {
                 let id = self.chat_named(&text("chat"))?;
                 match self.rename_chat(&id, &text("name")) {

@@ -1,6 +1,6 @@
 //! What the agent does, in the chat: its tool calls as steps in the conversation (a run of them
-//! folds into one line), the band over the box with the one running now, the amber card when it
-//! waits on its terminal, and the messages queued meanwhile.
+//! folds into one line), the band over the box with the one running now and the amber card when it
+//! waits on its terminal (the messages queued meanwhile are chat/queue.rs).
 
 use crate::app::chat::list::{
     ACCENT, AMBER, AmberCard, CHECK, CROSS, DOWN, GREEN, Look, PROMPT, RED, RIGHT, bold, clipped, code_card, elapsed, glyph, pulse_dot,
@@ -257,7 +257,9 @@ impl DrawingApp {
                         let name = row.spec.name.split(" · ").next().filter(|n| !n.is_empty()).unwrap_or("O agente");
                         let words = crate::app::chat::thinking::line(name, since, self.now - since);
                         let bright = if claude { crate::app::chat::thinking::CLAUDE } else { look.text };
-                        crate::app::chat::thinking::shimmer(p, Pos2::new(x, cy), &words, FontId::proportional(14.0), look.soft, bright, t);
+                        // up to the count or the stop button, cut with "…"
+                        let font = FontId::proportional(14.0);
+                        crate::app::chat::thinking::shimmer(p, Pos2::new(x, cy), &words, font, look.soft, bright, t, (right - x).max(0.0));
                     }
                 }
                 response.clicked()
@@ -335,60 +337,6 @@ impl DrawingApp {
             }
         });
         click
-    }
-
-    /// What was written to an agent while it waited on its terminal: it goes when it doesn't.
-    pub(crate) fn queue_message(&mut self, id: &str, text: String) {
-        match self.chat_queue.iter_mut().find(|(to, _)| to == id) {
-            Some((_, queued)) => *queued = format!("{queued}\n\n{text}"),
-            None => self.chat_queue.push((id.to_string(), text)),
-        }
-    }
-
-    /// Sends what was queued to the agents no longer waiting on their terminal; an agent gone
-    /// gives its words back to the box.
-    pub(crate) fn flush_chat_queue(&mut self) {
-        for (id, text) in std::mem::take(&mut self.chat_queue) {
-            let ready = self.terminals.get(&id).and_then(|s| s.as_ref().ok()).is_some_and(|s| s.handle.ready().is_ok());
-            match self.agent_state(&id) {
-                AgentState::Waiting => self.chat_queue.push((id, text)),
-                AgentState::Ended => {
-                    self.toast(format!("{} fechou: a mensagem da fila voltou para a caixa.", self.terminal_name(&id)));
-                    let gap = if self.chat_draft.is_empty() { "" } else { "\n" };
-                    self.chat_draft = format!("{}{gap}{text}", self.chat_draft);
-                }
-                _ if ready => {
-                    self.send_prompt(&id, &text);
-                }
-                _ => self.chat_queue.push((id, text)),
-            }
-        }
-    }
-
-    /// The person's messages queued for `id`, at the conversation's end; "Editar" takes them back
-    /// into the box (`edit`).
-    pub(crate) fn queued_bubbles(&self, ui: &mut egui::Ui, id: &str, width: f32, look: &Look, edit: &mut bool) {
-        for (_, text) in self.chat_queue.iter().filter(|(to, _)| to == id) {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                *edit |= ui
-                    .add(egui::Button::new(egui::RichText::new("Editar").size(12.0).color(look.soft)).frame(false))
-                    .on_hover_cursor(CursorIcon::PointingHand)
-                    .clicked();
-                let when = if self.is_chat(id) { "Na fila · vai quando ele terminar ·" } else { "Na fila · vai quando você responder no terminal ·" };
-                ui.label(egui::RichText::new(when).size(12.0).color(look.muted));
-            });
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                egui::Frame::new()
-                    .fill(crate::app::chat::bubble_fill(look.dark, true).gamma_multiply(0.55))
-                    .corner_radius(18)
-                    .inner_margin(egui::Margin::symmetric(14, 7))
-                    .show(ui, |ui| {
-                        ui.set_max_width(width * 0.7);
-                        ui.label(egui::RichText::new(text).size(14.0).color(Color32::WHITE));
-                    });
-            });
-            ui.add_space(8.0);
-        }
     }
 }
 

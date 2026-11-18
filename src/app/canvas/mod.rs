@@ -4,7 +4,7 @@ mod arrows;
 pub(crate) mod cover;
 #[cfg_attr(target_os = "linux", allow(dead_code))] // Design runs in portals, which Linux doesn't open yet
 mod dock;
-mod drops;
+pub(crate) mod drops;
 pub(crate) mod editing;
 pub(crate) mod lifted;
 pub(crate) mod minimap;

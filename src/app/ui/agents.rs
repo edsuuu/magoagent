@@ -300,9 +300,9 @@ impl DrawingApp {
         self.record(event);
     }
 
-    /// The chat (⌘1), the canvas (⌘2), the first file tree (⌘3) and the next agent that needs you (⌘⇧A), by the keys
-    /// Ajustes › Atalhos has for them: they work even while a terminal has the keyboard, which never gets them. None
-    /// while Ajustes records a shortcut's keys.
+    /// The chat (⌘1), the canvas (⌘2), the first file tree (⌘3), the next agent that needs you (⌘⇧A) and Enviar agora
+    /// (⌘⇧Enter), by the keys Ajustes › Atalhos has for them: they work even while a terminal has the keyboard, which
+    /// never gets them. None while Ajustes records a shortcut's keys.
     pub(crate) fn screen_keys(&mut self, ctx: &Context) {
         use crate::app::hotkeys::local::AppAction;
         if self.hotkeys.recording.is_some() {
@@ -320,6 +320,8 @@ impl DrawingApp {
         if self.take_app_key(ctx, AppAction::NextNeedingYou) {
             self.next_needing_attention();
         }
+        // Enviar agora: from the chat's box too (chat/queue.rs)
+        self.send_now_key(ctx);
     }
 
     /// ⌘1: the chat screen.
