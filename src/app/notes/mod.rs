@@ -2,6 +2,7 @@
 //! size, the rename. Its text is the label element; the card holds the settings.
 
 pub(crate) mod buttons;
+mod editor;
 pub(crate) mod file;
 pub(crate) mod scroll;
 pub(crate) mod stack;

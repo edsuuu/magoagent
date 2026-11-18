@@ -244,6 +244,15 @@ impl DrawingApp {
             };
             wanted.iter().any(|w| e.id.to_lowercase() == *w || names.iter().flatten().any(|n| n.to_lowercase() == *w) || text.contains(w.as_str()))
         };
+        // the enlarged tree it names zooms itself, as Ctrl + wheel over it does (canvas/wheel.rs)
+        let lifted_tree = self.elevated_index().filter(|index| self.scene.elements[*index].filetree.is_some() && named(&self.scene.elements[*index]));
+        if let (Some(zoom), Some(_), false) = (zoom, lifted_tree, wanted.is_empty()) {
+            self.set_lifted_zoom(zoom);
+            // the canvas's screen, the tree kept enlarged (show_canvas would put it back)
+            self.chat_open = false;
+            self.bring_to_front();
+            return Ok(format!("A árvore ampliada {} está em {:.0}%.", at.trim(), self.lifted_zoom * 100.0));
+        }
         let bounds = self.scene.elements.iter().filter(|e| wanted.is_empty() || named(e)).map(element_bounds).reduce(|a, b| a.union(b));
         let Some(bounds) = bounds else {
             return Err(if wanted.is_empty() { "O canvas está vazio.".into() } else { format!("Nada no canvas se chama {at}.") });
@@ -461,6 +470,16 @@ mod tests {
         assert!(!app.chat_open && app.zoom == 2.0);
         let center = element_bounds(&app.scene.elements[0]).center();
         assert!(app.to_screen(center).distance(app.canvas_rect.center()) < 1.0, "centered on it");
+        // an enlarged tree named with a zoom: its own zoom, the canvas stays
+        let mut tree = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+        tree.filetree = Some(FileTreeSpec { root: "/tmp/projeto".into(), ..Default::default() });
+        let id = tree.id.clone();
+        app.scene.elements.push(tree);
+        app.set_elevated(Some(id.clone()));
+        assert!(app.maestro_look(&id, Some(1.5)).unwrap().contains("150%"));
+        assert_eq!((app.lifted_zoom, app.zoom), (1.5, 2.0));
+        assert_eq!(app.terminal_elevated.as_ref(), Some(&id), "still enlarged");
+        assert!(app.maestro_look(&id, Some(9.0)).unwrap().contains("300%"), "three times at most");
     }
 
     #[test]

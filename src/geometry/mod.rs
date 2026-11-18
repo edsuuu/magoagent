@@ -181,11 +181,44 @@ pub(crate) fn rope_curve(a: [f32; 2], b: [f32; 2]) -> Vec<[f32; 2]> {
     rope_through(a, rope_rest(a, b), b)
 }
 
-/// Size of a text in world units: its widest line in the hand font, one line height per line.
+/// Size of a text in world units: its widest line in the hand font, one line height per line. Kept by the text's
+/// fingerprint: a note's text is a text element too, and its box was measured glyph by glyph several times a frame
+/// for every note of the canvas, on screen or not (48 notes of 200 lines took 66 ms a frame; asked: "poderíamos
+/// deixar só o que está na visual da tela").
 pub(crate) fn text_size(value: &str, size: f32) -> Vec2 {
+    // ponytail: a 64-bit fingerprint, a collision gives a text another's box; the cache empties itself when full
+    const KEPT: usize = 4096;
+    thread_local! {
+        static MEASURED: std::cell::RefCell<std::collections::HashMap<(u64, u32), Vec2>> = Default::default();
+    }
+    let key = (fingerprint(value.as_bytes()), size.to_bits());
+    if let Some(known) = MEASURED.with_borrow(|measured| measured.get(&key).copied()) {
+        return known;
+    }
     let lines = text_lines(value);
     let width = lines.iter().map(|l| text_advance(l, size)).fold(0.0, f32::max);
-    Vec2::new(width.max(size * 0.5), lines.len() as f32 * size * LINE_HEIGHT)
+    let measured = Vec2::new(width.max(size * 0.5), lines.len() as f32 * size * LINE_HEIGHT);
+    MEASURED.with_borrow_mut(|known| {
+        if known.len() >= KEPT {
+            known.clear();
+        }
+        known.insert(key, measured);
+    });
+    measured
+}
+
+/// A quick 64-bit hash of `bytes` (eight at a time, as rustc's FxHash), with their length in it.
+pub(crate) fn fingerprint(bytes: &[u8]) -> u64 {
+    const SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
+    let mix = |hash: u64, word: u64| (hash.rotate_left(5) ^ word).wrapping_mul(SEED);
+    let (words, rest) = bytes.as_chunks::<8>();
+    let mut hash = mix(0, bytes.len() as u64);
+    for word in words {
+        hash = mix(hash, u64::from_le_bytes(*word));
+    }
+    let mut tail = [0u8; 8];
+    tail[..rest.len()].copy_from_slice(rest);
+    mix(hash, u64::from_le_bytes(tail))
 }
 
 /// Excalidraw's hand-drawn font, Excalifont (OFL 1.1, assets/Excalifont-license.txt), whole in one file.

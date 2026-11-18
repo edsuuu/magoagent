@@ -3,7 +3,7 @@
 //! window points; MAGOAGENT_SCRIPT holds them or the path of a file with them:
 //!   move x y · click x y · rclick x y · dclick x y · down x y · up x y · drag x1 y1 x2 y2
 //!   type texto · key J cmd shift alt · hold cmd (the clicks after it are Ctrl+clicks; `hold` alone lets go) · paste /imagem.png
-//!   drop x y /arquivo · wait ms · shot /caminho.png · size w h · minimize · quit
+//!   drop x y /arquivo · scroll x y dy dx · pinch x y fator · wait ms · shot /caminho.png · size w h · minimize · quit
 //! They go in through raw input, the same path as a real mouse. `shot` saves what egui drew;
 //! native web pages are not in it (macOS and Linux save each page beside it, `<shot>-<id>.png`). A `wait` lets the
 //! app idle as it would, so MAGOAGENT_PERF (`Perf`) measures it.
@@ -156,6 +156,10 @@ impl Script {
                         modifiers: self.held,
                     },
                 ]);
+            }
+            ["pinch", ..] => {
+                // a touchpad's pinch over (x, y): above 1 it spreads (zooms in), below it closes
+                raw.events.extend([egui::Event::PointerMoved(at), egui::Event::Zoom(number(3))]);
             }
             ["drag", ..] => {
                 // pressed at the start, ten moves along the way, released at the end

@@ -9,6 +9,9 @@ pub(crate) use align::*;
 const ZOOM_LEVELS: [f32; 26] =
     [0.1, 0.15, 0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 15.0, 20.0, 25.0, 30.0];
 
+/// How long after its last change the zoom counts as at rest, its text laid out again at its own size (`text_zoom`).
+pub(crate) const ZOOM_SETTLES: f64 = 0.25;
+
 impl DrawingApp {
     pub(crate) fn select_tool(&mut self, tool: Tool) {
         self.finish_text();

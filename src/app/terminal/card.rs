@@ -84,7 +84,7 @@ impl DrawingApp {
         }
         if let Some(session) = session {
             let marks = self.find_marks(&element.id);
-            let view = GridView { look: &look, font, marks: &marks };
+            let view = GridView { look: &look, font, marks: &marks, text_zoom: self.text_zoom_at(zoom) };
             session.paint(&painter, rect.min + Vec2::new(TERMINAL_PAD, TERMINAL_HEADER + 4.0) * zoom, zoom, focused, &view);
         }
         let footer = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - TERMINAL_FOOTER * zoom), rect.max);
