@@ -261,8 +261,8 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "chat_open",
-            "description": "Mostra um chat à pessoa.",
-            "inputSchema": { "type": "object", "properties": { "chat": chat }, "required": ["chat"] },
+            "description": "Mostra um chat à pessoa: na tela de chat do app (place app, o padrão) ou na conversa da ilha (place island), como escolher um agente da Luna no botão Agentes da conversa da ilha (ou Voltar à Luna), sem abrir janela flutuante.",
+            "inputSchema": { "type": "object", "properties": { "chat": chat, "place": { "type": "string", "enum": ["app", "island"], "description": "onde mostrar: app (o padrão) ou island (a conversa da ilha)" } }, "required": ["chat"] },
         }),
         json!({
             "name": "chats_view",

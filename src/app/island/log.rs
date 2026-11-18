@@ -38,7 +38,17 @@ impl DrawingApp {
                 let colors = UiColors::new(true);
                 for item in items {
                     match item {
-                        ChatItem::User(text) => bubble(ui, text, width),
+                        // another agent's question: whose it is over it, as the chat on the canvas says (chat_item)
+                        ChatItem::User(text) => match crate::app::chat::ask::asked_by(text) {
+                            Some((who, question)) => {
+                                ui.vertical(|ui| {
+                                    ui.spacing_mut().item_spacing.y = 4.0;
+                                    asker(ui, who, width);
+                                    bubble(ui, question, width);
+                                });
+                            }
+                            None => bubble(ui, text, width),
+                        },
                         ChatItem::Agent(text) => self.agent_words_in(ui, text, width - 8.0, &colors, false),
                         ChatItem::Image { data, .. } if self.island_picture(ui, data, width) => clicked = Some(data.clone()),
                         _ => {}
@@ -106,6 +116,13 @@ fn bubble(ui: &mut egui::Ui, text: &str, width: f32) {
     let bubble = Rect::from_min_size(Pos2::new(rect.right() - size.x, rect.top()), size);
     ui.painter().rect_filled(bubble, 12, Color32::from_white_alpha(33));
     selectable(ui, bubble.min + Vec2::new(10.0, 7.0), job);
+}
+
+/// Over an agent's question in the log: "Pergunta de <who>", small and at the right, where the bubble goes.
+fn asker(ui: &mut egui::Ui, who: &str, width: f32) {
+    let galley = crate::app::chat::list::clipped(ui.painter(), format!("Pergunta de {who}"), font(11.0), REPLY, width - 32.0);
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, galley.size().y), Sense::hover());
+    ui.painter().galley(Pos2::new(rect.right() - galley.size().x, rect.top()), galley, REPLY);
 }
 
 /// `job` at `at` as text the person can select and copy (asked: "o texto que o Claude retornar eu preciso poder

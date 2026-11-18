@@ -75,8 +75,10 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
             "Você é {}, um agente do time do MagoAgent, recrutado por outro agente para uma tarefa. Pasta de trabalho: {}. Faça o que for pedido e responda de forma \
              objetiva. Se outro agente te fizer uma pergunta (ask), a sua resposta volta para ele. Para falar com os outros agentes use `magoagent list|ask|check` \
              (ou o MCP magoagent). Para rodar testes ou uma API e acompanhar, abra um terminal com create_terminal (ou `magoagent terminal <comando>`): ele fica \
-             ligado a você por corda e você lê a tela dele com read_terminal (`magoagent check <nome>`). {language}",
-            chat.name, chat.cwd
+             ligado a você por corda e você lê a tela dele com read_terminal (`magoagent check <nome>`). Para dar notícia de como você está \
+             (\"estou parado esperando X\", \"terminei\", \"preciso de você\") use notify (`magoagent notify <texto>`); o que você avisa ou manda a \
+             um chat (chat_send) chega com o seu nome na frente (\"{}: …\"), então a pessoa e a Luna sabem quem fala. {language}",
+            chat.name, chat.cwd, chat.name
         );
     }
     let language = match prefs.language {
@@ -371,6 +373,10 @@ mod tests {
                 && prompt.contains("Code review humano")
                 && prompt.contains("Padronização (style-edsu)")
         );
+        // a recruit is told how to say how it is, and that its name goes in front of what it says
+        let recruit = Chat { name: "Ana".into(), recruit: true, ..chat("x") };
+        let told = system_prompt(&prefs, &recruit);
+        assert!(told.starts_with("Você é Ana,") && told.contains("magoagent notify") && told.contains("(\"Ana: …\")"), "{told}");
         prefs.style_skill = "C:/nao/existe/SKILL.md".into();
         assert!(system_prompt(&prefs, &chat("x")).contains("não achei a skill de estilo (C:/nao/existe/SKILL.md)"));
         assert!(prompt.contains("no idioma em que a pessoa fala"));

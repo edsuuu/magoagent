@@ -3,8 +3,9 @@
 //! plain), the model's pill and a box that grows with the words. Its ⤢ opens the whole mini chat in the island instead.
 
 use super::log::said;
-use super::paint::{BLACK, CARD, DIM_3, EXPAND, INK, Out, View, aim, font};
-use crate::app::chat::list::glyph;
+use super::paint::{AMBER, BLACK, CARD, DIM_3, EXPAND, INK, Out, View, aim, font};
+use crate::app::chat::list::{clipped, glyph};
+use crate::app::chat::mini_agents::{KinLook, pressable};
 use crate::app::mascot::mago::MagoState;
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
@@ -18,13 +19,23 @@ pub(super) fn prompt_height(messages: usize) -> f32 {
 const ARROW_UP: &[&[(f32, f32)]] = &[&[(12.0, 18.5), (12.0, 5.5)], &[(6.5, 11.0), (12.0, 5.5), (17.5, 11.0)]];
 
 /// `.chat-body` of a conversation page (this one and a session's): padding 12 16 14 84, a column 6 apart; (the log,
-/// the row over the box with whose it is, the box). The box is `bar` tall (`bar_height`: it grows with the words).
-pub(super) fn chat_body(page: Rect, bar: f32) -> (Rect, Rect, Rect) {
+/// the row over the box with whose it is, the box). The box is `bar` tall (`bar_height`: it grows with the words); the
+/// log starts `head` under the top, under the row of the conversation's name (`NAME_ROW`) when there is one.
+pub(super) fn chat_body(page: Rect, bar: f32, head: f32) -> (Rect, Rect, Rect) {
     let body = Rect::from_min_max(Pos2::new(page.left() + 84.0, page.top() + 12.0), Pos2::new(page.right() - 16.0, page.bottom() - 14.0));
     let bar = Rect::from_min_max(Pos2::new(body.left(), body.bottom() - bar), body.max);
     let chip_row = Rect::from_min_max(Pos2::new(body.left(), bar.top() - 6.0 - 22.0), Pos2::new(body.right() - 10.0, bar.top() - 6.0));
-    let log = Rect::from_min_max(Pos2::new(body.left(), body.top()), Pos2::new(body.right() - 22.0, chip_row.top() - 6.0));
+    let log = Rect::from_min_max(Pos2::new(body.left(), body.top() + head), Pos2::new(body.right() - 22.0, chip_row.top() - 6.0));
     (log, chip_row, bar)
+}
+
+/// The row over the conversation's log: who it is (asked: "cada agente no chat precisa ter um nome, pois na tab não
+/// conseguimos ver quem é quem"), the Maestro's agents (or the way back to it) and the ⤢, each in a room of its own.
+pub(super) const NAME_ROW: f32 = 28.0;
+
+/// The name row of `page`: from the log's left to the card's right, its middle where the ⤢ always was.
+pub(super) fn name_row(page: Rect) -> Rect {
+    Rect::from_min_max(Pos2::new(page.left() + 84.0, page.top() + 6.0), Pos2::new(page.right() - 6.0, page.top() + 30.0))
 }
 
 /// The most lines a box grows to (asked: "não quebra a linha, sempre vai uma linha direta"); past them its words scroll.
@@ -86,7 +97,7 @@ pub(super) fn send_field(
     salt: &str,
 ) -> (egui::Response, bool) {
     let (edit, enter) = growing_field(ui, field, draft, id, hint);
-    let send = ui.interact(button, ui.scope_id().with(salt), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+    let send = pressable(ui, button, ui.scope_id().with(salt), "Enviar");
     let pressed = send.is_pointer_button_down_on();
     let ground = Rect::from_center_size(button.center(), button.size() * if pressed { 0.94 } else { 1.0 });
     painter.circle_filled(ground.center(), ground.width() / 2.0, if draft.trim().is_empty() { INK.gamma_multiply(0.5) } else { INK });
@@ -107,14 +118,24 @@ impl DrawingApp {
         let state = MagoState::from_agent(row.state, time);
         aim(view, Pos2::new(origin.x + 52.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 44.0, state);
 
-        // ⤢: the whole mini chat in the island (attachments, folder, mode, model, dictation, voice)
-        let expand = Rect::from_center_size(Pos2::new(page.right() - 18.0, page.top() + 18.0), Vec2::splat(20.0));
-        let response = ui.interact(expand, ui.scope_id().with("island_prompt_full"), Sense::click()).on_hover_text("Abrir o chat completo");
+        // the name row: ⤢ (the whole mini chat in the island: attachments, folder, mode, model, dictation, voice), the
+        // Maestro's agents and who it is. No tip: they would cover the conversation (asked: "tem o tooltip que atrapalha")
+        let head = name_row(page);
+        let cy = head.center().y;
+        let expand = Rect::from_center_size(Pos2::new(head.right() - 12.0, cy), Vec2::splat(24.0));
+        let response = pressable(ui, expand, ui.scope_id().with("island_prompt_full"), "Abrir o chat completo");
         glyph(&painter, expand.center(), 14.0, 1.5, if response.hovered() { INK } else { DIM_3 }, EXPAND);
         out.full = response.clicked();
+        // an agent picked (or the Maestro again) is shown here, in the island: no floating window opens for it
+        let kin_look = KinLook { ground: Color32::from_white_alpha(15), lit: Color32::from_white_alpha(30), ink: INK, font: font(12.0), height: 24.0 };
+        let (pick, room) = self.kin_button(ui, row, expand.left() - 6.0, cy, &kin_look, time);
+        if let Some(id) = pick {
+            self.chat_agent = Some(id);
+        }
+        self.island_who(&painter, row, Rect::from_min_max(head.min, Pos2::new(expand.left() - 6.0 - room - 8.0, head.max.y)));
 
         let draft_id = egui::Id::unique("chat_draft");
-        let (log, chip_row, bar) = chat_body(page, bar_height(ui, draft_id));
+        let (log, chip_row, bar) = chat_body(page, bar_height(ui, draft_id), NAME_ROW);
         let messages: Vec<&ChatItem> = self.transcripts.get(&row.id).map(|transcript| said(&transcript.items).collect()).unwrap_or_default();
         let working = matches!(row.state, AgentState::Working(_));
         out.picture = self.island_log(ui, log, &messages, working, time).or(out.picture.take());
@@ -123,12 +144,12 @@ impl DrawingApp {
         let chat = self.chats.iter().find(|chat| chat.id == row.id);
         let model = chat.map(|chat| if chat.model.is_empty() { "padrão".to_string() } else { chat.model.clone() }).unwrap_or_default();
         let label = format!("{} · {model}", row.spec.label());
-        let name = crate::app::chat::list::clipped(ui.painter(), label, font(10.5), Color32::from_rgb(0x7b, 0x80, 0x89), chip_row.width() - 40.0);
+        let name = clipped(ui.painter(), label, font(10.5), Color32::from_rgb(0x7b, 0x80, 0x89), chip_row.width() - 40.0);
         let chip = Rect::from_min_size(
             Pos2::new(chip_row.right() - name.size().x - 8.0 - 6.0 - 5.0 - 8.0, chip_row.top() + 2.0),
             Vec2::new(name.size().x + 27.0, 20.0),
         );
-        let response = ui.interact(chip, ui.scope_id().with("island_prompt_model"), Sense::click()).on_hover_text("Trocar o modelo no chat completo");
+        let response = pressable(ui, chip, ui.scope_id().with("island_prompt_model"), "Trocar o modelo no chat completo");
         painter.rect_filled(chip, 10, Color32::from_white_alpha(if response.hovered() { 26 } else { 15 }));
         painter.circle_filled(Pos2::new(chip.left() + 11.0, chip.center().y), 3.0, line.map_or(INK, |line| line.color));
         painter.galley(Pos2::new(chip.left() + 19.0, chip.center().y - name.size().y / 2.0), name, Color32::from_rgb(0x7b, 0x80, 0x89));
@@ -148,6 +169,31 @@ impl DrawingApp {
         }
         if self.chat_draft.is_empty() {
             self.chat_draft = draft;
+        }
+    }
+
+    /// Who the conversation is with, in `room` of the name row: the Maestro with its crown as Luna, an agent by its own
+    /// name; after it, dimmer, the Maestro's chat title and what it does now. The name is cut only when nothing else fits.
+    fn island_who(&self, painter: &Painter, row: &AgentRow, room: Rect) {
+        let chat = self.chats.iter().find(|chat| chat.id == row.id);
+        let maestro = chat.is_some_and(|chat| !chat.recruit);
+        let (who, about) = match chat {
+            Some(_) if maestro => ("Luna".to_string(), format!("{} · {}", self.chat_short_name(row), self.list_note(row, None))),
+            Some(chat) => (chat.name.clone(), self.list_note(row, None)),
+            None => (self.chat_short_name(row), self.list_note(row, None)),
+        };
+        let crown = if maestro { 18.0 } else { 0.0 };
+        let name = clipped(painter, who, font(13.5), INK, (room.width() - crown).max(0.0));
+        let cy = room.center().y;
+        if maestro {
+            crate::app::ui::maestro_crown(painter, Pos2::new(room.left() + 7.0, cy + 0.5), 0.8, AMBER);
+        }
+        let left = room.left() + crown;
+        let after = left + name.size().x + 8.0;
+        painter.galley(Pos2::new(left, cy - name.size().y / 2.0), name, INK);
+        if room.right() - after > 30.0 {
+            let about = clipped(painter, about, font(11.5), DIM_3, room.right() - after);
+            painter.galley(Pos2::new(after, cy - about.size().y / 2.0), about, DIM_3);
         }
     }
 }

@@ -534,11 +534,12 @@ Abre um chat novo e o mostra: `agent` claude ou codex (vazio: o de Ajustes), na 
 
 ### `chat_open`
 
-Mostra um chat à pessoa.
+Mostra um chat à pessoa: na tela de chat do app (place app, o padrão) ou na conversa da ilha (place island), como escolher um agente da Luna no botão Agentes da conversa da ilha (ou Voltar à Luna), sem abrir janela flutuante.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
 | `chat` (obrigatório) | string | o nome do chat (ou parte dele), como chat_list mostra; vazio: o chat aberto |
+| `place` | string: `app`, `island` | onde mostrar: app (o padrão) ou island (a conversa da ilha) |
 
 ### `chats_view`
 

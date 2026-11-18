@@ -25,7 +25,10 @@ impl DrawingApp {
     /// app's window comes to the front with it.
     pub(crate) fn act(&mut self, action: &str, args: &Value) -> Result<String, String> {
         let result = self.act_on(action, args);
-        if result.is_ok() && matches!(action, "ide_folder" | "open_path" | "open_as_note" | "chat_new" | "chat_open" | "chat_node" | "chats_view") {
+        // a chat shown in the island is over every window already
+        let in_island = args["place"] == "island";
+        if result.is_ok() && !in_island && matches!(action, "ide_folder" | "open_path" | "open_as_note" | "chat_new" | "chat_open" | "chat_node" | "chats_view")
+        {
             self.bring_to_front();
         }
         result
@@ -112,6 +115,16 @@ impl DrawingApp {
                 let id = if text("chat").is_empty() { self.chat_agent.clone().ok_or("nenhum chat aberto")? } else { self.chat_named(&text("chat"))? };
                 self.chat_switch_agent(&id, &text("agent"))
             }
+            "chat_open" if text("place") == "island" => {
+                // as the Agentes button of the island's conversation: the chat in the island, no window over the screen
+                let id = self.chat_named(&text("chat"))?;
+                if !self.prefs.island {
+                    return Err("A ilha está desligada (set_setting island on liga).".into());
+                }
+                self.chat_agent = Some(id);
+                self.island_show_page(crate::app::island::Tab::Chat);
+                Ok("Chat aberto na conversa da ilha.".into())
+            }
             "chat_open" => {
                 let id = self.chat_named(&text("chat"))?;
                 self.chat_agent = Some(id);
@@ -133,7 +146,10 @@ impl DrawingApp {
                 if text("text").is_empty() {
                     return Err("diga o texto".into());
                 }
-                self.chat_outbox.push((id, text("text")));
+                // another agent's words go signed with its name: in the chat they are not taken for the person's
+                let asker = text("asker");
+                let words = if asker.is_empty() || asker == id { text("text") } else { crate::app::maestro::signed(&self.speaker(&asker), &text("text")) };
+                self.chat_outbox.push((id, words));
                 Ok("Mensagem enviada ao chat.".into())
             }
             "chat_command" => {
