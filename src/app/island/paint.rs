@@ -150,6 +150,8 @@ pub(crate) struct Out {
     pub(super) hovered: bool,
     /// A button of the mouse is down.
     pub(super) holding: bool,
+    /// A field of the island has the keyboard, in a window the system has in focus: it holds the island open.
+    pub(super) typing: bool,
     /// The agent whose pill the pointer is on.
     pub(super) focus: Option<String>,
     /// The height of the page's content (for the pages that grow with it).
@@ -310,6 +312,10 @@ impl DrawingApp {
         let grip = ui.interact(rect, ui.scope_id().with("island_grip"), Sense::click_and_drag());
         out.drag = grip.drag_started();
         out.holding = ui.input(|input| input.pointer.any_down()) && out.hovered;
+        // asked: "se eu tiver com o foco no input na ilha, ela não pode fechar"; another window taking the system's focus
+        // lets it fold again
+        let focused = ui.memory(|memory| memory.focused());
+        out.typing = ui.input(|input| input.focused) && focused.and_then(|id| ui.ctx().read_response(id)).is_some_and(|field| rect.intersects(field.rect));
         let opens = anim.x < EXPANDED_W - 40.0;
         // what opens by the click shows the hand (asked: "precisa ter o cursor pointer")
         let grip = if opens { grip.on_hover_cursor(CursorIcon::PointingHand) } else { grip };

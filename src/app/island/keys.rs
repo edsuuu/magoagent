@@ -94,8 +94,10 @@ impl DrawingApp {
                 ui.memory_mut(|memory| memory.request_focus(egui::Id::unique("chat_draft")));
             }
         }
+        // typing in a field of the island (a question's "Outro", the chat's box): the digits, Y and N are its letters
+        let typing = ui.ctx().egui_wants_keyboard_input();
         // a permission's N and Y, the keys its buttons show
-        if self.island.open && self.person_asks.borrow().first().is_some_and(|ask| ask.questions.is_empty()) {
+        if self.island.open && !typing && self.person_asks.borrow().first().is_some_and(|ask| ask.questions.is_empty()) {
             let allow = ui.input(|input| {
                 let bare = input.modifiers.is_none();
                 if bare && input.key_pressed(egui::Key::Y) {
@@ -110,7 +112,8 @@ impl DrawingApp {
                 self.person_asks.borrow_mut().remove(0).send(allow);
             }
         }
-        let option_count = self.person_asks.borrow().first().and_then(|ask| ask.questions.get(ask.step)).map_or(0, |question| question.options.len());
+        let options = self.person_asks.borrow().first().and_then(|ask| ask.questions.get(ask.step)).map_or(0, |question| question.options.len());
+        let option_count = if typing { 0 } else { options };
         let key_actions = actions(&ui.input(|input| input.clone()), self.island.open, option_count);
         let has_choose = key_actions.iter().any(|action| matches!(action, KeyAction::ChooseOption(_)));
         if has_choose && let Some(ask) = self.person_asks.borrow_mut().first_mut() {

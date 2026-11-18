@@ -1,5 +1,5 @@
 use super::fold::CONTEXT;
-use super::{ADDED, ADDED_WORD, Compare, Item, REMOVED, REMOVED_WORD};
+use super::{ADDED, ADDED_WORD, Compare, Item, REMOVED, REMOVED_WORD, word_spans};
 use crate::app::filetree::ui::outline;
 use crate::editor::theme as t;
 use crate::editor::{DiffRow, RowKind, highlight, word_marks};
@@ -143,11 +143,7 @@ impl Look<'_> {
                 row.right.into_iter().for_each(|line| number(rect.left() + self.lead + 2.0 * self.num_w, line));
             }
         }
-        // side by side the text is the columns' own text edit (edit.rs), over this background
-        if numbers.is_some() {
-            return;
-        }
-        // the words of a modified line that differ from its pair
+        // the words of a modified line that differ from its pair, as spans as tall as the row (word_spans)
         let marks = match (row.kind, row.left, row.right, partner) {
             (RowKind::Change, Some(line), _, Some(other)) => word_marks(at(self.old, Some(line)), at(self.new, Some(other))).0,
             (RowKind::Change, None, Some(line), Some(other)) => word_marks(at(self.old, Some(other)), at(self.new, Some(line))).1,
@@ -155,16 +151,25 @@ impl Look<'_> {
         };
         let (index, from, word) = if row.left.is_some() { (row.left, self.old, REMOVED_WORD) } else { (row.right, self.new, ADDED_WORD) };
         let Some(text) = index.and_then(|index| from.get(index)) else { return };
-        let x = rect.left() + self.lead + 2.0 * self.num_w + 12.0 * self.z;
+        let spans = word_spans(text, marks);
+        // side by side the text is the columns' own text edit (edit.rs, its first row at the room's left + 4), over this
+        // background: only the spans go here
+        let side_by_side = numbers.is_some();
+        if side_by_side && spans.is_empty() {
+            return;
+        }
+        let left = if side_by_side { rect.left() } else { rect.left() + self.lead + 2.0 * self.num_w + 12.0 * self.z };
+        let x = left + if side_by_side { 4.0 } else { 0.0 } - shift;
         let galley = ui.fonts_mut(|fonts| fonts.layout_job(highlight::layout(self.lang, text, self.font.clone(), self.row_h)));
         // the text slides under the numbers, which stay
-        let painter = painter.with_clip_rect(rect.with_min_x(x).intersect(painter.clip_rect()));
-        let x = x - shift;
-        for mark in marks {
-            let edge = |byte: usize| galley.pos_from_cursor(egui::text::CCursor::new(text[..byte.min(text.len())].chars().count())).left();
-            painter.rect_filled(Rect::from_min_max(Pos2::new(x + edge(mark.start), rect.top()), Pos2::new(x + edge(mark.end), rect.bottom())), 0, word);
+        let painter = painter.with_clip_rect(rect.with_min_x(left).intersect(painter.clip_rect()));
+        let edge = |byte: usize| galley.pos_from_cursor(egui::text::CCursor::new(text[..byte.min(text.len())].chars().count())).left();
+        for span in spans {
+            painter.rect_filled(Rect::from_x_y_ranges(x + edge(span.start)..=x + edge(span.end), rect.y_range()), 2.0 * self.z, word);
         }
-        painter.galley(Pos2::new(x, rect.top()), galley, t::EDITOR_TEXT);
+        if !side_by_side {
+            painter.galley(Pos2::new(x, rect.top()), galley, t::EDITOR_TEXT);
+        }
     }
 }
 

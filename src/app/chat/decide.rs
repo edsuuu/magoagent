@@ -135,7 +135,35 @@ impl PersonAsk {
             return false;
         }
         *picked = vec![option];
+        // one answer: an option picked takes the place of words typed in "Outro"
+        self.other[step].clear();
         self.next()
+    }
+
+    /// The words typed in "Outro" for the question shown, sent (Enter or its button): in a single choice they take the
+    /// place of the option picked; on to the next question. True when that answered the last one.
+    pub(crate) fn answer_other(&mut self) -> bool {
+        let step = self.step.min(self.questions.len().saturating_sub(1));
+        let Some(question) = self.questions.get(step) else { return false };
+        if self.other[step].trim().is_empty() {
+            return false;
+        }
+        if !question.multiple {
+            self.picked[step].clear();
+        }
+        self.next()
+    }
+
+    /// The answers in words, for a session outside the app: its hook takes only the options' labels, so an answer
+    /// written in "Outro" goes as the reason of a refusal, which Claude Code reads and goes on with.
+    pub(crate) fn answers_in_words(&self) -> String {
+        let answers = self.answers();
+        let lines: Vec<String> = self
+            .questions
+            .iter()
+            .map(|question| format!("- {}: {}", question.text, answers.get(&question.text).and_then(Value::as_str).unwrap_or_default()))
+            .collect();
+        format!("A pessoa respondeu no MagoAgent (com palavras próprias, fora das opções); siga com estas respostas:\n{}", lines.join("\n"))
     }
 
     /// On past the question shown (a multiple choice's OK): true when it was the last.
@@ -178,6 +206,7 @@ impl PersonAsk {
                     String::new()
                 }
             }
+            Some(source) if self.other.iter().any(|other| !other.trim().is_empty()) => refusal(&source.event, &self.answers_in_words()),
             Some(source) => question_answer(&source.event, &self.input, &self.hook_answers()),
         };
         let _ = self.reply.send(Ok(text));
@@ -355,18 +384,23 @@ impl DrawingApp {
             }
             for (option, (label, meaning)) in question.options.iter().enumerate() {
                 let on = ask.picked[step].contains(&option);
-                let height = if meaning.is_empty() { 34.0 } else { 50.0 };
+                // the whole label and what it means, wrapped (asked: "fica com os ... e eu tenho que passar o mouse em cima
+                // de cada opção")
+                let room = ui.available_width() - 24.0;
+                let mark = if question.multiple { if on { "☑" } else { "☐" } } else { "" };
+                let number = format!("{}{}. {label}", if mark.is_empty() { String::new() } else { format!("{mark} ") }, option + 1);
+                let title_galley = ui.painter().layout(number, FontId::proportional(14.0), look.text, room);
+                let meaning_galley = (!meaning.is_empty()).then(|| ui.painter().layout(meaning.clone(), FontId::proportional(12.5), look.muted, room));
+                let height = (8.0 + title_galley.size().y + meaning_galley.as_ref().map_or(0.0, |galley| 3.0 + galley.size().y) + 8.0).max(34.0);
                 let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
                 let response = response.on_hover_cursor(CursorIcon::PointingHand);
                 let painter = ui.painter();
                 let ground = if response.hovered() { AMBER.gamma_multiply(0.22) } else { well };
                 painter.rect(rect, 8, ground, Stroke::new(1.0, if on { AMBER } else { well_edge }), StrokeKind::Inside);
-                let mark = if question.multiple { if on { "☑" } else { "☐" } } else { "" };
-                let number = format!("{}{}. {label}", if mark.is_empty() { String::new() } else { format!("{mark} ") }, option + 1);
-                painter.text(Pos2::new(rect.left() + 12.0, rect.top() + 17.0), egui::Align2::LEFT_CENTER, number, FontId::proportional(14.0), look.text);
-                if !meaning.is_empty() {
-                    let galley = crate::app::chat::list::clipped(painter, meaning.clone(), FontId::proportional(12.5), look.muted, rect.width() - 24.0);
-                    painter.galley(Pos2::new(rect.left() + 12.0, rect.top() + 28.0), galley, look.muted);
+                let title_bottom = rect.top() + 8.0 + title_galley.size().y;
+                painter.galley(Pos2::new(rect.left() + 12.0, rect.top() + 8.0), title_galley, look.text);
+                if let Some(galley) = meaning_galley {
+                    painter.galley(Pos2::new(rect.left() + 12.0, title_bottom + 3.0), galley, look.muted);
                 }
                 if response.clicked() {
                     let picked = &mut ask.picked[step];
@@ -374,6 +408,7 @@ impl DrawingApp {
                         if on { picked.retain(|chosen| *chosen != option) } else { picked.push(option) }
                     } else {
                         *picked = vec![option];
+                        ask.other[step].clear();
                         // one answer: on to the next question, or send when it was the last
                         if step + 1 < ask.questions.len() {
                             ask.step = step + 1;
@@ -383,8 +418,8 @@ impl DrawingApp {
                     }
                 }
             }
-            // another answer, written (a hook takes only the options' labels)
-            if outside.is_none() {
+            // another answer, written (a session outside the app gets it as words: `answers_in_words`)
+            {
                 let other = &mut ask.other[step];
                 card.well_frame().inner_margin(egui::Margin::symmetric(10, 6)).show(ui, |ui| {
                     let field = egui::TextEdit::singleline(other)
@@ -483,6 +518,31 @@ mod tests {
         assert_eq!(ask.picked[1], vec![1]);
         assert!(ask.next(), "its OK on the last question sends");
         assert!(ask.guarded(10.0) && ask.guarded(10.5) && !ask.guarded(10.7), "the first 600 ms of the card don't count");
+    }
+
+    #[test]
+    fn words_of_ones_own_take_the_place_of_the_option_and_the_other_way_round() {
+        let (mut ask, _answers) = asked();
+        assert!(!ask.answer_other(), "nothing typed: nothing answered");
+        ask.picked[0] = vec![0];
+        ask.other[0] = "Roxo".into();
+        assert!(!ask.answer_other() && ask.step == 1, "on to the next question");
+        assert!(ask.picked[0].is_empty(), "a single choice: the words in place of the option");
+        // in a multiple choice the words join the options ticked
+        ask.picked[1] = vec![1];
+        ask.other[1] = "Caqui".into();
+        assert!(ask.answer_other(), "the last question answered");
+        assert_eq!(ask.picked[1], vec![1]);
+        assert_eq!(Value::Object(ask.answers()), json!({ "Qual cor?": "Roxo", "Quais frutas?": "Uva, Caqui" }));
+        assert_eq!(
+            ask.answers_in_words(),
+            "A pessoa respondeu no MagoAgent (com palavras próprias, fora das opções); siga com estas respostas:\n- Qual cor?: Roxo\n- Quais frutas?: Uva, Caqui"
+        );
+        // an option picked after the words takes their place
+        let (mut ask, _answers) = asked();
+        ask.other[0] = "Roxo".into();
+        ask.pick(1);
+        assert!(ask.other[0].is_empty() && ask.picked[0] == vec![1]);
     }
 
     #[test]

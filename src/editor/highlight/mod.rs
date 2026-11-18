@@ -380,7 +380,17 @@ fn markup(lang: &Lang, s: &str, out: &mut Vec<Tok>) {
             i = e;
             continue;
         }
-        if rest.starts_with("<?php") || (blade && (rest.starts_with("{{") || rest.starts_with("{!!") || rest.starts_with("@php"))) {
+        // Blade's `@@foreach` is the text `@foreach`, no directive
+        if let Some(escaped) = rest.strip_prefix("@@").filter(|_| blade) {
+            i += 2 + escaped.bytes().take_while(|byte| is_ident(*byte)).count();
+            continue;
+        }
+        // `@php(...)` is one line of PHP (a directive with its parenthesis, below); a bare `@php` runs to `@endphp`
+        let php_block = blade
+            && rest.starts_with("@php")
+            && !rest[4..].trim_start_matches([' ', '\t']).starts_with('(')
+            && !rest[4..].starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_');
+        if rest.starts_with("<?php") || (blade && (rest.starts_with("{{") || rest.starts_with("{!!"))) || php_block {
             let (o, c) = if rest.starts_with("<?php") {
                 ("<?php", "?>")
             } else if rest.starts_with("{!!") {
@@ -402,7 +412,8 @@ fn markup(lang: &Lang, s: &str, out: &mut Vec<Tok>) {
             i = (e + c.len()).min(s.len());
             continue;
         }
-        if blade && b[i] == b'@' && i + 1 < b.len() && b[i + 1].is_ascii_alphabetic() {
+        // a directive: `@` not after a letter (an address like `a@b.com` is text, as Blade has it)
+        if blade && b[i] == b'@' && i + 1 < b.len() && b[i + 1].is_ascii_alphabetic() && (i == 0 || !is_ident(b[i - 1])) {
             let mut e = i + 1;
             while e < b.len() && is_ident(b[e]) {
                 e += 1;

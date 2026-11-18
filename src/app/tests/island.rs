@@ -525,3 +525,73 @@ fn a_note_wears_tape_across_its_top_edge() {
     let small = crate::render::tape(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::new(40.0, 40.0)));
     assert!(small.iter().all(|point| point.x > 0.0 && point.x < 40.0), "a small note keeps it inside: {small:?}");
 }
+
+/// Asked: "não consigo ler o texto completo, quando a IA me pergunta algo, fica com os ... e eu tenho que passar o mouse
+/// em cima de cada opção, para ler o que seria cada uma, e não tem a opção de Outro": the question and what each option
+/// means whole, the card as tall as they need, and "Outro" to answer in one's own words (Enter sends).
+#[test]
+fn a_question_shows_its_options_whole_and_takes_an_answer_of_ones_own() {
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    let (reply, answers) = std::sync::mpsc::channel();
+    let question = "Como você quer juntar as alterações da branch de desenvolvimento com a principal antes de gerar a release nova?";
+    let meaning = "Mantém o ramo atual e cria um commit de merge com todas as alterações, sem reescrever o histórico que já foi enviado";
+    let request = json!({ "tool_name": "AskUserQuestion", "input": { "questions": [
+        { "question": question, "header": "Merge", "multiSelect": false,
+          "options": [{ "label": "Merge com commit", "description": meaning }, { "label": "Rebase", "description": "Reescreve os commits por cima da main" }] },
+    ] } });
+    app.person_asks.get_mut().push(PersonAsk::new(format!("{}1", crate::app::maestro::outside::ASK_PREFIX), &request, reply));
+    run(&mut app, &ctx, 1.0, 3.0, vec![]);
+    let drawn = island_frame(&mut app, &ctx, 3.0, vec![]);
+    let has = |wanted: &str| drawn.iter().any(|(text, _)| text == wanted);
+    assert!(has(question) && has(meaning), "whole, without the …: {:?}", drawn.iter().map(|(text, _)| text).collect::<Vec<_>>());
+    assert!(has("Merge com commit") && has("Rebase"));
+    assert!(app.island.size().y > 200.0, "taller than the fixed card it was: {:?}", app.island.size());
+    // "Outro": a click on it, the words and Enter answer the question with them
+    let other = drawn.iter().find(|(text, _)| text == "Outro: escreva a sua resposta…").map(|(_, rect)| rect.center()).expect("the box of Outro");
+    island_frame(&mut app, &ctx, 3.03, vec![egui::Event::PointerMoved(other)]);
+    island_frame(&mut app, &ctx, 3.06, vec![button(other, true)]);
+    island_frame(&mut app, &ctx, 3.1, vec![button(other, false)]);
+    island_frame(&mut app, &ctx, 3.15, vec![egui::Event::Text("Squash".into())]);
+    // a digit typed there is a letter of the answer, not the option of that number
+    island_frame(&mut app, &ctx, 3.2, vec![egui::Event::Text(" 2".into()), key_press(Key::Num2)]);
+    assert_eq!(app.person_asks.borrow()[0].other[0], "Squash 2");
+    assert!(answers.try_recv().is_err(), "nothing went yet");
+    island_frame(&mut app, &ctx, 3.25, vec![key_press(Key::Enter)]);
+    let sent: Value = serde_json::from_str(&answers.try_recv().expect("Enter sent it").unwrap()).unwrap();
+    assert_eq!(sent["updatedInput"]["answers"], json!({ question: "Squash 2" }));
+    assert!(app.person_asks.borrow().is_empty());
+}
+
+/// Asked: "quando estiver criando a mensagem na ilha ele não quebra a linha, sempre vai uma linha direta" and "se eu
+/// tiver com o foco no input na ilha, ela não pode fechar": the words wrap and the box grows with them, and while the
+/// box has the keyboard the island stays open after the pointer left.
+#[test]
+fn the_islands_box_wraps_its_words_and_holds_the_island_open_while_typing() {
+    let ctx = Context::default();
+    let mut app = app_with_island();
+    app.island_show("a", 1.0);
+    run(&mut app, &ctx, 1.0, 2.5, vec![]);
+    assert_eq!(app.island.size().x, EXPANDED_W);
+    let drawn = island_frame(&mut app, &ctx, 2.5, vec![]);
+    let (_, hint) = drawn.iter().find(|(text, _)| text == "Pergunte qualquer coisa…").expect("the box");
+    let (field, line) = (hint.center(), hint.height());
+    island_frame(&mut app, &ctx, 2.52, vec![egui::Event::PointerMoved(field)]);
+    island_frame(&mut app, &ctx, 2.56, vec![button(field, true)]);
+    island_frame(&mut app, &ctx, 2.6, vec![button(field, false)]);
+    let words = "uma mensagem longa para o agente que passa da largura da caixa da ilha e precisa quebrar a linha em vez de seguir reta";
+    island_frame(&mut app, &ctx, 2.65, vec![egui::Event::Text(words.into())]);
+    run(&mut app, &ctx, 2.7, 3.2, vec![]);
+    let drawn = island_frame(&mut app, &ctx, 3.2, vec![]);
+    let (_, rect) = drawn.iter().find(|(text, _)| text == words).expect("the words in the box");
+    assert!(rect.height() > line * 1.6, "wrapped to more than a line: {rect:?}, a line {line}");
+    assert_eq!(app.chat_draft, words, "Enter did not go: the words stay in the box");
+    // the pointer leaves: well past the 15 s it would fold after, it is still open
+    island_frame(&mut app, &ctx, 3.25, vec![egui::Event::PointerGone]);
+    run(&mut app, &ctx, 3.3, 22.0, vec![]);
+    assert_eq!(app.island.size().x, EXPANDED_W, "open while the box has the keyboard");
+    // the box let go (Esc): it folds as usual
+    island_frame(&mut app, &ctx, 22.0, vec![key_press(Key::Escape)]);
+    run(&mut app, &ctx, 22.05, 40.0, vec![]);
+    assert!(app.island.size().x < EXPANDED_W - 50.0, "folded once the box let go: {:?}", app.island.size());
+}
