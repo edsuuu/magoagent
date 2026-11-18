@@ -290,6 +290,9 @@ fn sobre_offers_the_check_and_then_the_update_with_its_notes() {
     use crate::app::system::updates::{Release, UpdateState};
     let mut window = Window::at(tab_of("Sobre"));
     assert!(window.has("Verificar atualizações"), "{:?}", window.texts);
+    // when the app looks by itself: Sempre (on opening and every hour) by default
+    assert!(window.has("Procurar atualizações") && window.has("Sempre"), "{:?}", window.texts);
+    assert_eq!(window.app.prefs.update_check, 0);
     let release =
         Release { version: "99.0.0".into(), notes: "## Novo\n- mais legível".into(), page: String::new(), installer: None, digest: None, size: None };
     window.app.updates.state = UpdateState::Available(release);
