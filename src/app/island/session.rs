@@ -9,7 +9,7 @@
 use super::forms;
 use super::log::said;
 use super::paint::{CARD, DIM, DIM_3, INK, Out, View, aim, font};
-use super::prompt::{chat_body, send_field};
+use super::prompt::{bar_height, chat_body, send_field};
 use crate::app::chat::list::clipped;
 use crate::app::mascot::mago::MagoState;
 use crate::app::ui::agents::AgentState;
@@ -81,7 +81,7 @@ impl DrawingApp {
         let origin = view.origin.get();
         let height = page.bottom() + 10.0 - origin.y;
         aim(view, Pos2::new(origin.x + 52.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 44.0, MagoState::from_agent(state, time));
-        let (log, chip_row, bar) = chat_body(page);
+        let (log, chip_row, bar) = chat_body(page, bar_height(ui, session_draft_id(&session.id)));
         match &session.transcript {
             Some(transcript) => {
                 let messages: Vec<&ChatItem> = said(&transcript.items).collect();
@@ -110,7 +110,7 @@ impl DrawingApp {
         // the box, and the way to the terminal at its right
         painter.rect_filled(bar, 12, Color32::from_white_alpha(18));
         let width = ui.painter().layout_no_wrap("Ir ao terminal".to_string(), font(11.5), INK).size().x + 22.0;
-        let go = forms::chip(ui, Pos2::new(bar.right() - 7.0 - width, bar.center().y - 13.0), "Ir ao terminal", false);
+        let go = forms::chip(ui, Pos2::new(bar.right() - 7.0 - width, bar.bottom() - 20.0 - 13.0), "Ir ao terminal", false);
         if go.clicked() {
             out.terminal = Some(session.id.clone());
         }
@@ -137,7 +137,8 @@ impl DrawingApp {
     /// The box of a Claude Code session, up to `right`: the field and the round send button (`island_prompt`'s). Enter or
     /// the button sends; the box says how it went (`Delivery::notice`) while it is empty.
     fn island_session_box(&mut self, ui: &mut egui::Ui, painter: &Painter, bar: Rect, right: f32, id: &str, notice: Option<String>, time: f64) {
-        let send_rect = Rect::from_center_size(Pos2::new(right - 8.0 - 14.0, bar.center().y), Vec2::splat(28.0));
+        // the round button stays at the box's last line as the words grow
+        let send_rect = Rect::from_center_size(Pos2::new(right - 8.0 - 14.0, bar.bottom() - 20.0), Vec2::splat(28.0));
         let field = Rect::from_min_max(Pos2::new(bar.left() + 10.0, bar.top() + 6.0), Pos2::new(send_rect.left() - 8.0, bar.bottom() - 6.0));
         // the island still opening: no room for the box yet
         if field.width() < 24.0 {
@@ -154,7 +155,7 @@ impl DrawingApp {
             painter.galley(Pos2::new(field.left() + 4.0, field.center().y - galley.size().y / 2.0), galley, INK);
         }
         let hint = if notice.is_some() { "" } else { "Mensagem para esta sessão…" };
-        let (edit, sent) = send_field(ui, painter, (field, send_rect), &mut draft, egui::Id::unique(("island_session_draft", id)), hint, "island_session_send");
+        let (edit, sent) = send_field(ui, painter, (field, send_rect), &mut draft, session_draft_id(id), hint, "island_session_send");
         if sent {
             // a message that did not go stays in the box, with the reason over it
             let words = match self.outside_message(id, &draft) {
@@ -173,4 +174,9 @@ impl DrawingApp {
             session.draft = draft;
         }
     }
+}
+
+/// The id of the box of session `id` (its field, and the height its words keep for `bar_height`).
+fn session_draft_id(id: &str) -> egui::Id {
+    egui::Id::unique(("island_session_draft", id))
 }

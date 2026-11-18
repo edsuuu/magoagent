@@ -295,7 +295,8 @@ fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() 
     app.apply_agent_command(UiCommand::Recruit { from: boss.clone(), command: "codex".into(), worktree: false, mode: None, reply: reply.clone() });
     assert!(said.recv().unwrap().unwrap().contains("criado abaixo de você"));
     assert_eq!((app.scene.elements.iter().filter(|e| e.terminal.is_some()).count(), app.chats.len()), (1, 1));
-    // `mode` chat wins over the setting: a chat that is no Maestro, with its card, roped below the boss
+    // `mode` chat wins over the setting: a chat that is no Maestro, with its card, roped to the boss; below it is taken,
+    // so in the free place nearest it, as the answer says
     app.apply_agent_command(UiCommand::Recruit {
         from: boss.clone(),
         command: "codex \"revise o diff\"".into(),
@@ -303,15 +304,18 @@ fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() 
         mode: Some(AgentMode::Chat),
         reply: reply.clone(),
     });
-    assert!(said.recv().unwrap().unwrap().contains("criado abaixo de você"));
+    let answer = said.recv().unwrap().unwrap();
     let chat = app.chats.iter().find(|c| c.recruit).cloned().expect("the recruit's chat");
     assert_eq!((chat.agent.as_str(), chat.cwd.as_str()), ("codex", "~/projeto"));
     let card = app.chat_node(&chat.id).expect("its card");
     assert!(app.links()[&boss].contains(&chat.id));
-    assert!(local_bounds(&app.scene.elements[card]).min.y > local_bounds(&app.scene.elements[app.chat_node(&boss).unwrap()]).max.y);
+    let (spot, boss_spot) = (local_bounds(&app.scene.elements[card]), local_bounds(&app.scene.elements[app.chat_node(&boss).unwrap()]));
+    assert!(answer.contains(&format!("criado {}", side_of(spot, boss_spot))), "{answer}");
+    let windows: Vec<Rect> = app.scene.elements.iter().filter(|e| e.is_node() && e.id != chat.id).map(local_bounds).collect();
+    assert!(windows.iter().all(|window| !window.intersects(spot)), "{spot:?} over {windows:?}");
     // big enough to show its conversation, not the cut preview
     let size = local_bounds(&app.scene.elements[card]).size();
-    assert!(crate::app::chat::node_ui::chat_live(Rect::from_min_size(Pos2::ZERO, size), 1.0), "{size:?}");
+    assert!(crate::app::chat::node_ui::chat_live(Rect::from_min_size(Pos2::ZERO, size), 1.0, true), "{size:?}");
     assert_eq!(app.chat_starts, vec![(chat.id.clone(), "revise o diff".to_string())]);
     // an ordinary agent: its own name, no Maestro's hands
     assert_eq!(app.maestro_name(&chat.name), chat.name);
@@ -431,9 +435,9 @@ fn zooming_in_keeps_a_chat_card_as_it_was() {
     use crate::app::chat::{node::CHAT_NODE_SIZE, node_ui::chat_live};
     // the card's usual 300 x 150: the picture at 100% and at 230% alike
     for zoom in [1.0, 2.3] {
-        assert!(!chat_live(Rect::from_min_size(Pos2::ZERO, CHAT_NODE_SIZE * zoom), zoom), "{zoom}");
+        assert!(!chat_live(Rect::from_min_size(Pos2::ZERO, CHAT_NODE_SIZE * zoom), zoom, false), "{zoom}");
     }
     // made bigger, the chat, at any zoom it can be read at
     let big = Vec2::new(420.0, 360.0);
-    assert!(chat_live(Rect::from_min_size(Pos2::ZERO, big * 2.3), 2.3) && chat_live(Rect::from_min_size(Pos2::ZERO, big * 0.5), 0.5));
+    assert!(chat_live(Rect::from_min_size(Pos2::ZERO, big * 2.3), 2.3, false) && chat_live(Rect::from_min_size(Pos2::ZERO, big * 0.5), 0.5, false));
 }

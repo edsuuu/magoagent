@@ -3,7 +3,6 @@ use super::*;
 impl DrawingApp {
     /// One webview per tab of every portal, placed over its page box every frame (the open tab
     /// shows, the others wait hidden, alive). Also takes in what the pages reported.
-    #[cfg(not(target_os = "linux"))]
     pub(crate) fn sync_portals(&mut self, window: &impl wry::raw_window_handle::HasWindowHandle, ctx: &Context) {
         self.portal_extras_tick(ctx);
         let events: Vec<PortalEvent> = self.portal_events.1.try_iter().collect();
@@ -46,6 +45,27 @@ impl DrawingApp {
                 }
                 PortalEvent::Design { portal, tab, message } => self.design_message(&portal, tab, &message, ctx),
                 PortalEvent::Shot { portal, seq, png } => self.design_shot(&portal, seq, png),
+                PortalEvent::Copied { picture: Ok((w, h, rgba)) } => {
+                    ctx.copy_image(egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba));
+                    self.toast("Captura de tela copiada.");
+                }
+                PortalEvent::Copied { picture: Err(error) } => self.toast(error),
+            }
+        }
+        // Linux on Wayland: the portals show only their address (webkit.rs)
+        #[cfg(target_os = "linux")]
+        if !pages_open() {
+            self.portals.clear();
+            return;
+        }
+        // Linux: the app has the keyboard again (from a page, from another program): the pages stop taking keys
+        #[cfg(target_os = "linux")]
+        {
+            let focused = ctx.input(|i| i.focused);
+            let regained = focused && !self.portal_extras.had_keyboard;
+            self.portal_extras.had_keyboard = focused;
+            if regained && !self.portals.is_empty() {
+                release_keys(None);
             }
         }
         // the overlay's kept messages, where they can't come by ipc (TabView::polls_design): every
@@ -101,7 +121,8 @@ impl DrawingApp {
             self.design = None;
         }
         // the native view takes whole points (wry rounds them), kept inside the page box so nothing
-        // spills over the card's edge
+        // spills over the card's edge (Linux: `GtkPage::place`, in pixels)
+        #[cfg(not(target_os = "linux"))]
         let bounds = |r: Rect| {
             let (min, max) = (r.min.ceil(), r.max.floor());
             wry::Rect {
@@ -118,7 +139,7 @@ impl DrawingApp {
             let view = self.portals.entry(id.clone()).or_insert_with(|| PortalView {
                 tabs: Vec::new(),
                 shown: None,
-                context: wry::WebContext::new(extras.profile.clone()),
+                context: PageContext::new(extras.profile.clone()),
             });
             let matches = match_portal_tabs(&view.tabs.iter().map(|tab| tab.url.clone()).collect::<Vec<_>>(), &urls);
             let mut old_tabs: Vec<Option<TabView>> = view.tabs.drain(..).map(Some).collect();
@@ -156,9 +177,9 @@ impl DrawingApp {
             if let (Some(r), Some(m)) = (rect, marquee) {
                 holes.extend(marquee_edges(m).into_iter().map(|e| e.intersect(r)).filter(|e| e.width() >= 1.0 && e.height() >= 1.0));
             }
-            // ponytail: only Windows cuts a native view (a window region); elsewhere the page steps
-            // aside while anything lies over it. Upgrade: a mask on the NSView's layer on macOS
-            #[cfg(not(windows))]
+            // ponytail: Windows (a window region) and Linux (an X11 shape) cut a native view; on macOS
+            // the page steps aside while anything lies over it. Upgrade: a mask on the NSView's layer
+            #[cfg(target_os = "macos")]
             let rect = rect.filter(|_| holes.is_empty());
             // the canvas moving (a pan, a zoom, the card dragged): the native view follows a frame
             // late and shakes, so its picture goes with the card instead and the page comes back
@@ -208,12 +229,14 @@ impl DrawingApp {
             if shown != view.shown {
                 for (i, tab) in view.tabs.iter().enumerate() {
                     let visible = shown.is_some() && i == active;
-                    if let (true, Some((r, zoom, _, holes, _))) = (visible, &shown) {
-                        let _ = tab.webview.set_bounds(bounds(*r));
-                        let _ = tab.webview.zoom(*zoom as f64);
-                        #[cfg(windows)]
-                        cut_page(&tab.webview, r.min.ceil(), holes, ctx.pixels_per_point());
-                        #[cfg(not(windows))]
+                    if let (true, Some((r, zoom, _, holes, scale))) = (visible, &shown) {
+                        #[cfg(not(target_os = "linux"))]
+                        let _ = (tab.webview.set_bounds(bounds(*r)), tab.webview.zoom(*zoom as f64), scale);
+                        #[cfg(target_os = "linux")]
+                        let _ = tab.webview.place(*r, *zoom, *scale);
+                        #[cfg(any(windows, target_os = "linux"))]
+                        cut_page(&tab.webview, r.min.ceil(), holes, *scale);
+                        #[cfg(target_os = "macos")]
                         let _ = holes;
                     }
                     let _ = tab.webview.set_visible(visible);

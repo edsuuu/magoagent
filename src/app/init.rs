@@ -39,6 +39,7 @@ impl Default for DrawingApp {
             editing: None,
             edit_focused: false,
             note_selection: None,
+            note_scroll: Default::default(),
             clipboard: Vec::new(),
             export_open: false,
             export_background: true,
@@ -188,11 +189,9 @@ impl Default for DrawingApp {
             dock_drag: None,
             hop: None,
             ropes: Default::default(),
-            #[cfg(not(target_os = "linux"))]
             portals: Default::default(),
             #[cfg(not(target_os = "linux"))]
             voice_page: None,
-            #[cfg(not(target_os = "linux"))]
             portal_events: std::sync::mpsc::channel(),
             portal_url_edit: None,
             design: None,

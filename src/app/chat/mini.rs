@@ -20,6 +20,8 @@ pub(crate) struct ConvOut {
     pub(crate) cite: Option<String>,
     pub(crate) earlier: bool,
     pub(crate) unqueue: bool,
+    /// Enviar agora on a queued message.
+    pub(crate) send_now: bool,
     /// The provider picked before the first message: the chat and the agent's program.
     pub(crate) provider: Option<(String, String)>,
 }
@@ -261,11 +263,16 @@ impl DrawingApp {
         }
         // Editar: what was queued goes back into the box
         if out.unqueue
-            && let Some(id) = &self.chat_agent
+            && let Some(id) = self.chat_agent.clone()
         {
-            for (_, text) in self.chat_queue.extract_if(.., |(to, _)| to == id) {
-                self.chat_draft = if self.chat_draft.is_empty() { text } else { format!("{text}\n{}", self.chat_draft) };
-            }
+            self.unqueue(&id);
+        }
+        // Enviar agora: it goes without waiting for the agent (chat/queue.rs)
+        if out.send_now
+            && let Some(id) = self.chat_agent.clone()
+            && let Err(why) = self.send_queued_now(&id)
+        {
+            self.toast(why);
         }
     }
 

@@ -198,6 +198,27 @@ fn a_question_from_claude_desktop_reaches_the_island_and_the_answer_goes_back() 
     assert!(app.person_asks.borrow().is_empty());
 }
 
+/// "Outro" for a session outside the app: its hook takes only the options' labels, so the words go as the reason of a
+/// refusal, which Claude Code reads and goes on with.
+#[test]
+fn words_of_ones_own_reach_a_session_outside_as_the_reason_it_reads() {
+    let bridge = Bridge::start(None).unwrap();
+    let mut app = island_app();
+    let output = hook_process(endpoint(&bridge), hook("PreToolUse", "AskUserQuestion", questions()), true);
+    take(&mut app, &bridge);
+    let id = first_ask_id(&app);
+    {
+        let mut asks = app.person_asks.borrow_mut();
+        asks[0].other = vec!["Roxo".into(), String::new()];
+        asks[0].picked[1] = vec![0];
+    }
+    app.answer_person(&id, true);
+    let printed: Value = serde_json::from_str(&output.recv_timeout(Duration::from_secs(5)).unwrap()).unwrap();
+    assert_eq!(printed["hookSpecificOutput"]["permissionDecision"], "deny");
+    let reason = printed["hookSpecificOutput"]["permissionDecisionReason"].as_str().unwrap();
+    assert!(reason.contains("- Qual cor?: Roxo") && reason.contains("- Quais frutas?: Maçã"), "{reason}");
+}
+
 #[test]
 fn a_permission_is_allowed_or_denied_and_the_terminal_answers_nothing() {
     let bridge = Bridge::start(None).unwrap();

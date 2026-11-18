@@ -40,12 +40,13 @@ pub(crate) enum AppAction {
     ZoomReset,
     FitAll,
     FitSelection,
+    SendNow,
 }
 
 impl AppAction {
     /// It answers even with a terminal, a chat or a field taking the keys: it is read before them.
     pub(crate) fn everywhere(self) -> bool {
-        matches!(self, AppAction::Settings | AppAction::ShowChat | AppAction::ShowCanvas | AppAction::OpenTree | AppAction::NextNeedingYou)
+        matches!(self, AppAction::Settings | AppAction::ShowChat | AppAction::ShowCanvas | AppAction::OpenTree | AppAction::NextNeedingYou | AppAction::SendNow)
     }
 }
 
@@ -55,7 +56,7 @@ const fn app(action: AppAction, id: &'static str, group: &'static str, label: &'
 
 /// The app's shortcuts in the order Ajustes lists them, by group. The ids are kept in prefs.json (never rename one);
 /// the keys are written as they are kept (`keys::format`).
-pub(crate) static APP: [ShortcutDef; 32] = [
+pub(crate) static APP: [ShortcutDef; 33] = [
     app(AppAction::Settings, "settings", "GERAL", "Ajustes", &["Ctrl+Comma"]),
     app(AppAction::Palette, "palette", "GERAL", "Paleta de comandos", &["Ctrl+Slash", "Shift+Slash"]),
     app(AppAction::ShowChat, "showChat", "GERAL", "Tela do chat", &["Ctrl+1"]),
@@ -88,6 +89,9 @@ pub(crate) static APP: [ShortcutDef; 32] = [
     app(AppAction::ZoomReset, "zoomReset", "VISTA", "Voltar a 100%", &["Ctrl+0"]),
     app(AppAction::FitAll, "fitAll", "VISTA", "Ver tudo", &["Shift+1"]),
     app(AppAction::FitSelection, "fitSelection", "VISTA", "Ver a seleção", &["Shift+2"]),
+    // Enter sends (into the queue while the agent is busy); with Ctrl+Shift it goes now. Ctrl+S is Salvar and Ctrl+X
+    // recortar, and a shortcut read inside the box can't be Ctrl with a letter (`editor::check`)
+    app(AppAction::SendNow, "sendNow", "CHAT", "Enviar agora a mensagem da fila", &["Ctrl+Shift+Enter"]),
 ];
 
 /// The shortcut of `action`.
@@ -108,6 +112,12 @@ impl DrawingApp {
                 Act::Global(_) => None,
             })
             .collect()
+    }
+
+    /// Whether `action`'s keys are among this frame's, leaving them there.
+    pub(crate) fn peek_app_key(&self, ctx: &Context, action: AppAction) -> bool {
+        let combos = super::keys_of(def_of(action), &self.prefs.shortcuts);
+        ctx.input(|input| input.events.iter().any(|event| combos.iter().any(|combo| keys::hits(event, combo))))
     }
 
     /// Takes the presses of `action` out of this frame's keys, so whatever has the keyboard does not get them too:

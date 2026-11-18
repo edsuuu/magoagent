@@ -451,7 +451,7 @@ impl DrawingApp {
     }
 
     /// A tree on `path`, in the middle of the view, and its rows.
-    fn act_tree_create(&mut self, path: &str) -> Result<String, String> {
+    pub(crate) fn act_tree_create(&mut self, path: &str) -> Result<String, String> {
         self.check_root_for_act(path)?;
         let at = self.free_spot(Rect::from_center_size(self.to_world(self.canvas_rect.center()), FILETREE_SIZE));
         let mut node = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });

@@ -37,6 +37,8 @@ const OPENERS: [&str; 27] = [
 ];
 /// Directives that close a `@section` without an `@endsection`.
 const SECTION_CLOSERS: [&str; 4] = ["show", "stop", "append", "overwrite"];
+/// Conditions of their own that open an `@if` block (closed by `@endif`).
+const IF_LIKE: [&str; 2] = ["hassection", "sectionmissing"];
 /// Directives whose parenthesis holds a PHP expression.
 const WITH_EXPRESSION: [&str; 4] = ["if", "elseif", "unless", "while"];
 
@@ -77,6 +79,9 @@ pub(super) fn check(text: &str) -> Vec<Diag> {
                     at += open;
                 }
             }
+        } else if let Some(escaped) = rest.strip_prefix("@@") {
+            // Blade's escape: `@@foreach` is the text `@foreach`, no directive
+            at += 2 + escaped.bytes().take_while(|byte| byte.is_ascii_alphabetic() || *byte == b'_').count();
         } else if bytes[at] == b'@' && (at == 0 || !(bytes[at - 1].is_ascii_alphanumeric() || bytes[at - 1] == b'_')) {
             let word: String = rest[1..].chars().take_while(|c| c.is_ascii_alphabetic() || *c == '_').collect();
             if word.is_empty() {
@@ -103,9 +108,11 @@ pub(super) fn check(text: &str) -> Vec<Diag> {
                 }
                 _ => {
                     let closes = name.strip_prefix("end").and_then(|rest| OPENERS.iter().find(|opener| **opener == rest));
+                    let name = if IF_LIKE.contains(&name.as_str()) { "if".to_string() } else { name };
                     let opens = OPENERS.iter().find(|opener| **opener == name).filter(|opener| match **opener {
-                        // `@section('a', 'b')` is whole; `@empty($x)` opens, a bare `@empty` is the middle of a forelse
-                        "section" => !parens.is_some_and(|(open, close)| has_comma(&text[open + 1..close])),
+                        // `@section('a', 'b')` and `@slot('a', 'b')` are whole; `@empty($x)` opens, a bare `@empty` is the
+                        // middle of a forelse
+                        "section" | "slot" => !parens.is_some_and(|(open, close)| has_comma(&text[open + 1..close])),
                         "empty" => parens.is_some(),
                         _ => true,
                     });

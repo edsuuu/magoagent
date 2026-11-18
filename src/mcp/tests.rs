@@ -188,6 +188,8 @@ fn every_app_action_is_a_tool_once() {
         "open_default",
         "canvas_drop",
         "chat_send",
+        "chat_queue",
+        "open_as_note",
         "mini_chat",
         "chats_view",
         "chat_command",
@@ -204,6 +206,7 @@ fn every_app_action_is_a_tool_once() {
         "minimap",
         "sidebar",
         "panel",
+        "changes_review",
         "terminal_menu",
         "terminal_find",
         "terminal_look",
@@ -343,19 +346,87 @@ fn every_tool_is_in_the_mcp_docs() {
 fn the_panel_tool_opens_and_closes_the_right_panels() {
     use crate::app::panes::Pane;
     let mut app = DrawingApp { chat_open: true, ..Default::default() };
-    assert_eq!(app.act("panel", &json!({ "name": "tasks" })).unwrap(), "Painel Tarefas aberto.");
-    assert_eq!((app.panes.open, app.chat_open), (Some(Pane::Tasks), false), "it shows beside the canvas");
-    // one at a time: another takes its place
-    app.act("panel", &json!({ "name": "changes", "open": true })).unwrap();
-    assert_eq!(app.panes.open, Some(Pane::Changes));
+    assert_eq!(app.act("panel", &json!({ "name": "changes" })).unwrap(), "Painel Alterações aberto.");
+    assert_eq!((app.panes.open, app.chat_open), (Some(Pane::Changes), false), "it shows beside the canvas");
     assert_eq!(app.act("panel", &json!({ "name": "Alterações" })).unwrap(), "Painel Alterações fechado.", "no `open` toggles");
     assert_eq!(app.panes.open, None);
     app.act("panel", &json!({ "name": "changes", "open": true })).unwrap();
-    // closing another one leaves the open one alone; no name closes it
-    app.act("panel", &json!({ "name": "tasks", "open": false })).unwrap();
-    assert_eq!(app.panes.open, Some(Pane::Changes));
-    assert_eq!(app.act("panel", &json!({ "open": false })).unwrap(), "Painel fechado.");
+    assert_eq!(app.act("panel", &json!({ "open": false })).unwrap(), "Painel fechado.", "no name closes it");
     assert_eq!(app.panes.open, None);
-    assert!(app.act("panel", &json!({ "name": "nada" })).unwrap_err().contains("tasks ou changes"));
+    // the Tarefas panel went ("a aba de tarefas, ali no canvas remove por favor"); the tasks stay in `tasks`
+    assert!(app.act("panel", &json!({ "name": "tasks" })).unwrap_err().contains("Use changes"));
+    assert!(app.act("panel", &json!({ "name": "nada" })).unwrap_err().contains("Use changes"));
     assert!(app.act("panel", &json!({ "open": true })).is_err());
+}
+
+#[test]
+fn a_terminal_an_agent_adds_comes_roped_to_it() {
+    let mut scene = Scene {
+        elements: from_interop_elements(&json!([
+            { "type": "terminal", "id": "luna", "x": 0, "y": 0, "name": "Luna", "maestro": true },
+            { "type": "chat", "id": "chat", "x": 0, "y": 400, "name": "Luna", "agent": "claude" },
+        ])),
+        ..Scene::default()
+    };
+    let roped = |scene: &Scene, a: &str, b: &str| {
+        let ends = |e: &Element| [&e.ends.start, &e.ends.end].map(|end| end.as_ref().map(|b| b.element_id.clone()));
+        scene.elements.iter().filter(|e| e.rope && matches!(ends(e), [Some(x), Some(y)] if (x == a && y == b) || (x == b && y == a))).count()
+    };
+    // the Luna's terminal opens one to run the tests and draws a box: the terminal hangs from it, the box does not
+    let items = json!([
+        { "type": "terminal", "id": "testes", "x": 600, "y": 0, "name": "Testes", "command": "cargo test" },
+        { "type": "rectangle", "id": "caixa", "x": 0, "y": 900 },
+    ]);
+    let added = add_elements(&mut scene, items.as_array().unwrap()).unwrap();
+    assert_eq!(tie_to_caller(&mut scene, Some("luna"), &added).unwrap(), ["testes"]);
+    assert_eq!(roped(&scene, "luna", "testes"), 1);
+    assert_eq!(roped(&scene, "luna", "caixa"), 0);
+    let rope = scene.elements.iter().find(|e| e.rope).unwrap();
+    assert!(matches!(rope.kind, ElementKind::Line { .. }) && rope.ends.start_head.is_none() && rope.ends.end_head.is_none());
+    // asked twice: still one rope
+    tie_to_caller(&mut scene, Some("luna"), &added).unwrap();
+    assert_eq!(roped(&scene, "luna", "testes"), 1);
+    // a chat's agent (its card on this canvas) opens the API's terminal: roped to its card
+    let api = add_elements(&mut scene, &[json!({ "type": "terminal", "id": "api", "x": 600, "y": 400, "name": "API", "command": "npm run dev" })]).unwrap();
+    assert_eq!(tie_to_caller(&mut scene, Some("chat"), &api).unwrap(), ["api"]);
+    assert_eq!(roped(&scene, "chat", "api"), 1);
+    // no caller (an agent outside the app), or one with no card here (the app ties it when the drawing comes in): no rope
+    let loose = add_elements(&mut scene, &[json!({ "type": "terminal", "id": "solto", "x": 600, "y": 800, "name": "Solto" })]).unwrap();
+    assert!(tie_to_caller(&mut scene, None, &loose).unwrap().is_empty());
+    assert!(tie_to_caller(&mut scene, Some("outro-chat"), &loose).unwrap().is_empty());
+    assert_eq!(roped(&scene, "luna", "solto") + roped(&scene, "chat", "solto"), 0);
+}
+
+#[test]
+fn the_caller_is_the_terminal_else_the_chat() {
+    let env = |pairs: &'static [(&'static str, &'static str)]| move |key: &str| pairs.iter().find(|(k, _)| *k == key).map(|(_, v)| v.to_string());
+    assert_eq!(caller_from(env(&[("MAGOAGENT_TERMINAL_ID", "t1"), ("MAGOAGENT_CHAT_ID", "c1")])).as_deref(), Some("t1"));
+    // a chat's agent has an empty terminal id, and its chat's
+    assert_eq!(caller_from(env(&[("MAGOAGENT_TERMINAL_ID", ""), ("MAGOAGENT_CHAT_ID", "c1")])).as_deref(), Some("c1"));
+    assert_eq!(caller_from(env(&[("MAGOAGENT_CHAT_ID", " ")])), None);
+    assert_eq!(caller_from(env(&[])), None);
+}
+
+/// Asked: "a posição dos terminais, às vezes ele junta tudo na direita". Windows an agent stacks on the same spot (it
+/// reads the canvas from a list) go to the free places around it, each with its label; a shape stays where it was put.
+#[test]
+fn windows_an_agent_stacks_go_around_it() {
+    let mut scene = Scene::default();
+    let luna = json!({ "type": "terminal", "id": "luna", "x": 0, "y": 0, "width": 600, "height": 400, "name": "Luna" });
+    add_elements(&mut scene, &[luna]).unwrap();
+    let items = json!([
+        { "type": "terminal", "id": "um", "x": 2000, "y": 0, "width": 600, "height": 400, "name": "Um" },
+        { "type": "terminal", "id": "dois", "x": 2000, "y": 0, "width": 600, "height": 400, "name": "Dois" },
+        { "type": "terminal", "id": "tres", "x": 100, "y": 100, "width": 600, "height": 400, "name": "Três", "label": { "text": "API" } },
+        { "type": "rectangle", "id": "caixa", "x": 10, "y": 10 },
+    ]);
+    let added = add_elements(&mut scene, items.as_array().unwrap()).unwrap();
+    make_room(&mut scene, Some("luna"), &added);
+    let at = |id: &str| element_bounds(scene.elements.iter().find(|e| e.id == id).unwrap()).min;
+    // the first is free where it was put; the second, over it, goes around the Luna (below it first); the third, over
+    // the Luna, the next place around it, its label along
+    assert_eq!((at("um"), at("dois"), at("tres")), (Pos2::new(2000.0, 0.0), Pos2::new(0.0, 460.0), Pos2::new(660.0, 0.0)));
+    let label = element_bounds(scene.elements.iter().find(|e| e.id == "tres-label").unwrap()).center();
+    assert!(element_bounds(scene.elements.iter().find(|e| e.id == "tres").unwrap()).contains(label), "the label went along");
+    assert_eq!(at("caixa"), Pos2::new(10.0, 10.0), "a shape is no window");
 }

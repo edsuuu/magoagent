@@ -74,7 +74,8 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
         return format!(
             "Você é {}, um agente do time do MagoAgent, recrutado por outro agente para uma tarefa. Pasta de trabalho: {}. Faça o que for pedido e responda de forma \
              objetiva. Se outro agente te fizer uma pergunta (ask), a sua resposta volta para ele. Para falar com os outros agentes use `magoagent list|ask|check` \
-             (ou o MCP magoagent). {language}",
+             (ou o MCP magoagent). Para rodar testes ou uma API e acompanhar, abra um terminal com create_terminal (ou `magoagent terminal <comando>`): ele fica \
+             ligado a você por corda e você lê a tela dele com read_terminal (`magoagent check <nome>`). {language}",
             chat.name, chat.cwd
         );
     }
@@ -98,7 +99,7 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          mudanças da pasta na Árvore de Arquivos para a pessoa revisar com você; \
          remember guarda o que você aprende sobre como ela trabalha (preferências, jeito, nomes), para as próximas conversas; \
          add_elements e view desenham no canvas; recruit_agent, ask_agent e connect montam e dirigem um time de agentes: no canvas você é o cartão da Luna, e o que está ligado a ele por corda \
-         (terminais e outros chats) é o time que você comanda; list_agents diz quem são, chat_node põe o seu cartão no canvas e disconnect tira alguém do time; \
+         (terminais e outros chats) é o time que você comanda; create_terminal abre um terminal ligado ao seu cartão rodando um comando (testes, uma API) e read_terminal o acompanha; list_agents diz quem são, chat_node põe o seu cartão no canvas e disconnect tira alguém do time; \
          workspaces lista, mostra, cria, renomeia e remove os espaços de trabalho (um por projeto; trocar de espaço não para os agentes). \
          \"O que tem para mim?\", \"alguém precisa de mim?\": chame demands e diga as demandas da mais urgente para a menos, cada uma \
          com os pontos de atenção que a ferramenta trouxe (nunca invente outros); a pessoa permite ou nega um pedido de permissão \

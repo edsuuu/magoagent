@@ -87,6 +87,37 @@ impl DrawingApp {
         Ok(if lines.is_empty() { format!("Nada encontrado para \"{query}\".") } else { lines.join("\n") })
     }
 
+    /// `chat_queue`: what waits in the queues (`list`), or one agent's queue sent now (`send_now`) or back in the box
+    /// (`edit`), as the buttons under it do.
+    pub(super) fn act_chat_queue(&mut self, agent: &str, action: &str) -> Result<String, String> {
+        if matches!(action, "" | "list") && agent.is_empty() {
+            if self.chat_queue.is_empty() {
+                return Ok("Nada na fila.".into());
+            }
+            return Ok(self.chat_queue.iter().map(|(id, text)| format!("{}: {text}", self.agent_label(id))).collect::<Vec<_>>().join("\n\n"));
+        }
+        let id = match agent {
+            "" => self.chat_agent.clone().ok_or("Nenhuma conversa aberta: diga o agente.")?,
+            name => self.agent_named(name)?.0,
+        };
+        match action {
+            "" | "list" => Ok(match self.chat_queue.iter().find(|(to, _)| *to == id) {
+                Some((_, text)) => format!("Na fila de {}: {text}", self.agent_label(&id)),
+                None => format!("Nada na fila de {}.", self.agent_label(&id)),
+            }),
+            "send_now" => self.send_queued_now(&id),
+            "edit" => {
+                if !self.has_queued(&id) {
+                    return Err(format!("Nada na fila de {}.", self.agent_label(&id)));
+                }
+                self.chat_agent = Some(id.clone());
+                self.unqueue(&id);
+                Ok("A mensagem da fila voltou para a caixa da conversa.".into())
+            }
+            other => Err(format!("action desconhecida: {other}. Use list, send_now ou edit.")),
+        }
+    }
+
     pub(super) fn act_chat_new(&mut self, agent: &str, folder_path: &str) -> Result<String, String> {
         let installed = self.installed_agents();
         if installed.is_empty() {

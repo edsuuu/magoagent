@@ -4,7 +4,7 @@
 //! and when it ends pop at the top of the window, under the toolbar.
 
 use crate::app::chat::list::{DOWN, Look, RED, glyph};
-use crate::app::chat::node_ui::{chat_live, mini_button};
+use crate::app::chat::node_ui::{card_scroll, chat_live, keep_pinned, mini_button, pinned_key, split_body};
 use crate::app::chat::steps::{Live, short_tool, step_row};
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
@@ -37,11 +37,15 @@ fn said(text: &str) -> &str {
 }
 
 impl DrawingApp {
-    /// What the recruit was asked: its first message (sent, or still waiting to be).
-    pub(crate) fn recruit_task(&self, id: &str) -> Option<String> {
+    /// What the recruit was asked, as it was written: its first message (sent, or still waiting to be).
+    fn recruit_prompt(&self, id: &str) -> Option<&str> {
         let sent = self.transcripts.get(id).and_then(|t| t.items.iter().find_map(|i| if let ChatItem::User(text) = i { Some(said(text)) } else { None }));
-        let task = sent.or_else(|| self.chat_starts.iter().find(|(c, _)| c == id).map(|(_, p)| p.as_str()))?;
-        Some(task.split_whitespace().collect::<Vec<_>>().join(" "))
+        sent.or_else(|| self.chat_starts.iter().find(|(c, _)| c == id).map(|(_, p)| p.as_str()))
+    }
+
+    /// The task on one line, for the folded card and the picture.
+    pub(crate) fn recruit_task(&self, id: &str) -> Option<String> {
+        Some(self.recruit_prompt(id)?.split_whitespace().collect::<Vec<_>>().join(" "))
     }
 
     /// The card folded to its header and task, or open again at the height it had.
@@ -82,91 +86,86 @@ impl DrawingApp {
         painter.galley(Pos2::new(body.left(), y), g, ink);
     }
 
-    /// The live card: its task, what it did and does (tools, what it said), the band while it works.
+    /// The live card: its task and what it did and does (tools, what it said, in the chat's Markdown), whole, scrolling
+    /// when the card is short of room; under them, pinned to the bottom edge, the band while it works.
     /// Laid out at the card's size and shown at the canvas's, like `chat_card_ui`.
     pub(crate) fn recruit_card_ui(&mut self, ctx: &Context, id: &str, body: Rect, z: f32, canvas: Rect) {
         let Some(row) = self.chat_rows().into_iter().find(|r| r.id == id) else { return };
-        let look = Look::new(self.dark(), &self.colors());
+        let c = self.colors();
+        let look = Look::new(self.dark(), &c);
         let time = ctx.input(|i| i.time);
         let size = body.size() / z;
         let clip = body.intersect(canvas);
         let clip = Rect::from_min_max(((clip.min - body.min) / z).to_pos2(), ((clip.max - body.min) / z).to_pos2());
-        let task = self.recruit_task(id);
         let transcript = self.transcripts.get(id);
         let working = matches!(row.state, AgentState::Working(_));
         let (mut interrupt, mut open) = (false, false);
+        // the recruit's folder for the paths its words name (`agent_words`)
+        let outer_agent = self.chat_agent.replace(id.to_string());
         let area = egui::Area::new(egui::Id::unique(("recruit_card", id))).fixed_pos(Pos2::ZERO).constrain(false).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_clip_rect(clip);
             let rect = Rect::from_min_size(Pos2::ZERO, size);
             // the whole body is the card's: a click never reaches the canvas, a double-click opens the chat
             open = ui.allocate_rect(rect, Sense::click()).double_clicked();
             let inner = rect.shrink2(Vec2::new(10.0, 8.0));
-            ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+            let key = pinned_key(id);
+            let (top, bottom) = split_body(ui.ctx(), key, inner, if working { 56.0 } else { 18.0 }, 6.0);
+            ui.scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
                 ui.set_max_width(inner.width());
-                ui.spacing_mut().item_spacing.y = 4.0;
-                ui.label(egui::RichText::new("Tarefa").size(12.0).color(look.muted));
-                let text = task.as_deref().unwrap_or("Sem tarefa ainda.");
-                let mut job = egui::text::LayoutJob::simple(text.into(), FontId::proportional(14.0), look.text, inner.width());
-                job.wrap.max_rows = 3;
-                job.wrap.overflow_character = Some('…');
-                ui.label(job);
-                ui.add_space(2.0);
-                let (line, _) = ui.allocate_exact_size(Vec2::new(inner.width(), 1.0), Sense::hover());
-                ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0, look.line));
-                let band_key = egui::Id::unique(("recruit_band", id));
-                let band = if working { ui.ctx().data_mut(|d| d.get_temp::<f32>(band_key)).unwrap_or(60.0) } else { 22.0 };
                 ui.spacing_mut().scroll = crate::app::ui::scroll_style();
-                egui::ScrollArea::vertical()
-                    .id_salt(("recruit_scroll", id))
-                    .stick_to_bottom(true)
-                    .auto_shrink(false)
-                    .max_height((ui.available_height() - band).max(0.0))
-                    .show(ui, |ui| {
-                        let Some(t) = transcript else { return };
-                        // what came after the task: its tools, what it said, what went wrong, what it was asked since
-                        let first = t.items.iter().position(|i| matches!(i, ChatItem::User(_))).map_or(0, |i| i + 1);
-                        let items: Vec<&ChatItem> = t.items[first..].iter().filter(|i| !matches!(i, ChatItem::Image { .. } | ChatItem::System(_))).collect();
-                        if items.is_empty() {
-                            ui.label(egui::RichText::new(if working { "Começando…" } else { "Nada feito ainda." }).size(13.0).color(look.muted));
+                card_scroll(("recruit_scroll", id), top.height()).show(ui, |ui| {
+                    // room between the words and the scroll bar at the right edge
+                    let width = inner.width() - 14.0;
+                    ui.set_max_width(width);
+                    ui.spacing_mut().item_spacing.y = 4.0;
+                    ui.label(egui::RichText::new("Tarefa").size(12.0).color(look.muted));
+                    match self.recruit_prompt(id) {
+                        Some(task) => self.agent_words_in(ui, task.trim(), width, &c, false),
+                        None => {
+                            ui.label(egui::RichText::new("Sem tarefa ainda.").size(14.0).color(look.muted));
                         }
-                        for item in &items[items.len().saturating_sub(ACTIVITY)..] {
-                            match item {
-                                ChatItem::Tool(step) => {
-                                    let live = if t.running.iter().any(|(s, _)| *s == step.id) { Live::Running } else { Live::Done };
-                                    open |= step_row(ui, step, live, &look, true, time);
-                                }
-                                ChatItem::Agent(text) => {
-                                    let mut job =
-                                        egui::text::LayoutJob::simple(text.trim().into(), FontId::proportional(13.0), look.soft, ui.available_width());
-                                    job.wrap.max_rows = 3;
-                                    job.wrap.overflow_character = Some('…');
-                                    ui.label(job);
-                                }
-                                ChatItem::Error(text) => {
-                                    ui.label(egui::RichText::new(text.trim()).size(13.0).color(RED));
-                                }
-                                ChatItem::User(text) => {
-                                    ui.label(egui::RichText::new(format!("→ {}", said(text).trim())).size(13.0).color(look.muted));
-                                }
-                                _ => {}
+                    }
+                    ui.add_space(2.0);
+                    let (line, _) = ui.allocate_exact_size(Vec2::new(width, 1.0), Sense::hover());
+                    ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0, look.line));
+                    ui.add_space(2.0);
+                    // what came after the task: its tools, what it said, what went wrong, what it was asked since
+                    let Some(t) = transcript else { return };
+                    let first = t.items.iter().position(|i| matches!(i, ChatItem::User(_))).map_or(0, |i| i + 1);
+                    let items: Vec<&ChatItem> = t.items[first..].iter().filter(|i| !matches!(i, ChatItem::Image { .. } | ChatItem::System(_))).collect();
+                    if items.is_empty() {
+                        ui.label(egui::RichText::new(if working { "Começando…" } else { "Nada feito ainda." }).size(13.0).color(look.muted));
+                    }
+                    for item in &items[items.len().saturating_sub(ACTIVITY)..] {
+                        match item {
+                            ChatItem::Tool(step) => {
+                                let live = if t.running.iter().any(|(s, _)| *s == step.id) { Live::Running } else { Live::Done };
+                                open |= step_row(ui, step, live, &look, true, time);
                             }
+                            ChatItem::Agent(text) => self.agent_words_in(ui, text.trim(), width, &c, false),
+                            ChatItem::Error(text) => {
+                                ui.label(egui::RichText::new(text.trim()).size(13.0).color(RED));
+                            }
+                            ChatItem::User(text) => {
+                                ui.label(egui::RichText::new(format!("→ {}", said(text).trim())).size(13.0).color(look.muted));
+                            }
+                            _ => {}
                         }
-                    });
-                let top = ui.cursor().top();
-                ui.add_space(4.0);
+                    }
+                });
+            });
+            let pinned = ui.scope_builder(egui::UiBuilder::new().max_rect(bottom), |ui| {
+                ui.set_max_width(inner.width());
                 if working {
                     interrupt = self.work_band(ui, &row, transcript, &look, true, time);
-                    let height = ui.cursor().top() - top;
-                    if (height - band).abs() > 0.5 {
-                        ui.ctx().data_mut(|d| d.insert_temp(band_key, height));
-                        ui.ctx().request_repaint();
-                    }
                 } else {
                     let done = if transcript.is_some_and(|t| t.items.iter().any(|i| matches!(i, ChatItem::Agent(_)))) { "Pronto" } else { "Esperando" };
                     ui.label(egui::RichText::new(done).size(13.0).color(look.muted));
                 }
             });
+            keep_pinned(ui.ctx(), key, pinned.response.rect);
         });
+        self.chat_agent = outer_agent;
         ctx.set_transform_layer(area.response.layer_id, egui::emath::TSTransform::new(body.min.to_vec2(), z));
         if interrupt {
             let outer = self.chat_agent.replace(id.to_string());
@@ -225,7 +224,7 @@ impl DrawingApp {
                 || self.chat_node(&id).is_some_and(|i| {
                     let e = &self.scene.elements[i];
                     let (frame, z) = self.terminal_frame(e);
-                    e.chat.as_ref().is_some_and(|c| c.folded.is_none()) && chat_live(frame, z) && frame.intersects(self.canvas_rect)
+                    e.chat.as_ref().is_some_and(|c| c.folded.is_none()) && chat_live(frame, z, true) && frame.intersects(self.canvas_rect)
                 });
             if shown {
                 continue;

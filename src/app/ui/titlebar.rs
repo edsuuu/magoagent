@@ -31,7 +31,7 @@ impl DrawingApp {
         Rect::from_min_size(Pos2::new(left, TOP_ROW_Y - TOP_BUTTON / 2.0), Vec2::splat(TOP_BUTTON))
     }
 
-    /// Where the right panels' button `k` (panes/: 0 Tarefas … 2 Alterações) sits in a window
+    /// Where the right panels' button `k` (panes/: 0 Alterações) sits in a window
     /// `width` wide: 12 before the window's buttons (the window's edge on the Mac), on the top row.
     pub(crate) fn pane_button(&self, width: f32, k: usize) -> Rect {
         let captions = if TITLE_BAR > 0.0 { 3.0 * CAPTION_WIDTH } else { 0.0 };

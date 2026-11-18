@@ -108,6 +108,10 @@ impl DrawingApp {
             "duplicate" => {
                 self.selected = vec![i];
                 self.duplicate();
+                // a terminal an agent opens hangs from it, a copy too (`asker`: who asked, as the bridge says)
+                let copies: Vec<String> =
+                    self.selected.iter().filter_map(|k| self.scene.elements.get(*k)).filter(|e| e.terminal.is_some()).map(|e| e.id.clone()).collect();
+                self.hang_from(args["asker"].as_str().unwrap_or_default(), &copies);
             }
             "lock" => {
                 let on = switch(args).unwrap_or(!self.scene.elements[i].locked);

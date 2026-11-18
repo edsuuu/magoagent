@@ -4,6 +4,7 @@
 //! waits on its terminal, that terminal's last lines (chat/steps.rs).
 
 pub(crate) mod ask;
+pub(crate) mod bubble;
 pub(crate) mod cli_models;
 pub(crate) mod code_comment;
 pub(crate) mod commands;
@@ -26,6 +27,7 @@ pub(crate) mod mini_agents;
 pub(crate) mod mini_window;
 pub(crate) mod node;
 pub(crate) mod node_ui;
+pub(crate) mod queue;
 pub(crate) mod recruit_card;
 pub(crate) mod search;
 pub(crate) mod segments;
@@ -409,22 +411,10 @@ impl DrawingApp {
                     ui.with_layout(right, |ui| ui.label(egui::RichText::new(format!("Pergunta de {who}")).size(12.0).color(c.muted)));
                 }
                 let (fill, ink) = if from.is_some() { (c.surface_high, c.text) } else { (bubble_fill(self.dark(), true), Color32::WHITE) };
-                let bubble = ui.with_layout(right, |ui| {
-                    egui::Frame::new()
-                        .fill(fill)
-                        .corner_radius(16)
-                        .inner_margin(egui::Margin::symmetric(12, 7))
-                        .show(ui, |ui| {
-                            // a gutter of 48 pt on the other side
-                            ui.set_max_width(width - 48.0);
-                            // the right-to-left row would neither wrap it nor start its lines at the left
-                            ui.add(
-                                egui::Label::new(egui::RichText::new(text).size(crate::app::chat::markdown::PROSE).color(ink)).wrap().halign(egui::Align::LEFT),
-                            );
-                        })
-                        .response
-                });
-                message_menu(&bubble.inner, text, cite);
+                // a gutter of 48 pt on the other side
+                let words = egui::RichText::new(text).size(crate::app::chat::markdown::PROSE).color(ink);
+                let bubble = bubble::person_bubble(ui, words, width - 48.0, fill, 16, egui::Margin::symmetric(12, 7));
+                message_menu(&bubble, text, cite);
             }
             // what a terminal said before it restarted, above; what comes now, below
             ChatItem::System(text) if text == EARLIER => {

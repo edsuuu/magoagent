@@ -57,18 +57,33 @@ impl DrawingApp {
         self.update_bindings();
     }
 
+    /// What an agent opened hangs from it by a rope, as `recruit` hangs its child: from a chat, from its card, put on the
+    /// canvas shown when it is not there. Ends that are gone, or a rope already there, make none.
+    pub(crate) fn hang_from(&mut self, agent: &str, opened: &[String]) {
+        if agent.is_empty() || opened.is_empty() {
+            return;
+        }
+        self.add_chat_node(agent, None);
+        for id in opened {
+            self.rope_between(agent, id, false);
+        }
+    }
+
     /// What an agent drew through the MCP server hangs from its terminal: each new window (terminal,
     /// portal, IDE) by a rope, and one rope to the biggest new shape, unless the terminal already
-    /// holds the drawing it joins.
+    /// holds the drawing it joins. A chat's agent (`terminal` is the chat) gets the ropes to its windows
+    /// only: what it draws is the person's.
     pub(crate) fn tie_to_terminal(&mut self, terminal: &str, fresh: &[String]) {
+        // born connected to its maker, as `recruit` makes its child
+        let windows: Vec<String> = self.scene.elements.iter().filter(|e| e.is_node() && fresh.contains(&e.id)).map(|e| e.id.clone()).collect();
+        if self.is_chat(terminal) {
+            self.hang_from(terminal, &windows);
+            return;
+        }
         if !self.scene.elements.iter().any(|e| e.id == terminal && e.terminal.is_some()) {
             return;
         }
-        // born connected to its maker, as `recruit` makes its child
-        let windows: Vec<String> = self.scene.elements.iter().filter(|e| e.is_node() && fresh.contains(&e.id)).map(|e| e.id.clone()).collect();
-        for id in &windows {
-            self.rope_between(terminal, id, false);
-        }
+        self.hang_from(terminal, &windows);
         let area = |e: &Element| element_bounds(e).area();
         let drawn = self.scene.elements.iter().filter(|e| fresh.contains(&e.id) && bindable(e) && !e.rope && !e.is_node());
         let Some(target) = drawn.max_by(|a, b| area(a).total_cmp(&area(b))) else { return };

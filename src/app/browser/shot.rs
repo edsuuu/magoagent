@@ -2,9 +2,9 @@
 
 use crate::prelude::*;
 
-/// BGRA pixels as GDI gives them (its alpha left at zero) into opaque RGBA.
-#[cfg(windows)]
-fn opaque_rgba(mut pixels: Vec<u8>) -> Vec<u8> {
+/// BGRA pixels as GDI and Cairo give them (GDI's alpha left at zero) into opaque RGBA.
+#[cfg_attr(target_os = "macos", allow(dead_code))] // no picture of the page on the Mac yet
+pub(crate) fn opaque_rgba(mut pixels: Vec<u8>) -> Vec<u8> {
     for p in pixels.as_chunks_mut::<4>().0 {
         p.swap(0, 2);
         p[3] = 255;
@@ -12,14 +12,21 @@ fn opaque_rgba(mut pixels: Vec<u8>) -> Vec<u8> {
     pixels
 }
 
-/// The picture as a PNG in base64, as the MCP sends images.
-#[cfg(not(target_os = "macos"))]
-fn png_base64(width: u32, height: u32, rgba: Vec<u8>) -> Result<String, String> {
+/// The picture as a PNG.
+pub(crate) fn png(width: u32, height: u32, rgba: Vec<u8>) -> Result<Vec<u8>, String> {
     let image = image::RgbaImage::from_raw(width, height, rgba).ok_or("imagem vazia")?;
     let mut png = Vec::new();
     image.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).map_err(|e| e.to_string())?;
-    Ok(crate::render::base64(&png))
+    Ok(png)
 }
+
+/// The picture as a PNG in base64, as the MCP sends images.
+fn png_base64(width: u32, height: u32, rgba: Vec<u8>) -> Result<String, String> {
+    Ok(crate::render::base64(&png(width, height, rgba)?))
+}
+
+/// What is said when the page is not on screen to be pictured.
+const NOT_SHOWN: &str = "não foi possível capturar a página: ela precisa estar na tela, com o navegador visível";
 
 /// What a window shows, as BGRA: the system draws it into a bitmap (PrintWindow), the parts under
 /// other windows too. None when it has no size or the system could not draw it (a hidden window).
@@ -123,48 +130,25 @@ pub(crate) fn png_rgba(png: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
 }
 
 impl DrawingApp {
-    /// The agents' `portal_shot`: the open tab of portal `id` as a PNG in base64, sent to `reply`
-    /// (on the Mac WebKit answers later, never blocking the main thread).
+    /// The agents' `portal_screenshot`: the open tab of portal `id` as a PNG in base64, to `reply` once the
+    /// system has it (at once on Windows; on Linux from GTK's thread and on the Mac from WebKit, the app going on meanwhile).
     pub(crate) fn portal_shot(&self, id: &str, reply: std::sync::mpsc::Sender<Result<String, String>>) {
-        #[cfg(target_os = "macos")]
-        match self.open_tab_view(id) {
-            Some(tab) => page_png(&tab.webview, move |png| {
-                let _ = reply
-                    .send(png.map(|png| crate::render::base64(&png)).ok_or_else(|| "não foi possível capturar a página: ela precisa estar na tela".into()));
-            }),
-            None => drop(reply.send(Err("a página desse navegador não está aberta".into()))),
-        }
-        #[cfg(not(target_os = "macos"))]
-        let _ = reply.send(self.page_rgba(id).and_then(|(width, height, rgba)| png_base64(width, height, rgba)));
-    }
-
-    /// Copiar Captura de Tela, Mac: the page's picture, decoded into `portal_extras.ready` when WebKit has it.
-    #[cfg(target_os = "macos")]
-    pub(crate) fn page_to_clipboard(&self, id: &str, ctx: &Context) -> Result<(), String> {
-        let tab = self.open_tab_view(id).ok_or("a página desse navegador não está aberta")?;
-        let (ready, ctx) = (self.portal_extras.ready.clone(), ctx.clone());
-        page_png(&tab.webview, move |png| {
-            let picture = png.as_deref().and_then(png_rgba).ok_or("não foi possível capturar a página: ela precisa estar na tela".to_string());
-            ready.lock().unwrap_or_else(|e| e.into_inner()).push(picture);
-            ctx.request_repaint();
+        self.page_picture(id, move |picture| {
+            let _ = reply.send(picture.and_then(|(width, height, rgba)| png_base64(width, height, rgba)));
         });
-        Ok(())
     }
 
-    /// The open tab's picture as opaque RGBA (also what Copiar Captura de Tela puts on the clipboard).
-    // ponytail: no synchronous capture off Windows (the Mac answers later, see `portal_shot`); Linux has none yet
-    #[cfg(not(target_os = "macos"))]
-    pub(crate) fn page_rgba(&self, id: &str) -> Result<(u32, u32, Vec<u8>), String> {
+    /// The open tab's picture as opaque RGBA (also what Copiar Captura de Tela puts on the clipboard), to `done`.
+    pub(crate) fn page_picture(&self, id: &str, done: impl FnOnce(Result<(u32, u32, Vec<u8>), String>) + Send + 'static) {
+        let Some(tab) = self.open_tab_view(id) else {
+            return done(Err("a página desse navegador não está aberta".into()));
+        };
         #[cfg(windows)]
-        {
-            let tab = self.open_tab_view(id).ok_or("a página desse navegador não está aberta")?;
-            webview_rgba(&tab.webview).ok_or_else(|| "não foi possível capturar a página: ela precisa estar na tela, com o navegador visível".into())
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = id;
-            Err("a captura da página só existe no Windows e no macOS por enquanto; use portal_read ou o screenshot do app".into())
-        }
+        done(webview_rgba(&tab.webview).ok_or_else(|| NOT_SHOWN.into()));
+        #[cfg(target_os = "linux")]
+        tab.webview.picture(move |picture| done(picture.map(|(width, height, rgba, _)| (width, height, rgba)).ok_or_else(|| NOT_SHOWN.into())));
+        #[cfg(target_os = "macos")]
+        page_png(&tab.webview, move |png| done(png.as_deref().and_then(png_rgba).ok_or_else(|| NOT_SHOWN.into())));
     }
 }
 
@@ -172,7 +156,6 @@ impl DrawingApp {
 mod tests {
     use super::*;
 
-    #[cfg(windows)]
     #[test]
     fn the_systems_pixels_become_an_opaque_png() {
         // blue, green, red, alpha as GDI leaves them: two pixels
@@ -187,9 +170,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn a_png_comes_back_as_rgba_at_its_own_size() {
-        let mut png = Vec::new();
-        let picture = image::RgbaImage::from_raw(2, 1, vec![1, 2, 3, 255, 4, 5, 6, 255]).unwrap();
-        picture.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        let png = png(2, 1, vec![1, 2, 3, 255, 4, 5, 6, 255]).unwrap();
         assert_eq!(png_rgba(&png), Some((2, 1, vec![1, 2, 3, 255, 4, 5, 6, 255])));
         assert_eq!(png_rgba(b"not a png"), None);
     }

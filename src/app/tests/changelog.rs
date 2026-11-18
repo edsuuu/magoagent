@@ -76,7 +76,7 @@ fn later_ends_after_six_hours_or_a_restart_of_the_computer() {
     assert!(!later_holds(Some(at), at + 60_000, Some(at + 30_000)), "the computer restarted after it");
     assert!(later_holds(Some(at), at + 60_000, None), "the boot unknown: the 6 h only");
     assert!(!later_holds(None, at, None));
-    assert!(crate::app::system::updates::boot_ms(now_ms()).is_none_or(|boot| boot < now_ms()));
+    assert!(crate::app::system::updates::boot_ms().is_none_or(|boot| boot < now_ms()));
 }
 
 #[test]

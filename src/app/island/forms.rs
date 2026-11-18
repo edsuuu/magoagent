@@ -4,7 +4,7 @@
 //! round buttons.
 
 use super::NewForm;
-use super::paint::{BLACK, CARD, DIM, DIM_3, INK, Out, RED, View, aim, font};
+use super::paint::{BLACK, CARD, DIM, INK, Out, RED, View, aim, font};
 use crate::app::chat::footer::chip_folder;
 use crate::app::chat::list::clipped;
 use crate::prelude::*;
@@ -44,8 +44,11 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
     aim(view, Pos2::new(page.left() + 48.0, page.center().y), 52.0, MagoState::Idle);
     // the reference's .launch-body: 98 from the card's left, 16 from its right, its rows 8 apart and centred
     let body = Rect::from_min_max(Pos2::new(page.left() + 98.0, page.top() + 4.0), Pos2::new(page.right() - 16.0, page.bottom() - 4.0));
-    // the same height with the projects open: they drop over the text box, nothing above them moves
-    let height = 22.0 + 8.0 + 40.0 + 8.0 + 14.0;
+    // the same height with the projects open: they drop over the text box, nothing above them moves; the box grows with
+    // the words (`bar_height`) as far as the card lets it
+    let prompt_id = ui.scope_id().with("launch_prompt");
+    let bar_h = super::prompt::bar_height(ui, prompt_id).min(body.height() - (22.0 + 8.0 + 8.0 + 14.0));
+    let height = 22.0 + 8.0 + bar_h + 8.0 + 14.0;
     let top = body.center().y - height / 2.0;
     let head = Rect::from_min_size(Pos2::new(body.left(), top), Vec2::new(body.width(), 22.0));
     // the project at the right of the title, the worktree before it
@@ -82,21 +85,12 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
     ui.painter().galley(Pos2::new(head.left(), head.center().y - title.size().y / 2.0), title, INK);
     let below = head.bottom() + 8.0;
     // the reference's .chat-bar: the words and the round button that sends them
-    let bar = Rect::from_min_size(Pos2::new(body.left(), below), Vec2::new(body.width(), 40.0));
+    let bar = Rect::from_min_size(Pos2::new(body.left(), below), Vec2::new(body.width(), bar_h));
     ui.painter().rect_filled(bar, 12, Color32::from_white_alpha(18));
-    let send = Rect::from_center_size(Pos2::new(bar.right() - 10.0 - 14.0, bar.center().y), Vec2::splat(28.0));
+    // the round button stays at the box's last line as the words grow
+    let send = Rect::from_center_size(Pos2::new(bar.right() - 10.0 - 14.0, bar.bottom() - 20.0), Vec2::splat(28.0));
     let field = Rect::from_min_max(Pos2::new(bar.left() + 10.0, bar.top() + 6.0), Pos2::new(send.left() - 8.0, bar.bottom() - 6.0));
-    let edit = ui.put(
-        field,
-        egui::TextEdit::singleline(&mut form.prompt)
-            .id(ui.scope_id().with("launch_prompt"))
-            .hint_text(egui::RichText::new("O que o agente deve fazer?").color(DIM_3))
-            .frame(egui::Frame::NONE)
-            .font(font(13.0))
-            .text_color(INK)
-            .align(egui::Align2::LEFT_CENTER),
-    );
-    let entered = edit.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+    let (_, entered) = super::prompt::growing_field(ui, field, &mut form.prompt, prompt_id, "O que o agente deve fazer?");
     let ready = !form.folder.is_empty();
     let response = ui.interact(send, ui.scope_id().with("launch_send"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
     let scale = if response.is_pointer_button_down_on() { 0.92 } else { 1.0 };

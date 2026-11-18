@@ -1,11 +1,13 @@
-# Compila, verifica qualidade e testa no Windows e no Linux: a cada push na main, em cada pull request e dentro do
-# release (release.yml). Uma vez por commit: o push de uma branch com PR e a tag do release rodavam outro igual ao mesmo
+# Compila, verifica qualidade e testa no Windows e no Linux: a cada push na main, em cada pull request para a main e
+# dentro do release (release.yml). Os PRs para a dev (o trabalho dos agentes, juntado e testado lá) não rodam o CI: ele
+# roda no PR da dev para a main. Uma vez por commit: o push de uma branch com PR e a tag do release rodavam outro igual ao mesmo
 # tempo, disputando as máquinas.
 name: CI
 on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
   workflow_call:
 # um push novo no mesmo PR cancela o CI do anterior, que já não vale
 concurrency:
@@ -76,7 +78,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2.8.1
       - name: Dependências do Linux
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev libasound2-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libssl-dev
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev libasound2-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libssl-dev libwebkit2gtk-4.1-dev
       - name: Identidade do git para os testes que fazem commits
         run: git config --global user.name ci && git config --global user.email ci@example.com
       # sem `cargo check` antes: não há examples nem benches, e o `cargo test` já compila tudo o que ele compilaria
@@ -94,7 +96,7 @@ jobs:
       - uses: actions/checkout@v4.2.2
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2.8.1
-      - run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev libasound2-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libssl-dev xvfb libxkbcommon-x11-0 libgl1-mesa-dri libegl1 libxcursor1 libxrandr2 libxi6
+      - run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev libasound2-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libssl-dev libwebkit2gtk-4.1-dev xvfb libxkbcommon-x11-0 libgl1-mesa-dri libegl1 libxcursor1 libxrandr2 libxi6
       - name: Criar cena de teste
         run: printf '%s\n' '{"version":1,"elements":[],"background":[255,255,255,255]}' > "$RUNNER_TEMP/teste.mago"
       - name: Compilar
