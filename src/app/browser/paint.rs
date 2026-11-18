@@ -51,8 +51,15 @@ impl DrawingApp {
                 muted,
             );
         }
-        // while the canvas moves, the page's picture moves with the card (`sync_portals`, Windows)
-        if let (Some(still), Some(r)) = (self.portal_stills.get(&element.id), self.portal_page_rect(element)) {
+        // while the canvas moves, the page's picture moves with the card (`sync_portals`): from the very frame the card
+        // moves on Linux, whose picture is taken standing still (`portal_snaps`), before the page is cut away
+        let page_rect = self.portal_page_rect(element);
+        if let Some(r) = page_rect {
+            self.portal_painted.borrow_mut().insert(element.id.clone(), r);
+        }
+        let moved_now = self.portal_motion.get(&element.id).is_some_and(|(at, _)| page_rect != Some(*at));
+        let snap = self.portal_snaps.get(&element.id).and_then(|snap| snap.1.as_ref()).filter(|_| moved_now);
+        if let (Some(still), Some(r)) = (self.portal_stills.get(&element.id).or(snap), page_rect) {
             painter.image(still.id(), r, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
         }
     }
@@ -91,12 +98,23 @@ impl DrawingApp {
         (!self.portals_covered() && !self.lifted_other(element) && visible.width() > 4.0 && visible.height() > 4.0 && rect.height() > 20.0).then_some(rect)
     }
 
-    /// The app's own floating UI over a page (the bars, panels, menus, tooltips): what the page's
-    /// native view must leave uncovered, as the cards do. `cards` are layers that belong to the
-    /// cards (a portal's bar, a terminal's grid): they keep under the page, as before. Last
-    /// frame's areas count too. In a fixed order, so an unchanged set compares equal from frame to
-    /// frame.
-    pub(crate) fn page_holes(ctx: &Context, page: Rect, cards: &[egui::Id]) -> Vec<Rect> {
+    /// Where the cards in front of portal `index` are on screen: later in the drawing, or enlarged over it, they are
+    /// drawn over its card, and its page leaves them uncovered (`page_holes`).
+    pub(crate) fn cards_in_front(&self, index: usize) -> Vec<Rect> {
+        let (elements, lifted) = (&self.scene.elements, self.lift_index());
+        if lifted == Some(index) {
+            return Vec::new();
+        }
+        let later = elements.iter().skip(index + 1).filter(|other| other.is_card() && !hidden_page(elements, other));
+        later.chain(lifted.filter(|&lifted| lifted < index).map(|lifted| &elements[lifted])).map(|card| self.terminal_frame(card).0).collect()
+    }
+
+    /// What a page's native view must leave uncovered: the app's own floating UI over it (the bars,
+    /// panels, menus, tooltips) and the cards in front of it (`fronts`, `cards_in_front`). `cards`
+    /// are layers that belong to the cards (a portal's bar, a tree's panels, a terminal's grid): they
+    /// stack with their cards. Last frame's areas count too. In a fixed order, so an unchanged set
+    /// compares equal from frame to frame.
+    pub(crate) fn page_holes(ctx: &Context, page: Rect, cards: &[egui::Id], fronts: &[Rect]) -> Vec<Rect> {
         // on macOS a hole hides the whole page: a tooltip of its own bar would blink it away
         let tooltips = !cfg!(target_os = "macos");
         let mut holes: Vec<Rect> = ctx.memory(|m| {
@@ -110,6 +128,12 @@ impl DrawingApp {
                 .filter(|r| r.width() >= 1.0 && r.height() >= 1.0)
                 .collect()
         });
+        // ponytail: on macOS a hole hides the whole page (sync.rs), with no still picture to stand in for it: a card in
+        // front of a page leaves it whole, over the card, as before. Upgrade: a mask on the NSView's layer, or a picture
+        // of the page standing still there too
+        if !cfg!(target_os = "macos") {
+            holes.extend(fronts.iter().map(|front| front.intersect(page)).filter(|r| r.width() >= 1.0 && r.height() >= 1.0));
+        }
         holes.sort_by(|a, b| [a.min.x, a.min.y, a.max.x, a.max.y].partial_cmp(&[b.min.x, b.min.y, b.max.x, b.max.y]).unwrap_or(std::cmp::Ordering::Equal));
         holes.dedup();
         holes
