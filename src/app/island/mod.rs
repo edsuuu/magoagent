@@ -215,8 +215,8 @@ pub(crate) enum Shape {
 }
 
 impl Shape {
-    /// The wizard has a loop to play (swaying, blinking) in the compact and open island, as in the reference, whose
-    /// requestAnimationFrame runs while either shows: a frame per refresh, not 15 or 30 a second.
+    /// The compact and open island run at the rate asked in Ajustes while the person is on them, as the reference's
+    /// requestAnimationFrame; left alone, at what they show asks for (`update::AMBIENT`).
     fn animates_every_frame(self) -> bool {
         self != Shape::Closed
     }
@@ -790,12 +790,14 @@ impl DrawingApp {
         // open or compact (and while the entrance plays) every frame, as the reference's requestAnimationFrame; closed, the
         // wizards move while they work or wait, and the fold after the pointer left comes by the clock
         let moving = busy || time < island.celebrate_until || island.hovered;
-        if shape.animates_every_frame() {
-            // at the rate asked in Ajustes: the window has no vsync to hold it back (a bare `request_repaint` ran at 230
-            // a second, 55% of a core)
+        if shape.animates_every_frame() && (island.hovered || island.typing || island.holding) {
+            // at the rate asked in Ajustes while the person is on it (the window has no vsync to hold it back: a bare
+            // `request_repaint` ran at 230 a second, 55% of a core). Left alone, what it shows asks for its own frames
+            // (the wizard 15 a second at rest, the springs every frame, the rest `update::AMBIENT`): every frame of it
+            // paints the whole app
             ctx.request_repaint_after(crate::app::update::frame_spacing());
         } else if moving {
-            ctx.request_repaint_after(std::time::Duration::from_millis(33));
+            ctx.request_repaint_after(crate::app::update::AMBIENT);
         }
         // the window lets the clicks through, so only the frames see the cursor: often while it moves (the eyes follow
         // it), seldom while it rests (`cursor::watch` wakes it when the cursor comes onto the island)

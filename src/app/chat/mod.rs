@@ -86,7 +86,7 @@ impl DrawingApp {
         let time = ctx.input(|i| i.time);
         // the pulses and the dots move only while someone works or needs you
         if rows.iter().any(|r| matches!(r.state, AgentState::Working(_) | AgentState::Waiting)) && ctx.input(|i| i.viewport().visible()) != Some(false) {
-            ctx.request_repaint_after(std::time::Duration::from_millis(33));
+            ctx.request_repaint_after(crate::app::update::AMBIENT);
         }
         if ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::B))) {
             self.chat_list_toggled = !self.chat_list_toggled;

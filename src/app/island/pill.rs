@@ -149,8 +149,9 @@ pub(super) fn spotify(
         let along = if count > 1 { index as f32 / (count - 1) as f32 } else { 0.0 };
         painter.rect_filled(rise, bar / 2.0, colours.0.lerp_to_gamma(colours.1, along));
     }
+    // at the ambient rate: the screen's kept the whole app painting all song long
     if playing || fade.fading(time) {
-        ui.ctx().request_repaint_after(crate::app::update::frame_spacing());
+        ui.ctx().request_repaint_after(crate::app::update::AMBIENT);
     }
     let bars_area = if upright {
         Rect::from_min_size(Pos2::new(rect.center().x - tall / 2.0, bars_left), Vec2::new(tall, total))
