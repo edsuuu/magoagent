@@ -590,6 +590,11 @@ fn the_model_menu_stays_in_the_island_and_opens_more_models() {
     let (mut app, ctx, mut time) = opened();
     app.island.chat_full = true;
     app.chat_agent = Some("a".into());
+    // the chip's model and effort the chat's own: with none, they come from this computer's ~/.claude/settings.json
+    // (`footer::agent_default`), which the CI's machines do not have
+    if let Some(chat) = app.chats.iter_mut().find(|chat| chat.id == "a") {
+        (chat.model, chat.effort) = ("claude-opus-5-5".into(), "xhigh".into());
+    }
     let at = tab_button(&app, 1);
     click(&mut app, &ctx, &mut time, at);
     rest(&mut app, &ctx, &mut time, at, 1.5);
