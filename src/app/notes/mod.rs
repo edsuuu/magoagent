@@ -13,10 +13,9 @@ use egui::text::{CCursor, CCursorRange};
 use egui::text_edit::TextEditState;
 
 /// The editor's TextEdit id, so the bar can move its cursor and read its selection. It must stay
-/// the same from frame to frame (the caret is kept under it), which `Id::unique` can't give.
-#[allow(deprecated)]
+/// the same from frame to frame (the caret is kept under it): `Id::unique` of a fixed source is.
 pub(crate) fn editor_id() -> egui::Id {
-    egui::Id::new("note_text")
+    egui::Id::unique("note_text")
 }
 
 /// Applies a markdown button to `text` between the char indices `start..end` (the caret when they
