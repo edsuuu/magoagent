@@ -8,10 +8,48 @@ use crate::app::chat::mini::ConvOut;
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
 
+/// The card's own size from which it shows its conversation, not the picture: room for the band and the box with a few
+/// lines of conversation above them (smaller, the box took it all, or went past the card's edge).
+pub(crate) const CHAT_LIVE_MIN: Vec2 = Vec2::new(220.0, 260.0);
+/// A recruit's card has no box nor folder strip: its band and a few lines of its work fit in less.
+pub(crate) const RECRUIT_LIVE_MIN: Vec2 = Vec2::new(220.0, 200.0);
+
 /// Big enough to read and write in (else the picture): the card's own size, so zooming in never turns a
 /// picture into the chat; too far out, it is the picture.
-pub(crate) fn chat_live(rect: Rect, zoom: f32) -> bool {
-    zoom >= 0.45 && rect.width() / zoom >= 220.0 && rect.height() / zoom >= 160.0
+pub(crate) fn chat_live(rect: Rect, zoom: f32, recruit: bool) -> bool {
+    let least = if recruit { RECRUIT_LIVE_MIN } else { CHAT_LIVE_MIN };
+    zoom >= 0.45 && rect.width() / zoom >= least.x && rect.height() / zoom >= least.y
+}
+
+/// Where a card keeps what is pinned to its bottom edge as it was last laid out (in the card's own points).
+pub(crate) fn pinned_key(id: &str) -> egui::Id {
+    egui::Id::unique(("chat_card_pinned", id))
+}
+
+/// A card's inside for this frame: what scrolls on top, and under it, `gap` away, what is pinned to the bottom edge (the
+/// band, the box) at the height it took last frame (`guess` the first time). Neither spills into the other: however much
+/// the conversation holds, it scrolls in what is left.
+pub(crate) fn split_body(ctx: &Context, key: egui::Id, inner: Rect, guess: f32, gap: f32) -> (Rect, Rect) {
+    let pinned = ctx.data_mut(|d| d.get_temp::<Rect>(key)).map_or(guess, |r| r.height()).min(inner.height());
+    let bottom = Rect::from_min_max(Pos2::new(inner.left(), inner.bottom() - pinned), inner.max);
+    (Rect::from_min_max(inner.min, Pos2::new(inner.right(), (bottom.top() - gap).max(inner.top()))), bottom)
+}
+
+/// The pinned part as it was laid out, for the next frame (one frame more when its height changed).
+pub(crate) fn keep_pinned(ctx: &Context, key: egui::Id, laid: Rect) {
+    let was = ctx.data_mut(|d| d.get_temp::<Rect>(key));
+    if was != Some(laid) {
+        ctx.data_mut(|d| d.insert_temp(key, laid));
+        if was.is_none_or(|was| (was.height() - laid.height()).abs() > 0.5) {
+            ctx.request_repaint();
+        }
+    }
+}
+
+/// The conversation's scroll: what is left above the pinned part, never more (egui's own floor would push the
+/// pinned part off the card), stuck to the newest.
+pub(crate) fn card_scroll(salt: (&str, &str), height: f32) -> egui::ScrollArea {
+    egui::ScrollArea::vertical().id_salt(salt).stick_to_bottom(true).auto_shrink(false).min_scrolled_height(0.0).max_height(height)
 }
 
 /// The part of the card under its header and over its folder strip, on screen.
@@ -38,7 +76,7 @@ impl DrawingApp {
                 let (frame, z) = self.terminal_frame(e);
                 (e.id.clone(), frame, z)
             })
-            .filter(|(_, frame, z)| chat_live(*frame, *z) && frame.intersects(canvas))
+            .filter(|(id, frame, z)| chat_live(*frame, *z, self.is_recruit_chat(id)) && frame.intersects(canvas))
             .collect();
         for (id, frame, z) in cards {
             if self.is_recruit_chat(&id) {
@@ -120,26 +158,25 @@ impl DrawingApp {
             ui.allocate_rect(rect, Sense::click());
             let inner = rect.shrink2(Vec2::new(10.0, 6.0));
             let width = inner.width() - 4.0;
-            ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+            // the band and the box pinned to the bottom edge, the conversation scrolling in what is left above them
+            let key = pinned_key(id);
+            let (top, bottom) = split_body(ui.ctx(), key, inner, 92.0, 6.0);
+            ui.scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
                 ui.set_max_width(width);
-                let footer_key = egui::Id::unique(("chat_card_footer", id));
-                let footer_height = ui.ctx().data_mut(|d| d.get_temp::<f32>(footer_key)).unwrap_or(70.0);
                 ui.spacing_mut().scroll = crate::app::ui::scroll_style();
-                egui::ScrollArea::vertical()
-                    .id_salt(("chat_card_scroll", id))
-                    .stick_to_bottom(true)
-                    .auto_shrink(false)
-                    .max_height((ui.available_height() - footer_height).max(0.0))
-                    .show(ui, |ui| self.conversation(ui, &row, transcript, talks, true, false, &asked, None, width, &look, &c, true, time, &mut conv));
-                let top = ui.cursor().top();
-                ui.add_space(6.0);
+                card_scroll(("chat_card_scroll", id), top.height()).show(ui, |ui| {
+                    self.conversation(ui, &row, transcript, talks, true, false, &asked, None, width, &look, &c, true, time, &mut conv);
+                    // what the agent asks the person ends the conversation: however tall, it scrolls with it
+                    if self.person_asked(&row.id) {
+                        self.decide_card(ui, &row.id, &look, time);
+                        ui.add_space(6.0);
+                    }
+                });
+            });
+            let pinned = ui.scope_builder(egui::UiBuilder::new().max_rect(bottom), |ui| {
+                ui.set_max_width(width);
                 if matches!(row.state, AgentState::Working(_)) {
                     interrupt |= self.work_band(ui, &row, transcript, &look, true, time);
-                    ui.add_space(6.0);
-                }
-                if self.person_asked(&row.id) {
-                    let id = row.id.clone();
-                    self.decide_card(ui, &id, &look, time);
                     ui.add_space(6.0);
                 }
                 let card = self.composer(ui, &mut draft, draft_id, &hint, width, 120f32.min(size.y * 0.3), false, &look, &c, Hints::None, time);
@@ -147,12 +184,8 @@ impl DrawingApp {
                 if card.send {
                     send = Some(std::mem::take(&mut draft).trim_end().to_string());
                 }
-                let footer = ui.cursor().top() - top;
-                if (footer - footer_height).abs() > 0.5 {
-                    ui.ctx().data_mut(|d| d.insert_temp(footer_key, footer));
-                    ui.ctx().request_repaint();
-                }
             });
+            keep_pinned(ui.ctx(), key, pinned.response.rect);
         });
         // laid out at the card's size, shown at the canvas's
         ctx.set_transform_layer(area.response.layer_id, egui::emath::TSTransform::new(body.min.to_vec2(), z));

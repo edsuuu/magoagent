@@ -277,14 +277,14 @@ impl DrawingApp {
         painter.galley(Pos2::new(x, header.center().y - name.size().y / 2.0), name, muted);
         if recruit {
             // no folder strip: its work goes to the bottom (chat/recruit_card.rs), or its task when small or folded
-            if spec.folded.is_some() || !crate::app::chat::node_ui::chat_live(rect, zoom) {
+            if spec.folded.is_some() || !crate::app::chat::node_ui::chat_live(rect, zoom, true) {
                 self.paint_recruit_task(&painter, &element.id, Rect::from_min_max(header.left_bottom(), rect.max).shrink(pad), zoom, light, muted);
             }
             return;
         }
         let footer = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - TERMINAL_FOOTER * zoom), rect.max);
         let body = Rect::from_min_max(header.left_bottom(), footer.right_top()).shrink(pad);
-        if crate::app::chat::node_ui::chat_live(rect, zoom) {
+        if crate::app::chat::node_ui::chat_live(rect, zoom, false) {
             // the conversation itself goes there (chat_node_overlay)
             self.paint_chat_footer(&painter, footer, radius, strip, muted, pad, &spec.cwd, look.rule());
             return;

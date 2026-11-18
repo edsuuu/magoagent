@@ -101,6 +101,17 @@ impl Drop for ChatRun {
     }
 }
 
+#[cfg(test)]
+impl ChatRun {
+    /// An answer the tests hold as running since `since`: its process (the test binary listing its tests) ends at
+    /// once and says nothing; the chat works until the run is taken out.
+    pub(crate) fn held(since: f64) -> Self {
+        let exe = std::env::current_exe().expect("the test binary");
+        let child = crate::editor::command(exe).arg("--list").stdout(std::process::Stdio::null()).spawn().expect("the test binary runs");
+        Self { child, events: channel().1, since }
+    }
+}
+
 /// The agent's command line for one message: headless, its events as JSON lines, the prompt on
 /// stdin, and the session carried on when there is one.
 pub(crate) fn chat_args(agent: &str, mode: usize, session: &str, resume: bool) -> Vec<String> {

@@ -9,9 +9,17 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "get_scene" => with_scene(false, |scene| Ok(text(describe(scene)))),
         "add_elements" => with_scene(true, |scene| {
             let items = list(args, "elements")?;
-            may_build(scene, caller_id().as_deref(), items)?;
+            let caller = caller_id();
+            may_build(scene, caller.as_deref(), items)?;
             let added = add_elements(scene, items)?;
-            Ok(text(json!({ "created": added }).to_string()))
+            // the windows it opened hang from it, by a rope in the same write
+            let linked = tie_to_caller(scene, caller.as_deref(), &added)?;
+            let mut reply = json!({ "created": added });
+            if !linked.is_empty() {
+                reply["linked"] = json!(linked);
+                reply["note"] = "ligados a você por corda: list_agents os mostra e read_terminal lê a tela de um terminal".into();
+            }
+            Ok(text(reply.to_string()))
         }),
         "note" => with_scene(true, |scene| Ok(text(note_call(scene, args)?.to_string()))),
         "note_buttons" => with_scene(true, |scene| {
@@ -143,9 +151,18 @@ pub(crate) fn vault_login(entry: &VaultEntry) -> Result<(String, String), String
     }
 }
 
-/// The canvas terminal this agent runs in, from the environment its shell gave it.
+/// The canvas terminal or the chat this agent runs in, from the environment its shell (or its chat, `chat_env`) gave it.
+// ponytail: only what the agent hands its MCP server down. Codex passes few variables to its MCP servers: a Codex
+// chat's MCP may know no caller (nor its bridge token), and the windows it opens stay loose. Upgrade: the chat's id
+// in `maestro_args`, as `-c mcp_servers.magoagent.env.MAGOAGENT_CHAT_ID=…`, once checked against a real Codex
 fn caller_id() -> Option<String> {
-    std::env::var("MAGOAGENT_TERMINAL_ID").ok().filter(|id| !id.is_empty())
+    caller_from(|key| std::env::var(key).ok())
+}
+
+/// `caller_id` out of `env`: the terminal's id, else the chat's (a chat's agent has an empty terminal id).
+pub(crate) fn caller_from(env: impl Fn(&str) -> Option<String>) -> Option<String> {
+    let set = |key: &str| env(key).filter(|id| !id.trim().is_empty());
+    set("MAGOAGENT_TERMINAL_ID").or_else(|| set("MAGOAGENT_CHAT_ID"))
 }
 
 /// Agent tools go to the running app through the bridge.

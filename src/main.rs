@@ -87,7 +87,7 @@ fn main() -> eframe::Result {
         Some("atualizar") => std::process::exit(app::system::updater::cli(&args[1..])),
         // Limpar todos os dados: waits for the app to close, cleans, opens it again (app/system/wipe.rs)
         Some("limpar") => std::process::exit(app::system::wipe::cli(&args[1..])),
-        Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "connect" | "notify" | "help") => {
+        Some("list" | "ask" | "check" | "note" | "portal" | "recruit" | "terminal" | "connect" | "notify" | "help") => {
             attach_console();
             std::process::exit(cli(&args))
         }

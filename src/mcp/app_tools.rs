@@ -109,13 +109,22 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
         }),
         json!({
+            "name": "create_terminal",
+            "description": "Abre um terminal no canvas à sua direita, já ligado a você por uma corda (ao seu terminal ou ao seu cartão de chat), rodando `command` como se fosse digitado (ex.: cargo test, npm run dev): use para rodar testes, uma API ou um servidor que você vai acompanhar. A resposta diz o nome dele. Ligado a você, ele aparece em list_agents com o estado (trabalhando, parado, encerrado), read_terminal lê a tela, ask_agent com raw manda teclas (\\x03 para parar) e terminal_processes mostra o que roda nele. Sem corda não há terminal: só de dentro de um terminal da Luna ou de um chat do MagoAgent.",
+            "inputSchema": { "type": "object", "properties": {
+                "command": { "type": "string", "description": "o que roda nele; vazio: só o shell" },
+                "name": { "type": "string", "description": "opcional; padrão o programa do comando (cargo, npm…)" },
+                "cwd": { "type": "string", "description": "a pasta; padrão a sua" },
+            } },
+        }),
+        json!({
             "name": "terminal_restart",
             "description": "Reinicia o terminal com esse nome (o shell e o comando dele começam de novo).",
             "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
         }),
         json!({
             "name": "terminal_menu",
-            "description": "As opções do cartão de um terminal, as mesmas do menu do botão direito: copy devolve (e põe na área de transferência) o que está selecionado, paste cola `text`, select_all e clear_selection, rename dá o nome `value`, monitor liga ou desliga (`value` on ou off) o aviso de quando o trabalho termina, blur esconde a tela do terminal atrás de um véu (off tira), reload e unload (descarrega o shell até recarregar), use_size, use_font e use_theme fazem do tamanho, do tamanho de fonte e do tema deste terminal os padrões dos novos, copy_element, duplicate, lock (`value` on ou off) e delete.",
+            "description": "As opções do cartão de um terminal, as mesmas do menu do botão direito: copy devolve (e põe na área de transferência) o que está selecionado, paste cola `text`, select_all e clear_selection, rename dá o nome `value`, monitor liga ou desliga (`value` on ou off) o aviso de quando o trabalho termina, blur esconde a tela do terminal atrás de um véu (off tira), reload e unload (descarrega o shell até recarregar), use_size, use_font e use_theme fazem do tamanho, do tamanho de fonte e do tema deste terminal os padrões dos novos, copy_element, duplicate (a cópia fica ligada a você por corda), lock (`value` on ou off) e delete.",
             "inputSchema": { "type": "object", "properties": {
                 "name": { "type": "string", "description": "o nome do terminal" },
                 "action": { "type": "string", "enum": ["copy", "paste", "select_all", "clear_selection", "rename", "monitor", "blur", "reload", "unload", "use_size", "use_font", "use_theme", "copy_element", "duplicate", "lock", "delete"] },
