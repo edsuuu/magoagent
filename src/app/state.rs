@@ -230,7 +230,10 @@ pub(crate) struct DrawingApp {
     pub(crate) portal_stills: std::collections::HashMap<String, egui::TextureHandle>,
     pub(crate) portal_motion: std::collections::HashMap<String, (Rect, f64)>,
     /// Linux: each page's last picture standing still, and when it was asked (`sync_portals`).
-    pub(crate) portal_snaps: std::collections::HashMap<String, (f64, Option<egui::ColorImage>)>,
+    pub(crate) portal_snaps: std::collections::HashMap<String, (f64, Option<egui::TextureHandle>)>,
+    /// Where this frame's canvas painted each portal's page box (`paint_portal`): the view can change after it (the
+    /// zoom buttons), and the page is cut away only once the card painted there carries its picture (`sync_portals`).
+    pub(crate) portal_painted: std::cell::RefCell<std::collections::HashMap<String, Rect>>,
     pub(crate) chat_agent: Option<String>,
     pub(crate) chat_draft: String,
     pub(crate) maestro_note: Option<chat::code_comment::Note>,
@@ -249,8 +252,10 @@ pub(crate) struct DrawingApp {
     /// The first message of each recruit chat, sent when the chat can take it (maestro/mod.rs).
     pub(crate) chat_starts: Vec<(String, String)>,
     pub(crate) chat_nodes_read: f64,
-    /// The areas that paint a window in front over a tree's or chat card's live parts (canvas/cover.rs).
+    /// The areas that paint a card in front over another card's live parts (canvas/cover.rs), this frame's and the last
+    /// one's (a page's holes leave out both: egui still counts last frame's areas).
     pub(crate) covers: Vec<egui::LayerId>,
+    pub(crate) covers_before: Vec<egui::LayerId>,
     /// What each recruit chat had done at the last look (tool calls, working), and what popped of it (chat/recruit_card.rs).
     pub(crate) recruit_seen: std::collections::HashMap<String, (usize, bool)>,
     pub(crate) recruit_popups: Vec<chat::recruit_card::RecruitPopup>,

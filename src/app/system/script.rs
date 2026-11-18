@@ -28,8 +28,9 @@ pub(crate) struct Script {
 }
 
 /// MAGOAGENT_PERF=<file>: once a second, the frames painted, the CPU they took (mean and worst,
-/// in ms), the frames the island's window drew by itself (`island/replay.rs`) and what asked for the app's
-/// (`file:line`), appended to the file as a tab-separated line.
+/// in ms), the jobs sent to GTK's thread (Linux: the portals' pages and the tray; `-` elsewhere), the frames the island's
+/// window drew by itself (`island/replay.rs`) and what asked for the frames (`file:line`), appended to the file as a
+/// tab-separated line.
 #[derive(Default)]
 pub(crate) struct Perf {
     pub(crate) path: std::path::PathBuf,
@@ -37,6 +38,9 @@ pub(crate) struct Perf {
     frames: u32,
     cpu_ms: f32,
     worst_ms: f32,
+    /// GTK's count of jobs at the last line.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    jobs: u64,
     causes: std::collections::BTreeSet<String>,
 }
 
@@ -55,10 +59,17 @@ impl Perf {
         if now - self.since < 1.0 {
             return;
         }
-        let head = if self.since == 0.0 { "tempo\tquadros\tcpu_med_ms\tcpu_max_ms\tilha_sozinha\tcausas\n" } else { "" };
+        let head = if self.since == 0.0 { "tempo\tquadros\tcpu_med_ms\tcpu_max_ms\tgtk\tilha_sozinha\tcausas\n" } else { "" };
         let causes = std::mem::take(&mut self.causes).into_iter().collect::<Vec<_>>().join(", ");
+        #[cfg(target_os = "linux")]
+        let jobs = {
+            let total = crate::app::system::gtk::JOBS.load(std::sync::atomic::Ordering::Relaxed);
+            (total - std::mem::replace(&mut self.jobs, total)).to_string()
+        };
+        #[cfg(not(target_os = "linux"))]
+        let jobs = "-";
         let island = crate::app::island::replay::FRAMES.swap(0, std::sync::atomic::Ordering::Relaxed);
-        let line = format!("{head}{now:.1}\t{}\t{:.2}\t{:.2}\t{island}\t{causes}\n", self.frames, self.cpu_ms / self.frames as f32, self.worst_ms);
+        let line = format!("{head}{now:.1}\t{}\t{:.2}\t{:.2}\t{jobs}\t{island}\t{causes}\n", self.frames, self.cpu_ms / self.frames as f32, self.worst_ms);
         use std::io::Write;
         let _ = std::fs::OpenOptions::new().create(true).append(true).open(&self.path).and_then(|mut file| file.write_all(line.as_bytes()));
         (self.since, self.frames, self.cpu_ms, self.worst_ms) = (now, 0, 0.0, 0.0);

@@ -50,6 +50,7 @@ mod props;
 mod session;
 mod shapes;
 mod sidebar;
+mod stacking;
 mod team;
 mod terminals;
 mod tools;

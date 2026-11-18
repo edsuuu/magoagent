@@ -165,6 +165,9 @@ pub(crate) struct PortalView {
     /// Box, zoom, open tab and the holes cut in it last applied, so unchanged values aren't
     /// re-sent every frame.
     pub(super) shown: Option<(Rect, f32, usize, Vec<Rect>, f32)>,
+    /// Linux: the page cut away whole, keeping its place, while the canvas moves and while it lays out at rest
+    /// (`sync_portals`).
+    pub(super) veiled: bool,
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -288,8 +291,9 @@ pub(super) const PAGE_SETTLE: f64 = 0.15;
 pub(super) const SNAP_EVERY: f64 = 1.0;
 
 /// What a page does by how long ago its card last moved (`since`, seconds; None: not on the canvas), where the native
-/// view follows the card a frame late (Linux, Windows): moving, it hides and its picture goes with the card; just
-/// stopped, it lays out at its new size and zoom wholly cut away, the picture showing (WebKitGTK draws it black for a
+/// view follows the card a frame late (Linux): moving, it is cut away whole where it stood (`veil`: hidden and shown
+/// again, WebKitGTK drew it black or at 200×200) and its picture goes with the card; just stopped, or seen the first
+/// time, it lays out at its new size and zoom still cut away, the picture showing (WebKitGTK draws it black for a
 /// moment there); then it shows over its picture, which goes a moment later.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]

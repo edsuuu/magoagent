@@ -59,8 +59,15 @@ fn a_script_wait_lets_the_app_idle_and_perf_logs_each_second() {
     perf.frame(10.5, Some(0.004), &[]);
     perf.frame(11.0, Some(0.006), &[]);
     let lines: Vec<String> = fs::read_to_string(&path).unwrap().lines().map(String::from).collect();
-    assert_eq!(lines[0], "tempo	quadros	cpu_med_ms	cpu_max_ms	ilha_sozinha	causas");
-    assert_eq!(lines[1..], ["10.0	1	2.00	2.00	0	".to_string(), "11.0	2	5.00	6.00	3	".to_string()]);
+    assert_eq!(lines[0], "tempo	quadros	cpu_med_ms	cpu_max_ms	gtk	ilha_sozinha	causas");
+    // the jobs sent to GTK's thread (Linux, a count; `-` elsewhere) between the CPU and the causes
+    let without_jobs = |line: &String| {
+        let mut columns: Vec<&str> = line.split('\t').collect();
+        let jobs = columns.remove(4);
+        assert!(jobs == "-" || jobs.parse::<u64>().is_ok(), "{jobs}");
+        columns.join("\t")
+    };
+    assert_eq!(lines[1..].iter().map(without_jobs).collect::<Vec<_>>(), ["10.0	1	2.00	2.00	0	", "11.0	2	5.00	6.00	3	"]);
     let _ = fs::remove_file(&path);
 }
 

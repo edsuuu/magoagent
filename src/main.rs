@@ -181,6 +181,11 @@ fn main() -> eframe::Result {
                 app.prefs = prefs;
             }
             install_fonts(&cc.egui_ctx, app.prefs.ligatures);
+            // Linux on X11: the swap does not wait for the screen, so each frame waits for the GPU (system/finish.rs)
+            #[cfg(target_os = "linux")]
+            if app::island::x11::active() {
+                cc.egui_ctx.add_plugin(app::system::finish::FinishFrames);
+            }
             app.ligatures_shown = app.prefs.ligatures;
             // the drawing is the workspace on screen when the app closed
             app.load_spaces();

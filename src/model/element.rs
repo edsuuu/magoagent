@@ -141,6 +141,13 @@ impl Element {
         self.terminal.is_some() || self.portal.is_some() || self.filetree.is_some() || self.chat.is_some()
     }
 
+    /// The live windows and the sticky notes: the cards stack among themselves in the drawing's order, all of them over
+    /// the drawings, their live parts and a portal's page included (canvas/paint.rs, canvas/cover.rs), and a press
+    /// brings one to the front (`raise_card`).
+    pub(crate) fn is_card(&self) -> bool {
+        self.is_node() || self.created.is_some()
+    }
+
     /// Double-click on its title enlarges it (terminals have their own double-click).
     pub(crate) fn is_liftable(&self) -> bool {
         self.portal.is_some() || self.created.is_some() || self.filetree.is_some()

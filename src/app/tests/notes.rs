@@ -516,12 +516,12 @@ fn a_pressed_note_comes_to_the_front_with_its_text() {
         app.scene.elements.extend([note, label]);
     }
     let below = app.scene.elements[0].id.clone();
-    let i = app.raise_note(0);
+    let i = app.raise_card(0);
     assert_eq!(i, 2, "the note goes over the other one");
     assert_eq!(app.scene.elements[2].id, below);
     assert_eq!(app.with_card_text(&[2]).len(), 2, "its text goes with it");
     // already on top: nothing moves
-    assert_eq!(app.raise_note(2), 2);
+    assert_eq!(app.raise_card(2), 2);
 }
 
 #[test]

@@ -1,6 +1,17 @@
 use super::*;
 
 impl DrawingApp {
+    /// What is kept for each portal, for the `live` ones only: a portal gone (deleted, unloaded) leaves nothing behind.
+    pub(super) fn forget_portals(&mut self, live: &[&str]) {
+        let alive = |id: &String| live.contains(&id.as_str());
+        self.portals.retain(|id, _| alive(id));
+        self.portal_stills.retain(|id, _| alive(id));
+        self.portal_motion.retain(|id, _| alive(id));
+        self.portal_snaps.retain(|id, _| alive(id));
+        self.portal_painted.get_mut().retain(|id, _| alive(id));
+        self.annotations.retain(|id, _| alive(id));
+    }
+
     /// One webview per tab of every portal, placed over its page box every frame (the open tab
     /// shows, the others wait hidden, alive). Also takes in what the pages reported.
     pub(crate) fn sync_portals(&mut self, window: &impl wry::raw_window_handle::HasWindowHandle, ctx: &Context) {
@@ -13,6 +24,10 @@ impl DrawingApp {
                     let Some(i) = view.tabs.iter().position(|t| t.uid == tab) else { continue };
                     view.tabs[i].url = url.clone();
                     view.tabs[i].loading = false;
+                    // the picture the card carries while the canvas moves: the loaded page's, at the next still frame
+                    if let Some(snap) = self.portal_snaps.get_mut(&portal) {
+                        snap.0 = f64::MIN;
+                    }
                     self.portal_extras.mute.push(portal.clone());
                     // into the drawing too: else its old address would load back
                     if let Some(spec) = self.scene.elements.iter_mut().find(|e| e.id == portal).and_then(|e| e.portal.as_mut())
@@ -51,8 +66,13 @@ impl DrawingApp {
                 }
                 PortalEvent::Copied { picture: Err(error) } => self.toast(error),
                 PortalEvent::Still { portal, picture: (w, h, rgba) } => {
+                    // a texture at once: the card paints it the very frame it moves (`paint_portal`)
                     if let Some(snap) = self.portal_snaps.get_mut(&portal) {
-                        snap.1 = Some(egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba));
+                        let image = egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba);
+                        match &mut snap.1 {
+                            Some(texture) => texture.set(image, egui::TextureOptions::LINEAR),
+                            None => snap.1 = Some(ctx.load_texture(format!("portal_still_{portal}"), image, egui::TextureOptions::LINEAR)),
+                        }
                     }
                 }
             }
@@ -114,15 +134,11 @@ impl DrawingApp {
                 // a hidden workspace's page stays loaded, out of sight
                 let shown = i < self.scene.elements.len();
                 let (rect, zoom) = if shown { (self.portal_page_rect(e), self.terminal_frame(e).1) } else { (None, 1.0) };
-                Some((e.id.clone(), urls, spec.active_tab(), rect, zoom))
+                Some((e.id.clone(), urls, spec.active_tab(), rect, zoom, self.cards_in_front(i)))
             })
             .collect();
-        self.portals.retain(|id, _| live.iter().any(|(live, ..)| live == id));
-        self.portal_stills.retain(|id, _| live.iter().any(|(live, ..)| live == id));
-        self.portal_motion.retain(|id, _| live.iter().any(|(live, ..)| live == id));
-        self.portal_snaps.retain(|id, _| live.iter().any(|(live, ..)| live == id));
+        self.forget_portals(&live.iter().map(|(id, ..)| id.as_str()).collect::<Vec<_>>());
         let marquee = self.marquee.zip(self.last_pointer).map(|(start, end)| Rect::from_two_pos(self.to_screen(start), end));
-        self.annotations.retain(|id, _| live.iter().any(|(live, ..)| live == id));
         if self.design.as_ref().is_some_and(|d| !live.iter().any(|(live, ..)| *live == d.portal)) {
             self.design = None;
         }
@@ -136,15 +152,20 @@ impl DrawingApp {
                 size: wry::dpi::LogicalSize::new((max.x - min.x) as f64, (max.y - min.y) as f64).into(),
             }
         };
-        // parts of the cards (the portals' bars, a focused terminal's grid), not floating UI
-        let cards: Vec<egui::Id> =
-            live.iter().map(|(id, ..)| egui::Id::unique(("portal_chrome", id.as_str()))).chain([egui::Id::unique("terminal_overlay")]).collect();
-        for (id, urls, active, rect, zoom) in live {
+        // parts of the cards (the portals' bars, a tree's panels, a focused terminal's grid, the cards painted again over
+        // them), not floating UI: they stack with their cards, and a card in front of a page leaves its hole anyway
+        let card_parts: Vec<egui::Id> = (self.scene.elements.iter().filter(|element| element.is_card()).flat_map(|element| self.live_layers(element)))
+            .chain(self.covers.iter().chain(&self.covers_before).copied())
+            .map(|layer| layer.id)
+            .chain([egui::Id::unique("terminal_overlay")])
+            .collect();
+        for (id, urls, active, rect, zoom, fronts) in live {
             let events = self.portal_events.0.clone();
             let extras = self.tab_extras(&id);
             let view = self.portals.entry(id.clone()).or_insert_with(|| PortalView {
                 tabs: Vec::new(),
                 shown: None,
+                veiled: false,
                 context: PageContext::new(extras.profile.clone()),
             });
             let matches = match_portal_tabs(&view.tabs.iter().map(|tab| tab.url.clone()).collect::<Vec<_>>(), &urls);
@@ -178,7 +199,7 @@ impl DrawingApp {
                 view.shown = None;
             }
             view.tabs = tabs;
-            let mut holes = rect.map_or(Vec::new(), |r| Self::page_holes(ctx, r, &cards));
+            let mut holes = rect.map_or(Vec::new(), |r| Self::page_holes(ctx, r, &card_parts, &fronts));
             // the selection box stays on top: its outline cuts through the page
             if let (Some(r), Some(m)) = (rect, marquee) {
                 holes.extend(marquee_edges(m).into_iter().map(|e| e.intersect(r)).filter(|e| e.width() >= 1.0 && e.height() >= 1.0));
@@ -230,13 +251,17 @@ impl DrawingApp {
                     ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE / 2.0));
                 }
             }
-            // Linux: the same, with the picture WebKit took while the page stood still (`portal_snaps`): at each new size
-            // and zoom WebKitGTK drew the page black for a moment, and a zoom of the canvas flickered (asked: "quando dou
-            // zoom e tiro zoom no canvas com o navegador aberto fica piscando preto")
+            // Linux: the same, with the picture WebKit took while the page stood still (`portal_snaps`), but the page is
+            // never hidden nor moved while the canvas moves: it stays where it was, cut away whole (`veil`), and takes
+            // its new place and zoom at rest, still cut away, showing once it has drawn there. Hidden and shown again,
+            // or given a new size at each frame, WebKitGTK drew it black or at 200×200 for a moment (asked: "quando dou
+            // zoom e tiro zoom no canvas com o navegador aberto fica piscando preto", "O zoom do canvas deixa o
+            // navegador bugado")
             #[cfg(target_os = "linux")]
-            {
+            let veiled = {
                 let moved = rect.map(|r| {
-                    let at = self.portal_motion.entry(id.clone()).or_insert((r, f64::MIN));
+                    // a page seen the first time is placed unseen too: it shows once it has drawn at its size
+                    let at = self.portal_motion.entry(id.clone()).or_insert((r, self.now - PAGE_SETTLE));
                     if at.0 != r {
                         *at = (r, self.now);
                     }
@@ -244,25 +269,28 @@ impl DrawingApp {
                 });
                 let stage = motion(moved);
                 if stage == Motion::Moving {
-                    if !self.portal_stills.contains_key(&id)
-                        && let Some(image) = self.portal_snaps.get(&id).and_then(|snap| snap.1.clone())
-                    {
-                        self.portal_stills.insert(id.clone(), ctx.load_texture(format!("portal_still_{id}"), image, egui::TextureOptions::LINEAR));
+                    // the picture goes with the card (`paint_portal` paints it from the frame the card moved); with no
+                    // picture yet the card shows its page box: never the page flickering
+                    let picture = self.portal_snaps.get(&id).and_then(|snap| snap.1.clone());
+                    // this frame's card carries the picture: painted where the page box is now, or carried since the
+                    // last frame. Not when the view changed after the canvas painted (the zoom buttons): the card is
+                    // still where the page is, this frame, and the page is cut away at the next
+                    let pictured =
+                        picture.is_none() || self.portal_stills.contains_key(&id) || (rect.is_some() && self.portal_painted.borrow().get(&id) == rect.as_ref());
+                    if let Some(texture) = picture {
+                        self.portal_stills.entry(id.clone()).or_insert(texture);
                     }
-                    // with no picture yet the card shows its page box: never the page flickering
-                    for tab in &view.tabs {
-                        let _ = tab.webview.set_visible(false);
+                    if !view.veiled && pictured {
+                        if let Some(tab) = view.tabs.get(active) {
+                            veil(&tab.webview);
+                        }
+                        view.veiled = true;
                     }
-                    view.shown = None;
                     ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE));
                     continue;
                 }
-                match (stage, rect) {
-                    (Motion::Unseen, Some(r)) => {
-                        holes = vec![r];
-                        ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE / 2.0));
-                    }
-                    (Motion::Back, _) => ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE / 2.0)),
+                match stage {
+                    Motion::Unseen | Motion::Back => ctx.request_repaint_after(std::time::Duration::from_secs_f64(PAGE_SETTLE / 2.0)),
                     _ => {
                         self.portal_stills.remove(&id);
                     }
@@ -282,10 +310,17 @@ impl DrawingApp {
                         });
                     }
                 }
-            }
+                // laying out unseen, the floating UI makes no holes: they would only send GTK the same page again
+                if stage == Motion::Unseen {
+                    holes.clear();
+                }
+                stage == Motion::Unseen
+            };
+            #[cfg(not(target_os = "linux"))]
+            let veiled = false;
             // with the screen's scale: on another monitor the same points are other pixels
             let shown = rect.map(|r| (r, zoom, active, holes, ctx.pixels_per_point()));
-            if shown != view.shown {
+            if shown != view.shown || veiled != view.veiled {
                 for (i, tab) in view.tabs.iter().enumerate() {
                     let visible = shown.is_some() && i == active;
                     if let (true, Some((r, zoom, _, holes, scale))) = (visible, &shown) {
@@ -293,7 +328,13 @@ impl DrawingApp {
                         let _ = (tab.webview.set_bounds(bounds(*r)), tab.webview.zoom(*zoom as f64), scale);
                         #[cfg(target_os = "linux")]
                         let _ = tab.webview.place(*r, *zoom, *scale);
-                        #[cfg(any(windows, target_os = "linux"))]
+                        #[cfg(target_os = "linux")]
+                        if veiled {
+                            veil(&tab.webview);
+                        } else {
+                            cut_page(&tab.webview, r.min.ceil(), holes, *scale);
+                        }
+                        #[cfg(windows)]
                         cut_page(&tab.webview, r.min.ceil(), holes, *scale);
                         #[cfg(target_os = "macos")]
                         let _ = holes;
@@ -301,6 +342,7 @@ impl DrawingApp {
                     let _ = tab.webview.set_visible(visible);
                 }
                 view.shown = shown;
+                view.veiled = veiled;
             }
         }
     }

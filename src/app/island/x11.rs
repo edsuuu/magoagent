@@ -137,6 +137,15 @@ pub(crate) fn cut(window: u32, holes: &[Rectangle]) {
     let _ = connection.flush();
 }
 
+/// Cuts all of `window` away (its shape empty): it keeps its place, size and drawing, unseen and letting every click
+/// through, until `cut` gives it a shape again. A portal's page while the canvas moves (browser/sync.rs).
+pub(crate) fn veil(window: u32) {
+    let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(link) = guard.as_ref() else { return };
+    let _ = link.connection.shape_rectangles(SO::SET, SK::BOUNDING, ClipOrdering::UNSORTED, window, 0, 0, &[]);
+    let _ = link.connection.flush();
+}
+
 /// Gives the keyboard to `window`, as the window manager gives it: a portal's page when clicked, the app's window back
 /// when the app is clicked (browser/webkit.rs).
 pub(crate) fn give_keyboard(window: u32) {
