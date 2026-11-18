@@ -79,6 +79,11 @@ build-macos-app.sh  gera MagoAgent.app (bundle com.edsuuu.magoagent)
 5. **Deixar para o dono:** no fim, `cargo run --release` no target padrão.
 6. **Relatar** em pt-BR: o que mudou, o que foi testado e o que não foi.
 
+Nada de trabalho na `/tmp` (nem na pasta temporária do sistema): no Linux ela é tmpfs e some ao reiniciar (o dono
+perdeu testes num outro PC assim). Worktrees, clones, rascunhos e builds ficam no disco: worktrees ao lado do repo
+(`../magoagent-wt/<nome>`) ou em `<repo>/.magoagent/worktrees`, com o target compartilhado se faltar espaço. A `/tmp` só
+para o que pode sumir: cenas de teste e capturas descartáveis, saídas de comando.
+
 Builds de instalação só quando o dono pedir: suba a versão em `Cargo.toml` e rode `sh installer/build-msi.sh`
 (sai `target/release/MagoAgent-<versão>.msi`, asset da release do GitHub que o Atualizar procura). O MSI instala em
 `C:\Program Files\MagoAgent` com os dados em `data/`. No macOS, `./build-macos-app.sh`.
