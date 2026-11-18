@@ -57,18 +57,9 @@ pub(crate) fn processes_of(root: u32) -> Vec<Proc> {
 
 /// Ends process `pid`, with no window of its own.
 pub(crate) fn stop_process(pid: u32) -> bool {
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        std::process::Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/F"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .is_ok_and(|o| o.status.success())
-    }
-    #[cfg(not(windows))]
-    std::process::Command::new("kill").args(["-TERM", &pid.to_string()]).output().is_ok_and(|o| o.status.success())
+    let pid = pid.to_string();
+    let (program, args): (_, &[&str]) = if cfg!(windows) { ("taskkill", &["/PID", &pid, "/F"]) } else { ("kill", &["-TERM", &pid]) };
+    crate::editor::command(program).args(args).output().is_ok_and(|output| output.status.success())
 }
 
 pub(crate) fn memory_text(bytes: Option<u64>) -> String {

@@ -14,6 +14,11 @@ pub(crate) struct View {
     pub(crate) background: Color32,
 }
 
+/// `0xRRGGBB` as an opaque colour.
+pub(crate) fn rgb_hex(value: u32) -> Color32 {
+    Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8)
+}
+
 pub(crate) fn rgba(c: [u8; 4]) -> Color32 {
     Color32::from_rgba_unmultiplied(c[0], c[1], c[2], c[3])
 }

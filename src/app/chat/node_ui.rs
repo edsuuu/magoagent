@@ -158,8 +158,8 @@ impl DrawingApp {
         ctx.set_transform_layer(area.response.layer_id, egui::emath::TSTransform::new(body.min.to_vec2(), z));
         self.chat_draft = draft;
         self.conv_apply(ctx, conv, draft_id);
-        if attach && let Some(paths) = rfd::FileDialog::new().set_title("Anexar imagem").add_filter("Imagens", &IMAGE_EXTENSIONS).pick_files() {
-            self.chat_add_files(ctx, paths, false);
+        if attach {
+            self.chat_attach_pick(ctx);
         }
         if interrupt {
             self.interrupt_agent();

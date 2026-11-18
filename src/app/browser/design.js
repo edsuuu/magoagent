@@ -400,7 +400,7 @@
             // the region first: the kept ones stay bright over its dimming
             if (selection && selection.ring) marks.append(dimmed(selection.rect), selection.ring);
             this.annotations.forEach((a, i) => marks.append(outline(a.rect, i + 1)));
-            if (this.notice) root.append(h('div', 'position:fixed;left:50%;top:12px;transform:translateX(-50%);padding:6px 12px;border-radius:999px;background:#232329;color:#fff;white-space:nowrap', this.notice));
+            if (this.notice) root.append(h('div', 'position:fixed;left:50%;top:12px;transform:translateX(-50%);padding:6px 12px;border-radius:999px;background:#242424;color:#fff;white-space:nowrap', this.notice));
             if (this.popover) {
                 const box = this.renderPopover();
                 root.append(box);
@@ -440,7 +440,7 @@
             const {cfg, selection, annotations} = this;
             const panel = this.popover.mode === 'panel';
             const place = panel ? 'top:12px;right:12px' : 'top:8px;left:8px';
-            const box = css(h('div', '', h('div', 'font-weight:600;font-size:13px;color:#fff', panel ? 'Perguntar sobre estas anotações' : 'Perguntar sobre esta seleção')), `position:fixed;${place};width:340px;max-height:calc(100vh - 24px);overflow:auto;box-sizing:border-box;padding:12px;border-radius:12px;background:#232329;box-shadow:0 6px 20px rgba(0,0,0,.4);pointer-events:auto;display:flex;flex-direction:column;gap:8px`);
+            const box = css(h('div', '', h('div', 'font-weight:600;font-size:13px;color:#fff', panel ? 'Perguntar sobre estas anotações' : 'Perguntar sobre esta seleção')), `position:fixed;${place};width:340px;max-height:calc(100vh - 24px);overflow:auto;box-sizing:border-box;padding:12px;border-radius:12px;background:#242424;box-shadow:0 6px 20px rgba(0,0,0,.4);pointer-events:auto;display:flex;flex-direction:column;gap:8px`);
             if (!panel && selection) {
                 if (selection.preview === undefined) box.append(h('div', 'color:#8a8a93', 'Capturando a região'));
                 else if (selection.preview) box.append(css(Object.assign(document.createElement('img'), {

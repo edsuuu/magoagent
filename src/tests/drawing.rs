@@ -78,3 +78,11 @@ fn dark_mode_flips_lightness() {
     let red = themed(rgba([0xe0, 0x31, 0x31, 255]), true);
     assert!(red.r() > red.g() && red.r() > red.b());
 }
+
+#[test]
+fn fnv1a_gives_the_standard_values() {
+    // the cookie stores on the Mac and the sketches' jitter are named by it: it must never drift
+    assert_eq!(fnv1a(""), 0xcbf29ce484222325);
+    assert_eq!(fnv1a("a"), 0xaf63dc4c8601ec8c);
+    assert_eq!(fnv1a_from(0xcbf29ce484222325, "a"), fnv1a("a"));
+}

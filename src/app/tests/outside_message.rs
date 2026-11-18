@@ -10,7 +10,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
-const SIZE: Vec2 = Vec2::new(1200.0, 800.0);
 const PILL: &str = "pill:code:/w/loja";
 const SOCKET: &str = "/tmp/magoagent-teste/tmux.sock";
 
@@ -198,20 +197,8 @@ fn step(app: &mut DrawingApp, ctx: &Context, time: &mut f64, events: Vec<egui::E
 
 /// One frame of the island; the texts it painted and where.
 fn painted(app: &mut DrawingApp, ctx: &Context, time: &mut f64, events: Vec<egui::Event>) -> Vec<(String, Rect)> {
-    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(*time), events, ..Default::default() };
     *time += 0.05;
-    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
-    output.textures_delta.clear();
-    output
-        .shapes
-        .iter()
-        .filter_map(|shape| if let egui::Shape::Text(text) = &shape.shape { Some((text.galley.text().to_string(), text.visual_bounding_rect())) } else { None })
-        .collect()
-}
-
-fn island_rect(app: &DrawingApp) -> Rect {
-    let size = app.island.size();
-    Rect::from_min_size(Pos2::new((SIZE.x / 2.0 - size.x / 2.0).round(), 0.0), size)
+    island_frame(app, ctx, *time - 0.05, events)
 }
 
 /// The pointer at `at` for `frames` frames; the texts of the last.
@@ -230,7 +217,7 @@ fn the_islands_box_sends_and_says_how_it_went() {
     let mut app = app();
     app.take_hook("ext:s1", &hook("UserPromptSubmit", "", Value::Null, false), None);
     let mut time = 1.0;
-    rest(&mut app, &ctx, &mut time, Pos2::new(SIZE.x / 2.0, 10.0), 20);
+    rest(&mut app, &ctx, &mut time, Pos2::new(ISLAND_SCREEN.x / 2.0, 10.0), 20);
     let middle = island_rect(&app).center();
     let press = |at, pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
     for events in [vec![press(middle, true)], vec![press(middle, false)]] {

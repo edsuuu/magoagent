@@ -46,9 +46,9 @@ fn base64_encoding() {
 fn gowa_devices_list_is_parsed() {
     let empty = r#"{"results":[]}"#;
     assert_eq!(gowa_status(empty), Link::NeedsPairing);
-    let needs_qr = r#"{"results":[{"id":"coucou","state":"needs_qr"}]}"#;
+    let needs_qr = r#"{"results":[{"id":"mago","state":"needs_qr"}]}"#;
     assert_eq!(gowa_status(needs_qr), Link::NeedsPairing);
-    let logged_in = r#"{"results":[{"id":"coucou","state":"logged_in","jid":"5511999999999@s.whatsapp.net"}]}"#;
+    let logged_in = r#"{"results":[{"id":"mago","state":"logged_in","jid":"5511999999999@s.whatsapp.net"}]}"#;
     assert_eq!(gowa_status(logged_in), Link::Connected);
     assert_eq!(gowa_status("garbage"), Link::Unavailable);
     assert_eq!(gowa_status(r#"{"error":"not found"}"#), Link::Unavailable);

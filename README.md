@@ -76,7 +76,7 @@ O GitHub e o Spotify se ligam em Ajustes › Integrações. A ilha também mostr
 - monta equipes (`recruit_agent`, `create_portal`, `connect`);
 - controla o app (arquivos, janelas, git, abas, ajustes).
 
-É também por ele que a Luna mexe no app. Todas as ferramentas, com os parâmetros, em [docs/mcp.md](docs/mcp.md). Modelos locais (Ollama) e o OmniRoute para o opencode: [docs/llm-local.md](docs/llm-local.md).
+É também por ele que a Luna mexe no app. Todas as ferramentas, com os parâmetros, em [docs/mcp.md](docs/mcp.md).
 
 ### Configuração
 

@@ -248,6 +248,9 @@ fn the_usage_pill_opens_agentes_uso() {
     assert_eq!(super::SETTINGS_TABS[window.app.settings_tab], "Agentes");
     window.frame(vec![]);
     assert!(window.has("LIMITES DO MAESTRO") && window.has("Parar de recrutar em"), "{:?}", window.texts);
+    for name in ["MCP EM OUTROS AGENTES", "Registrar no Claude Code", "Registrar no Codex"] {
+        assert!(window.has(name), "{name}: {:?}", window.texts);
+    }
 }
 
 /// The hooks of the sessions outside the app live in Integrações, first on the page (asked: easier to find), with the

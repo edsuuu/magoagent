@@ -1,4 +1,4 @@
-//! Spotify on macOS, by AppleScript (as Coucou's SpotifyController): it is asked only while it is open, so asking never
+//! Spotify on macOS, by AppleScript: it is asked only while it is open, so asking never
 //! opens it. The first time, macOS asks the person whether MagoAgent may control Spotify. Its dictionary has shuffling,
 //! repeating (the context's: no track repeat), the sound volume, the player position and `play track <uri>`; no queue.
 

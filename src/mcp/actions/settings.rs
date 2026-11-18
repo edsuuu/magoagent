@@ -51,6 +51,8 @@ impl DrawingApp {
             ("avatar", "off" | "desligado") => self.prefs.avatar = false,
             ("claude_hooks", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return self.act_claude_hooks(action),
             ("codex_hooks", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return self.act_codex_hooks(action),
+            // by the bridge it runs on a thread (`act_later`)
+            ("register_mcp", agent) => return crate::app::system::mcp_register::mcp_register(agent),
             ("island", "on" | "ligado") => self.prefs.island = true,
             ("island", "off" | "desligado") => self.prefs.island = false,
             ("island_sound", "on" | "ligado") => self.prefs.island_sound = true,

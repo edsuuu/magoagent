@@ -1,4 +1,4 @@
-//! When the island opens and closes: Coucou's state machine (island/fsm.ts, MIT), by the clock instead of timers.
+//! When the island opens and closes: a state machine, by the clock instead of timers.
 //! Hidden is the closed notch, petit the compact island, home the open panel, and the greeting plays once at launch.
 //! The pointer coming over the notch only peeks (compact): on a PC it lands there all the time on its way elsewhere.
 //! A click on the compact island opens it; open, it folds a while after the pointer left ("Fechar auto"); compact, it
@@ -141,7 +141,7 @@ impl Machine {
     }
 
     /// How much of the open island's last seconds is left before it folds, from 1 down to 0: the bar under it shows in
-    /// the last 60% of the wait (10 s at the most), as Coucou's.
+    /// the last 60% of the wait (10 s at the most).
     pub(crate) fn countdown(&self, time: f64) -> Option<f32> {
         let due = self.due.filter(|_| self.stage == Stage::Home && !self.held)?;
         let window = (self.close_after * 0.6).min(10.0);

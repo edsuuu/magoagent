@@ -72,7 +72,7 @@ pub(crate) fn load_vault() -> Vec<VaultEntry> {
 }
 
 pub(crate) fn read_vault(path: &std::path::Path) -> Vec<VaultEntry> {
-    fs::read_to_string(path).ok().and_then(|data| serde_json::from_str(&data).ok()).unwrap_or_default()
+    read_json(path).unwrap_or_default()
 }
 
 #[allow(dead_code)]

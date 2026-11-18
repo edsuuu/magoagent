@@ -387,3 +387,16 @@ fn the_agents_never_wipe_the_apps_data() {
     assert!(said.contains("Ajustes › Dados › Limpar todos os dados"), "{said}");
     assert!(!app.quitting && !app.wipe_confirm);
 }
+
+#[test]
+fn registering_the_mcp_in_another_agent_runs_on_a_thread_and_never_in_a_test() {
+    let mut app = DrawingApp::default();
+    let args = json!({ "name": "register_mcp", "value": "claude" });
+    let job = app.act_later("set_setting", &args).expect("the CLI takes seconds: off the frame");
+    assert_eq!(job().unwrap_err(), "nunca nos testes");
+    assert!(app.act_later("set_setting", &json!({ "name": "theme", "value": "dark" })).is_none());
+    assert!(app.act("set_setting", &json!({ "name": "register_mcp", "value": "gemini" })).unwrap_err().contains("claude ou codex"));
+    let tools = crate::mcp::app_tools::app_tools();
+    let tool = tools.iter().find(|tool| tool["name"] == "set_setting").unwrap();
+    assert!(tool["inputSchema"]["properties"]["name"]["enum"].as_array().unwrap().contains(&json!("register_mcp")));
+}

@@ -16,7 +16,7 @@ fn stroke_bounds(points: &[[f32; 2]]) -> Rect {
     Rect::from_points(&points.iter().map(|&point| Pos2::from(point)).collect::<Vec<_>>())
 }
 
-/// The web's moment-based shape recognizer (convertToShape.ts): closed strokes are matched
+/// The web's moment-based shape recognizer: closed strokes are matched
 /// against rectangle/diamond/ellipse prototypes, open straight ones become lines, or arrows
 /// when the arrowhead makes them lopsided. None means "not a shape".
 pub(crate) fn classify_stroke(points: &[[f32; 2]], zoom: f32) -> Option<Recognized> {

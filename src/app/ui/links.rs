@@ -113,9 +113,7 @@ fn link_row(ui: &mut egui::Ui, icon: Icon, name: &str, tip: &str) -> (bool, bool
     p.galley(Pos2::new(left, rect.center().y - galley.size().y / 2.0), galley, colors.text);
     if hot {
         let ink = if cut.hovered() { DANGER } else { colors.muted };
-        let (c, arm) = (x.center(), 3.5);
-        p.line_segment([c - Vec2::splat(arm), c + Vec2::splat(arm)], Stroke::new(1.25, ink));
-        p.line_segment([c + Vec2::new(arm, -arm), c + Vec2::new(-arm, arm)], Stroke::new(1.25, ink));
+        cross(p, x.center(), 3.5, Stroke::new(1.25, ink));
     }
     let cut = cut.on_hover_cursor(CursorIcon::PointingHand).tip(tip).clicked();
     (!cut && row.on_hover_cursor(CursorIcon::PointingHand).clicked(), cut)

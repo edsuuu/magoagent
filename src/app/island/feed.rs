@@ -3,7 +3,8 @@
 //! under them; at the right one list of what is on and what changed last, what needs the person first. A line opens its
 //! tab; its × hides it until it changes again, and "Mostrar ocultos" brings them all back.
 
-use super::paint::{AMBER, CARD, DIM, DIM_3, INK, Out, View, aim, font, semi, shoulder_mark};
+use super::music::GREEN;
+use super::paint::{AMBER, CARD, DIM, DIM_3, HOVER, INK, Out, View, aim, font, semi, shoulder_mark};
 use super::{Line, Tab, main_state};
 use crate::app::chat::list::clipped;
 use crate::app::maestro::outside::{Badge, PILL_PREFIX};
@@ -18,8 +19,6 @@ const SUMMARY_W: f32 = 236.0;
 const ROW_H: f32 = 38.0;
 const BLUE: Color32 = Color32::from_rgb(0x3b, 0x9e, 0xff);
 const RED: Color32 = Color32::from_rgb(0xf8, 0x51, 0x49);
-const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
-const ROW_HOVER: Color32 = Color32::from_rgb(0x1b, 0x1d, 0x21);
 
 /// What a line is at, as one value: it shows again once this changes after it was hidden.
 pub(super) fn signature(line: &Line) -> u64 {
@@ -178,7 +177,7 @@ impl DrawingApp {
         let hide = ui.interact(hide_area, ui.scope_id().with(("feed_hide", &line.id)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
         let hovered = response.hovered() || hide.hovered();
         if hovered {
-            ui.painter().rect_filled(rect, 10, ROW_HOVER);
+            ui.painter().rect_filled(rect, 10, HOVER);
         }
         let mini = Pos2::new(rect.left() + 6.0 + 11.0, rect.center().y + 1.0);
         crate::app::mascot::mago::paint_mini(ui.painter(), &format!("island-feed-{}", line.id), mini, 20.0, line.color, line.mago, time);

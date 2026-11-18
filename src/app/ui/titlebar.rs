@@ -28,11 +28,11 @@ impl DrawingApp {
         Rect::from_min_size(Pos2::new(left, TOP_ROW_Y - TOP_BUTTON / 2.0), Vec2::splat(TOP_BUTTON))
     }
 
-    /// Where the right panels' button `k` (panes/: 0 Tarefas … 3 Fichário) sits in a window
+    /// Where the right panels' button `k` (panes/: 0 Tarefas … 2 Alterações) sits in a window
     /// `width` wide: 12 before the window's buttons (the window's edge on the Mac), on the top row.
     pub(crate) fn pane_button(&self, width: f32, k: usize) -> Rect {
         let captions = if TITLE_BAR > 0.0 { 3.0 * CAPTION_WIDTH } else { 0.0 };
-        let right = width - captions - 12.0 - (3 - k) as f32 * (TOP_BUTTON + TOP_GAP);
+        let right = width - captions - 12.0 - (super::super::panes::PANES.len() - 1 - k) as f32 * (TOP_BUTTON + TOP_GAP);
         Rect::from_min_size(Pos2::new(right - TOP_BUTTON, TOP_ROW_Y - TOP_BUTTON / 2.0), Vec2::splat(TOP_BUTTON))
     }
 
@@ -348,10 +348,7 @@ fn caption_glyph(p: &Painter, k: usize, maximized: bool, at: Pos2, color: Color3
     let at = at.round() + Vec2::splat(0.5);
     let square = |min: Vec2, size: f32| Rect::from_min_size(at + min, Vec2::splat(size));
     match (k, maximized) {
-        (0, _) => {
-            p.line_segment([at + Vec2::new(-5.0, -5.0), at + Vec2::new(5.0, 5.0)], stroke);
-            p.line_segment([at + Vec2::new(-5.0, 5.0), at + Vec2::new(5.0, -5.0)], stroke);
-        }
+        (0, _) => cross(p, at, 5.0, stroke),
         (1, false) => {
             p.rect_stroke(square(Vec2::splat(-5.0), 10.0), 1, stroke, StrokeKind::Middle);
         }

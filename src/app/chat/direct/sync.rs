@@ -4,6 +4,8 @@ impl DrawingApp {
     /// Esc: the answer stops where it is.
     pub(crate) fn chat_stop(&mut self, id: &str) {
         self.cmd_cancel(id);
+        // stopped, not done: no celebration (nor the island opening for it)
+        self.chat_ended.remove(id);
         if let Some(mut run) = self.chat_runs.remove(id) {
             let _ = run.child.kill();
             let _ = run.child.wait();
@@ -101,6 +103,7 @@ impl DrawingApp {
                 && let Some(mut run) = self.chat_runs.remove(&id)
             {
                 let ok = run.child.wait().is_ok_and(|s| s.success());
+                self.chat_ended.insert(id.clone(), now);
                 self.avatar_listen();
                 self.avatar_set(AvatarState::Idle);
                 let transcript = self.chat_transcript(&id);

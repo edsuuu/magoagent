@@ -133,8 +133,8 @@ fn a_terminal_remembers_its_conversation_and_its_chat_shows_it_after_a_restart()
 fn narrow_the_list_is_a_column_of_initials_and_ctrl_b_opens_it_over_the_conversation() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
-    let revisor = chat(&mut app, "Revisor");
-    let migrador = chat(&mut app, "Migrador");
+    let revisor = push_chat(&mut app, "Revisor");
+    let migrador = push_chat(&mut app, "Migrador");
     // an agent in a terminal is not in the chat's list: it has its own panel
     agent(&mut app, "Zelador");
     app.chat_open = true;
@@ -169,8 +169,8 @@ fn the_chat_opens_on_a_chat_and_keeps_an_agents_conversation_opened_from_its_ter
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     let zelador = agent(&mut app, "Zelador");
-    let codex = chat(&mut app, "Codex");
-    let claude = chat(&mut app, "Claude");
+    let codex = push_chat(&mut app, "Codex");
+    let claude = push_chat(&mut app, "Claude");
     app.chats[0].agent = "codex".into();
     app.chat_open = true;
     let size = Vec2::new(1200.0, 800.0);
@@ -206,24 +206,6 @@ fn on_the_mac_the_lists_title_sits_below_the_window_buttons() {
     let row = if cfg!(target_os = "macos") { LIGHTS_Y } else { painted(&texts, "Conversas").unwrap().center().y };
     click(&mut app, &ctx, size, Pos2::new(16.0 + crate::app::chat::list::LIST - 22.0, row));
     assert!(app.chat_list_toggled, "« folds it");
-}
-
-fn chat(app: &mut DrawingApp, name: &str) -> String {
-    let chat = crate::app::chat::direct::Chat {
-        id: name.to_lowercase(),
-        agent: "claude".into(),
-        name: name.into(),
-        cwd: String::new(),
-        session: None,
-        mode: 0,
-        model: String::new(),
-        effort: String::new(),
-        recruit: false,
-        named: false,
-        draft: false,
-    };
-    app.chats.push(chat);
-    name.to_lowercase()
 }
 
 fn agent(app: &mut DrawingApp, name: &str) -> String {
@@ -426,7 +408,7 @@ fn the_card_has_the_words_on_top_and_its_buttons_under_them() {
     let ctx = Context::default();
     crate::app::ui::install_fonts(&ctx, false);
     let mut app = DrawingApp::default();
-    let id = chat(&mut app, "Claude");
+    let id = push_chat(&mut app, "Claude");
     app.chat_open = true;
     app.chat_agent = Some(id);
     let size = Vec2::new(1200.0, 800.0);
@@ -454,7 +436,7 @@ fn the_card_has_the_words_on_top_and_its_buttons_under_them() {
 fn abrir_em_miniatura_leaves_the_chat_for_its_panel_over_the_canvas() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
-    let id = chat(&mut app, "Claude");
+    let id = push_chat(&mut app, "Claude");
     app.chat_open = true;
     app.chat_agent = Some(id);
     // the Contexto panel closed: the header runs to the window's edge

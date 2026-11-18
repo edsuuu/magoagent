@@ -31,9 +31,9 @@ fn shadow(painter: &Painter, rect: Rect, radius: f32, alpha: f32, dark: bool) {
     painter.add(egui::epaint::Shadow { offset: [0, 3], blur: 12, spread: 0, color }.as_shape(rect, radius));
 }
 
-/// A card's ground in the theme: the app's floating panels (#232329 in the dark, white in the light).
+/// A card's ground in the theme: the app's floating panels (#242424 in the dark, white in the light).
 pub(super) fn surface(k: &K) -> Color32 {
-    if k.dark { Color32::from_rgb(0x23, 0x23, 0x29) } else { Color32::WHITE }
+    if k.dark { Color32::from_rgb(0x24, 0x24, 0x24) } else { Color32::WHITE }
 }
 
 /// The mini canvas: the app's ground and its dotted grid moved by `pan` (points) in `rect`. What goes on it is drawn

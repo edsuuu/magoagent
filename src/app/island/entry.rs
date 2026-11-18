@@ -1,7 +1,7 @@
 //! The entrance: when the app starts the island opens and the mascot drops into the middle of it with sparkles
 //! around, bounces, slides aside to wave, comes back to the middle and sits there until the island folds to
-//! compact, where the island's own wizard springs from that spot to its ear. The timing, curves and squash are Coucou's
-//! (windows/src/mochi/greeting.ts, MIT; its character is not used): the same 640 by 150 space, shifted to our page.
+//! compact, where the island's own wizard springs from that spot to its ear. The timing, curves and squash play
+//! in a 640 by 150 space, shifted to our page.
 
 use crate::prelude::*;
 use std::sync::OnceLock;
@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 pub(super) const END: f32 = 4.65;
 const BODY: f32 = 58.0;
 pub(super) const CENTER: Vec2 = Vec2::new(320.0, 90.0);
-/// Coucou's space is 150 tall with the card at 36; ours has the page at 42.
+/// The space is 150 tall with the card at 36; ours has the page at 42.
 pub(super) const SHIFT: f32 = 6.0;
 /// Where the wizard starts: the compact island's middle height (`COMPACT.botCenterY`).
 const START_Y: f32 = 16.0;
@@ -58,7 +58,7 @@ pub(super) struct Pose {
     pub(super) card: f32,
 }
 
-/// The pose at `t` (greeting.ts `greetPose`).
+/// The pose at `t`.
 pub(super) fn pose(t: f32) -> Pose {
     let t = t.min(END + 10.0);
     let (cx, cy) = (CENTER.x, CENTER.y);
@@ -128,7 +128,7 @@ struct Sparkle {
     alpha: f32,
 }
 
-/// Coucou's seeded sequence (seed 7): the same streaks and sparkles every time.
+/// A seeded sequence (seed 7): the same streaks and sparkles every time.
 fn particles() -> &'static (Vec<Streak>, Vec<Sparkle>) {
     static PARTICLES: OnceLock<(Vec<Streak>, Vec<Sparkle>)> = OnceLock::new();
     PARTICLES.get_or_init(|| {

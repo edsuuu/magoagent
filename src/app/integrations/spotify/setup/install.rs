@@ -11,10 +11,6 @@ use std::path::Path;
 
 /// The build Spotify publishes for Linux (x86_64 only).
 pub(crate) const DOWNLOAD: &str = "https://soloist-builds.spotifycdn.com/soloist_release_x86_64.tar.gz";
-/// A download bigger than this is not Soloist (it is about 14 MB).
-const MAX_BYTES: u64 = 512 * 1024 * 1024;
-const MAX_REDIRECTS: usize = 5;
-
 /// The user's unit, as the person's own script writes it: the key and the name come from the env file.
 pub(crate) const UNIT: &str = "[Unit]
 Description=Spotify Soloist (dispositivo Spotify Connect)
@@ -120,42 +116,16 @@ pub(crate) fn download_allowed(url: &str) -> bool {
     !authority.contains(['@', '\\', ':']) && (host == "soloist-builds.spotifycdn.com" || host.ends_with(".spotifycdn.com"))
 }
 
-/// Downloads `url` into `part` with curl, hop by hop: each redirect is looked at before it is followed, so nothing
-/// outside Spotify's CDN is asked.
+/// Downloads `url` into `part` (`fetch_hops`): nothing outside Spotify's CDN is asked.
 pub(crate) fn fetch(url: &str, part: &Path) -> Result<(), String> {
-    use crate::app::system::download::parse_head;
-    let head_file = part.with_extension("head");
-    let mut current = url.to_string();
-    let result = (|| {
-        for _ in 0..=MAX_REDIRECTS {
-            if !download_allowed(&current) {
-                return Err("o download foi para fora do Spotify: recusado".to_string());
-            }
-            let status = crate::editor::command("curl")
-                .args(["-sS", "--fail", "--connect-timeout", "15", "--max-time", "600", "--max-redirs", "0", "--proto", "=https", "--max-filesize"])
-                .arg(MAX_BYTES.to_string())
-                .arg("-D")
-                .arg(&head_file)
-                .arg("-o")
-                .arg(part)
-                .arg(&current)
-                .stdin(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()
-                .map_err(|error| format!("curl não pôde ser iniciado: {error}"))?;
-            if !status.success() {
-                return Err("não foi possível baixar o Soloist (sem conexão, tempo esgotado ou recusado); confira a internet".into());
-            }
-            match parse_head(&fs::read_to_string(&head_file).unwrap_or_default()) {
-                Some((200, _)) => return Ok(()),
-                Some((301 | 302 | 303 | 307 | 308, Some(next))) => current = next,
-                _ => return Err("o servidor do Spotify respondeu de um jeito inesperado".into()),
-            }
-        }
-        Err("redirecionamentos demais".into())
-    })();
-    let _ = fs::remove_file(&head_file);
-    result
+    use crate::app::system::download::{Hop, fetch_hops};
+    fetch_hops(url, part, download_allowed, 600).map_err(|hop| match hop {
+        Hop::Outside(_) => "o download foi para fora do Spotify: recusado".into(),
+        Hop::Start(error) => format!("curl não pôde ser iniciado: {error}"),
+        Hop::Failed => "não foi possível baixar o Soloist (sem conexão, tempo esgotado ou recusado); confira a internet".into(),
+        Hop::Unexpected(_) => "o servidor do Spotify respondeu de um jeito inesperado".into(),
+        Hop::TooMany => "redirecionamentos demais".into(),
+    })
 }
 
 /// Puts the program at `to` all at once: a copy beside it, executable (755), renamed over the old one (a Soloist

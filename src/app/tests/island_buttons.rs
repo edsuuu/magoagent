@@ -5,66 +5,13 @@
 use super::*;
 use crate::app::island::{CLOSED_W, COMPACT_W, EXPANDED_W, Tab};
 
-const SIZE: Vec2 = Vec2::new(1200.0, 800.0);
-
-fn chat(id: &str, name: &str) -> crate::app::chat::direct::Chat {
-    crate::app::chat::direct::Chat {
-        id: id.into(),
-        agent: "claude".into(),
-        name: name.into(),
-        cwd: "C:/p".into(),
-        session: None,
-        mode: 0,
-        model: String::new(),
-        effort: String::new(),
-        recruit: false,
-        named: false,
-        draft: false,
-    }
-}
-
 /// The app, its island opened by clicking on the compact pill, and the time it is at.
 fn opened() -> (DrawingApp, Context, f64) {
-    let ctx = Context::default();
-    let mut app = DrawingApp::default();
-    app.prefs.island = true;
-    app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
-    let mut time = 1.0;
-    let notch = Pos2::new(SIZE.x / 2.0, 10.0);
-    while time < 2.0 {
-        step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
-        time += 0.05;
-    }
-    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "compact on hover: {}", app.island.size().x);
-    let press = |pressed| egui::Event::PointerButton { pos: notch, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
-    step(&mut app, &ctx, time, vec![press(true)]);
-    time += 0.05;
-    step(&mut app, &ctx, time, vec![press(false)]);
-    time += 0.05;
-    while time < 3.0 {
-        step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
-        time += 0.05;
-    }
-    assert!((app.island.size().x - EXPANDED_W).abs() < 1.0, "clicked to open: {}", app.island.size().x);
-    (app, ctx, time)
+    island_opened(vec![chat("a", "claude", "Claude Code · loja"), chat("b", "claude", "Codex · site")])
 }
 
 fn step(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>) {
-    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(time), events, ..Default::default() };
-    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
-    output.textures_delta.clear();
-}
-
-/// The island as drawn: hung from the top centre.
-fn island_rect(app: &DrawingApp) -> Rect {
-    let size = app.island.size();
-    Rect::from_min_size(Pos2::new((SIZE.x / 2.0 - size.x / 2.0).round(), 0.0), size)
-}
-
-/// A header button, counted from the right: 0 the close, 1 the sound, 2 the settings, 3 the voice, 4 the size.
-fn right_button(app: &DrawingApp, index: usize) -> Pos2 {
-    let rect = island_rect(app);
-    Pos2::new(rect.right() - 25.0 - index as f32 * 32.0, rect.top() + 25.0)
+    island_frame(app, ctx, time, events);
 }
 
 /// A tab: 0 Home, 1 the conversation, 2 the new chat.
@@ -309,7 +256,7 @@ fn the_window_holds_the_big_conversation_while_it_opens() {
         time += 0.02;
         assert!(window_holds(&app), "cut: window {:?}, island {:?}", app.island.window(), app.island.size());
     }
-    assert!(app.island.chat_big() && (app.island.size() - SIZE * 0.7).length() < 1.0, "{:?}", app.island.size());
+    assert!(app.island.chat_big() && (app.island.size() - ISLAND_SCREEN * 0.7).length() < 1.0, "{:?}", app.island.size());
 }
 
 /// The conversation's own header (chat/mini.rs): ✕ at its left, full screen at its right.
@@ -374,11 +321,11 @@ fn the_pointer_over_a_pill_only_lights_it_and_its_click_puts_its_agent_in_focus(
     let width = (inner.width() - 4.0) / 2.0;
     let second = Pos2::new(inner.left() + width + 4.0 + width / 2.0, inner.center().y);
     let asked = app.island.chimes();
-    // Coucou's mouseenter only lights the pill: the card at the left stays, so nothing slides from under the pointer
+    // the pointer only lights the pill: the card at the left stays, so nothing slides from under the pointer
     rest(&mut app, &ctx, &mut time, second, 2.0);
     assert_eq!(app.island.focus(), None, "the pointer over a pill changes no focus");
     assert_eq!(app.island.chimes(), asked, "and makes no sound");
-    // its click is Coucou's setFocus: the agent in the card at the left, a blip, still on Chats
+    // its click focuses it: the agent in the card at the left, a blip, still on Chats
     click(&mut app, &ctx, &mut time, second);
     assert_eq!(app.island.focus(), Some("b"));
     assert!(app.island.chimes() > asked, "the click has its blip");

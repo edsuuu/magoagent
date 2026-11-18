@@ -399,7 +399,7 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
     let TreeAsk::Name { at, kind, text, .. } = ask else { return Popover::Open };
     let c = menu_colors(dark);
     let uc = UiColors::new(dark);
-    let accent = if dark { Color32::from_rgb(0x0a, 0x84, 0xff) } else { Color32::from_rgb(0x00, 0x7a, 0xff) };
+    let accent = glass_accent(dark);
     let name = at.file_name().unwrap_or_default().to_string_lossy().into_owned();
     let (base, ext) = if *kind == NameKind::Rename { split_name(&name) } else { ("", "") };
     let (title, field) = match kind {
@@ -440,11 +440,7 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
                     let response = ui.put(rect.shrink2(Vec2::new(8.0, 4.0)), edit).tip(field);
                     if first {
                         response.request_focus();
-                        if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), response.id) {
-                            let end = egui::text::CCursor::new(text.chars().count());
-                            state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(0), end)));
-                            state.store(ui.ctx(), response.id);
-                        }
+                        select_all_text(ui.ctx(), response.id, text.chars().count());
                     }
                     // the field is the only thing the popover has to focus: its ring stays
                     ui.painter().rect_stroke(rect, 6, Stroke::new(1.5, accent), StrokeKind::Inside);

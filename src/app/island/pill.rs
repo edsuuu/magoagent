@@ -52,6 +52,17 @@ pub(crate) fn spread(rect: Rect, minis: Option<Rect>) -> (f32, f32) {
     (cover, cover + COVER + PAIR_GAP)
 }
 
+/// The same on the compact island standing up on a side (`rect`, `COMPACT_TALL_SONG` tall): where the cover and the
+/// bars start from its top, one under the other, in the middle between the wizard and the minis' grid (`minis`), or
+/// between the wizard and the bottom without agents.
+pub(crate) fn spread_upright(rect: Rect, minis: Option<Rect>) -> (f32, f32) {
+    let pair = COVER + PAIR_GAP + BARS_ROOM;
+    let wizard_end = rect.top() + super::minis::UPRIGHT_INSET + WIZARD / 2.0;
+    let end = minis.map_or(rect.bottom(), |grid| grid.top());
+    let cover = (wizard_end + end) / 2.0 - pair / 2.0;
+    (cover, cover + COVER + PAIR_GAP)
+}
+
 /// The bars' heights, each 0 to 1: the song heard here, each bar its own band, low to high (asked: "de acordo com a
 /// música no Spotify"); with nothing heard (the song plays on another device, the listening is off or failed), they
 /// rest: nothing made up (asked: "se a música não está tocando nesse dispositivo, a frequência precisa ficar parada").
@@ -77,6 +88,7 @@ pub(super) fn spotify(
     title: &str,
     playing: bool,
     compact: Option<Option<Rect>>,
+    upright: bool,
     groove: Option<&Groove>,
     time: f64,
 ) -> bool {
@@ -88,11 +100,17 @@ pub(super) fn spotify(
     };
     let count = if compact.is_some() { BARS } else { BARS.div_ceil(2) };
     let total = count as f32 * bar + (count - 1) as f32 * gap;
+    // standing up (`upright`), the cover under the wizard and the bars under it, each bar lying down
     let (cover_left, bars_left) = match compact {
+        Some(minis) if upright => spread_upright(rect, minis),
         Some(minis) => spread(rect, minis),
         None => (rect.left() + COVER_LEFT_SMALL, rect.right() - BARS_RIGHT_SMALL - total / 2.0),
     };
-    let art = Rect::from_min_size(Pos2::new(cover_left, rect.center().y - side / 2.0), Vec2::splat(side));
+    let art = if upright {
+        Rect::from_min_size(Pos2::new(rect.center().x - side / 2.0, cover_left), Vec2::splat(side))
+    } else {
+        Rect::from_min_size(Pos2::new(cover_left, rect.center().y - side / 2.0), Vec2::splat(side))
+    };
     // the cover of the song before stays while the new one is still to come, and goes under it as it fades in
     let fade = CoverFade::read(ui.ctx());
     let progress = fade.progress(time);
@@ -112,10 +130,14 @@ pub(super) fn spotify(
     let levels: Vec<f32> = if compact.is_some() { levels.to_vec() } else { levels.chunks(2).map(|pair| pair.iter().copied().fold(0.0, f32::max)).collect() };
     let colours = fade.colours_at(time).unwrap_or_else(|| (tint.unwrap_or(GREEN), tint.unwrap_or(GREEN)));
     for (index, level) in levels.into_iter().enumerate() {
-        let x = bars_left + index as f32 * (bar + gap) + bar / 2.0;
-        // a round dot at rest, the tallest at its highest, from the middle line up and down
+        let along_line = bars_left + index as f32 * (bar + gap) + bar / 2.0;
+        // a round dot at rest, the tallest at its highest, from the middle line up and down (standing up: to the sides)
         let height = bar + (tall - bar) * level.clamp(0.0, 1.0);
-        let rise = Rect::from_center_size(Pos2::new(x, rect.center().y), Vec2::new(bar, height));
+        let rise = if upright {
+            Rect::from_center_size(Pos2::new(rect.center().x, along_line), Vec2::new(height, bar))
+        } else {
+            Rect::from_center_size(Pos2::new(along_line, rect.center().y), Vec2::new(bar, height))
+        };
         // the first bar takes the first colour, the last the second, and the ones between them a bit of each
         let along = if count > 1 { index as f32 / (count - 1) as f32 } else { 0.0 };
         painter.rect_filled(rise, bar / 2.0, colours.0.lerp_to_gamma(colours.1, along));
@@ -123,7 +145,12 @@ pub(super) fn spotify(
     if playing || fade.fading(time) {
         ui.ctx().request_repaint_after(crate::app::update::frame_spacing());
     }
-    let music = art.union(Rect::from_min_size(Pos2::new(bars_left, rect.center().y - tall / 2.0), Vec2::new(total, tall)));
+    let bars_area = if upright {
+        Rect::from_min_size(Pos2::new(rect.center().x - tall / 2.0, bars_left), Vec2::new(tall, total))
+    } else {
+        Rect::from_min_size(Pos2::new(bars_left, rect.center().y - tall / 2.0), Vec2::new(total, tall))
+    };
+    let music = art.union(bars_area);
     ui.interact(music.expand(3.0), ui.scope_id().with("island_pill_music"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked()
 }
 
@@ -134,4 +161,29 @@ fn picture_over(painter: &Painter, rect: Rect, corner: u8, texture: egui::Textur
     }
     let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
     painter.add(egui::epaint::RectShape::filled(rect, corner, Color32::WHITE.gamma_multiply(alpha)).with_texture(texture, uv));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::island::{COMPACT_H, COMPACT_TALL_SONG, minis::upright_cells};
+
+    /// Asked ("na ilha lateral, não fica a capa da música e frequência em vertical"): standing up, the cover and the bars
+    /// go one under the other between the wizard and the minis, with room on each side, inside the island.
+    #[test]
+    fn standing_up_the_cover_and_the_bars_go_between_the_wizard_and_the_minis() {
+        let island = Rect::from_min_size(Pos2::new(0.0, 100.0), Vec2::new(COMPACT_H, COMPACT_TALL_SONG));
+        let grid = upright_cells(island, 2).into_iter().reduce(Rect::union).unwrap();
+        let wizard_end = island.top() + crate::app::island::minis::UPRIGHT_INSET + WIZARD / 2.0;
+        for minis in [Some(grid), None] {
+            let (cover, bars) = spread_upright(island, minis);
+            let end = bars + BARS_ROOM;
+            let below = minis.map_or(island.bottom(), |grid| grid.top());
+            assert!(cover - wizard_end >= 8.0 && below - end >= 8.0, "room around them: {cover} {end} {minis:?}");
+            assert!(((cover - wizard_end) - (below - end)).abs() < 1.0, "in the middle");
+            assert_eq!(bars, cover + COVER + PAIR_GAP);
+        }
+        // the bars lying down fit its width
+        const { assert!(BARS_TALL < COMPACT_H - 8.0) };
+    }
 }

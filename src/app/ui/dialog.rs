@@ -362,11 +362,7 @@ pub(crate) fn name_balloon(ctx: &Context, c: &UiColors, anchor: Rect, label: &st
                 let response = input_box(ui, &k, label, text, hint, Vec2::new(width, 26.0), FontId::proportional(14.0), false);
                 if first {
                     response.request_focus();
-                    if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), response.id) {
-                        let end = egui::text::CCursor::new(text.chars().count());
-                        state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(0), end)));
-                        state.store(ui.ctx(), response.id);
-                    }
+                    select_all_text(ui.ctx(), response.id, text.chars().count());
                 }
                 if text.chars().count() > 120 {
                     *text = text.chars().take(120).collect();

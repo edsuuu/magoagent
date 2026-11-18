@@ -280,7 +280,7 @@ pub(crate) fn window_names() -> (String, &'static str) {
 /// Asks the app already running on this scene (its `bridge.json`) to show its window; false when none answers.
 fn raise_running() -> bool {
     let Some(path) = mcp::bridge::endpoint_path().filter(|p| mcp::bridge::app_open(p)) else { return false };
-    let saved = fs::read_to_string(path).ok().and_then(|d| serde_json::from_str::<serde_json::Value>(&d).ok()).unwrap_or_default();
+    let saved = file::read_json::<serde_json::Value>(&path).unwrap_or_default();
     let (address, token) = (saved["address"].as_str().unwrap_or_default(), saved["token"].as_str().unwrap_or_default());
     mcp::bridge::request_to(address, token, "", serde_json::json!({ "cmd": "raise" }), std::time::Duration::from_secs(5)).is_ok()
 }

@@ -8,7 +8,7 @@ pub(crate) fn request(request: Value, wait: Duration) -> Result<String, String> 
         // a chat's agent speaks as its chat (app/chat/node.rs `chat_env`)
         (Some(address), Some(token)) => (address, token, env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID")).unwrap_or_default()),
         _ => {
-            let saved = endpoint_path().and_then(|p| fs::read_to_string(p).ok()).and_then(|d| serde_json::from_str::<Value>(&d).ok());
+            let saved = endpoint_path().and_then(|p| read_json::<Value>(&p));
             let saved = saved.ok_or("O MagoAgent não está aberto.")?;
             (saved["address"].as_str().unwrap_or_default().into(), saved["token"].as_str().unwrap_or_default().into(), String::new())
         }

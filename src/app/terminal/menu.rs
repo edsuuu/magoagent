@@ -86,16 +86,7 @@ impl DrawingApp {
             ),
             Entry::Sep,
         ];
-        // the nodes it is joined to, one row each to cut it (ui/links.rs)
-        let joined = self.links().remove(&e.id).unwrap_or_default();
-        if !joined.is_empty() {
-            let nodes = self.agent_nodes();
-            let cuts = joined
-                .iter()
-                .map(|other| item(&format!("disconnect:{other}"), &nodes.iter().find(|n| &n.id == other).map(|n| n.name.clone()).unwrap_or_default()))
-                .collect();
-            rows.extend([sub("Desconectar", cuts), Entry::Sep]);
-        }
+        rows.extend(self.disconnect_rows(&e.id).unwrap_or_default());
         rows.extend([
             item("copy_el", "Copiar Elemento"),
             entry("dup", "Duplicar", None, false, !e.locked),

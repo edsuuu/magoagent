@@ -84,6 +84,21 @@ fn ir_para_o_proximo_goes_round_the_ones_that_need_you() {
     assert!(app.act("sidebar", &json!({ "action": "next" })).unwrap_err().contains("Nenhum agente"));
 }
 
+/// Asked: "precisa ter uma opção x para ocultar ou remover". The green notice's × hides it for good; somebody waiting
+/// still shows the amber card; the MCP brings it back.
+#[test]
+fn the_green_notice_closes_by_its_x() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    press(&mut app, &ctx, "×");
+    assert!(app.prefs.sidebar_clear_hidden, "kept in the preferences");
+    assert!(found(&side(&mut app, &ctx, vec![]), "Nada esperando por você").is_none());
+    app.act("sidebar", &json!({ "action": "notice_show" })).unwrap();
+    assert!(found(&side(&mut app, &ctx, vec![]), "Nada esperando por você").is_some());
+    app.act("sidebar", &json!({ "action": "notice_hide" })).unwrap();
+    assert!(app.prefs.sidebar_clear_hidden);
+}
+
 #[test]
 fn the_agents_of_the_space_fold_to_their_count_and_a_row_selects_its_card() {
     let ctx = Context::default();
@@ -142,6 +157,12 @@ fn the_foot_shows_each_plan_and_its_detail_fits_the_sidebar() {
     assert_eq!(app.usage_ui.probe.next, 0.0);
     let said = app.act("usage", &json!({})).unwrap();
     assert!(said.contains("Plano lido pela CLI, Claude Code (Max): Sessão 98% (redefine em 3 dias)"), "{said}");
+    // asked ("se eu clico em configurações o meu cursor fica cursor de texto"): the link opens Ajustes › Agentes, it
+    // doesn't select its text
+    app.act("sidebar", &json!({ "action": "usage_open" })).unwrap();
+    press(&mut app, &ctx, "Configurações…");
+    assert!(app.settings_open && !app.usage_ui.open);
+    assert_eq!(crate::app::ui::settings::SETTINGS_TABS[app.settings_tab], "Agentes");
 }
 
 #[test]

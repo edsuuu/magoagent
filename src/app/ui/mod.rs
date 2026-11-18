@@ -256,8 +256,8 @@ impl UiColors {
     pub(crate) fn new(dark: bool) -> Self {
         if dark {
             Self {
-                island: Color32::from_rgb(0x23, 0x23, 0x29),
-                // lifted above the island (#232329) so buttons and toggles stay visible
+                island: Color32::from_rgb(0x24, 0x24, 0x24),
+                // lifted above the island (#242424) so buttons and toggles stay visible
                 surface_low: Color32::from_rgb(0x30, 0x30, 0x33),
                 surface_high: Color32::from_rgb(0x3c, 0x3c, 0x40),
                 selected: Color32::from_rgb(0x1c, 0x3d, 0x66),
@@ -357,6 +357,12 @@ pub(crate) fn maestro_crown(p: &Painter, at: Pos2, zoom: f32, color: Color32) {
     }
 }
 
+/// An X at `at`, its arms `r` out to each side.
+pub(crate) fn cross(p: &Painter, at: Pos2, r: f32, stroke: Stroke) {
+    p.line_segment([at + Vec2::new(-r, -r), at + Vec2::new(r, r)], stroke);
+    p.line_segment([at + Vec2::new(r, -r), at + Vec2::new(-r, r)], stroke);
+}
+
 /// Pills in a row, centered; the chosen one filled. Returns true when the choice changed.
 pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], c: &UiColors) -> bool {
     let mut changed = false;
@@ -388,6 +394,15 @@ pub(crate) const CORNER_WIDTH: f32 = 4.0 * CORNER_BUTTON + ZOOM_TEXT + 2.0 + 6.0
 pub(crate) const ZOOM_TEXT: f32 = 48.0;
 /// The bottom left pill's: Desfazer and Refazer.
 pub(crate) const HISTORY_WIDTH: f32 = 2.0 * CORNER_BUTTON + GLASS_GAP + 2.0 * GLASS_END;
+
+/// The whole text of field `id` (`chars` long) selected, as a field that opens on what it holds; false while the
+/// field has no state yet.
+pub(crate) fn select_all_text(ctx: &Context, id: egui::Id, chars: usize) -> bool {
+    let Some(mut state) = egui::TextEdit::load_state(ctx, id) else { return false };
+    state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(chars))));
+    state.store(ctx, id);
+    true
+}
 
 pub(crate) fn group_frame(c: &UiColors) -> egui::Frame {
     egui::Frame::new().fill(c.surface_low).corner_radius(8)

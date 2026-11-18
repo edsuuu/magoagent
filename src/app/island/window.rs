@@ -404,12 +404,14 @@ impl DrawingApp {
             return;
         };
         match self.island.moved {
-            Some((seen, since)) if seen == placed.min => {
+            Some((seen, since, grab)) if seen == placed.min => {
                 // the island moved with its window, where it is in it (pushed in near an edge, or against the edge it
                 // was stuck to): it hangs from where it was let go, on the edge it is near
                 let old = self.island.anchor.unwrap_or([origin.x + size.x / 2.0, origin.y + TOP_PAD]);
                 let island = island_in(old, self.island.dock, origin, size, self.island.anim).translate(placed.min.to_vec2());
-                let work = crate::app::chat::mini::screen_work(ctx, island.center());
+                // the monitor the cursor let it go on: by the island's centre, one dropped by the edge between two
+                // monitors went to the other one (asked: "na lateral que tem outro monitor, ela não gruda")
+                let work = crate::app::chat::mini::screen_work(ctx, grab.unwrap_or(island.center()));
                 let island = pushed_to_top(island, placed.top(), work);
                 let anchor = keep_on_screen(dropped(island, work), work);
                 let target = kept_origin(anchor, self.island.built, work);
@@ -420,7 +422,10 @@ impl DrawingApp {
                     self.island.moved = None;
                 }
             }
-            _ => self.island.moved = Some((placed.min, time)),
+            _ => {
+                let scale = ctx.input(|input| input.viewport().native_pixels_per_point).unwrap_or(1.0);
+                self.island.moved = Some((placed.min, time, cursor::screen_cursor().map(|at| at / scale)));
+            }
         }
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
@@ -664,6 +669,13 @@ mod tests {
         let anchor = dropped(Rect::from_min_size(Pos2::new(2600.0, 1000.0), Vec2::new(288.0, 40.0)), second);
         assert_eq!(anchor[1], 1079.0);
         assert_eq!(keep_on_screen(anchor, second), [2744.0, 1079.0], "kept where it is, on the second monitor");
+        // asked ("na lateral que tem outro monitor, ela não gruda"): held by Luna, at its left, the island let go by the
+        // first's right edge has its centre on the second; the cursor's monitor is the first, and it sticks to its side
+        let across = Rect::from_min_size(Pos2::new(1880.0, 480.0), Vec2::new(188.0, 38.5));
+        let grab = Pos2::new(1900.0, 500.0);
+        assert_eq!(work_at(&works, across.center()), Some(second), "by its centre, the other monitor");
+        let anchor = dropped(across, work_at(&works, grab).unwrap());
+        assert_eq!(Dock::of(anchor, first), Dock::Right, "on the first's right side: {anchor:?}");
     }
 
     /// Asked ("tento pegar para arrastar ... ele trava, preciso soltar o click e fazer novamente"): a pause in the middle

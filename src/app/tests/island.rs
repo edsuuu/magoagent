@@ -4,24 +4,6 @@ use super::*;
 use crate::app::chat::decide::PersonAsk;
 use crate::app::island::{CLOSED_H, CLOSED_W, COMPACT_H, COMPACT_W, EXPANDED_W, Tab};
 
-const SIZE: Vec2 = Vec2::new(1200.0, 800.0);
-
-fn chat(id: &str, agent: &str, name: &str) -> crate::app::chat::direct::Chat {
-    crate::app::chat::direct::Chat {
-        id: id.into(),
-        agent: agent.into(),
-        name: name.into(),
-        cwd: "C:/p".into(),
-        session: None,
-        mode: 0,
-        model: String::new(),
-        effort: String::new(),
-        recruit: false,
-        named: false,
-        draft: false,
-    }
-}
-
 fn app_with_island() -> DrawingApp {
     let mut app = DrawingApp::default();
     app.prefs.island = true;
@@ -30,9 +12,7 @@ fn app_with_island() -> DrawingApp {
 }
 
 fn frame_at(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>) {
-    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(time), events, ..Default::default() };
-    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
-    output.textures_delta.clear();
+    island_frame(app, ctx, time, events);
 }
 
 /// Frames from `from` to `to` seconds, 50 ms apart.
@@ -46,15 +26,12 @@ fn run(app: &mut DrawingApp, ctx: &Context, from: f64, to: f64, events: Vec<egui
 
 /// One frame of the island; the texts it painted.
 fn painted(app: &mut DrawingApp, ctx: &Context, time: f64) -> Vec<String> {
-    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(time), events: vec![], ..Default::default() };
-    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
-    output.textures_delta.clear();
-    output.shapes.iter().filter_map(|shape| if let egui::Shape::Text(text) = &shape.shape { Some(text.galley.text().to_string()) } else { None }).collect()
+    island_texts(app, ctx, time, vec![])
 }
 
 /// One frame of the island, and the time it asked before the next one.
 fn frame_delay(app: &mut DrawingApp, ctx: &Context, time: f64) -> std::time::Duration {
-    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(time), events: vec![], ..Default::default() };
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, ISLAND_SCREEN)), time: Some(time), events: vec![], ..Default::default() };
     let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
     output.textures_delta.clear();
     output.viewport_output.get(&egui::ViewportId::ROOT).map_or(std::time::Duration::MAX, |viewport| viewport.repaint_delay)
@@ -160,7 +137,7 @@ fn a_click_on_the_songs_cover_opens_the_island_on_the_music() {
     run(&mut app, &ctx, 1.0, 1.3, vec![]);
     assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H), "the notch");
     // the cover sits 4 from the notch's left, 16 wide
-    let cover = Pos2::new(SIZE.x / 2.0 - CLOSED_W / 2.0 + 12.0, CLOSED_H / 2.0);
+    let cover = Pos2::new(ISLAND_SCREEN.x / 2.0 - CLOSED_W / 2.0 + 12.0, CLOSED_H / 2.0);
     let press = |pressed| egui::Event::PointerButton { pos: cover, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
     frame_at(&mut app, &ctx, 1.4, vec![egui::Event::PointerMoved(cover), press(true)]);
     frame_at(&mut app, &ctx, 1.45, vec![press(false)]);
@@ -212,7 +189,7 @@ fn the_island_is_a_notch_that_opens_with_the_pointer_and_folds_when_it_leaves() 
     run(&mut app, &ctx, 1.0, 1.3, vec![]);
     assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H), "closed: the small notch");
     // it hangs from the top centre: the pointer on it shows compact, a click opens the panel
-    let on_it = Pos2::new(SIZE.x / 2.0, CLOSED_H / 2.0);
+    let on_it = Pos2::new(ISLAND_SCREEN.x / 2.0, CLOSED_H / 2.0);
     run(&mut app, &ctx, 2.0, 2.5, vec![egui::Event::PointerMoved(on_it)]);
     assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "compact on hover: {}", app.island.size().x);
     let press = |pressed| egui::Event::PointerButton { pos: on_it, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
@@ -240,7 +217,7 @@ fn opened_it_folds_after_the_cursor_left_even_though_egui_never_heard_it_leave()
     // Windows: outside the island the window lets the cursor through, so egui keeps the last pointer on it
     let ctx = Context::default();
     let mut app = app_with_island();
-    let on_it = Pos2::new(SIZE.x / 2.0, CLOSED_H / 2.0);
+    let on_it = Pos2::new(ISLAND_SCREEN.x / 2.0, CLOSED_H / 2.0);
     app.island.over = Some(true);
     run(&mut app, &ctx, 1.0, 1.5, vec![egui::Event::PointerMoved(on_it)]);
     let press = |pressed| egui::Event::PointerButton { pos: on_it, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
@@ -262,13 +239,13 @@ fn closed_the_wizard_looks_around_by_itself_and_awake_its_eyes_are_on_the_pointe
     let ctx = Context::default();
     let mut app = app_with_island();
     // closed, the pointer far to the right of it: not followed
-    let far = Pos2::new(SIZE.x - 10.0, 400.0);
+    let far = Pos2::new(ISLAND_SCREEN.x - 10.0, 400.0);
     run(&mut app, &ctx, 1.0, 2.0, vec![egui::Event::PointerMoved(far)]);
     assert_eq!(app.island.size(), Vec2::new(CLOSED_W, CLOSED_H));
     let alone = mago_gaze("island-main").unwrap();
     assert!(alone.x.abs() <= 0.5 && alone.y.abs() <= 0.2, "its own slow wander: {alone:?}");
     // the pointer comes to it and goes away again: awake (compact), the eyes go after the pointer
-    let on_it = Pos2::new(SIZE.x / 2.0, CLOSED_H / 2.0);
+    let on_it = Pos2::new(ISLAND_SCREEN.x / 2.0, CLOSED_H / 2.0);
     run(&mut app, &ctx, 2.0, 2.2, vec![egui::Event::PointerMoved(on_it)]);
     run(&mut app, &ctx, 2.2, 4.0, vec![egui::Event::PointerMoved(far)]);
     assert_eq!(app.island.size(), Vec2::new(COMPACT_W, COMPACT_H));
@@ -290,14 +267,7 @@ fn a_question_takes_the_island_over() {
 
 /// An app on a drawing of its own in a fresh folder, with an agent installed.
 fn app_in(name: &str) -> (DrawingApp, PathBuf, Vec<Preset>) {
-    let dir = std::env::temp_dir().join(format!("mago-ilha-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    // today's drawing already there: with none, it is a first run and there is no space yet
-    fs::write(dir.join("autosave.mago"), r#"{"version":1,"elements":[]}"#).unwrap();
-    let mut app = DrawingApp { autosave: Some(dir.join("autosave.mago")), ..Default::default() };
-    app.load_spaces();
-    app.load_autosave();
+    let (app, dir) = app_in_folder(&format!("ilha-{name}"));
     (app, dir, vec![Preset::new("Claude Code", "claude")])
 }
 
@@ -465,17 +435,6 @@ fn the_mcp_opens_each_page_and_hides_the_summary() {
 }
 
 /// The island as drawn: hung from the top centre.
-fn island_rect(app: &DrawingApp) -> Rect {
-    let size = app.island.size();
-    Rect::from_min_size(Pos2::new((SIZE.x / 2.0 - size.x / 2.0).round(), 0.0), size)
-}
-
-/// A header button, counted from the right: 0 the close, 1 the sound, 2 the settings, 3 the voice, 4 the size.
-fn right_button(app: &DrawingApp, index: usize) -> Pos2 {
-    let rect = island_rect(app);
-    Pos2::new(rect.right() - 25.0 - index as f32 * 32.0, rect.top() + 25.0)
-}
-
 /// A click as the hand makes it: the pointer comes, rests, presses, lets go; then a few frames for it to settle.
 fn click(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2) {
     let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
@@ -497,28 +456,7 @@ fn rest(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2, seconds: 
 
 /// The app, its island opened by clicking on the compact pill, and the time it is at.
 fn opened() -> (DrawingApp, Context, f64) {
-    let ctx = Context::default();
-    let mut app = DrawingApp::default();
-    app.prefs.island = true;
-    app.chats = vec![chat("a", "claude", "Claude Code · loja"), chat("b", "codex", "Codex · site")];
-    let mut time = 1.0;
-    let notch = Pos2::new(SIZE.x / 2.0, 10.0);
-    while time < 2.0 {
-        frame_at(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
-        time += 0.05;
-    }
-    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "compact on hover: {}", app.island.size().x);
-    let press = |pressed| egui::Event::PointerButton { pos: notch, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
-    frame_at(&mut app, &ctx, time, vec![press(true)]);
-    time += 0.05;
-    frame_at(&mut app, &ctx, time, vec![press(false)]);
-    time += 0.05;
-    while time < 3.0 {
-        frame_at(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
-        time += 0.05;
-    }
-    assert!((app.island.size().x - EXPANDED_W).abs() < 1.0, "clicked to open: {}", app.island.size().x);
-    (app, ctx, time)
+    island_opened(vec![chat("a", "claude", "Claude Code · loja"), chat("b", "codex", "Codex · site")])
 }
 
 /// Opening the app's Ajustes from the island's settings page sets app.settings_open true, closes the island's

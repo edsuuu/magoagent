@@ -89,7 +89,7 @@ fn each_button_opens_its_panel_and_closes_it_one_at_a_time() {
         assert_eq!((app.pane_width(), app.corner_inset().1), (PANE_WIDTH, PANE_WIDTH));
     }
     // the open one's button closes it
-    press_pane(&mut app, &ctx, 3);
+    press_pane(&mut app, &ctx, PANES.len() - 1);
     assert_eq!(app.panes.open, None);
     // the X on its header
     press_pane(&mut app, &ctx, 0);
@@ -236,47 +236,6 @@ fn a_changed_file_shows_its_lines_and_diff_and_opens_in_the_tree() {
     assert_eq!(app.terminal_elevated.as_deref(), Some(id.as_str()), "the tree enlarged");
     assert!(app.filetrees.editors[&id].tabs.iter().any(|t| t.path.to_string_lossy().contains("HEAD ↔ kept.txt")));
     let _ = fs::remove_dir_all(&dir);
-}
-
-#[test]
-fn the_binder_turns_its_pages_makes_a_note_and_puts_one_on_the_canvas() {
-    let base = std::env::temp_dir().join(format!("magoagent-panes-binder-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&base);
-    let folder = base.join("fichario");
-    for (name, text) in [("Decisões", "# Decisões\npagamento pelo Pix"), ("Pendências", "# Pendências\nfalta o login")] {
-        crate::app::maestro::binder::write(&folder, name, text, false).unwrap();
-    }
-    let ctx = Context::default();
-    let mut app = DrawingApp { autosave: Some(base.join("autosave.mago")), ..Default::default() };
-    settle(&mut app, &ctx);
-    press_pane(&mut app, &ctx, 3);
-    let shown = pane_frame(&mut app, &ctx, vec![]);
-    assert!(texts(&shown).iter().any(|t| t == "1 de 2"), "{:?}", texts(&shown));
-    let next = find(&shown, Role::Button, "›").unwrap();
-    let shown = pane_click(&mut app, &ctx, next.center());
-    assert_eq!(app.panes.binder.page, 1);
-    assert!(texts(&shown).iter().any(|t| t == "2 de 2") || texts(&pane_frame(&mut app, &ctx, vec![])).iter().any(|t| t == "2 de 2"));
-    // round the pile
-    pane_click(&mut app, &ctx, next.center());
-    assert_eq!(app.panes.binder.page, 0);
-    let previous = find(&shown, Role::Button, "‹").unwrap();
-    pane_click(&mut app, &ctx, previous.center());
-    assert_eq!(app.panes.binder.page, 1);
-    // the note on top onto the canvas
-    let before = app.scene.elements.len();
-    let shown = pane_frame(&mut app, &ctx, vec![]);
-    pane_click(&mut app, &ctx, find(&shown, Role::Button, "Pôr no canvas").unwrap().center());
-    assert_eq!(app.scene.elements.len(), before + 2, "a sticky note and its text");
-    assert!(app.note_text(before).contains("falta o login"));
-    // a new note: its first line is its name, a name taken gets a number
-    app.panes.binder.draft = "Decisões\nfrete grátis".into();
-    let shown = pane_frame(&mut app, &ctx, vec![]);
-    pane_click(&mut app, &ctx, find(&shown, Role::Button, "Nova nota").unwrap().center());
-    assert!(folder.join("decisoes-2.md").exists());
-    assert_eq!(app.panes.binder.notes.len(), 3);
-    assert_eq!(app.panes.binder.notes[app.panes.binder.page].0, "decisoes-2", "the new one on top");
-    assert!(app.panes.binder.draft.is_empty());
-    let _ = fs::remove_dir_all(&base);
 }
 
 #[test]

@@ -1,4 +1,4 @@
-//! Where the cursor is on the whole screen, for the wizard's eyes: as Coucou's cursor poll (`island.rs`), they follow
+//! Where the cursor is on the whole screen, for the wizard's eyes: they follow
 //! it wherever it is, with no zone around the island; and whether the island's window takes the click.
 
 use crate::prelude::*;
@@ -11,7 +11,7 @@ pub(crate) fn eye_target(cursor: Pos2, scale: f32, window: Pos2) -> Option<Pos2>
     (local.x.is_finite() && local.y.is_finite()).then_some(local)
 }
 
-/// A margin around the island that still counts as on it, in points (Coucou's `HIT_MARGIN`).
+/// A margin around the island that still counts as on it, in points.
 pub(crate) const HIT_MARGIN: f32 = 14.0;
 
 /// Whether the window takes the click: the cursor is on the island (a margin around it too), or a press is being held.

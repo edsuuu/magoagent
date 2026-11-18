@@ -1,10 +1,10 @@
 //! Home: the agent in focus in a card at the left (the mascot big) and the grid of
-//! agents at the right, as Coucou's overview. What the card says follows what the agent does (`stage.rs`): the tool it is
+//! agents at the right. What the card says follows what the agent does (`stage.rs`): the tool it is
 //! on with a glimpse of the file or the command's output, an edit's change in a card of its own, how a turn ended, and
 //! the wizard's dizziness when it is poked too much.
 
 use super::marquee::marquee;
-use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, PILL_H, View, aim, font, mago, pill, semi, wash, wash_with};
+use super::paint::{AMBER, CARD, CARD_FLAT, DIM, DIM_3, INK, Out, PILL_H, RED, View, aim, font, mago, pill, semi, wash, wash_with};
 use super::stage::{Activity, Phase};
 use super::{Line, Tab, entry, forms, main_state};
 use crate::app::chat::list::clipped;
@@ -12,7 +12,6 @@ use crate::app::mascot::mago::MagoState;
 use crate::prelude::*;
 
 const GREEN: Color32 = Color32::from_rgb(0x34, 0xd3, 0x99);
-const RED: Color32 = Color32::from_rgb(0xf4, 0x50, 0x5e);
 const RED_TEXT: Color32 = Color32::from_rgb(0xff, 0x8d, 0x97);
 /// The page's height when an edit takes the card over (the change needs room).
 pub(super) const EDIT_H: f32 = 290.0;
@@ -66,7 +65,7 @@ impl DrawingApp {
         let home = if editing { Pos2::new(left.left() + 36.0, left.top() + 40.0) } else { Pos2::new(left.left() + 58.0, left.center().y) };
         let size = if editing { 46.0 } else { 62.0 };
         // the entrance: the wizard drops into the middle of one card; it ends folding to compact, where the island's
-        // wizard springs from that spot (`aim` at size 0, as Coucou's greeting layout)
+        // wizard springs from that spot (`aim` at size 0)
         if let Some(t) = view.entrance {
             let pose = entry::pose(t);
             ui.painter().rect(page, 20, CARD.gamma_multiply(pose.card), hairline(), StrokeKind::Inside);
@@ -371,12 +370,11 @@ impl DrawingApp {
 /// A small disc with a check (done) or a cross (failed).
 fn round_mark(painter: &Painter, center: Pos2, color: Color32, ok: bool) {
     painter.circle_filled(center, 6.5, color);
-    let stroke = Stroke::new(1.6, if color == RED || color == GREEN { Color32::BLACK } else { Color32::from_rgb(0x14, 0x15, 0x18) });
+    let stroke = Stroke::new(1.6, if color == RED || color == GREEN { Color32::BLACK } else { CARD });
     if ok {
         painter.add(Shape::line(vec![center + Vec2::new(-3.0, 0.2), center + Vec2::new(-0.8, 2.4), center + Vec2::new(3.2, -2.4)], stroke));
     } else {
-        painter.line_segment([center + Vec2::new(-2.5, -2.5), center + Vec2::new(2.5, 2.5)], stroke);
-        painter.line_segment([center + Vec2::new(2.5, -2.5), center + Vec2::new(-2.5, 2.5)], stroke);
+        cross(painter, center, 2.5, stroke);
     }
 }
 
@@ -397,9 +395,9 @@ fn language_chip(painter: &Painter, center: Pos2, name: &str) {
         "js" | "jsx" | "mjs" => (Color32::from_rgb(0xc9, 0xa7, 0x1d), "JS"),
         "rs" => (Color32::from_rgb(0xc2, 0x6a, 0x3c), "RS"),
         "py" => (Color32::from_rgb(0x35, 0x72, 0xa5), "PY"),
-        "md" => (Color32::from_rgb(0x6b, 0x70, 0x79), "MD"),
+        "md" => (DIM_3, "MD"),
         "json" => (Color32::from_rgb(0x8a, 0x6d, 0xc9), "{}"),
-        _ => (Color32::from_rgb(0x6b, 0x70, 0x79), "··"),
+        _ => (DIM_3, "··"),
     };
     painter.rect_filled(Rect::from_center_size(center, Vec2::splat(12.0)), 3, color);
     painter.text(center, egui::Align2::CENTER_CENTER, letters, font(6.5), Color32::WHITE);

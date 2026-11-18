@@ -113,7 +113,8 @@ fn command(exe: &str, wait: bool) -> String {
     format!("\"{}\" hook external{}", exe.replace('\\', "/"), if wait { " wait" } else { "" })
 }
 
-fn ours(entry: &Value) -> bool {
+/// An entry of ours: a command with `magoagent` and ` hook external` (in the Codex's hooks.json too).
+pub(crate) fn ours(entry: &Value) -> bool {
     entry["hooks"].as_array().is_some_and(|hooks| {
         hooks.iter().any(|hook| hook["command"].as_str().is_some_and(|text| text.contains("magoagent") && text.contains(" hook external")))
     })
@@ -174,19 +175,24 @@ pub(crate) fn merged(existing: &Value, exe: &str) -> Result<Value, String> {
 
 /// The settings file as JSON: absent reads as empty; one that does not parse is an error, never overwritten.
 pub(crate) fn read(path: &std::path::Path) -> Result<Value, String> {
+    read_named(path, "settings.json")
+}
+
+/// A hooks file as JSON, as `read`; `name` is how the messages call it (settings.json, the Codex's hooks.json).
+pub(crate) fn read_named(path: &std::path::Path, name: &str) -> Result<Value, String> {
     match fs::read_to_string(path) {
         Ok(text) if text.trim().is_empty() => Ok(Value::Null),
-        Ok(text) => serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| format!("settings.json não é um JSON válido ({e}): não mexi nele.")),
+        Ok(text) => serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| format!("{name} não é um JSON válido ({e}): não mexi nele.")),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Null),
         Err(e) => Err(format!("Não consegui ler {}: {e}", path.display())),
     }
 }
 
-/// Writes `new` over `path` after copying what is there to `settings.json.magoagent-<ms>.bak`.
-fn write_with_backup(path: &std::path::Path, new: &Value) -> Result<(), String> {
+/// Writes `new` over `path` after copying what is there to `<name>.magoagent-<ms>.bak`.
+pub(crate) fn write_with_backup(path: &std::path::Path, name: &str, new: &Value) -> Result<(), String> {
     if path.is_file() {
-        let backup = path.with_file_name(format!("settings.json.magoagent-{}.bak", now_ms()));
-        fs::copy(path, &backup).map_err(|e| format!("Sem backup, não mexi no settings.json ({e})."))?;
+        let backup = path.with_file_name(format!("{name}.magoagent-{}.bak", now_ms()));
+        fs::copy(path, &backup).map_err(|e| format!("Sem backup, não mexi no {name} ({e})."))?;
     }
     if let Some(folder) = path.parent() {
         let _ = fs::create_dir_all(folder);
@@ -249,7 +255,7 @@ pub(crate) fn install_at(path: &std::path::Path, exe: &str) -> Result<String, St
 }
 
 pub(crate) fn install_preview_at(path: &std::path::Path, preview: &Value) -> Result<String, String> {
-    write_with_backup(path, preview)?;
+    write_with_backup(path, "settings.json", preview)?;
     Ok(format!("Hooks instalados em {}: o Claude Code e o Claude Desktop passam a avisar a ilha (vale para as sessões novas).", path.display()))
 }
 
@@ -257,7 +263,7 @@ pub(crate) fn remove_at(path: &std::path::Path) -> Result<String, String> {
     if !installed_at(path) {
         return Ok("Os hooks do MagoAgent não estavam instalados.".into());
     }
-    write_with_backup(path, &without_ours(&read(path)?)?)?;
+    write_with_backup(path, "settings.json", &without_ours(&read(path)?)?)?;
     Ok(format!("Hooks removidos de {}: o resto do arquivo ficou como estava.", path.display()))
 }
 

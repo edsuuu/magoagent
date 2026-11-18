@@ -317,7 +317,7 @@ pub(crate) fn endpoint_path() -> Option<PathBuf> {
 /// asked: a test instance started from a canvas terminal has a scene of its own).
 // ponytail: a port another program took after a crash reads as open; upgrade: send `list` with the token
 pub(crate) fn app_open(endpoint: &Path) -> bool {
-    let saved = fs::read_to_string(endpoint).ok().and_then(|d| serde_json::from_str::<serde_json::Value>(&d).ok());
+    let saved = read_json::<Value>(endpoint);
     let address = saved.and_then(|s| s["address"].as_str()?.parse::<std::net::SocketAddr>().ok());
     address.is_some_and(|a| TcpStream::connect_timeout(&a, Duration::from_millis(500)).is_ok())
 }

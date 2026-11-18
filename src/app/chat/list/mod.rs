@@ -25,6 +25,36 @@ pub(crate) const AMBER: Color32 = Color32::from_rgb(0xf0, 0xa7, 0x3a);
 pub(crate) const RED: Color32 = Color32::from_rgb(0xf8, 0x51, 0x49);
 pub(crate) const ACCENT: Color32 = Color32::from_rgb(0x0a, 0x84, 0xff);
 
+/// The amber card of an agent that needs the person (`waiting_card`, `decide_card`): its ground, edge, title and note,
+/// and the well inside it (what is asked, the screen's lines, the options).
+pub(crate) struct AmberCard {
+    pub(crate) fill: Color32,
+    pub(crate) edge: Color32,
+    pub(crate) title: Color32,
+    pub(crate) note: Color32,
+    pub(crate) well: Color32,
+    pub(crate) well_edge: Color32,
+}
+
+impl AmberCard {
+    pub(crate) fn new(dark: bool) -> AmberCard {
+        let [fill, edge, title, note, well, well_edge] =
+            if dark { [0x2a2213, 0x7a5a22, 0xf6c46f, 0xd8c7a6, 0x17130b, 0x3d2f14] } else { [0xfdf3e1, 0xe6b866, 0x8a5a00, 0x6b5a3a, 0xfffaf0, 0xefd3a0] }
+                .map(rgb_hex);
+        AmberCard { fill, edge, title, note, well, well_edge }
+    }
+
+    /// The card's frame.
+    pub(crate) fn frame(&self) -> egui::Frame {
+        egui::Frame::new().fill(self.fill).stroke(Stroke::new(1.0, self.edge)).corner_radius(12).inner_margin(12)
+    }
+
+    /// The well's frame, its margin left to the caller.
+    pub(crate) fn well_frame(&self) -> egui::Frame {
+        egui::Frame::new().fill(self.well).stroke(Stroke::new(1.0, self.well_edge)).corner_radius(8)
+    }
+}
+
 /// The chat's colors, neutral greys (no purple cast) on both looks: the label ramp of the design is
 /// white at 85% (text), 55% (secondary) and 25% (tertiary) over the ground, black at 85/50/26 on light.
 pub(crate) mod ink {
@@ -80,41 +110,40 @@ pub(crate) struct Look {
 
 impl Look {
     pub(crate) fn new(dark: bool, _c: &UiColors) -> Look {
-        let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
         if dark {
             Look {
                 dark,
-                bg: hex(ink::DARK_BG),
-                panel: hex(ink::DARK_PANEL),
-                surface: hex(ink::DARK_SURFACE),
-                raised: hex(ink::DARK_RAISED),
-                band: hex(ink::DARK_BAND),
-                selected: hex(ink::DARK_SELECTED),
-                line: hex(ink::DARK_LINE),
-                text: hex(ink::DARK_TEXT),
-                soft: hex(ink::DARK_SOFT),
-                muted: hex(ink::DARK_MUTED),
-                hover: hex(ink::DARK_HOVER),
-                strong: hex(ink::DARK_STRONG),
-                faint: hex(ink::DARK_FAINT),
+                bg: rgb_hex(ink::DARK_BG),
+                panel: rgb_hex(ink::DARK_PANEL),
+                surface: rgb_hex(ink::DARK_SURFACE),
+                raised: rgb_hex(ink::DARK_RAISED),
+                band: rgb_hex(ink::DARK_BAND),
+                selected: rgb_hex(ink::DARK_SELECTED),
+                line: rgb_hex(ink::DARK_LINE),
+                text: rgb_hex(ink::DARK_TEXT),
+                soft: rgb_hex(ink::DARK_SOFT),
+                muted: rgb_hex(ink::DARK_MUTED),
+                hover: rgb_hex(ink::DARK_HOVER),
+                strong: rgb_hex(ink::DARK_STRONG),
+                faint: rgb_hex(ink::DARK_FAINT),
             }
         } else {
             let line = Color32::from_black_alpha(24);
             Look {
                 dark,
                 bg: Color32::WHITE,
-                panel: hex(ink::LIGHT_PANEL),
-                surface: hex(ink::LIGHT_SURFACE),
-                raised: hex(ink::LIGHT_RAISED),
-                band: hex(ink::LIGHT_PANEL),
-                selected: hex(ink::LIGHT_RAISED),
+                panel: rgb_hex(ink::LIGHT_PANEL),
+                surface: rgb_hex(ink::LIGHT_SURFACE),
+                raised: rgb_hex(ink::LIGHT_RAISED),
+                band: rgb_hex(ink::LIGHT_PANEL),
+                selected: rgb_hex(ink::LIGHT_RAISED),
                 line,
-                text: hex(ink::LIGHT_TEXT),
-                soft: hex(ink::LIGHT_SOFT),
-                muted: hex(ink::LIGHT_MUTED),
-                hover: hex(ink::LIGHT_HOVER),
-                strong: hex(ink::LIGHT_STRONG),
-                faint: hex(ink::LIGHT_FAINT),
+                text: rgb_hex(ink::LIGHT_TEXT),
+                soft: rgb_hex(ink::LIGHT_SOFT),
+                muted: rgb_hex(ink::LIGHT_MUTED),
+                hover: rgb_hex(ink::LIGHT_HOVER),
+                strong: rgb_hex(ink::LIGHT_STRONG),
+                faint: rgb_hex(ink::LIGHT_FAINT),
             }
         }
     }
@@ -239,6 +268,9 @@ pub(crate) fn clipped(painter: &Painter, text: String, font: FontId, color: Colo
     painter.layout_job(job)
 }
 
+/// How long Copiar reads "Copiado" after a click, in seconds.
+const COPIED_FOR: f64 = 1.5;
+
 /// A block of code under "linguagem · arquivo" and Copiar. The fence's line names them: "php",
 /// "php lib/login.php", "rust:src/main.rs".
 pub(crate) fn code_card(ui: &mut egui::Ui, info: &str, code: &str, c: &UiColors, dark: bool) {
@@ -249,9 +281,8 @@ pub(crate) fn code_card(ui: &mut egui::Ui, info: &str, code: &str, c: &UiColors,
 pub(crate) fn code_box(ui: &mut egui::Ui, info: &str, shown: &str, code: &str, c: &UiColors, dark: bool) {
     let (lang, file) = info.split_once([' ', ':']).map_or((info, ""), |(lang, file)| (lang, file.trim().trim_start_matches("title=").trim_matches('"')));
     let title = if file.is_empty() { lang.to_string() } else { format!("{lang} · {file}") };
-    let hex = |v: u32| Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8);
     let (fill, edge, quiet, ink) = if dark {
-        (hex(ink::DARK_BAND), hex(ink::DARK_LINE), hex(ink::DARK_MUTED), hex(ink::DARK_TEXT))
+        (rgb_hex(ink::DARK_BAND), rgb_hex(ink::DARK_LINE), rgb_hex(ink::DARK_MUTED), rgb_hex(ink::DARK_TEXT))
     } else {
         (c.surface_low, tint(false, 20), c.muted, c.text)
     };
@@ -261,14 +292,16 @@ pub(crate) fn code_box(ui: &mut egui::Ui, info: &str, shown: &str, code: &str, c
         let p = ui.painter();
         p.text(Pos2::new(head.left() + 12.0, head.center().y), egui::Align2::LEFT_CENTER, title, FontId::monospace(13.0), quiet);
         p.hline(head.x_range(), head.bottom() - 0.5, Stroke::new(1.0, edge));
-        let label = p.layout_no_wrap("Copiar".into(), FontId::proportional(13.0), quiet);
+        // "Copiado" with a ✓ for a moment after a click, as the Claude Desktop does
+        let id = ui.scope_id().with(("copy", code.len(), code.get(..code.len().min(32))));
+        let now = ui.input(|input| input.time);
+        let since = ui.ctx().data(|data| data.get_temp::<f64>(id)).map(|at| now - at).filter(|since| (0.0..COPIED_FOR).contains(since));
+        let label = p.layout_no_wrap(if since.is_some() { "Copiado" } else { "Copiar" }.into(), FontId::proportional(13.0), quiet);
         let button = Rect::from_min_max(
             Pos2::new(head.right() - 6.0 - (8.0 + 13.0 + 5.0 + label.size().x + 8.0), head.center().y - 12.0),
             Pos2::new(head.right() - 6.0, head.center().y + 12.0),
         );
-        let response = ui
-            .interact(button, ui.scope_id().with(("copy", code.len(), code.get(..code.len().min(32)))), Sense::click())
-            .on_hover_cursor(CursorIcon::PointingHand);
+        let response = ui.interact(button, id, Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
         let p = ui.painter();
         if response.hovered() {
             p.rect_filled(button, 6, tint(dark, 18));
@@ -277,10 +310,14 @@ pub(crate) fn code_box(ui: &mut egui::Ui, info: &str, shown: &str, code: &str, c
             &[(8.5, 10.5), (8.5, 8.5), (20.5, 8.5), (20.5, 20.5), (8.5, 20.5), (8.5, 10.5)],
             &[(15.5, 5.5), (15.5, 5.0), (14.0, 3.5), (5.0, 3.5), (3.5, 5.0), (3.5, 14.0), (5.0, 15.5), (5.5, 15.5)],
         ];
-        glyph(p, Pos2::new(button.left() + 14.5, button.center().y), 13.0, 2.0, quiet, copy);
+        glyph(p, Pos2::new(button.left() + 14.5, button.center().y), 13.0, 2.0, quiet, if since.is_some() { CHECK } else { copy });
         p.galley(Pos2::new(button.left() + 26.0, button.center().y - label.size().y / 2.0), label, quiet);
         if response.clicked() {
             ui.ctx().copy_text(code.into());
+            ui.ctx().data_mut(|data| data.insert_temp(id, now));
+        }
+        if let Some(since) = since {
+            ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(COPIED_FOR - since));
         }
         egui::Frame::new().inner_margin(egui::Margin::symmetric(14, 10)).show(ui, |ui| {
             ui.label(egui::RichText::new(shown).monospace().size(13.0).color(ink));
@@ -345,5 +382,47 @@ mod tests {
         let parents = subchat_parents(&["m", "r1", "t", "x"], &[true, false, false, false], &links);
         // r1 is roped to the Maestro m; t is roped only to another agent: both stay apart otherwise
         assert_eq!(parents, [None, Some(0), None, None]);
+    }
+
+    #[test]
+    fn copiar_copies_the_code_and_reads_copiado_for_a_moment() {
+        let ctx = Context::default();
+        let c = UiColors::new(true);
+        // one frame at `time` with `events`: the words painted and what went to the clipboard
+        let frame = |time: f64, events: Vec<egui::Event>| {
+            let raw =
+                egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(500.0, 300.0))), time: Some(time), events, ..Default::default() };
+            let output = ctx.run_ui(raw, |ui| code_card(ui, "bash", "wsl -d Ubuntu", &c, true));
+            let texts: Vec<String> = output
+                .shapes
+                .iter()
+                .filter_map(|clipped| match &clipped.shape {
+                    egui::Shape::Text(text) => Some(text.galley.job.text.clone()),
+                    _ => None,
+                })
+                .collect();
+            let copied: Vec<String> = output
+                .platform_output
+                .commands
+                .iter()
+                .filter_map(|command| match command {
+                    egui::OutputCommand::CopyText(text) => Some(text.clone()),
+                    _ => None,
+                })
+                .collect();
+            (texts, copied)
+        };
+        let (texts, _) = frame(0.0, vec![]);
+        assert!(texts.iter().any(|text| text == "Copiar"), "{texts:?}");
+        // the button sits at the head's right, 34 tall
+        let at = Pos2::new(470.0, 17.0);
+        let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        frame(0.1, vec![egui::Event::PointerMoved(at), press(true)]);
+        let (_, copied) = frame(0.2, vec![press(false)]);
+        assert_eq!(copied, ["wsl -d Ubuntu"]);
+        let (texts, _) = frame(1.0, vec![]);
+        assert!(texts.iter().any(|text| text == "Copiado") && !texts.iter().any(|text| text == "Copiar"), "{texts:?}");
+        let (texts, _) = frame(1.8, vec![]);
+        assert!(texts.iter().any(|text| text == "Copiar"), "back after 1.5 s: {texts:?}");
     }
 }

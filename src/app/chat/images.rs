@@ -49,6 +49,8 @@ pub(crate) fn decode(ctx: &Context, max: u32, bytes: impl FnOnce() -> Option<Vec
 pub(crate) struct ChatPics {
     /// The picture open over the chat.
     pub(crate) viewer: Option<Viewer>,
+    /// A picture the agent sent, clicked: shown big in the app (island/picture.rs), not by the system's viewer.
+    pub(crate) zoom: Option<crate::app::island::picture::Shown>,
     /// Pasted or dropped on the box: they go with the next message, as paths.
     pub(crate) attached: Vec<Attached>,
     /// The last thumbnail drawn (its ui, the pass, where it left the cursor, its card, the
@@ -115,6 +117,13 @@ impl DrawingApp {
     pub(crate) fn chat_image_names(&self) -> Vec<(&ChatItem, String)> {
         let items = self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map(|t| t.items.as_slice()).unwrap_or_default();
         image_names(items).into_iter().map(|(k, name)| (&items[k], name)).collect()
+    }
+
+    /// The chat's + (the screen's, the card's, the mini's): the pictures picked go in as `chat_add_files`.
+    pub(crate) fn chat_attach_pick(&mut self, ctx: &Context) {
+        if let Some(paths) = rfd::FileDialog::new().set_title("Anexar imagem").add_filter("Imagens", &IMAGE_EXTENSIONS).pick_files() {
+            self.chat_add_files(ctx, paths, false);
+        }
     }
 
     /// Files for the chat's box (dropped, pasted, picked): pictures wait above the words as
@@ -229,7 +238,7 @@ pub(crate) fn image_names(items: &[ChatItem]) -> Vec<(usize, String)> {
                     (files, run) = (Vec::new(), 0);
                 }
                 let name = step.what.rsplit(['/', '\\']).next().unwrap_or_default();
-                if name.rsplit_once('.').is_some_and(|(_, ext)| IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str())) {
+                if crate::app::chat::segments::is_picture(name) {
                     files.push(name.to_string());
                 }
             }
@@ -279,11 +288,6 @@ pub(crate) fn clipped(p: &Painter, text: String, size: f32, color: Color32, widt
     let mut job = egui::text::LayoutJob::simple_singleline(text, FontId::proportional(size), color);
     job.wrap = egui::text::TextWrapping::truncate_at_width(width.max(10.0));
     p.layout_job(job)
-}
-
-pub(crate) fn cross(p: &Painter, at: Pos2, r: f32, stroke: Stroke) {
-    p.line_segment([at + Vec2::new(-r, -r), at + Vec2::new(r, r)], stroke);
-    p.line_segment([at + Vec2::new(r, -r), at + Vec2::new(-r, r)], stroke);
 }
 
 #[cfg(test)]

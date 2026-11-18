@@ -359,8 +359,8 @@ impl DrawingApp {
         if let Some(act) = footer_act {
             self.chat_footer_act(act);
         }
-        if attach && let Some(paths) = rfd::FileDialog::new().set_title("Anexar imagem").add_filter("Imagens", &IMAGE_EXTENSIONS).pick_files() {
-            self.chat_add_files(ctx, paths, false);
+        if attach {
+            self.chat_attach_pick(ctx);
         }
         // a choice of the menu it waits on: the keys go to its terminal, as if typed there
         if let (Some((from, to)), Some(Ok(session))) = (pick, self.chat_agent.as_ref().and_then(|id| self.terminals.get(id))) {
@@ -555,8 +555,7 @@ pub(crate) fn image_key(data: &str) -> (usize, String) {
 
 pub(crate) fn bubble_fill(dark: bool, outgoing: bool) -> Color32 {
     match (outgoing, dark) {
-        (true, true) => Color32::from_rgb(0x0a, 0x84, 0xff),
-        (true, false) => Color32::from_rgb(0x00, 0x7a, 0xff),
+        (true, _) => glass_accent(dark),
         (false, true) => Color32::from_rgb(0x3b, 0x3b, 0x3e),
         (false, false) => Color32::from_rgb(0xe9, 0xe9, 0xeb),
     }

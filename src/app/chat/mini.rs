@@ -102,7 +102,7 @@ fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: 
     let p = ui.painter().clone();
     let needs = row.state == AgentState::Waiting;
     let note = needs.then(|| p.layout_no_wrap("Precisa de você".into(), FontId::proportional(13.0), AMBER));
-    let claude = crate::app::mascot::poses::claude(&row.spec);
+    let claude = crate::app::mascot::claude(&row.spec);
     let icon_w = if claude { 34.0 } else { 22.0 };
     let note_w = note.as_ref().map_or(0.0, |g| g.size().x + 8.0);
     let size = Vec2::new(10.0 + icon_w + note_w + 4.0 + 16.0 + 6.0, if claude { 44.0 } else { 40.0 });
@@ -574,8 +574,8 @@ impl DrawingApp {
         if crate::app::chat::commands::take_retry_ask(ctx) && self.is_chat(&id) {
             self.chat_retry(ctx, &id);
         }
-        if attach && let Some(paths) = rfd::FileDialog::new().set_title("Anexar imagem").add_filter("Imagens", &IMAGE_EXTENSIONS).pick_files() {
-            self.chat_add_files(ctx, paths, false);
+        if attach {
+            self.chat_attach_pick(ctx);
         }
         if interrupt {
             self.interrupt_agent();

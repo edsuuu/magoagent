@@ -95,7 +95,7 @@ impl DrawingApp {
                 }
                 self.login_buttons(ui, &row.id, &t.items, look);
                 // the turn over, Claude's mascot signs it: done, asleep after a while
-                if let (AgentState::Idle(_), Some(ChatItem::Agent(_)), true) = (row.state, t.items.last(), crate::app::mascot::poses::claude(&row.spec)) {
+                if let (AgentState::Idle(_), Some(ChatItem::Agent(_)), true) = (row.state, t.items.last(), crate::app::mascot::claude(&row.spec)) {
                     // the turn: what came after the last message sent
                     let start = t.items.iter().rposition(|i| matches!(i, ChatItem::User(_))).map_or(0, |u| u + 1);
                     let steps: Vec<(&str, &str, bool)> = t.items[start..]
@@ -108,7 +108,7 @@ impl DrawingApp {
                 }
             }
             _ if only_chat => {
-                if crate::app::mascot::poses::claude(&row.spec) {
+                if crate::app::mascot::claude(&row.spec) {
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 130.0), Sense::hover());
                     paint_mago_for(ui.painter(), &format!("{}-welcome", row.id), rect.center(), 130.0, MagoState::Idle, time);
                 }

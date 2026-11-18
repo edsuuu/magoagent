@@ -30,7 +30,7 @@ pub(crate) fn claude_cli_models() -> Vec<Value> {
         });
     }
     let mut held = MODELS.lock().unwrap();
-    held.get_or_insert_with(|| cache().and_then(|p| fs::read_to_string(p).ok()).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()).clone()
+    held.get_or_insert_with(|| cache().and_then(|p| read_json(&p)).unwrap_or_default()).clone()
 }
 
 /// `claude -p` in stream-json, asked to initialize: the `models` of its answer. It is stopped once it

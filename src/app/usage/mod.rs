@@ -194,7 +194,7 @@ impl DrawingApp {
         let Some(path) = self.autosave.as_ref().map(|base| base.with_file_name("consumo.json")) else { return };
         if !self.usage.loaded {
             self.usage.loaded = true;
-            if let Some(kept) = fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<Plan>(&text).ok()) {
+            if let Some(kept) = read_json::<Plan>(&path) {
                 // what a session told since the app opened wins over what the file kept
                 let told = std::mem::replace(&mut self.usage.plan, kept);
                 self.usage.plan.merge(told, now_ms() / 1000);

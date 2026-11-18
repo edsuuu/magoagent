@@ -6,7 +6,7 @@ use std::io::Read;
 use std::path::Path;
 
 const MAX_REDIRECTS: usize = 5;
-/// An installer bigger than this is not ours (the MSI is about 20 MB).
+/// A download bigger than this is not ours (the MSI is about 20 MB, Soloist about 14 MB).
 const MAX_BYTES: u64 = 512 * 1024 * 1024;
 
 /// Whether `host` serves GitHub's releases (their assets redirect to githubusercontent.com).
@@ -113,39 +113,77 @@ pub(crate) fn parse_head(head: &str) -> Option<(u16, Option<String>)> {
     Some((status, location))
 }
 
-/// Downloads `url` into `part`, hop by hop: each redirect is looked at before it is followed, so
-/// nothing outside GitHub is ever asked. Connect and total timeouts, a size cap, and `--fail`.
-pub(crate) fn fetch(url: &str, part: &Path) -> Result<(), String> {
+/// Why `fetch_hops` stopped; each caller says it in its own words.
+pub(crate) enum Hop {
+    /// A redirect to an address `allowed` refuses.
+    Outside(String),
+    /// curl did not start.
+    Start(std::io::Error),
+    /// curl failed: no connection, a timeout, refused.
+    Failed,
+    /// Neither the file nor a redirect: the status and the `Location` read.
+    Unexpected(Option<(u16, Option<String>)>),
+    TooMany,
+}
+
+/// Downloads `url` into `part` with curl, hop by hop: each redirect is looked at before it is followed, so no address
+/// `allowed` refuses is ever asked. Connect and total (`max_time` s) timeouts, a size cap, and `--fail`.
+pub(crate) fn fetch_hops(url: &str, part: &Path, allowed: fn(&str) -> bool, max_time: u32) -> Result<(), Hop> {
     let head_file = part.with_extension("head");
     let mut current = url.to_string();
     let result = (|| {
         for _ in 0..=MAX_REDIRECTS {
-            if !allowed_url(&current) {
-                return Err(format!("o download foi para fora do GitHub ({current}): recusado"));
+            if !allowed(&current) {
+                return Err(Hop::Outside(current));
             }
             let status = crate::editor::command("curl")
-                .args(["-sS", "--fail", "--connect-timeout", "15", "--max-time", "900", "--max-redirs", "0", "--proto", "=https", "--max-filesize"])
+                .args([
+                    "-sS",
+                    "--fail",
+                    "--connect-timeout",
+                    "15",
+                    "--max-time",
+                    &max_time.to_string(),
+                    "--max-redirs",
+                    "0",
+                    "--proto",
+                    "=https",
+                    "--max-filesize",
+                ])
                 .arg(MAX_BYTES.to_string())
                 .arg("-D")
                 .arg(&head_file)
                 .arg("-o")
                 .arg(part)
                 .arg(&current)
+                .stdin(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
                 .status()
-                .map_err(|error| format!("curl: {error}"))?;
+                .map_err(Hop::Start)?;
             if !status.success() {
-                return Err("não foi possível baixar o instalador (sem conexão, tempo esgotado ou recusado); confira a internet".into());
+                return Err(Hop::Failed);
             }
             match parse_head(&fs::read_to_string(&head_file).unwrap_or_default()) {
                 Some((200, _)) => return Ok(()),
                 Some((301 | 302 | 303 | 307 | 308, Some(next))) => current = next,
-                other => return Err(format!("o GitHub respondeu de um jeito inesperado ({other:?})")),
+                other => return Err(Hop::Unexpected(other)),
             }
         }
-        Err("redirecionamentos demais".into())
+        Err(Hop::TooMany)
     })();
     let _ = fs::remove_file(&head_file);
     result
+}
+
+/// Downloads `url` into `part` (`fetch_hops`): nothing outside GitHub is ever asked.
+pub(crate) fn fetch(url: &str, part: &Path) -> Result<(), String> {
+    fetch_hops(url, part, allowed_url, 900).map_err(|hop| match hop {
+        Hop::Outside(current) => format!("o download foi para fora do GitHub ({current}): recusado"),
+        Hop::Start(error) => format!("curl: {error}"),
+        Hop::Failed => "não foi possível baixar o instalador (sem conexão, tempo esgotado ou recusado); confira a internet".into(),
+        Hop::Unexpected(other) => format!("o GitHub respondeu de um jeito inesperado ({other:?})"),
+        Hop::TooMany => "redirecionamentos demais".into(),
+    })
 }
 
 #[cfg(test)]

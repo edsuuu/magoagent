@@ -224,7 +224,7 @@ pub(crate) fn all_sessions(dir: Option<&Path>, wsl: Option<&(PathBuf, String)>) 
 
 fn read_sessions(dir: &Path, alive: impl Fn(u32) -> bool) -> Vec<Session> {
     let read = |path: PathBuf| -> Option<Session> {
-        let s: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+        let s: Value = crate::file::read_json(&path)?;
         if !s["entrypoint"].as_str().is_none_or(|e| e == "cli") {
             return None;
         }
@@ -247,7 +247,7 @@ fn read_sessions(dir: &Path, alive: impl Fn(u32) -> bool) -> Vec<Session> {
 /// when no file names it or it says nothing.
 pub(crate) fn entrypoint(dir: &Path, id: &str) -> Option<String> {
     std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
-        let session: Value = serde_json::from_str(&std::fs::read_to_string(entry.path()).ok()?).ok()?;
+        let session: Value = crate::file::read_json(&entry.path())?;
         (session["sessionId"] == id).then(|| session["entrypoint"].as_str().map(str::to_string))?
     })
 }

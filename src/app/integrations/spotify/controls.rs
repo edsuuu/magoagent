@@ -111,6 +111,7 @@ impl DrawingApp {
                 spotify.show_change(&command);
                 let playing = shown.is_some_and(|shown| shown.2);
                 spotify.spawn_web("control", move |shared| Reply::Done(web::control(shared, &command, playing)));
+                spotify.soon();
             }
         }
         Ok(())
@@ -170,6 +171,7 @@ impl DrawingApp {
             return self.spotify_play_uri(&uri);
         }
         self.integrations.spotify.spawn_web("control", move |shared| Reply::Done(web::play_in(shared, &uri, context.as_deref())));
+        self.integrations.spotify.soon();
         Ok(())
     }
 

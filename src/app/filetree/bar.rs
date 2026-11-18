@@ -17,7 +17,7 @@ pub(crate) fn glyph_changes(p: &Painter, c: Pos2, size: f32, stroke: Stroke) {
 /// The buttons in `bar`, from its right end. Back: the x where the field may end.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn buttons(ui: &mut egui::Ui, p: &Painter, bar: Rect, z: f32, spec: &FileTreeSpec, c: &Palette, dark: bool, acts: &mut Vec<Act>) -> f32 {
-    let accent = if dark { Color32::from_rgb(0x0a, 0x84, 0xff) } else { Color32::from_rgb(0x00, 0x7a, 0xff) };
+    let accent = glass_accent(dark);
     let stroke = |color: Color32| Stroke::new((1.0 * z).max(0.75), color);
     let mut edge = bar.right() - 6.5 * z;
     // (key, tip when off, tip when on, lit, what a press asks, how it is drawn)

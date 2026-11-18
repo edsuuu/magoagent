@@ -231,6 +231,8 @@ pub(crate) struct DrawingApp {
     /// The direct chats (chat/direct.rs), the answers being written, and the form of a new one.
     pub(crate) chats: Vec<chat::direct::Chat>,
     pub(crate) chat_runs: std::collections::HashMap<String, chat::direct::ChatRun>,
+    /// When each chat's last answer ended (`self.now`): its turn is over as a terminal agent's is, done then asleep.
+    pub(crate) chat_ended: std::collections::HashMap<String, f64>,
     /// What other agents asked the chats over the bridge (chat/ask.rs), and when the cards on the
     /// canvas last read their conversations (chat/node.rs).
     pub(crate) chat_asks: Vec<chat::ask::ChatAsk>,

@@ -166,35 +166,30 @@ fn rate_limited(message: &str) -> bool {
 fn origin(payload: &Value) -> (String, String, Color32) {
     let cwd = payload["cwd"].as_str().unwrap_or_default();
     let (prefix, program, color) = match payload["mago_origin"].as_str().unwrap_or_default() {
-        "hermes" => return ("hermes".into(), "Hermes".into(), hex(0xc084fc)),
-        "claude-desktop" => ("desktop", "Claude Desktop", hex(0xd97757)),
-        "cursor" => ("cursor", "Cursor", hex(0xc0c4cc)),
-        _ => ("code", "Claude Code", hex(PILL_PALETTE[palette_index(cwd)])),
+        "hermes" => return ("hermes".into(), "Hermes".into(), rgb_hex(0xc084fc)),
+        "claude-desktop" => ("desktop", "Claude Desktop", rgb_hex(0xd97757)),
+        "cursor" => ("cursor", "Cursor", rgb_hex(0xc0c4cc)),
+        _ => ("code", "Claude Code", rgb_hex(PILL_PALETTE[palette_index(cwd)])),
     };
     let name = if cwd.is_empty() { program.to_string() } else { format!("{program} · {}", folder_label(cwd)) };
     (format!("{prefix}:{cwd}"), name, color)
 }
 
-fn hex(value: u32) -> Color32 {
-    Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8)
-}
-
-/// The colours a mini can have, Coucou's (`PILL_PALETTE`, PillColors.palette on the Mac): every one readable on the
+/// The colours a mini can have: every one readable on the
 /// island's black with the mini's dark eyes. Claude Code's own is the first, the white.
 pub(crate) const PILL_PALETTE: [u32; 10] = [0xf5f6f8, 0xf4505e, 0xf29b38, 0xfacc15, 0x4ade80, 0x2dd4bf, 0x38bdf8, 0x818cf8, 0xc084fc, 0xe879f9];
 
 /// Where in the palette a project's pill starts: a project keeps its colour from one run to the next.
 fn palette_index(cwd: &str) -> usize {
-    let hash = cwd.bytes().fold(0xcbf29ce484222325u64, |hash, byte| (hash ^ byte as u64).wrapping_mul(0x100000001b3));
-    (hash % PILL_PALETTE.len() as u64) as usize
+    (fnv1a(cwd) % PILL_PALETTE.len() as u64) as usize
 }
 
 /// A Claude Code project's colour among the pills there are (`taken`): its own, or the palette's next one no other pill
-/// has, so two projects side by side never look alike (Coucou has one pill per agent, each of its own colour; here
-/// each project of Claude Code has its pill). All taken, its own.
+/// has, so two projects side by side never look alike (each project of Claude Code
+/// has its pill). All taken, its own.
 fn free_color(own: Color32, taken: &[Color32]) -> Color32 {
-    let start = PILL_PALETTE.iter().position(|value| hex(*value) == own).unwrap_or(0);
-    (0..PILL_PALETTE.len()).map(|step| hex(PILL_PALETTE[(start + step) % PILL_PALETTE.len()])).find(|color| !taken.contains(color)).unwrap_or(own)
+    let start = PILL_PALETTE.iter().position(|value| rgb_hex(*value) == own).unwrap_or(0);
+    (0..PILL_PALETTE.len()).map(|step| rgb_hex(PILL_PALETTE[(start + step) % PILL_PALETTE.len()])).find(|color| !taken.contains(color)).unwrap_or(own)
 }
 
 /// The file of a session's conversation as its hook says (`transcript_path`), or where Claude Code keeps it by the
@@ -439,12 +434,12 @@ mod palette_tests {
     #[test]
     fn a_project_keeps_its_colour_and_two_projects_never_share_one() {
         assert_eq!(palette_index("/var/www/projects/magoagent"), palette_index("/var/www/projects/magoagent"), "the same from one run to the next");
-        let own = hex(PILL_PALETTE[palette_index("/home/edsu")]);
+        let own = rgb_hex(PILL_PALETTE[palette_index("/home/edsu")]);
         assert_eq!(free_color(own, &[]), own, "nobody has it: its own");
         let next = free_color(own, &[own]);
         assert_ne!(next, own, "taken: the palette's next");
-        assert!(PILL_PALETTE.iter().any(|value| hex(*value) == next));
-        let all: Vec<Color32> = PILL_PALETTE.iter().map(|value| hex(*value)).collect();
+        assert!(PILL_PALETTE.iter().any(|value| rgb_hex(*value) == next));
+        let all: Vec<Color32> = PILL_PALETTE.iter().map(|value| rgb_hex(*value)).collect();
         assert_eq!(free_color(own, &all), own, "all taken: its own");
     }
 }

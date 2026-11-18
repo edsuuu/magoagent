@@ -1,32 +1,37 @@
-//! What the island draws, as Coucou's: the black notch (closed: the wizard and one mini wizard per agent), and open the
+//! What the island draws: the black notch (closed: the wizard and one mini wizard per agent), and open the
 //! header (tabs at the left, buttons at the right) over Home or the page of a tab. It only draws and says what was asked
 //! (`Out`); `island_apply` does it.
 
 use super::marquee::marquee;
 use super::minis::mini_cells;
-use super::stage::{self, Activity, Phase};
+use super::stage::{self, Activity};
 use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, main_state};
 use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::integrations::spotify::Now;
 use crate::app::integrations::spotify::groove::{Dance, Groove};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
-use crate::app::mascot::mago::{LUME, MagoState, mago_pokes, paint_mago_dancing, paint_mago_toward, paint_mini};
+use crate::app::mascot::mago::{LUME, MagoState, mago_poke, mago_pokes, paint_mago_dancing, paint_mago_toward, paint_mini};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::voice::VoiceState;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 
-pub(super) const INK: Color32 = Color32::from_rgb(0xf5, 0xf6, 0xf8);
-pub(super) const DIM: Color32 = Color32::from_rgb(0x8e, 0x93, 0x9c);
+pub(crate) const INK: Color32 = Color32::from_rgb(0xf5, 0xf6, 0xf8);
+pub(crate) const DIM: Color32 = Color32::from_rgb(0x8e, 0x93, 0x9c);
 pub(super) const DIM_3: Color32 = Color32::from_rgb(0x6b, 0x70, 0x79);
 pub(super) const CARD: Color32 = Color32::from_rgb(0x14, 0x15, 0x18);
 pub(super) const CARD_FLAT: Color32 = Color32::from_rgb(0x0e, 0x0f, 0x11);
 const TAB_ON: Color32 = Color32::from_rgb(0x1d, 0x1f, 0x23);
 /// The radius of the round mark under the tab shown (and the one under the pointer).
 const TAB_DOT: f32 = 14.0;
-pub(super) const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
+pub(crate) const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
+pub(super) const RED: Color32 = Color32::from_rgb(0xf4, 0x50, 0x5e);
+/// The island's black: the words and arrows on a white button, a badge's ring, a picture's backdrop.
+pub(super) const BLACK: Color32 = Color32::from_rgb(0x0b, 0x0c, 0x0e);
+/// A row under the pointer (the GitHub, music and feed lists).
+pub(super) const HOVER: Color32 = Color32::from_rgb(0x1b, 0x1d, 0x21);
 /// The header's height under the 8 above it: what the pages start under.
 pub(super) const PAGE_TOP: f32 = 42.0;
 
@@ -85,7 +90,7 @@ pub(super) struct View {
     pub(super) origin: std::cell::Cell<Pos2>,
 }
 
-/// Where a page wants the island's one mascot (Coucou's `botPosition`): from the island's top left, how big and in which
+/// Where a page wants the island's one mascot: from the island's top left, how big and in which
 /// state. It springs there and is drawn once, over everything.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Aim {
@@ -140,7 +145,7 @@ pub(crate) struct Out {
     pub(super) full: bool,
     /// The sound button.
     pub(super) sound: bool,
-    /// A pill was clicked: its blip (Coucou's `setFocus`).
+    /// A pill was clicked: its blip.
     pub(super) picked: bool,
     pub(super) hovered: bool,
     /// A button of the mouse is down.
@@ -179,10 +184,11 @@ impl DrawingApp {
                 let program = row.spec.command.split_whitespace().next().unwrap_or_default().to_lowercase();
                 let working = matches!(row.state, AgentState::Working(_));
                 let activity = self.transcripts.get(&row.id).and_then(|t| stage::activity(&t.items, working, stage::recent(row.state, self.now) && !working));
-                let mut mago = MagoState::from_agent(row.state, self.now);
-                if activity.as_ref().is_some_and(|activity| activity.phase == Phase::Failed) && row.state != AgentState::Waiting {
-                    mago = MagoState::Error;
-                }
+                // as the chat's band shows it: talking while it writes, the error of a step
+                let mago = self
+                    .transcripts
+                    .get(&row.id)
+                    .map_or(MagoState::from_agent(row.state, self.now), |transcript| MagoState::in_turn(row.state, &transcript.items, self.now));
                 activities.extend(activity.map(|activity| (row.id.clone(), activity)));
                 Line {
                     id: row.id.clone(),
@@ -209,7 +215,7 @@ impl DrawingApp {
             asleep: pill.asleep,
             id: pill.id,
             name: pill.name,
-            // what it is doing, as Coucou's step line (the prompt, the tool on what, how the turn ended); nothing yet: its state
+            // what it is doing, a step line (the prompt, the tool on what, how the turn ended); nothing yet: its state
             detail: if pill.activity.is_empty() { pill.state.label().to_string() } else { pill.activity.clone() },
             state: pill.state,
             color: pill.color,
@@ -353,8 +359,17 @@ impl DrawingApp {
             let calm = dances_through(wanted.state) && (view.shape != Shape::Open || playing);
             // she dances only to a song heard here; not heard (or paused), she is awake and can be poked, with her own
             // faces (asked: "se eu abro a ilha ela tem que acordar", "no notch os olhos da Luna somem")
-            match self.luna_groove().filter(|groove| calm && groove.dance != Dance::Nap) {
-                Some(groove) => paint_mago_dancing(&painter, "island-main-dance", center, size, self.luna_colour(LUME), &groove, time),
+            // dancing she can still be poked dizzy (asked: "se a Luna está dançando eu não consigo clicar nela para ela ficar
+            // tonta"): the pokes go to her own motion, and dizzy she stops dancing until it passes
+            let dizzy = mago_pokes("island-main", time).1;
+            match self.luna_groove().filter(|groove| calm && groove.dance != Dance::Nap && !dizzy) {
+                Some(groove) => {
+                    let pointer = view.pointer.or_else(|| painter.ctx().pointer_latest_pos());
+                    if pointer.is_some_and(|at| at.distance(center) < size * 0.45) && painter.ctx().input(|input| input.pointer.primary_pressed()) {
+                        mago_poke("island-main", time);
+                    }
+                    paint_mago_dancing(&painter, "island-main-dance", center, size, self.luna_colour(LUME), &groove, time)
+                }
                 None => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),
             }
         }
@@ -372,9 +387,10 @@ impl DrawingApp {
         // while a song plays, its cover and the sound's bars fill the pill (asked: "como a Dynamic Island do iPhone")
         // playing or paused, as the Dynamic Island keeps the song while it pauses (its bars then rest as dots)
         // paused for a while, the song leaves the pill (`Spotify::shown`)
-        // standing up on a side of the screen it is too narrow for the cover and the bars: the song stays its green mini
+        // standing up on a side of the screen the closed notch is too narrow for the cover and the bars (the song stays its
+        // green mini); the compact one has them one under the other
         let upright = view.dock.upright();
-        let now = self.integrations.spotify.shown(time).filter(|_| !upright);
+        let now = self.integrations.spotify.shown(time).filter(|_| compact || !upright);
         // the bars hear the song whether or not Luna dances to it (`Dancer::groove` asks for the listening)
         let groove = now.filter(|now| now.playing).map(|now| self.integrations.spotify.dancer.groove(now.playing));
         if !compact {
@@ -388,7 +404,7 @@ impl DrawingApp {
                 None => paint_mago_toward(ui.painter(), "island-main", center, LUNA, state, time, view.pointer),
             }
             if let Some(now) = now {
-                self.island_playing(ui, rect, now, None, groove.as_ref(), time, out);
+                self.island_playing(ui, rect, now, None, false, groove.as_ref(), time, out);
             }
             return;
         }
@@ -421,14 +437,24 @@ impl DrawingApp {
             crate::app::voice::paint_bars(ui.painter(), Pos2::new(rect.center().x, rect.center().y), bars, INK);
         }
         if let Some(now) = now {
-            self.island_playing(ui, rect, now, Some(grid), groove.as_ref(), time, out);
+            self.island_playing(ui, rect, now, Some(grid), upright, groove.as_ref(), time, out);
         }
     }
 
     /// The song's cover and the sound's bars in the pill while it plays, spread with the wizard and the minis (`pill.rs`).
-    fn island_playing(&self, ui: &egui::Ui, rect: Rect, now: &Now, compact: Option<Option<Rect>>, groove: Option<&Groove>, time: f64, out: &mut Out) {
+    fn island_playing(
+        &self,
+        ui: &egui::Ui,
+        rect: Rect,
+        now: &Now,
+        compact: Option<Option<Rect>>,
+        upright: bool,
+        groove: Option<&Groove>,
+        time: f64,
+        out: &mut Out,
+    ) {
         let cover = self.integrations.spotify.cover.as_ref().map(egui::TextureHandle::id);
-        if super::pill::spotify(ui, rect, cover, self.integrations.spotify.tint, &now.track.title, now.playing, compact, groove, time) {
+        if super::pill::spotify(ui, rect, cover, self.integrations.spotify.tint, &now.track.title, now.playing, compact, upright, groove, time) {
             (out.tab, out.wake, out.picked) = (Some(Tab::Music), true, true);
         }
     }
@@ -536,7 +562,7 @@ impl DrawingApp {
             let ink = if on {
                 INK
             } else if response.hovered() {
-                Color32::from_rgb(0xb0, 0xb5, 0xbe)
+                super::log::REPLY
             } else {
                 DIM
             };
@@ -586,13 +612,12 @@ impl DrawingApp {
         }
     }
 
-    /// The island's settings, in the island as the reference's (views.ts `buildSettings`): the wizard at the left, then
+    /// The island's settings, in the island: the wizard at the left, then
     /// rows 10 apart (padding 14 16 14 84): [switch, Som, volume] with the island's colours at the right; [timer,
     /// Fechar sozinho · N s, 5s 10s 15s 30s]; [● Claude Code, ● API, Ajustes… at the right]. The type is a size above the
     /// reference's, which read too small here.
     fn island_settings_page(&self, ui: &mut egui::Ui, page: Rect, view: &View, out: &mut Out) {
         const GREEN: Color32 = Color32::from_rgb(0x22, 0xc5, 0x5e);
-        const RED: Color32 = Color32::from_rgb(0xf4, 0x50, 0x5e);
         const ROW_INK: Color32 = Color32::from_rgb(0xc5, 0xc8, 0xcd);
         ui.painter().rect(page, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
         let state = main_state(view.mood, view.celebrating);
@@ -682,8 +707,8 @@ impl DrawingApp {
 pub(super) const PILL_H: f32 = 28.0;
 const PILL_MINI: f32 = 24.0;
 
-/// One pill of the grid, as Coucou's `buildPill`: its mini wizard and its name. The pointer over it only lights it in its
-/// colour (`mouseenter`); a click puts its agent in the card at the left (`setFocus`), where Abrir and Conversar are.
+/// One pill of the grid: its mini wizard and its name. The pointer over it only lights it in its
+/// colour; a click puts its agent in the card at the left, where Abrir and Conversar are.
 /// The tabs of the header, in order: GitHub's and Spotify's only while their integration is on (its pill is there).
 pub(super) fn header_tabs(lines: &[Line]) -> Vec<(Tab, crate::editor::icons::Svg, f32, &'static str)> {
     let on = |name: &str| lines.iter().any(|line| line.id.strip_prefix(crate::app::integrations::ITEM_PREFIX) == Some(name));
@@ -707,7 +732,7 @@ pub(super) fn pill(ui: &mut egui::Ui, line: &Line, width: f32, opens: bool, time
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, PILL_H), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let hovered = response.hovered();
-    // it grows on hover as Coucou's (scale 1.04), within its own room: past it the scroll area would cut its edge
+    // it grows on hover (scale 1.04), within its own room: past it the scroll area would cut its edge
     let rect = if hovered { rect } else { rect.shrink(1.0) };
     let edge = match (hovered, line.asleep) {
         (true, _) => 0x8c,
@@ -782,17 +807,17 @@ const ISLAND_COLORS: [Color32; 5] = [
     Color32::from_rgb(0x3a, 0x1f, 0x3f),
 ];
 
-/// The dot on a pill's corner when something waits there (Coucou's `pillBadge`): an amber "!" for a question or a
+/// The dot on a pill's corner when something waits there: an amber "!" for a question or a
 /// permission, a green ✓ for a turn that just ended. `radius` 7 is the 14 px of the pill's own.
 fn badge(painter: &Painter, center: Pos2, line: &Line, radius: f32) {
     let (color, mark) = match (line.badge, line.state, line.mago) {
-        (Some(Badge::Error), ..) => (Color32::from_rgb(0xf4, 0x50, 0x5e), "✕"),
+        (Some(Badge::Error), ..) => (RED, "✕"),
         (Some(Badge::Approval), ..) | (_, AgentState::Waiting, _) => (AMBER, "!"),
         (Some(Badge::Finished), ..) | (_, _, MagoState::Done) => (Color32::from_rgb(0x22, 0xc5, 0x5e), "✓"),
-        (_, _, MagoState::Error) => (Color32::from_rgb(0xf4, 0x50, 0x5e), "✕"),
+        (_, _, MagoState::Error) => (RED, "✕"),
         _ => return,
     };
-    painter.circle_filled(center, radius, Color32::from_rgb(0x0b, 0x0c, 0x0e));
+    painter.circle_filled(center, radius, BLACK);
     painter.circle_filled(center, radius - 1.0, color);
     if radius > 5.0 {
         painter.text(center, egui::Align2::CENTER_CENTER, mark, font(radius), Color32::BLACK);
@@ -803,12 +828,11 @@ fn badge(painter: &Painter, center: Pos2, line: &Line, radius: f32) {
 /// com a expressao zzz ou com o check ali"): `!` it waits on the person, `✓` its turn ended, `✕` it failed, a `z` that
 /// drifts up while it is stopped; working, its mini is awake and says it.
 pub(super) fn shoulder_mark(painter: &Painter, center: Pos2, body: f32, line: &Line, time: f64) {
-    let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
     let at = center + Vec2::new(body * 0.42, -body * 0.4);
     let mark = match (line.badge, line.state) {
-        (Some(Badge::Approval), _) | (_, AgentState::Waiting) => Some((AMBER, "!", hex(0x2b1a00))),
-        (Some(Badge::Finished), _) => Some((hex(0x34d399), "✓", hex(0x062b1d))),
-        (Some(Badge::Error), _) => Some((hex(0xf4505e), "✕", hex(0x2b0006))),
+        (Some(Badge::Approval), _) | (_, AgentState::Waiting) => Some((AMBER, "!", rgb_hex(0x2b1a00))),
+        (Some(Badge::Finished), _) => Some((rgb_hex(0x34d399), "✓", rgb_hex(0x062b1d))),
+        (Some(Badge::Error), _) => Some((rgb_hex(0xf4505e), "✕", rgb_hex(0x2b0006))),
         _ => None,
     };
     let radius = (body * 0.23).max(4.5);
@@ -831,16 +855,15 @@ pub(super) fn shoulder_mark(painter: &Painter, center: Pos2, body: f32, line: &L
 /// The state's badge on a mini of `body` centred on `center`, as the reference's engine draws it (`drawBadge`, a mini's
 /// 1.25 bigger): on its upper left, a black ring and a disc of the state's colour; working, the disc pulses.
 fn mini_badge(painter: &Painter, center: Pos2, body: f32, line: &Line, time: f64) {
-    let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
     // (ring, disc) in the body's radius, and the colour
     let radius = body / 2.0;
     let pulse = 1.0 + 0.25 * ((time * 2.4).fract() as f32 * std::f32::consts::TAU).sin();
     let (ring, disc, color) = match (line.badge, line.state, line.mago) {
-        (Some(Badge::Error), ..) | (_, _, MagoState::Error) => (0.2, 0.135, hex(0xf4505e)),
-        (Some(Badge::Approval), ..) | (_, AgentState::Waiting, _) | (_, _, MagoState::NeedsYou) => (0.3, 0.23, hex(0xf5a524)),
-        (_, _, MagoState::Asking) => (0.3, 0.23, hex(0x22d3ee)),
-        (Some(Badge::Finished), ..) | (_, _, MagoState::Done) => (0.2, 0.135, hex(0x34d399)),
-        (_, _, MagoState::Working | MagoState::Listening | MagoState::Speaking) => (0.2, 0.22 * pulse, hex(0x3b9eff)),
+        (Some(Badge::Error), ..) | (_, _, MagoState::Error) => (0.2, 0.135, rgb_hex(0xf4505e)),
+        (Some(Badge::Approval), ..) | (_, AgentState::Waiting, _) | (_, _, MagoState::NeedsYou) => (0.3, 0.23, rgb_hex(0xf5a524)),
+        (_, _, MagoState::Asking) => (0.3, 0.23, rgb_hex(0x22d3ee)),
+        (Some(Badge::Finished), ..) | (_, _, MagoState::Done) => (0.2, 0.135, rgb_hex(0x34d399)),
+        (_, _, MagoState::Working | MagoState::Listening | MagoState::Speaking) => (0.2, 0.22 * pulse, rgb_hex(0x3b9eff)),
         _ => return,
     };
     let at = center - Vec2::splat(radius * 0.72);
@@ -945,13 +968,13 @@ pub(super) fn mago(painter: &Painter, pointer: Option<Pos2>, id: &str, center: P
     paint_mago_toward(painter, id, center, size, state, time, pointer.or_else(|| painter.ctx().pointer_latest_pos()));
 }
 
-/// The colour a card washes over its bottom with, by state (Coucou's `washRGBA`): amber for a permission, green for
+/// The colour a card washes over its bottom with, by state: amber for a permission, green for
 /// done, red for an error; none for the rest.
 pub(super) fn wash(painter: &Painter, card: Rect, state: MagoState) {
     let (color, strength) = match state {
-        MagoState::NeedsYou | MagoState::Asking => (Color32::from_rgb(0xf5, 0xa5, 0x24), 0.42),
+        MagoState::NeedsYou | MagoState::Asking => (AMBER, 0.42),
         MagoState::Done => (Color32::from_rgb(0x34, 0xd3, 0x99), 0.5),
-        MagoState::Error => (Color32::from_rgb(0xf4, 0x50, 0x5e), 0.55),
+        MagoState::Error => (RED, 0.55),
         _ => return,
     };
     wash_with(painter, card, color, strength, 0.0);

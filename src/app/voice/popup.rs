@@ -348,6 +348,49 @@ pub(crate) mod plain {
         }
     }
 
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn IsWindowVisible(hwnd: isize) -> i32;
+        fn IsIconic(hwnd: isize) -> i32;
+        fn ShowWindow(hwnd: isize, command: i32) -> i32;
+        fn BringWindowToTop(hwnd: isize) -> i32;
+        fn SetForegroundWindow(hwnd: isize) -> i32;
+        fn GetForegroundWindow() -> isize;
+        fn GetCurrentThreadId() -> u32;
+        fn AttachThreadInput(attach: u32, to: u32, on: i32) -> i32;
+    }
+
+    /// This app's window called `title` shown (from the tray or the taskbar too) and in front, with the keyboard. Not
+    /// winit's focus, which presses and lets go of an Alt that is not there to get the right to: on some machines that
+    /// Alt opened the Start menu's search (asked: "no Windows ao clicar em abrir ele fica levantando a barra de
+    /// pesquisa"). The person's click or key on the app is what gives it that right. False when it is not found.
+    pub(crate) fn bring_forward(title: &str) -> bool {
+        const SW_SHOW: i32 = 5;
+        const SW_RESTORE: i32 = 9;
+        let Some(hwnd) = find(title) else { return false };
+        // SAFETY: plain user32 calls on a window of this process
+        unsafe {
+            if IsIconic(hwnd) != 0 {
+                ShowWindow(hwnd, SW_RESTORE);
+            } else if IsWindowVisible(hwnd) == 0 {
+                ShowWindow(hwnd, SW_SHOW);
+            }
+            BringWindowToTop(hwnd);
+            // asked with no click on the app (the voice, the MCP): the system refuses; for a moment the window in front
+            // shares its input with this thread, and then it lets go
+            if SetForegroundWindow(hwnd) == 0 && GetForegroundWindow() != hwnd {
+                let front = GetWindowThreadProcessId(GetForegroundWindow(), std::ptr::null_mut());
+                let ours = GetCurrentThreadId();
+                if front != 0 && front != ours && AttachThreadInput(ours, front, 1) != 0 {
+                    BringWindowToTop(hwnd);
+                    SetForegroundWindow(hwnd);
+                    AttachThreadInput(ours, front, 0);
+                }
+            }
+        }
+        true
+    }
+
     /// True once this app's window called `title` is found and stripped.
     pub(crate) fn strip(title: &str) -> bool {
         let Some(hwnd) = find(title) else { return false };

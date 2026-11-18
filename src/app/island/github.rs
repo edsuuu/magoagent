@@ -6,7 +6,7 @@
 
 use super::forms;
 use super::icons;
-use super::paint::{CARD, CARD_FLAT, DIM, DIM_3, INK, font, semi};
+use super::paint::{CARD, CARD_FLAT, DIM, DIM_3, HOVER, INK, font, semi};
 use crate::app::chat::list::clipped;
 use crate::app::integrations::github::{CiState, PrFilter, PrState, PullRequest, Pulse};
 use crate::prelude::*;
@@ -21,7 +21,6 @@ const ORANGE: Color32 = Color32::from_rgb(0xf0, 0x88, 0x3e);
 const YELLOW: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
 const PURPLE: Color32 = Color32::from_rgb(0xa3, 0x71, 0xf7);
 const GRAY: Color32 = Color32::from_rgb(0x8b, 0x94, 0x9e);
-const HOVER: Color32 = Color32::from_rgb(0x1b, 0x1d, 0x21);
 const SEG_ON: Color32 = Color32::from_rgb(0x2b, 0x2e, 0x33);
 
 /// What the tab keeps between frames.

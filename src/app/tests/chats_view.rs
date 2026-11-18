@@ -39,23 +39,6 @@ fn tap(app: &mut DrawingApp, ctx: &Context, pos: Pos2) -> Vec<(String, Rect)> {
     shown(app, ctx, vec![])
 }
 
-fn chat(app: &mut DrawingApp, name: &str) -> String {
-    app.chats.push(crate::app::chat::direct::Chat {
-        id: name.to_lowercase(),
-        agent: "claude".into(),
-        name: name.into(),
-        cwd: String::new(),
-        session: None,
-        mode: 0,
-        model: String::new(),
-        effort: String::new(),
-        recruit: false,
-        named: false,
-        draft: false,
-    });
-    name.to_lowercase()
-}
-
 /// Chat `id` asks the person `request` (a permission, or an AskUserQuestion), shown long enough to take clicks.
 fn ask(app: &mut DrawingApp, id: &str, request: Value) -> std::sync::mpsc::Receiver<Result<String, String>> {
     let (reply, answer) = std::sync::mpsc::channel();
@@ -72,8 +55,8 @@ fn busy_app() -> (DrawingApp, std::sync::mpsc::Receiver<Result<String, String>>)
     app.prefs.island = true;
     app.spaces.list.push(Workspace { id: "loja".into(), name: "Loja".into(), color: [0x0a, 0x84, 0xff], ..Default::default() });
     app.spaces.current = "loja".into();
-    let revisor = chat(&mut app, "Revisor");
-    chat(&mut app, "Migrador");
+    let revisor = push_chat(&mut app, "Revisor");
+    push_chat(&mut app, "Migrador");
     app.add_chat_node(&revisor, None);
     let answer = ask(&mut app, &revisor, json!({ "tool_name": "Bash", "input": { "command": "cargo test" } }));
     app.take_outside_hook(&json!({ "hook_event_name": "UserPromptSubmit", "session_id": "fora-1", "cwd": "/tmp/site", "prompt": "arrume o rodapé" }), None);

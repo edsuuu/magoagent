@@ -9,6 +9,7 @@
 // ponytail: asked every two seconds instead of listening to the player's events; listen when the delay bothers.
 
 use super::{IslandItem, ItemRow};
+use crate::app::island::paint::{DIM, INK};
 use crate::prelude::*;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 
@@ -50,10 +51,16 @@ pub(crate) use read::*;
 /// Between two questions to the player, and how long it takes to say what a request changed.
 const EVERY: std::time::Duration = std::time::Duration::from_secs(2);
 const SETTLE: std::time::Duration = std::time::Duration::from_millis(350);
+/// After a control, and while a new song's cover is still owed, the player is asked this often, for `QUICK_FOR` after a
+/// control (asked: a song picked on the page showed on the player's card some 10 s later: 2 s to see it, then its cover
+/// asked once every 2 s).
+const QUICK: std::time::Duration = std::time::Duration::from_millis(300);
+const QUICK_FOR: std::time::Duration = std::time::Duration::from_secs(5);
 /// The biggest cover read (Spotify's are 640 px JPEGs, about 100 KB), and how many polls a track's cover is asked for.
 pub(crate) const COVER_LIMIT: usize = 3 * 1024 * 1024;
-const COVER_TRIES: u8 = 4;
-const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
+const COVER_TRIES: u8 = 20;
+/// Spotify's green (the island's music page too).
+pub(crate) const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
 /// How long the cover now takes to replace the one before it on the island's pill (asked: the change between songs was
 /// abrupt), and how long that one is kept while the new cover is still to come (past it, a song without a cover shows
 /// the placeholder, as it always did).
@@ -192,6 +199,8 @@ pub(crate) fn download_cover(url: &str) -> Option<Vec<u8>> {
 enum Ask {
     Control(Command),
     Queue(usize),
+    /// Something changed elsewhere (a song played by the Web API): asked often for a while.
+    Soon,
 }
 
 enum Message {
@@ -216,6 +225,16 @@ struct Watch {
 impl Watch {
     /// What to tell the app after the player said `now`: the state when it changed (a song playing on is no change), and
     /// the track's cover once (`cover` fetches it; it may come a moment after the title, so it is asked for a few polls).
+    /// The song told still has no cover, and there are tries left for it.
+    fn owes_cover(&self) -> bool {
+        self.told.as_ref().and_then(Option::as_ref).is_some_and(|now| self.covered.as_ref() != Some(&now.track)) && self.tries < COVER_TRIES
+    }
+
+    /// How long until the player is asked again: soon after a control (`quick_until`) or while a cover is owed.
+    fn wait(&self, quick_until: Option<std::time::Instant>) -> std::time::Duration {
+        if self.owes_cover() || quick_until.is_some_and(|until| std::time::Instant::now() < until) { QUICK } else { EVERY }
+    }
+
     fn step(&mut self, now: Option<Now>, cover: impl FnOnce(&Track) -> Option<Vec<u8>>) -> Vec<Message> {
         let mut messages = Vec::new();
         if std::mem::take(&mut self.dirty) || playback::differs(self.told.as_ref(), &now) {
@@ -243,6 +262,7 @@ impl Watch {
 /// The thread that asks the player while the integration is on; it ends when the app drops its side of `asks`.
 fn watch(asks: Receiver<Ask>, messages: Sender<Message>, ctx: Context, sources: Sources) {
     let mut watch = Watch::default();
+    let mut quick_until = None;
     let send = |message: Message| {
         let sent = messages.send(message).is_ok();
         ctx.request_repaint();
@@ -258,14 +278,16 @@ fn watch(asks: Receiver<Ask>, messages: Sender<Message>, ctx: Context, sources: 
                 return;
             }
         }
-        match asks.recv_timeout(EVERY) {
+        match asks.recv_timeout(watch.wait(quick_until)) {
             Ok(Ask::Control(command)) => {
                 if !system::control(&command) && !send(Message::Refused(command)) {
                     return;
                 }
                 watch.dirty = true;
+                quick_until = Some(std::time::Instant::now() + QUICK_FOR);
                 std::thread::sleep(SETTLE);
             }
+            Ok(Ask::Soon) => quick_until = Some(std::time::Instant::now() + QUICK_FOR),
             Ok(Ask::Queue(most)) => {
                 if !send(Message::Queue(system::queue(most))) {
                     return;
@@ -757,11 +779,9 @@ impl DrawingApp {
     /// Spotify's pill: the title, the artist, the cover and the three buttons. None while it is closed.
     pub(super) fn spotify_item(&self) -> Option<IslandItem> {
         let now = self.integrations.spotify.now.as_ref()?;
-        let ink = Color32::from_rgb(0xf5, 0xf6, 0xf8);
-        let dim = Color32::from_rgb(0x8e, 0x93, 0x9c);
-        let mut rows = vec![ItemRow { text: now.track.title.clone(), color: ink, action: None }];
+        let mut rows = vec![ItemRow { text: now.track.title.clone(), color: INK, action: None }];
         if !now.track.artist.is_empty() {
-            rows.push(ItemRow { text: now.track.artist.clone(), color: dim, action: None });
+            rows.push(ItemRow { text: now.track.artist.clone(), color: DIM, action: None });
         }
         Some(IslandItem {
             id: format!("{}spotify", super::ITEM_PREFIX),

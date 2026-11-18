@@ -1,8 +1,8 @@
-//! The card of a question or a permission on the open island, as Coucou's `buildQuestion` and `buildApproval`: one card
+//! The card of a question or a permission on the open island: one card
 //! with its wash (cyan asking, amber for a permission), the wizard inside it at the left, and at 116 the agent, the
 //! question (or the command) and a row of round buttons.
 
-use super::paint::{CARD, DIM, INK, Out, View, aim, font, semi, wash_with};
+use super::paint::{AMBER, BLACK, CARD, DIM, INK, Out, View, aim, font, semi, wash_with};
 use crate::app::chat::list::clipped;
 use crate::app::maestro::outside::ASK_PREFIX;
 use crate::app::mascot::mago::MagoState;
@@ -12,7 +12,6 @@ use crate::prelude::*;
 pub(super) const QUESTION_H: f32 = 200.0;
 pub(super) const APPROVAL_H: f32 = 160.0;
 const CYAN: Color32 = Color32::from_rgb(0x22, 0xd3, 0xee);
-const AMBER: Color32 = Color32::from_rgb(0xf5, 0xa5, 0x24);
 
 /// What a button of the row does.
 #[derive(Clone, Copy)]
@@ -218,7 +217,7 @@ fn paint_button(painter: &Painter, rect: Rect, label: &str, kind: Kind, key: Opt
     // `:active` scale .94
     let rect = if response.is_pointer_button_down_on() { Rect::from_center_size(rect.center(), rect.size() * 0.94) } else { rect };
     let (ground, ink) = match kind {
-        Kind::Primary => (INK, Color32::from_rgb(0x0b, 0x0c, 0x0e)),
+        Kind::Primary => (INK, BLACK),
         _ => (Color32::from_white_alpha(if response.hovered() { 38 } else { 23 }), Color32::from_rgb(0xf1, 0xf2, 0xf4)),
     };
     painter.rect_filled(rect, rect.height() / 2.0, ground.gamma_multiply(fade));

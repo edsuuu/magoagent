@@ -1,6 +1,6 @@
 use super::*;
 
-// Values from packages/common/src/colors.ts
+// The reference app's palette
 pub(crate) const STROKE_PICKS: [[u8; 4]; 5] = [BLACK, [0xe0, 0x31, 0x31, 255], [0x2f, 0x9e, 0x44, 255], [0x19, 0x71, 0xc2, 255], [0xf0, 0x8c, 0x00, 255]];
 pub(crate) const BACKGROUND_PICKS: [[u8; 4]; 5] =
     [TRANSPARENT, [0xff, 0xc9, 0xc9, 255], [0xb2, 0xf2, 0xbb, 255], [0xa5, 0xd8, 0xff, 255], [0xff, 0xec, 0x99, 255]];
@@ -69,7 +69,7 @@ pub(crate) enum Head {
 }
 
 impl Head {
-    /// Picker order from actionProperties.tsx getArrowheadOptions.
+    /// The picker's order.
     pub(crate) const PICKS: [Option<Head>; 9] = [
         None,
         Some(Head::Arrow),

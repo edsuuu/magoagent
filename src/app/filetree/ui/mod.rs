@@ -82,7 +82,7 @@ pub(crate) fn status_color(s: Status, dark: bool) -> Color32 {
         Status::Untracked => 0x993300,
         Status::Conflict => 0xff0000,
     };
-    Color32::from_rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
+    rgb_hex(hex)
 }
 
 /// The color of a row's name: its git mark's (a folder that only lost a file is one with a change:

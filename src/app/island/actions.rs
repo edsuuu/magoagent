@@ -29,7 +29,7 @@ impl DrawingApp {
     }
 
     pub(super) fn island_apply(&mut self, ctx: &Context, out: paint::Out, time: f64) {
-        // the focus moves only when a pill is clicked (or the keyboard picks one) and stays, as Coucou's `focusId`
+        // the focus moves only when a pill is clicked (or the keyboard picks one) and stays
         if let Some(id) = out.focus.clone() {
             self.outside_focus(&id);
             self.island.focus = Some(id);
@@ -236,7 +236,7 @@ impl DrawingApp {
 }
 
 impl DrawingApp {
-    /// Closing the island with an ask on it only folds it (Coucou's `foldApproval`): the ask keeps waiting and shows again
+    /// Closing the island with an ask on it only folds it: the ask keeps waiting and shows again
     /// when the island opens.
     pub(super) fn island_fold(&mut self) {
         self.island.folded = self.person_asks.borrow().iter().map(|ask| ask.chat.clone()).collect();

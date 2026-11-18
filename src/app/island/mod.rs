@@ -1,5 +1,5 @@
-//! The island: the Maestro as a black notch glued to the top edge of the screen, over every other window, like
-//! Coucou's (MIT) island. Closed it is small (the wizard at the left, a mini wizard per agent at the right, in the
+//! The island: the Maestro as a black notch glued to the top edge of the screen, over every other window.
+//! Closed it is small (the wizard at the left, a mini wizard per agent at the right, in the
 //! agent's colour); with the pointer resting on it, or a question waiting, it grows into a wide panel: Home (the agent
 //! in focus and a grid of the agents), the conversation, the new chat (a workspace of its own, `actions.rs`) and the
 //! questions and permissions. It is dragged anywhere on the screen, another monitor too, and sticks to the top edge
@@ -29,7 +29,7 @@ mod marquee;
 pub(crate) mod minis;
 pub(crate) mod music;
 pub(crate) mod paint;
-mod picture;
+pub(crate) mod picture;
 pub(crate) mod pill;
 mod prompt;
 mod session;
@@ -41,7 +41,7 @@ mod window;
 pub(crate) mod x11;
 pub(crate) use window::*;
 
-/// The sizes of Coucou's island (core/layout.ts): the closed one, the open one and their corners.
+/// The sizes of the island: the closed one, the open one and their corners.
 // asked: "entre a capa e a Luna, e entre a frequência e os mini mascotes, tem um espaço muito grande": about 15 each
 // with two minis
 pub(crate) const COMPACT_W: f32 = 188.0;
@@ -56,6 +56,9 @@ pub(crate) const COMPACT_H: f32 = 38.5;
 /// Standing up on a side of the screen, the compact island is this tall (`COMPACT_H` wide): the wizard at the top, the
 /// minis at the bottom.
 pub(crate) const COMPACT_TALL: f32 = 128.0;
+/// The same while a song shows: its cover and its bars go between the wizard and the minis (asked: "na ilha lateral, não
+/// fica a capa da música e frequência em vertical").
+pub(crate) const COMPACT_TALL_SONG: f32 = 176.0;
 pub(crate) const EXPANDED_W: f32 = 760.0;
 pub(crate) const CLOSED_W: f32 = 80.0;
 pub(crate) const CLOSED_H: f32 = 24.0;
@@ -110,6 +113,12 @@ pub(crate) fn main_state(mood: Mood, celebrating: bool) -> MagoState {
         Mood::Ready if celebrating => MagoState::Done,
         _ => MagoState::Idle,
     }
+}
+
+/// Whether an agent at work last frame (`working`) ended its turn now: done, or waiting on the person. One stopped
+/// (Esc: idle since no answer) or closed did not.
+pub(crate) fn turn_ended(working: &std::collections::HashSet<String>, rows: &[AgentRow]) -> bool {
+    rows.iter().any(|row| working.contains(&row.id) && matches!(row.state, AgentState::Idle(Some(_)) | AgentState::Waiting))
 }
 
 /// What the open island shows.
@@ -191,9 +200,12 @@ impl Shape {
 }
 
 /// The closed or compact island's `size` standing up on a side of the screen: the notch turned, the compact one
-/// `COMPACT_TALL` tall.
-pub(crate) fn upright(shape: Shape, size: Vec2) -> Vec2 {
-    if shape == Shape::Compact { Vec2::new(COMPACT_H, COMPACT_TALL) } else { Vec2::new(size.y, size.x) }
+/// `COMPACT_TALL` tall (`COMPACT_TALL_SONG` while a `song` shows).
+pub(crate) fn upright(shape: Shape, size: Vec2, song: bool) -> Vec2 {
+    match shape {
+        Shape::Compact => Vec2::new(COMPACT_H, if song { COMPACT_TALL_SONG } else { COMPACT_TALL }),
+        _ => Vec2::new(size.y, size.x),
+    }
 }
 
 /// The island's size and corner for its `shape`; open, for what `tab` shows (`pinned`: a question waits, whose card is
@@ -327,17 +339,16 @@ pub(super) struct Line {
     pub(super) asleep: bool,
 }
 
-/// The colour of an agent's mini wizard, from Coucou's catalogue of agents (core/agents.ts) and its fallbacks.
+/// The colour of an agent's mini wizard, from a catalogue of agents and its fallbacks.
 pub(crate) fn agent_color(program: &str, id: &str) -> Color32 {
-    let hex = |value: u32| Color32::from_rgb((value >> 16) as u8, (value >> 8) as u8, value as u8);
     match program {
-        "claude" => hex(0xd97757),
-        "codex" => hex(0x2dd4bf),
-        "gemini" => hex(0x8ab4f8),
-        "cursor" => hex(0xc0c4cc),
+        "claude" => rgb_hex(0xd97757),
+        "codex" => rgb_hex(0x2dd4bf),
+        "gemini" => rgb_hex(0x8ab4f8),
+        "cursor" => rgb_hex(0xc0c4cc),
         _ => {
             let hash = id.bytes().fold(0i32, |hash, byte| hash.wrapping_mul(31).wrapping_add(byte as i32));
-            [hex(0x22c55e), hex(0xeab308), hex(0x60a5fa), hex(0xe879f9)][hash.unsigned_abs() as usize % 4]
+            [rgb_hex(0x22c55e), rgb_hex(0xeab308), rgb_hex(0x60a5fa), rgb_hex(0xe879f9)][hash.unsigned_abs() as usize % 4]
         }
     }
 }
@@ -355,6 +366,8 @@ pub(crate) struct Island {
     asked: usize,
     /// Something was working or waiting last frame: the end of it is news.
     was_busy: bool,
+    /// The agents and chats at work last frame (`turn_ended`).
+    working: std::collections::HashSet<String>,
     celebrate_until: f64,
     /// The island as drawn: its size and corner follow the target, easing.
     anim: Vec2,
@@ -401,8 +414,9 @@ pub(crate) struct Island {
     anchor: Option<[f32; 2]>,
     origin: Pos2,
     built: Vec2,
-    /// Where the window was seen after the person moved it, and since when: let go once it stays.
-    moved: Option<(Pos2, f64)>,
+    /// Where the window was seen after the person moved it, and since when: let go once it stays; and the cursor then
+    /// (points), on the island being dragged: its monitor is the one it sticks to.
+    moved: Option<(Pos2, f64, Option<Pos2>)>,
     /// X11: the window is the island's size since a drag began (the size it was), until the island grows once it is let
     /// go. In its room the system stops the window at the top bar with the island still below it.
     slim: Option<Vec2>,
@@ -469,6 +483,11 @@ pub(crate) struct NewForm {
 }
 
 impl Island {
+    /// Compact at once: the app took what was pressed on it (Ajustes, a page).
+    pub(crate) fn fold_now(&mut self, time: f64) {
+        self.machine.force_petit(time);
+    }
+
     /// The island as drawn now.
     #[cfg(test)]
     pub(crate) fn size(&self) -> Vec2 {
@@ -601,6 +620,7 @@ impl DrawingApp {
         // a page whose integration was turned off (Spotify's, GitHub's) gives its place to Início
         let music_on = self.spotify_sources() != crate::app::integrations::spotify::Sources::default();
         let github_on = self.prefs.integrations.github;
+        let song = self.integrations.spotify.shown(time).is_some();
         let island = &mut self.island;
         if (island.tab == Tab::Music && !music_on) || (island.tab == Tab::GitHub && !github_on) {
             island.tab = Tab::Home;
@@ -614,6 +634,12 @@ impl DrawingApp {
             tones.push(sounds::FINISH);
         }
         island.was_busy = busy;
+        // asked ("quando ela termina uma ação, ela não abre a ilha"): an agent done or waiting on the person opens it, as
+        // a question does, and it folds after "Fechar sozinho" as usual
+        if turn_ended(&island.working, &rows) {
+            island.machine.force_home(time);
+        }
+        island.working = rows.iter().filter(|row| matches!(row.state, AgentState::Working(_))).map(|row| row.id.clone()).collect();
         let asked_before = std::mem::replace(&mut island.asked, asks.len());
         if asks.len() < asked_before {
             tones.push(sounds::APPROVE);
@@ -648,9 +674,9 @@ impl DrawingApp {
         let (mut aim, radius) = target(shape, island.tab, !asks.is_empty(), island.settings, island.tall, island.body, chat);
         // on a side of the screen the closed and compact ones stand up; open, it is as anywhere
         if island.dock.upright() && shape != Shape::Open {
-            aim = upright(shape, aim);
+            aim = upright(shape, aim, song);
         }
-        // it grows on Coucou's spring (it overshoots a little and settles) and shrinks along its curve in 340 ms, with no
+        // it grows on a spring (it overshoots a little and settles) and shrinks along its curve in 340 ms, with no
         // overshoot (`spring.rs`); pulled by an edge it follows the pointer at once
         if island.resizing {
             island.geometry.jump(aim, radius);
@@ -683,7 +709,7 @@ impl DrawingApp {
         };
         self.island.form = form;
         let island = &mut self.island;
-        // the one wizard springs to where the page that shows put it (Coucou's botPosition); with none, the closed
+        // the one wizard springs to where the page that shows put it; with none, the closed
         // island's spot (46, 16, 6) and not drawn
         let wanted = view.aim.get().map_or([46.0, 16.0, 6.0], |aim| [aim.at.x, aim.at.y, aim.size]);
         let delta = ctx.input(|input| input.stable_dt).min(0.05);
@@ -722,7 +748,7 @@ impl DrawingApp {
         if cfg!(windows) && !ctx.embed_viewports() {
             ctx.request_repaint_after(std::time::Duration::from_millis(if self.island.pointer.is_some() { 33 } else { 250 }));
         }
-        // the clicks of the buttons; the pointer over a pill makes no sound, as in Coucou
+        // the clicks of the buttons; the pointer over a pill makes no sound
         if out.tab.is_some()
             || out.open_agent.is_some()
             || out.canvas.is_some()
@@ -765,6 +791,75 @@ mod tests {
         assert_eq!(main_state(Mood::Ready, false), MagoState::Idle);
     }
 
+    fn chat(id: &str) -> crate::app::chat::direct::Chat {
+        crate::app::chat::direct::Chat {
+            id: id.into(),
+            agent: "claude".into(),
+            name: "Claude Code · loja".into(),
+            cwd: "C:/p".into(),
+            session: None,
+            mode: 0,
+            model: String::new(),
+            effort: String::new(),
+            recruit: false,
+            named: false,
+            draft: false,
+        }
+    }
+
+    /// Asked ("enquanto ela trabalha, aqui na ilha ela pega o mesmo comportamento"): a chat of the app is on the island
+    /// as its band shows it, working, talking while it writes, and done when its answer ends.
+    #[test]
+    fn a_chat_of_the_app_is_on_the_island_as_its_band_shows_it() {
+        use crate::transcript::{ChatItem, Transcript};
+        let mut app = DrawingApp::default();
+        app.chats = vec![chat("a")];
+        let mut transcript = Transcript::new(PathBuf::new());
+        transcript.items = vec![ChatItem::User("oi".into()), ChatItem::Agent("Já vejo".into())];
+        app.transcripts.insert("a".into(), transcript);
+        let mut row = app.agent_rows().into_iter().find(|row| row.id == "a").expect("the chat is one of the island's rows");
+        assert_eq!(row.state, AgentState::Idle(None), "never answered");
+        row.state = AgentState::Working(0.0);
+        let view = app.island_view(vec![row], Vec::new(), Mood::Working(1), 1.0);
+        assert_eq!(view.lines[0].mago, MagoState::Speaking, "writing its answer");
+        assert_eq!(main_state(view.mood, false), MagoState::Working, "the island's own wizard works");
+        // the answer ended: done, as a terminal's agent is when its turn ends
+        app.now = 10.0;
+        app.chat_ended.insert("a".into(), 9.0);
+        let row = app.agent_rows().into_iter().find(|row| row.id == "a").unwrap();
+        assert_eq!(row.state, AgentState::Idle(Some(9.0)));
+        let view = app.island_view(vec![row], Vec::new(), Mood::Ready, 10.0);
+        assert_eq!(view.lines[0].mago, MagoState::Done);
+    }
+
+    #[test]
+    fn the_island_opens_when_a_turn_ends_and_not_when_it_is_stopped() {
+        let frame = |app: &mut DrawingApp, ctx: &Context, time: f64| {
+            let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0))), time: Some(time), ..Default::default() };
+            ctx.run_ui(raw, |_| app.island_ui(ctx)).textures_delta.clear();
+        };
+        for (ended, opens) in [(Some(4.0), true), (None, false)] {
+            let (ctx, mut app) = (Context::default(), DrawingApp::default());
+            app.prefs.island = true;
+            app.chats = vec![chat("a")];
+            frame(&mut app, &ctx, 1.0);
+            assert_eq!(app.island.machine.stage(), fsm::Stage::Hidden);
+            // the chat was at work last frame; now its answer ended (or Esc stopped it)
+            app.island.working.insert("a".into());
+            if let Some(at) = ended {
+                app.chat_ended.insert("a".into(), at);
+            }
+            frame(&mut app, &ctx, 5.0);
+            assert_eq!(app.island.machine.stage() == fsm::Stage::Home, opens, "ended at {ended:?}");
+            assert!(app.island.working.is_empty(), "no one at work now");
+        }
+        let working: std::collections::HashSet<String> = ["a".to_string()].into();
+        let row = |state| AgentRow { id: "a".into(), spec: Default::default(), state, mission: None, space: String::new() };
+        assert!(turn_ended(&working, &[row(AgentState::Waiting)]), "waiting on the person");
+        assert!(!turn_ended(&working, &[row(AgentState::Working(1.0))]), "still at work");
+        assert!(!turn_ended(&Default::default(), &[row(AgentState::Idle(Some(1.0)))]), "it was not at work");
+    }
+
     #[test]
     fn the_wizard_loops_at_every_frame_compact_or_open_but_not_closed() {
         assert!(Shape::Compact.animates_every_frame() && Shape::Open.animates_every_frame());
@@ -783,12 +878,13 @@ mod tests {
 
     #[test]
     fn on_a_side_of_the_screen_the_closed_and_compact_islands_stand_up() {
-        assert_eq!(upright(Shape::Closed, Vec2::new(CLOSED_W, CLOSED_H)), Vec2::new(CLOSED_H, CLOSED_W));
-        assert_eq!(upright(Shape::Compact, Vec2::new(COMPACT_W, COMPACT_H)), Vec2::new(COMPACT_H, COMPACT_TALL));
+        assert_eq!(upright(Shape::Closed, Vec2::new(CLOSED_W, CLOSED_H), true), Vec2::new(CLOSED_H, CLOSED_W));
+        assert_eq!(upright(Shape::Compact, Vec2::new(COMPACT_W, COMPACT_H), false), Vec2::new(COMPACT_H, COMPACT_TALL));
+        assert_eq!(upright(Shape::Compact, Vec2::new(COMPACT_W, COMPACT_H), true), Vec2::new(COMPACT_H, COMPACT_TALL_SONG), "a song: taller");
     }
 
     #[test]
-    fn closed_it_is_a_small_notch_then_coucous_compact_island_and_the_open_panel() {
+    fn closed_it_is_a_small_notch_then_the_compact_island_and_the_open_panel() {
         let chat = Vec2::new(640.0, 360.0);
         assert_eq!(target(Shape::Closed, Tab::Chat, false, false, false, 0.0, chat), (Vec2::new(80.0, 24.0), 10.0));
         assert_eq!(target(Shape::Compact, Tab::Chat, false, false, false, 0.0, chat), (Vec2::new(188.0, 38.5), 18.0));

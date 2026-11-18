@@ -56,7 +56,7 @@ pub(crate) fn mcp_servers(prefs: &Prefs, wsl: bool) -> Value {
 /// Claude Code's own list (`~/.claude.json`) has the server.
 fn claude_has(server: &str) -> bool {
     let file = crate::transcript::claude_dir().and_then(|d| d.parent().map(|h| h.join(".claude.json")));
-    file.and_then(|p| fs::read_to_string(p).ok()).and_then(|d| serde_json::from_str::<Value>(&d).ok()).is_some_and(|v| v["mcpServers"][server].is_object())
+    file.and_then(|p| read_json::<Value>(&p)).is_some_and(|v| v["mcpServers"][server].is_object())
 }
 
 /// The MCP config file for `claude --mcp-config`, written fresh (the app may have moved).

@@ -6,7 +6,7 @@ use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
 use crate::transcript::{ChatItem, Step};
 
-/// Where the agent is, which picks the page of the Home card (Coucou's working, editing, done and error).
+/// Where the agent is, which picks the page of the Home card (working, editing, done and error).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Phase {
     Working,

@@ -30,6 +30,7 @@ fn meter_name(meter: &Meter) -> &str {
     match meter.title.as_str() {
         "Sessão" => "Sessão 5 h",
         "Semanal" => "Semana",
+        "Mensal" => "Mês",
         other => other,
     }
 }
@@ -47,10 +48,13 @@ fn renew_text(reading: &Reading, now: i64) -> Option<String> {
         let at = reading.meters.iter().find(|meter| meter.title == title)?.resets_at?;
         Some(reset_when(at, now, crate::app::chat::viewer::local_offset(at * 1000)))
     };
-    match (when("Sessão"), when("Semanal")) {
-        (Some(session), Some(week)) => Some(format!("Sessão renova {session} · semana {week}")),
+    // the longer window: the week, or Codex Go's month
+    let long = when("Semanal").map(|at| ("semana", at)).or_else(|| when("Mensal").map(|at| ("mês", at)));
+    match (when("Sessão"), long) {
+        (Some(session), Some((name, at))) => Some(format!("Sessão renova {session} · {name} {at}")),
         (Some(session), None) => Some(format!("Sessão renova {session}")),
-        (None, Some(week)) => Some(format!("Semana renova {week}")),
+        (None, Some(("mês", at))) => Some(format!("Mês renova {at}")),
+        (None, Some((_, at))) => Some(format!("Semana renova {at}")),
         (None, None) => None,
     }
 }
@@ -168,7 +172,7 @@ impl DrawingApp {
                         ui.add_space(6.0);
                         ui.add(egui::Label::new(egui::RichText::new(&maestro).size(12.0).color(colors.muted)).wrap());
                         let link = ui
-                            .add(egui::Label::new(egui::RichText::new("Configurações…").size(12.0).color(accent)).sense(Sense::click()))
+                            .add(egui::Label::new(egui::RichText::new("Configurações…").size(12.0).color(accent)).selectable(false).sense(Sense::click()))
                             .on_hover_cursor(CursorIcon::PointingHand);
                         if link.clicked() {
                             action = Some(CardAction::Settings);

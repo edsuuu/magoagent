@@ -209,6 +209,15 @@ pub(crate) fn context_used(event: &Value) -> Option<u64> {
     (total > 0).then_some(total)
 }
 
+/// O tamanho da janela de contexto que o fim de uma resposta diz (`modelUsage.<modelo>.contextWindow`): o maior, se
+/// a resposta usou mais de um modelo.
+pub(crate) fn context_window(event: &Value) -> Option<u64> {
+    if event["type"] != "result" {
+        return None;
+    }
+    event["modelUsage"].as_object()?.values().filter_map(|usage| usage["contextWindow"].as_u64()).max()
+}
+
 /// A saída de `claude mcp list`: "nome: alvo - ✔ Connected". Do alvo (que pode ter chave) só se lê o fim.
 pub(crate) fn parse_mcp_list(text: &str) -> Vec<Server> {
     text.lines()
@@ -285,6 +294,9 @@ mod tests {
         assert_eq!(context_used(&usage), Some(36_595));
         let sub = json!({"type": "assistant", "parent_tool_use_id": "t1", "message": {"usage": {"input_tokens": 9}}});
         assert_eq!(context_used(&sub), None);
+        let done = json!({"type": "result", "modelUsage": {"claude-haiku": {"contextWindow": 200000}, "claude-opus": {"contextWindow": 500000}}});
+        assert_eq!(context_window(&done), Some(500_000));
+        assert_eq!(context_window(&usage), None);
     }
 
     #[test]

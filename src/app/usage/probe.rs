@@ -190,6 +190,8 @@ pub(crate) fn parse_codex(result: &Value) -> Result<Reading, String> {
     let window = |entry: &Value| {
         let title = match entry["windowDurationMins"].as_i64() {
             Some(minutes) if minutes <= 1440 => "Sessão".to_string(),
+            // Codex Go's window is 30 days (43200 min): a month, not a week
+            Some(minutes) if minutes >= 40320 => "Mensal".to_string(),
             Some(minutes) if minutes >= 10080 => "Semanal".to_string(),
             Some(minutes) => format!("{} h", minutes / 60),
             None => "Sessão".to_string(),
@@ -385,6 +387,9 @@ mod tests {
         assert_eq!(reading.meters[0], Meter { title: "Sessão".into(), used: 0.0, resets_at: Some(1794379303) });
         assert_eq!((reading.meters[1].title.as_str(), reading.meters[1].used), ("Semanal", 0.04));
         assert!(parse_codex(&json!({ "rateLimits": { "primary": null } })).is_err());
+        // Go: one window of 30 days, used up
+        let go = json!({ "rateLimits": { "planType": "go", "primary": { "usedPercent": 100, "windowDurationMins": 43200, "resetsAt": 1797024807 } } });
+        assert_eq!(parse_codex(&go).unwrap().meters[0], Meter { title: "Mensal".into(), used: 1.0, resets_at: Some(1797024807) });
     }
 
     #[test]

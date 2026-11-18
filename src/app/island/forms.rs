@@ -4,14 +4,12 @@
 //! round buttons.
 
 use super::NewForm;
-use super::paint::{DIM, DIM_3, INK, Out, View, aim, font};
+use super::paint::{BLACK, CARD, DIM, DIM_3, INK, Out, RED, View, aim, font};
 use crate::app::chat::footer::chip_folder;
 use crate::app::chat::list::clipped;
 use crate::prelude::*;
 
-const CARD: Color32 = Color32::from_rgb(0x14, 0x15, 0x18);
 const PICKED: Color32 = Color32::from_rgb(0x81, 0x8c, 0xf8);
-const FAILED: Color32 = Color32::from_rgb(0xf4, 0x50, 0x5e);
 /// The projects kept, most recent first (the reference's `MAX_PROJECTS`).
 pub(crate) const MOST_PROJECTS: usize = 10;
 
@@ -103,7 +101,7 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
     let response = ui.interact(send, ui.scope_id().with("launch_send"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
     let scale = if response.is_pointer_button_down_on() { 0.92 } else { 1.0 };
     ui.painter().circle_filled(send.center(), 14.0 * scale, INK.gamma_multiply(if ready { 1.0 } else { 0.4 }));
-    arrow_up(ui.painter(), send.center(), Color32::from_rgb(0x0b, 0x0c, 0x0e));
+    arrow_up(ui.painter(), send.center(), BLACK);
     if response.clicked() || entered {
         if ready {
             out.create = true;
@@ -112,7 +110,7 @@ pub(super) fn new_chat_page(ui: &mut egui::Ui, page: Rect, form: &mut Option<New
         }
     }
     let (hint, color) = match &form.failed {
-        Some(why) => (why.clone(), FAILED),
+        Some(why) => (why.clone(), RED),
         None => ("Abre um chat novo no projeto, num espaço próprio, com as suas palavras.".to_string(), DIM),
     };
     let hint = clipped(ui.painter(), hint, font(11.0), color, body.width());
@@ -215,7 +213,7 @@ pub(super) fn chip(ui: &mut egui::Ui, at: Pos2, text: &str, strong: bool) -> egu
     let rect = Rect::from_min_size(at, Vec2::new(galley.size().x + 22.0, 26.0));
     let response = ui.interact(rect, ui.scope_id().with(("island_chip", text)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
     let ground = match (strong, response.hovered()) {
-        (true, hovered) => Color32::from_rgb(0xf5, 0xf6, 0xf8).gamma_multiply(if hovered { 1.0 } else { 0.92 }),
+        (true, hovered) => INK.gamma_multiply(if hovered { 1.0 } else { 0.92 }),
         (false, true) => Color32::from_white_alpha(34),
         (false, false) => Color32::from_white_alpha(18),
     };

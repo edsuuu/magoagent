@@ -9,7 +9,8 @@
 use super::forms;
 use super::log::said;
 use super::paint::{CARD, DIM, DIM_3, INK, Out, View, aim, font};
-use crate::app::chat::list::{clipped, glyph};
+use super::prompt::{chat_body, send_field};
+use crate::app::chat::list::clipped;
 use crate::app::mascot::mago::MagoState;
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
@@ -17,8 +18,6 @@ use crate::transcript::{ChatItem, Transcript};
 
 /// How long a word about the terminal's window, or about the message sent, stays in the box.
 const NOTICE_FOR: f64 = 5.0;
-/// The send button's arrow (`prompt.rs`).
-const ARROW_UP: &[&[(f32, f32)]] = &[&[(12.0, 18.5), (12.0, 5.5)], &[(6.5, 11.0), (12.0, 5.5), (17.5, 11.0)]];
 /// The messages waiting for the session's turn to end: the palette's orange.
 const QUEUED: Color32 = Color32::from_rgb(0xf2, 0x9b, 0x38);
 
@@ -82,10 +81,7 @@ impl DrawingApp {
         let origin = view.origin.get();
         let height = page.bottom() + 10.0 - origin.y;
         aim(view, Pos2::new(origin.x + 52.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 44.0, MagoState::from_agent(state, time));
-        let body = Rect::from_min_max(Pos2::new(page.left() + 84.0, page.top() + 12.0), Pos2::new(page.right() - 16.0, page.bottom() - 14.0));
-        let bar = Rect::from_min_max(Pos2::new(body.left(), body.bottom() - 40.0), body.max);
-        let chip_row = Rect::from_min_max(Pos2::new(body.left(), bar.top() - 6.0 - 22.0), Pos2::new(body.right() - 10.0, bar.top() - 6.0));
-        let log = Rect::from_min_max(Pos2::new(body.left(), body.top()), Pos2::new(body.right() - 22.0, chip_row.top() - 6.0));
+        let (log, chip_row, bar) = chat_body(page);
         match &session.transcript {
             Some(transcript) => {
                 let messages: Vec<&ChatItem> = said(&transcript.items).collect();
@@ -159,23 +155,8 @@ impl DrawingApp {
             painter.galley(Pos2::new(field.left() + 4.0, field.center().y - galley.size().y / 2.0), galley, INK);
         }
         let hint = if notice.is_some() { "" } else { "Mensagem para esta sessão…" };
-        let edit = ui.put(
-            field,
-            egui::TextEdit::singleline(&mut draft)
-                .id(egui::Id::unique(("island_session_draft", id)))
-                .frame(egui::Frame::NONE)
-                .font(font(13.0))
-                .text_color(INK)
-                .align(egui::Align2::LEFT_CENTER)
-                .hint_text(egui::RichText::new(hint).font(font(13.0)).color(DIM_3)),
-        );
-        let send = ui.interact(send_rect, ui.scope_id().with("island_session_send"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-        let pressed = send.is_pointer_button_down_on();
-        let ground = Rect::from_center_size(send_rect.center(), send_rect.size() * if pressed { 0.94 } else { 1.0 });
-        painter.circle_filled(ground.center(), ground.width() / 2.0, if draft.trim().is_empty() { INK.gamma_multiply(0.5) } else { INK });
-        glyph(painter, ground.center(), 12.0, 1.8, Color32::from_rgb(0x0b, 0x0c, 0x0e), ARROW_UP);
-        let enter = edit.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
-        if (enter || send.clicked()) && !draft.trim().is_empty() {
+        let (edit, sent) = send_field(ui, painter, (field, send_rect), &mut draft, egui::Id::unique(("island_session_draft", id)), hint, "island_session_send");
+        if sent {
             // a message that did not go stays in the box, with the reason over it
             let words = match self.outside_message(id, &draft) {
                 Ok(delivery) => {

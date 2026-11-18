@@ -86,20 +86,24 @@ fn the_state_is_told_when_it_changes_and_the_cover_once() {
     assert!(watch.step(None, |_| None).is_empty(), "nothing changed");
     // the cover comes a moment after the title
     assert_eq!(kinds(&watch.step(playing("A"), |_| None)), ["now"]);
+    assert_eq!(watch.wait(None), QUICK, "its cover owed: asked again soon");
     assert_eq!(kinds(&watch.step(playing("A"), |_| Some(vec![1]))), ["cover"]);
+    assert_eq!(watch.wait(None), EVERY, "the cover came: at the usual pace");
+    assert_eq!(watch.wait(Some(std::time::Instant::now() + QUICK_FOR)), QUICK, "after a control: soon");
     assert!(watch.step(playing("A"), |_| panic!("already sent")).is_empty());
     // paused: the same track, the cover stays
     assert_eq!(kinds(&watch.step(Some(Now { track: track("A"), playing: false, ..Default::default() }), |_| panic!("already sent"))), ["now"]);
     // another track: its cover, asked a few polls and no more
     assert_eq!(kinds(&watch.step(playing("B"), |_| None)), ["now"]);
     let mut asked = 1;
-    for _ in 0..10 {
+    for _ in 0..40 {
         watch.step(playing("B"), |_| {
             asked += 1;
             None
         });
     }
     assert_eq!(asked, COVER_TRIES, "a track with no cover is not asked for ever");
+    assert_eq!(watch.wait(None), EVERY, "and then at the usual pace");
 }
 
 #[test]

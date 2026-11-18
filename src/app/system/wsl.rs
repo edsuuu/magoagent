@@ -261,6 +261,21 @@ pub(crate) fn wsl_quoted_paths(line: &str) -> String {
     line.split('"').enumerate().map(|(i, part)| if i % 2 == 1 { wsl_arg(part) } else { part.to_string() }).collect::<Vec<_>>().join("\"")
 }
 
+/// A message for an agent in WSL: the Windows paths in it (a pasted picture's, a dropped file's), each a word or in
+/// quotes, as WSL sees them (asked: the picture pasted in a chat in WSL went as `C:\Users\…`, which it cannot open). A
+/// short name (`IGORRI~1`) is made long first: `/mnt/c` knows only the long ones.
+pub(crate) fn wsl_prompt_paths(text: &str) -> String {
+    let path = |word: &str| {
+        if !word.contains('~') || word.as_bytes().get(1) != Some(&b':') {
+            return wsl_arg(word);
+        }
+        let long = fs::canonicalize(word).map(|long| long.to_string_lossy().trim_start_matches(r"\\?\").to_string());
+        wsl_arg(&long.unwrap_or_else(|_| word.to_string()))
+    };
+    let words = |part: &str| part.split('\n').map(|line| line.split(' ').map(path).collect::<Vec<_>>().join(" ")).collect::<Vec<_>>().join("\n");
+    text.split('"').enumerate().map(|(index, part)| if index % 2 == 1 { path(part) } else { words(part) }).collect::<Vec<_>>().join("\"")
+}
+
 /// `wsl.exe`'s own arguments before the program's.
 pub(crate) fn wsl_args(distro: &WslDistro, cwd: Option<&str>) -> Vec<String> {
     let mut args = vec!["-d".to_string(), distro.name.clone()];
@@ -361,6 +376,14 @@ pub(crate) fn wsl_shim_text(exe: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_message_to_an_agent_in_wsl_has_its_windows_paths_as_wsl_sees_them() {
+        let text = r#"C:\Users\eu\AppData\Local\Temp\magoagent-colado-1.png o que é isso? e "D:\minha pasta\a.txt""#;
+        assert_eq!(wsl_prompt_paths(text), r#"/mnt/c/Users/eu/AppData/Local/Temp/magoagent-colado-1.png o que é isso? e "/mnt/d/minha pasta/a.txt""#);
+        assert_eq!(wsl_prompt_paths("sem caminho: 10:30, ~/x e /home/eu"), "sem caminho: 10:30, ~/x e /home/eu", "nothing else changes");
+        assert_eq!(wsl_prompt_paths("linha um\nC:\\x"), "linha um\n/mnt/c/x", "a path at the start of a line too");
+    }
 
     fn ubuntu() -> WslDistro {
         WslDistro {

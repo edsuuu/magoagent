@@ -1,8 +1,8 @@
 //! The mascot, Lume: a small magic flame that licks and sways, with two dark eyes on its round bottom and nothing
 //! else (all the expression is in the eyes and the flame); sparks fly from its tip when an agent finishes.
 //! The technique (properties chasing a target with easing, a table of states -> face,
-//! eyes that follow the pointer and blink alone, particles, reactions to clicks) is adapted from Coucou's
-//! engine (MIT); the character, shapes and palette are this app's own.
+//! eyes that follow the pointer and blink alone, particles, reactions to clicks) is adapted from
+//! an MIT engine (THIRD-PARTY-NOTICES.md); the character, shapes and palette are this app's own.
 
 mod dance;
 mod draw;
@@ -17,6 +17,7 @@ pub(crate) use motion::{MagoMotion, gaze_toward};
 use crate::app::maestro::avatar::AvatarState;
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
+use crate::transcript::ChatItem;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -52,6 +53,20 @@ impl MagoState {
             AgentState::Idle(Some(since)) if now - since < CELEBRATE_FOR => Self::Done,
             AgentState::Idle(_) | AgentState::Active(_) => Self::Idle,
             AgentState::Ended => Self::Sleeping,
+        }
+    }
+
+    /// The same in the turn its conversation tells (`items`): a step that failed in the turn at work or just over shows
+    /// (as the island's cards had it), and at work, while its words are the last thing in the turn, it talks.
+    pub(crate) fn in_turn(state: AgentState, items: &[ChatItem], now: f64) -> Self {
+        let base = Self::from_agent(state, now);
+        let turn = &items[items.iter().rposition(|item| matches!(item, ChatItem::User(_))).map_or(0, |at| at + 1)..];
+        let last_step = turn.iter().rev().find_map(|item| if let ChatItem::Tool(step) = item { Some(step) } else { None });
+        let error_after = turn.iter().rev().take_while(|item| !matches!(item, ChatItem::Tool(_))).any(|item| matches!(item, ChatItem::Error(_)));
+        match base {
+            Self::Working | Self::Done if last_step.is_some_and(|step| step.failed) || error_after => Self::Error,
+            Self::Working if matches!(turn.last(), Some(ChatItem::Agent(_))) => Self::Speaking,
+            _ => base,
         }
     }
 
@@ -146,8 +161,7 @@ pub(crate) fn paint_mago(painter: &Painter, center: Pos2, size: f32, state: Mago
     painter.ctx().request_repaint_after(std::time::Duration::from_millis(frame));
 }
 
-/// What `paint` draws, squashed or stretched by `scale` around `center` (the entrance's bounces, as Coucou's
-/// `x.scale(p.sx, p.sy)`): egui scales its shapes only evenly, so they are made triangles first and those are scaled.
+/// What `paint` draws, squashed or stretched by `scale` around `center` (the entrance's bounces): egui scales its shapes only evenly, so they are made triangles first and those are scaled.
 pub(crate) fn paint_scaled(painter: &Painter, center: Pos2, scale: Vec2, paint: impl FnOnce(&Painter)) {
     if scale == Vec2::splat(1.0) {
         return paint(painter);
@@ -207,8 +221,14 @@ pub(crate) fn paint_mini(painter: &Painter, id: &str, center: Pos2, body: f32, c
     painter.ctx().request_repaint_after(std::time::Duration::from_millis(33));
 }
 
+/// A poke on the wizard under `id` without drawing it (while it dances its motion is another): it counts towards dizziness.
+pub(crate) fn mago_poke(id: &str, time: f64) {
+    let key = motion_key(id);
+    MOTIONS.with(|motions| motions.borrow_mut().entry(key).or_insert_with(|| MagoMotion::seeded(key)).poke(time));
+}
+
 fn motion_key(id: &str) -> u64 {
-    id.bytes().fold(0xcbf29ce484222325u64, |hash, byte| (hash ^ byte as u64).wrapping_mul(0x100000001b3))
+    fnv1a(id)
 }
 
 /// `paint_mago_for` with the eyes looking at `pointer` (in the painter's own coordinates; none: ahead): for a place whose

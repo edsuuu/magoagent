@@ -269,7 +269,7 @@ impl DrawingApp {
         self.palette_focused = false;
     }
 
-    /// Commands matching the search, grouped like CommandPalette.tsx.
+    /// Commands matching the search, grouped.
     pub(crate) fn palette_items(&self) -> Vec<Command> {
         let query = fold(&self.palette_query);
         let words: Vec<&str> = query.split_whitespace().collect();

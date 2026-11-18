@@ -6,36 +6,9 @@ use super::*;
 use crate::app::island::{COMPACT_W, EXPANDED_W, Tab};
 use std::io::Write as _;
 
-const SIZE: Vec2 = Vec2::new(1200.0, 800.0);
-
-fn chat(id: &str, name: &str) -> crate::app::chat::direct::Chat {
-    crate::app::chat::direct::Chat {
-        id: id.into(),
-        agent: "claude".into(),
-        name: name.into(),
-        cwd: "C:/p".into(),
-        session: None,
-        mode: 0,
-        model: String::new(),
-        effort: String::new(),
-        recruit: false,
-        named: false,
-        draft: false,
-    }
-}
-
 /// One frame of the island; the texts it painted.
 fn step(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>) -> Vec<String> {
-    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(time), events, ..Default::default() };
-    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
-    output.textures_delta.clear();
-    output.shapes.iter().filter_map(|shape| if let egui::Shape::Text(text) = &shape.shape { Some(text.galley.text().to_string()) } else { None }).collect()
-}
-
-/// The island as drawn: hung from the top centre.
-fn island_rect(app: &DrawingApp) -> Rect {
-    let size = app.island.size();
-    Rect::from_min_size(Pos2::new((SIZE.x / 2.0 - size.x / 2.0).round(), 0.0), size)
+    island_texts(app, ctx, time, events)
 }
 
 /// The pointer at `at` for `seconds`; the texts of the last frame.
@@ -64,9 +37,9 @@ fn compact() -> (DrawingApp, Context, f64) {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     app.prefs.island = true;
-    app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
+    app.chats = vec![chat("a", "claude", "Claude Code · loja"), chat("b", "claude", "Codex · site")];
     let mut time = 1.0;
-    rest(&mut app, &ctx, &mut time, Pos2::new(SIZE.x / 2.0, 10.0), 1.0);
+    rest(&mut app, &ctx, &mut time, Pos2::new(ISLAND_SCREEN.x / 2.0, 10.0), 1.0);
     assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "compact on hover: {}", app.island.size().x);
     (app, ctx, time)
 }
@@ -133,7 +106,7 @@ fn a_click_on_inicios_line_of_a_session_outside_opens_its_conversation_at_once()
     app.take_outside_hook(&hook("UserPromptSubmit"), None);
     let id = app.outside_pills()[0].id.clone();
     let mut time = 1.0;
-    rest(&mut app, &ctx, &mut time, Pos2::new(SIZE.x / 2.0, 10.0), 1.0);
+    rest(&mut app, &ctx, &mut time, Pos2::new(ISLAND_SCREEN.x / 2.0, 10.0), 1.0);
     let middle = island_rect(&app).center();
     click(&mut app, &ctx, &mut time, middle);
     assert_eq!(app.island.tab(), Tab::Home);
@@ -168,7 +141,7 @@ fn abrir_on_a_session_outside_opens_its_conversation_followed_while_it_works_and
     let id = app.outside_pills()[0].id.clone();
     assert_eq!(app.outside_transcript(&id), Some(file.clone()));
     let mut time = 1.0;
-    rest(&mut app, &ctx, &mut time, Pos2::new(SIZE.x / 2.0, 10.0), 1.0);
+    rest(&mut app, &ctx, &mut time, Pos2::new(ISLAND_SCREEN.x / 2.0, 10.0), 1.0);
     let middle = island_rect(&app).center();
     click(&mut app, &ctx, &mut time, middle);
     // Abrir in the card: the conversation page, with what was said in the terminal, and where to answer
@@ -194,4 +167,36 @@ fn abrir_on_a_session_outside_opens_its_conversation_followed_while_it_works_and
     click(&mut app, &ctx, &mut time, home);
     assert_eq!((app.island.tab(), app.island.session.is_none()), (Tab::Home, true));
     let _ = fs::remove_dir_all(dir);
+}
+
+/// Asked ("cliquei na opção do whatsapp e não aconteceu nada"): WhatsApp's line in Início opens Ajustes › Integrações
+/// while the gateway is not ready, and folds the island so the app shows.
+#[test]
+fn a_click_on_whatsapps_line_in_inicio_opens_its_settings() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.prefs.island = true;
+    app.prefs.integrations.whatsapp = true;
+    let mut time = 1.0;
+    rest(&mut app, &ctx, &mut time, Pos2::new(ISLAND_SCREEN.x / 2.0, 10.0), 1.0);
+    let middle = island_rect(&app).center();
+    click(&mut app, &ctx, &mut time, middle);
+    assert_eq!(app.island.tab(), Tab::Home);
+    let row = first_row(&app);
+    let texts = click(&mut app, &ctx, &mut time, row);
+    assert!(texts.iter().any(|text| text == "Gateway ainda não testado"), "{texts:?}");
+    app.integrations_tick(&ctx);
+    let integrations = crate::app::ui::settings::SETTINGS_TABS.iter().position(|tab| *tab == "Integrações");
+    assert!(app.settings_open && app.raise_window && app.integrations.scroll_to_whatsapp);
+    assert_eq!(Some(app.settings_tab), integrations);
+    // the MCP does the same
+    app.settings_open = false;
+    assert_eq!(app.act("integrations", &json!({ "integration": "whatsapp", "action": "open" })).unwrap(), "Abri Ajustes › Integrações no WhatsApp.");
+    assert!(app.settings_open);
+    // ready: its gateway's own page instead (never opened in a test), Ajustes stays as it is
+    app.settings_open = false;
+    app.prefs.integrations.whatsapp_base = "http://127.0.0.1:3000".into();
+    app.integrations.whatsapp.link = crate::app::integrations::whatsapp::Link::Connected;
+    assert_eq!(app.whatsapp_open(), "Abri a página do gateway do WhatsApp no navegador.");
+    assert!(!app.settings_open);
 }

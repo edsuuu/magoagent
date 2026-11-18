@@ -1,5 +1,6 @@
 //! What the agent's words carry besides words: pictures (`![alt](path)`, a data address or a file
-//! it wrote) drawn in the conversation and files as cards; a click opens either with the system.
+//! it wrote) drawn in the conversation and files as cards; a click shows a picture big in the app (island/picture.rs)
+//! and opens a file with the system.
 
 use crate::app::browser::open_external;
 use crate::app::chat::direct::folder;
@@ -8,6 +9,7 @@ use crate::app::chat::list::Look;
 use crate::app::chat::markdown::prose_with;
 use crate::app::chat::segments::{Seg, data_uri, file_size, is_local, is_picture, middle, resolve};
 use crate::app::chat::{image_key, tint};
+use crate::app::island::picture::Shown;
 use crate::app::ui::Tip;
 use crate::prelude::*;
 use crate::transcript::Step;
@@ -22,7 +24,13 @@ const PICTURE_MAX: Vec2 = Vec2::new(420.0, 320.0);
 impl DrawingApp {
     /// The agent's words: markdown in bubbles, with its pictures and files drawn in between.
     pub(crate) fn agent_words(&self, ui: &mut egui::Ui, text: &str, width: f32, c: &UiColors) {
-        prose_with(ui, text, c, self.dark(), width, true, &mut |ui, seg| match seg {
+        self.agent_words_in(ui, text, width, c, true);
+    }
+
+    /// `agent_words` in the look of `ui` (the island's is always dark), each paragraph in a bubble when `bubbles`.
+    pub(crate) fn agent_words_in(&self, ui: &mut egui::Ui, text: &str, width: f32, c: &UiColors, bubbles: bool) {
+        let dark = ui.visuals().dark_mode;
+        prose_with(ui, text, c, dark, width, bubbles, &mut |ui, seg| match seg {
             Seg::Image { src, .. } => self.chat_picture(ui, src, c),
             Seg::File { label, path, linked } => {
                 let path = resolve(path, self.chat_folder().as_deref());
@@ -30,7 +38,7 @@ impl DrawingApp {
                 if *linked || path.exists() {
                     self.chat_file_card(ui, &path, label, c);
                 } else {
-                    ui.label(egui::RichText::new(label).monospace().size(13.0).color(Look::new(self.dark(), c).soft));
+                    ui.label(egui::RichText::new(label).monospace().size(13.0).color(Look::new(ui.visuals().dark_mode, c).soft));
                 }
             }
             _ => {}
@@ -46,7 +54,7 @@ impl DrawingApp {
     /// A picture from an address or a path: its image, up to `PICTURE_MAX`; a card when it can't be
     /// shown (an address on the web, a file that isn't there or isn't a picture).
     pub(crate) fn chat_picture(&self, ui: &mut egui::Ui, src: &str, c: &UiColors) {
-        let look = Look::new(self.dark(), c);
+        let look = Look::new(ui.visuals().dark_mode, c);
         if !is_local(src) && data_uri(src).is_none() {
             // ponytail: no network loader in the app, so a picture on the web is a link to it
             let host = src.split("://").nth(1).and_then(|r| r.split('/').next()).unwrap_or(src);
@@ -111,21 +119,18 @@ impl DrawingApp {
         };
         let (rect, response) = ui.allocate_exact_size(size.max(Vec2::splat(24.0)), Sense::click());
         picture(ui.painter(), ready, rect, 10, c);
-        let edge = if look.dark {
-            {
-                let v = crate::app::chat::list::ink::DARK_EDGE;
-                Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8)
-            }
-        } else {
-            Color32::from_black_alpha(36)
-        };
+        let edge = if look.dark { rgb_hex(crate::app::chat::list::ink::DARK_EDGE) } else { Color32::from_black_alpha(36) };
         ui.painter().rect_stroke(rect, 10, Stroke::new(1.0, edge), StrokeKind::Inside);
-        let response = response.on_hover_cursor(CursorIcon::PointingHand).tip("Clique para abrir");
+        let response = response.on_hover_cursor(CursorIcon::PointingHand).tip("Clique para ampliar");
         if response.clicked() {
-            // ponytail: a data-address picture has no file to open; the viewer (chat/viewer.rs) shows the images sent as such
-            if let Some(path) = &path {
-                open_external(&path.to_string_lossy());
-            }
+            // asked: "ela deveria abrir dentro do canvas e não no app do meu PC"
+            let (path, data) = (path.clone(), data_uri(src).map(str::to_string));
+            let shown = Shown::new(ui.ctx(), key, move || match (path, data) {
+                (Some(path), _) => fs::read(path).ok(),
+                (None, Some(data)) => crate::render::base64_decode(&data),
+                _ => None,
+            });
+            self.chat_pics.borrow_mut().zoom = Some(shown);
         }
     }
 
@@ -163,7 +168,8 @@ impl DrawingApp {
     /// The card itself: radius 16, a 4.5% wash with an 8% hairline, 10 pt around a 32 pt icon,
     /// the name (13, middle-cut keeping its end) over the detail (11); dimmed when `dim`.
     fn card(&self, ui: &mut egui::Ui, id: &str, name: &str, detail: &str, dim: bool, c: &UiColors) -> egui::Response {
-        let (dark, look) = (self.dark(), Look::new(self.dark(), c));
+        let dark = ui.visuals().dark_mode;
+        let look = Look::new(dark, c);
         let fade = if dim { 0.6 } else { 1.0 };
         let (ink_name, ink_detail) = (look.text.gamma_multiply(fade), look.muted.gamma_multiply(fade));
         let (name_font, detail_font) = (FontId::proportional(14.0), FontId::proportional(12.0));
@@ -281,5 +287,44 @@ mod tests {
         assert_eq!(seen, 1);
         assert!(app.chat_images.borrow().values().all(|d| matches!(d.get(), Some(Some(pic)) if pic.size == [40, 20])));
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_click_on_the_agents_picture_shows_it_big_in_the_app_and_esc_closes_it() {
+        let ctx = Context::default();
+        let mut app = DrawingApp::default();
+        let png = std::env::temp_dir().join(format!("mago-zoom-{}.png", std::process::id()));
+        let mut bytes = Vec::new();
+        image::DynamicImage::new_rgb8(40, 20).write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png).unwrap();
+        fs::write(&png, bytes).unwrap();
+        let words = format!("![print]({})", png.to_string_lossy());
+        let frame = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+            let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), events, ..Default::default() };
+            ctx.run_ui(raw, |ui| {
+                app.chat_zoom_ui(ui.ctx());
+                let c = app.colors();
+                app.agent_words(ui, &words, 600.0, &c);
+            })
+            .textures_delta
+            .clear();
+        };
+        for _ in 0..50 {
+            frame(&mut app, vec![]);
+            if app.chat_images.borrow().values().all(|d| d.get().is_some()) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let at = Pos2::new(16.0, 10.0);
+        let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        frame(&mut app, vec![egui::Event::PointerMoved(at), press(true)]);
+        frame(&mut app, vec![press(false)]);
+        assert!(app.chat_pics.borrow().zoom.as_ref().is_some_and(|shown| !shown.island), "open over the app's window");
+        frame(&mut app, vec![]);
+        assert!(app.chat_pics.borrow().zoom.is_some(), "it stays open");
+        let escape = egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() };
+        frame(&mut app, vec![escape]);
+        assert!(app.chat_pics.borrow().zoom.is_none(), "Esc closes it");
+        let _ = fs::remove_file(png);
     }
 }

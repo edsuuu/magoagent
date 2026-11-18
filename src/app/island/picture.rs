@@ -1,5 +1,6 @@
-//! A picture of the island's conversation on the whole screen: a click on it in the log opens it over everything, on
-//! the island's monitor, as big as it fits (never past its own pixels); a click, Esc or the ✕ closes it.
+//! A picture of a conversation big: a click on it in the island's log opens it over everything, on the island's
+//! monitor; a click on a picture the agent sent in a chat (the canvas's card, the chat screen) opens it over the app's
+//! window. As big as it fits (never past its own pixels); a click, Esc or the ✕ closes it.
 
 use crate::app::chat::image_key;
 use crate::app::chat::images::{Decoding, Pic, decode};
@@ -9,6 +10,15 @@ use crate::prelude::*;
 pub(crate) struct Shown {
     full: Decoding,
     key: (usize, String),
+    /// Clicked in a window of its own (the island's): the island shows it on its monitor, not over the app's window.
+    pub(crate) island: bool,
+}
+
+impl Shown {
+    /// The picture under `key` (its thumbnail's), read whole by `bytes`.
+    pub(crate) fn new(ctx: &Context, key: (usize, String), bytes: impl FnOnce() -> Option<Vec<u8>> + Send + 'static) -> Shown {
+        Shown { full: decode(ctx, u32::MAX, bytes), key, island: ctx.viewport_id() != egui::ViewportId::ROOT }
+    }
 }
 
 /// The room left around the picture.
@@ -16,20 +26,20 @@ const MARGIN: f32 = 32.0;
 
 impl DrawingApp {
     pub(super) fn island_picture_open(&mut self, ctx: &Context, data: String) {
-        let key = image_key(&data);
-        let full = decode(ctx, u32::MAX, move || crate::render::base64_decode(&data));
-        self.island.picture = Some(Shown { full, key });
+        self.island.picture = Some(Shown::new(ctx, image_key(&data), move || crate::render::base64_decode(&data)));
     }
 
     /// The picture open, in a window of its own over the whole monitor (over the canvas with no windows of its own).
     pub(super) fn island_picture_window(&mut self, ctx: &Context) {
+        // a picture of the agent's clicked in the island's window (chat/media.rs): the island shows it
+        if self.chat_pics.get_mut().zoom.as_ref().is_some_and(|shown| shown.island) {
+            self.island.picture = self.chat_pics.get_mut().zoom.take();
+        }
         let Some(shown) = self.island.picture.as_ref() else { return };
         let full = shown.full.clone();
         let thumb = self.chat_images.borrow().get(&shown.key).cloned();
         let close = if ctx.embed_viewports() {
-            let screen = ctx.content_rect();
-            let area = egui::Area::new(egui::Id::unique("island_picture")).order(egui::Order::Tooltip).fixed_pos(screen.min).constrain(false);
-            area.show(ctx, |ui| paint_picture(ui, screen, &full, thumb.as_ref())).inner
+            over_window(ctx, &full, thumb.as_ref())
         } else {
             let anchor = self.island.anchor.unwrap_or([0.0, 0.0]);
             let work = crate::app::chat::mini::screen_work(ctx, Pos2::new(anchor[0], anchor[1] + 1.0));
@@ -52,12 +62,29 @@ impl DrawingApp {
             self.island.picture = None;
         }
     }
+
+    /// A picture of the agent's clicked in a chat (`ChatPics.zoom`) that the island didn't take, big over the app's
+    /// window; before the chat is drawn, so its Esc closes the picture and not the chat.
+    pub(crate) fn chat_zoom_ui(&mut self, ctx: &Context) {
+        let Some(shown) = self.chat_pics.get_mut().zoom.as_ref() else { return };
+        let (full, thumb) = (shown.full.clone(), self.chat_images.borrow().get(&shown.key).cloned());
+        if over_window(ctx, &full, thumb.as_ref()) {
+            self.chat_pics.get_mut().zoom = None;
+        }
+    }
+}
+
+/// The picture over the whole of this window, above everything in it; true when it is to close.
+fn over_window(ctx: &Context, full: &Decoding, thumb: Option<&Decoding>) -> bool {
+    let screen = ctx.content_rect();
+    let area = egui::Area::new(egui::Id::unique("island_picture")).order(egui::Order::Tooltip).fixed_pos(screen.min).constrain(false);
+    area.show(ctx, |ui| paint_picture(ui, screen, full, thumb)).inner
 }
 
 /// The picture fitted in `screen` on a dark ground, its size under it and a ✕; true when it is to close.
 fn paint_picture(ui: &mut egui::Ui, screen: Rect, full: &Decoding, thumb: Option<&Decoding>) -> bool {
     let painter = ui.painter().clone();
-    painter.rect_filled(screen, 0, Color32::from_rgb(0x0b, 0x0c, 0x0e).gamma_multiply(0.96));
+    painter.rect_filled(screen, 0, super::paint::BLACK.gamma_multiply(0.96));
     let ground = ui.interact(screen, ui.scope_id().with("island_picture_ground"), Sense::click());
     let pic: Option<&Pic> = full.get().and_then(Option::as_ref).or_else(|| thumb.and_then(|thumb| thumb.get()).and_then(Option::as_ref));
     let ppp = ui.ctx().pixels_per_point();
@@ -84,7 +111,7 @@ fn paint_picture(ui: &mut egui::Ui, screen: Rect, full: &Decoding, thumb: Option
     for (from, to) in [(Vec2::new(-6.0, -6.0), Vec2::new(6.0, 6.0)), (Vec2::new(6.0, -6.0), Vec2::new(-6.0, 6.0))] {
         painter.line_segment([cross.center() + from, cross.center() + to], ink);
     }
-    let escape = ui.input(|input| input.key_pressed(Key::Escape));
+    let escape = ui.input_mut(|input| input.consume_key(Modifiers::NONE, Key::Escape));
     button.clicked() || ground.clicked() || escape
 }
 

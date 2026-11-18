@@ -106,6 +106,7 @@ fn a_click_on_a_row_selects_it_and_the_arrows_walk_the_tree() {
     assert_eq!(app.filetrees.views[&id].selected, Some(dir.join("a")));
     assert_eq!(app.card_focus.as_ref(), Some(&id), "the tree has the keys");
     assert_eq!(app.selected, vec![0]);
+    assert_eq!(app.unoutlined_window(), None, "selected by its rows, it has its outline");
     // down to the next row; right opens the folder; Esc lets go
     let key = |key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
     tree_frame(&mut app, &ctx, 4.0, vec![key(Key::ArrowDown)]);
