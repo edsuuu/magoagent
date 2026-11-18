@@ -119,7 +119,7 @@ fn the_edge_pulls_the_panel_wider_keeps_it_and_a_double_click_gives_back_the_def
     // the MCP's width
     assert_eq!(app.act("panel", &json!({ "width": 480 })).unwrap(), "Largura do painel: 480 px.");
     assert_eq!((app.prefs.pane_width, app.panes.open), (Some(480.0), Some(Pane::Changes)), "only the width changes");
-    assert_eq!(app.act("panel", &json!({ "name": "tasks", "width": 0 })).unwrap(), "Painel Tarefas aberto. Largura do painel: 340 px.");
+    assert_eq!(app.act("panel", &json!({ "name": "changes", "open": true, "width": 0 })).unwrap(), "Painel Alterações aberto. Largura do painel: 340 px.");
     assert_eq!(app.prefs.pane_width, None);
 }
 
