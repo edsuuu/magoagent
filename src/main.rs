@@ -260,6 +260,21 @@ fn remember_window(cc: &eframe::CreationContext) {
     WINDOW.with(|w| *w.borrow_mut() = view.window());
 }
 
+/// The native shell (SwiftUI) takes the window's place: this one stays ordered in but see-through, deaf to the mouse and
+/// out of the Window menu, so eframe keeps painting at the full rate (a hidden window paints once in 400 ms and the core
+/// that ticks here would crawl). False while the window is not known yet.
+#[cfg(target_os = "macos")]
+pub(crate) fn step_aside_window(aside: bool) -> bool {
+    WINDOW.with(|w| {
+        let Some(window) = &*w.borrow() else { return false };
+        window.setAlphaValue(if aside { 0.0 } else { 1.0 });
+        window.setIgnoresMouseEvents(aside);
+        window.setHasShadow(!aside);
+        window.setExcludedFromWindowsMenu(aside);
+        true
+    })
+}
+
 /// Centers the close / minimize / zoom buttons `center` points below the window top, like
 /// Electron's trafficLightPosition: the title bar container grows to hold them. AppKit lays
 /// them out again on resize, so this runs every frame.
