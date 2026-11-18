@@ -336,6 +336,10 @@ fn all_tools() -> impl Iterator<Item = Tool> {
 impl DrawingApp {
     /// Each frame while Swift draws the canvas: the glide, the bindings, then what changed to Swift.
     pub(crate) fn native_canvas(&mut self) {
+        // egui never lays the canvas out here: until Swift says its size (`view`) the camera stays finite at the corner
+        if !self.canvas_rect.is_finite() {
+            self.canvas_rect = Rect::ZERO;
+        }
         self.step_glide();
         self.update_bindings();
         NATIVE.with_borrow_mut(|native| {

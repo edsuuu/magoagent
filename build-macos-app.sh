@@ -26,6 +26,8 @@ cat > MagoAgent.app/Contents/Info.plist <<PLIST
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <!-- the whole interface in SwiftUI (docs/swiftui.md); a run from target/ keeps egui unless MAGOAGENT_SWIFTUI says -->
+  <key>LSEnvironment</key><dict><key>MAGOAGENT_SWIFTUI</key><string>all</string></dict>
   <key>NSMicrophoneUsageDescription</key><string>O MagoAgent usa o microfone para a chamada de voz e o ditado.</string>
   <key>NSAppleEventsUsageDescription</key><string>O MagoAgent mostra na ilha a música que toca no Spotify e a pausa ou pula a pedido.</string>
 </dict>

@@ -106,7 +106,7 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="size 1440 900; wait 2000; clic
 
 - A cena de teste leva junto preferências, chats, conexões e `recuperados`; o resto (projetos, memória do Maestro,
   modelos de voz) continua na pasta de dados real. Com o roteiro o app não baixa a voz.
-- `shot` só tem o que o egui desenha; páginas do navegador (nativas) não aparecem.
+- `shot` só tem o que o egui desenha; páginas do navegador (nativas) não aparecem. Com o SwiftUI (macOS, `MAGOAGENT_SWIFTUI`), cada janela dele sai ao lado, `<shot>-swift-<n>.png`.
 - No Windows as teclas injetadas de fora não chegam ao app (o mouse chega): teclas vão pelo roteiro.
 
 ## Terminais, agentes e conexões

@@ -16,6 +16,7 @@ struct SettingsView: View {
                 SettingsPage(snapshot: snapshot)
             }
             .frame(minWidth: 820, minHeight: 560)
+            .background(Color(nsColor: .windowBackgroundColor))
             .onExitCommand { settingsSend("close") }
             .sheet(isPresented: Binding(get: { snapshot.hooksPreview != nil }, set: { if !$0 { settingsSend("preview_no") } })) {
                 if let preview = snapshot.hooksPreview { HooksPreviewSheet(preview: preview) }

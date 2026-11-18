@@ -38,6 +38,20 @@ public final class MagoStore {
         if topic == "areas", let names = try? JSONDecoder().decode([String].self, from: json) {
             Areas.start(names)
         }
+        if topic == "shot", let path = try? JSONDecoder().decode(String.self, from: json) {
+            shoot(path)
+        }
+    }
+
+    /// O `shot` do roteiro: cada janela SwiftUI na tela salva ao lado, `<shot>-swift-<n>.png`, desenhada pela própria janela
+    /// (sem permissão de gravar a tela). ponytail: o que fica fora da árvore de views (o desfoque da janela) sai liso
+    private func shoot(_ path: String) {
+        let stem = (path as NSString).deletingPathExtension
+        for (index, window) in windows.filter(\.isVisible).enumerated() {
+            guard let view = window.contentView, let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(stem)-swift-\(index).png"))
+        }
     }
 
     func stop() {

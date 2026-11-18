@@ -5,7 +5,7 @@
 //!   type texto · key J cmd shift alt · hold cmd (the clicks after it are Ctrl+clicks; `hold` alone lets go) · paste /imagem.png
 //!   drop x y /arquivo · wait ms · shot /caminho.png · size w h · minimize · quit
 //! They go in through raw input, the same path as a real mouse. `shot` saves what egui drew;
-//! native web pages are not in it (macOS and Linux save each page beside it, `<shot>-<id>.png`). A `wait` lets the
+//! native web pages are not in it (macOS and Linux save each page beside it, `<shot>-<id>.png`; the SwiftUI windows too). A `wait` lets the
 //! app idle as it would, so MAGOAGENT_PERF (`Perf`) measures it.
 
 use crate::prelude::*;
@@ -213,6 +213,9 @@ impl Script {
                 {
                     self.pages = Some(path.clone());
                 }
+                // the SwiftUI windows draw themselves beside it, `<shot>-swift-<n>.png`
+                #[cfg(target_os = "macos")]
+                crate::app::native::publish("shot", &path);
                 shooting.store(true, Ordering::Relaxed);
                 ctx.request_screenshot(move |image| {
                     let pixels = image.pixels.iter().flat_map(|pixel| pixel.to_array()).collect();
