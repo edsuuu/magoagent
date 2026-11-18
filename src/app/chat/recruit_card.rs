@@ -82,7 +82,7 @@ impl DrawingApp {
             None => ("Sem tarefa ainda.".into(), muted),
         };
         // in the chat's Markdown (no ** nor ` painted), as far as the card has rows for
-        let colors = UiColors { text: ink, surface_low: light.gamma_multiply(0.1), ..self.colors() };
+        let colors = UiColors { text: ink, surface_low: light.gamma_multiply(0.1), code: crate::app::ui::code_ink(light), ..self.colors() };
         let galleys = md_galleys(painter, &text, 10.5 * zoom, ink, body.width(), rows, &colors);
         // one row: in the middle of what is left under the header
         let y = if rows == 1 { body.center().y - galleys.0.size().y / 2.0 } else { body.top() };

@@ -422,6 +422,24 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
     response.clicked()
 }
 
+/// A file a step touched: its path in the code colour, a click opens it in a tree on the canvas (underlined under the
+/// pointer); a path no longer there is only words.
+fn file_link_label(ui: &mut egui::Ui, file: &str, c: &UiColors) {
+    let path = PathBuf::from(file);
+    let text = egui::RichText::new(file).monospace().size(12.0).color(c.code);
+    if !path.is_file() {
+        ui.label(text);
+        return;
+    }
+    let response = ui.add(egui::Label::new(text).sense(Sense::click())).on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Abrir na Árvore de Arquivos");
+    if response.hovered() {
+        ui.painter().hline(response.rect.x_range(), response.rect.bottom() - 1.0, Stroke::new(1.0, c.code));
+    }
+    if response.clicked() {
+        crate::app::filetree::link::ask_open(ui.ctx(), crate::app::filetree::link::FileLink { path, line: None }, None);
+    }
+}
+
 /// How many lines of what a step printed its card shows.
 const CARD_LINES: usize = 40;
 
@@ -454,12 +472,22 @@ fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColo
     };
     let mut lines = vec![format!("{} · {state}{took}", step.name)];
     lines.extend(step.cwd.as_ref().map(|cwd| format!("Pasta: {cwd}")));
-    if !step.files.is_empty() {
-        lines.push(format!("Arquivos: {}", step.files.join(", ")));
-    }
     let frame = egui::Frame::new().inner_margin(egui::Margin { left: 27, right: 0, top: 0, bottom: 4 }).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.label(egui::RichText::new(lines.join("\n")).monospace().size(12.0).color(look.muted));
+        // its files, each a link to it in a tree on the canvas (filetree/link.rs)
+        if !step.files.is_empty() {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.label(egui::RichText::new("Arquivos: ").monospace().size(12.0).color(look.muted));
+                for (index, file) in step.files.iter().enumerate() {
+                    if index > 0 {
+                        ui.label(egui::RichText::new(", ").monospace().size(12.0).color(look.muted));
+                    }
+                    file_link_label(ui, file, c);
+                }
+            });
+        }
         let input = if step.input.is_empty() { &step.what } else { &step.input };
         if !input.is_empty() {
             code_card(ui, if step.name == "Bash" { "comando" } else { "entrada" }, input, c, look.dark);

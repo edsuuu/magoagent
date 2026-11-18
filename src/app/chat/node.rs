@@ -191,6 +191,7 @@ impl DrawingApp {
             self.toast(why);
             crate::app::browser::open_external(&path.to_string_lossy());
         }
+        self.file_links_tick(ctx);
         self.chat_asks_tick(ctx);
         self.recruit_popups_tick();
     }
@@ -335,7 +336,7 @@ impl DrawingApp {
             let ink = if preview.is_some() { light.gamma_multiply(0.85) } else { muted };
             let text = preview.unwrap_or_else(|| "Sem mensagens ainda. Clique duplo para abrir o chat.".into());
             // in the chat's Markdown (no ** nor ` painted), in the card's own ink
-            let colors = UiColors { text: ink, surface_low: light.gamma_multiply(0.1), ..self.colors() };
+            let colors = UiColors { text: ink, surface_low: light.gamma_multiply(0.1), code: crate::app::ui::code_ink(light), ..self.colors() };
             let galleys = md_galleys(&painter, &text, 10.5 * zoom, ink, width, rows as usize, &colors);
             paint_md(&painter, Pos2::new(text_left, body.top() + line + gap), galleys, ink);
         }

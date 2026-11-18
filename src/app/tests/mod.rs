@@ -11,6 +11,7 @@ mod chats_view;
 mod conflicts;
 mod dialogs;
 mod drops;
+mod file_links;
 mod filetree;
 mod filetree_annotate;
 mod filetree_branch;

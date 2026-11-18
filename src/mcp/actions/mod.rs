@@ -27,7 +27,9 @@ impl DrawingApp {
         let result = self.act_on(action, args);
         // a chat shown in the island is over every window already
         let in_island = args["place"] == "island";
-        if result.is_ok() && !in_island && matches!(action, "ide_folder" | "open_path" | "open_as_note" | "chat_new" | "chat_open" | "chat_node" | "chats_view")
+        if result.is_ok()
+            && !in_island
+            && matches!(action, "ide_folder" | "open_path" | "file_link" | "open_as_note" | "chat_new" | "chat_open" | "chat_node" | "chats_view")
         {
             self.bring_to_front();
         }
@@ -67,6 +69,8 @@ impl DrawingApp {
                 self.drop_on_canvas(&paths, at)
             }
             "open_path" => self.act_open_path(&text("path"), args["line"].as_u64().map(|l| l as usize), &text("asker")),
+            "file_link" if text("action") == "back" => self.link_go_back(),
+            "file_link" => self.act_file_link(&text("path"), args["line"].as_u64().map(|line| line as usize), &text("asker")),
             "open_as_note" => {
                 let path = folder(&text("path")).filter(|_| !text("path").is_empty()).ok_or("diga `path`: o arquivo a abrir na nota")?;
                 let chat = match text("chat").as_str() {

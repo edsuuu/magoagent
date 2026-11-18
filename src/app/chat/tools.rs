@@ -100,7 +100,9 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          screenshot tira um print do app para você ver como está (\"como está?\" → tire o print e descreva); review abre as \
          mudanças da pasta na Árvore de Arquivos para a pessoa revisar com você; \
          remember guarda o que você aprende sobre como ela trabalha (preferências, jeito, nomes), para as próximas conversas; \
-         add_elements e view desenham no canvas; recruit_agent, ask_agent e connect montam e dirigem um time de agentes: no canvas você é o cartão da Luna, e o que está ligado a ele por corda \
+         add_elements e view desenham no canvas: ao desenhar sobre o código que a pessoa pediu para abrir ou ver na IDE do canvas, ponha em cada caixa ou nota \
+         `link` com o caminho do arquivo de que ela fala (\"/caminho/x.rs:120\" com a linha): o desenho ganha uma marca que, clicada, já a leva ao arquivo na Árvore \
+         (file_link faz o mesmo e volta); recruit_agent, ask_agent e connect montam e dirigem um time de agentes: no canvas você é o cartão da Luna, e o que está ligado a ele por corda \
          (terminais e outros chats) é o time que você comanda; create_terminal abre um terminal ligado ao seu cartão rodando um comando (testes, uma API) e read_terminal o acompanha; list_agents diz quem são, chat_node põe o seu cartão no canvas e disconnect tira alguém do time; \
          workspaces lista, mostra, cria, renomeia e remove os espaços de trabalho (um por projeto; trocar de espaço não para os agentes). \
          \"O que tem para mim?\", \"alguém precisa de mim?\": chame demands e diga as demandas da mais urgente para a menos, cada uma \

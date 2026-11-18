@@ -8,13 +8,14 @@ pub(crate) fn tools() -> Value {
     json!([
         {
             "name": "get_scene",
-            "description": "Lista os elementos do desenho atual (id, tipo, posição, tamanho, cores, texto, vínculos de setas) e a área ocupada.",
+            "description": "Lista os elementos do desenho atual (id, tipo, posição, tamanho, cores, texto, vínculos de setas, link para arquivo) e a área ocupada.",
             "inputSchema": { "type": "object", "properties": {} },
         },
         {
             "name": "add_elements",
             "description": "Adiciona elementos (objetos JSON com type, x, y, width, height, cores, text, points). Extras: `label: {text, fontSize?}` em formas e setas; \
-                `start: {id}` / `end: {id}` em setas para ligá-las a formas (os pontos são calculados sozinhos). \
+                `start: {id}` / `end: {id}` em setas para ligá-las a formas (os pontos são calculados sozinhos); `link` em formas, textos e notas \
+                (um arquivo, com a linha: \"/projeto/src/x.rs:120\") põe no desenho uma marca que abre o arquivo na Árvore de Arquivos. \
                 Um terminal, navegador ou árvore de arquivos que você abre aqui (type terminal, portal, filetree) já nasce ligado a você \
                 por uma corda (ao seu terminal ou ao seu cartão de chat): list_agents o mostra e read_terminal lê a tela do terminal; \
                 posto em cima de outra janela ou nota, ele vai para o lugar livre mais perto de você. \
@@ -24,7 +25,7 @@ pub(crate) fn tools() -> Value {
         {
             "name": "update_elements",
             "description": "Altera elementos existentes: cada item tem `id` mais os campos a trocar (x, y, width, height, text, \
-                strokeColor, backgroundColor, angle, start/end...). Setas ligadas acompanham as formas movidas. Também move \
+                strokeColor, backgroundColor, angle, start/end, link (null tira)...). Setas ligadas acompanham as formas movidas. Também move \
                 e redimensiona janelas (terminais, navegadores e árvores de arquivos) por x, y, width e height, sem mexer no que rodam.",
             "inputSchema": { "type": "object", "properties": { "elements": elements }, "required": ["elements"] },
         },

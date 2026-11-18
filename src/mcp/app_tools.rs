@@ -80,6 +80,15 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["path"] },
         }),
         json!({
+            "name": "file_link",
+            "description": "Um link para um arquivo, como o clique num caminho que o chat mostra (`src/app/x.rs:120`) ou na marca de link de um desenho: `open` abre o arquivo numa Árvore de Arquivos do canvas (a que já tem o projeto dele, senão uma nova ao lado de quem pediu), escolhido na árvore e aberto no painel de código na `line`; a tela do chat fecha, a câmera vai até a árvore e ela fica com o teclado, e um botão \"Voltar\" aparece no alto. `back` é esse Voltar: devolve a tela de antes (o chat aberto, ou a câmera onde estava). Um caminho relativo parte da pasta de quem pediu.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["open", "back"] },
+                "path": { "type": "string", "description": "o arquivo; aceita `caminho:linha` e `caminho#L120`" },
+                "line": { "type": "number", "description": "linha a mostrar, a partir de 1" },
+            }, "required": ["action"] },
+        }),
+        json!({
             "name": "open_default",
             "description": "Abre um arquivo ou pasta no programa padrão do sistema (programas executáveis, como .exe, .bat e .sh, não são iniciados).",
             "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] },

@@ -37,6 +37,11 @@ impl DrawingApp {
 
     /// The file tree whose root is `path`, made in the middle of the view (editor open) when there is none.
     pub(crate) fn tree_for_folder(&mut self, path: &str) -> Result<usize, String> {
+        self.tree_for_folder_near(path, None)
+    }
+
+    /// `tree_for_folder`, a new tree beside `around` (the chat or drawing that asked), its code panel open, when given.
+    pub(crate) fn tree_for_folder_near(&mut self, path: &str, around: Option<Rect>) -> Result<usize, String> {
         let root = folder(path).filter(|p| p.is_dir()).ok_or_else(|| format!("A pasta {path} não existe."))?;
         let root = root.to_string_lossy().trim_end_matches(['/', '\\']).to_string();
         let same =
@@ -44,10 +49,21 @@ impl DrawingApp {
         if let Some(index) = self.scene.elements.iter().position(same) {
             return Ok(index);
         }
-        let at = self.free_spot(Rect::from_center_size(self.to_world(self.canvas_rect.center()), FILETREE_SIZE));
+        let at = match around {
+            // to its right, as tall as the code panel wants, with the panel's width
+            Some(around) => {
+                let size = Vec2::new(
+                    FILETREE_SIZE.x + crate::app::filetree::pane::EDITOR_W + crate::app::filetree::pane::SEAM,
+                    FILETREE_SIZE.y.max(around.height()).min(720.0),
+                );
+                self.free_spot_near(Rect::from_min_size(around.right_top() + Vec2::new(60.0, 0.0), size), around)
+            }
+            None => self.free_spot(Rect::from_center_size(self.to_world(self.canvas_rect.center()), FILETREE_SIZE)),
+        };
         let mut node = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
         node.style = node_style(node.style);
-        node.filetree = Some(FileTreeSpec { root, editor: true, ..Default::default() });
+        let tree_width = around.map(|_| FILETREE_SIZE.x);
+        node.filetree = Some(FileTreeSpec { root, editor: true, tree_width, ..Default::default() });
         self.filetrees.views.insert(node.id.clone(), crate::app::filetree::view::TreeView::new());
         self.snapshot();
         self.scene.elements.push(node);
@@ -96,6 +112,25 @@ impl DrawingApp {
         self.ft_show_editor(&id, true);
         self.show_tree(index);
         Ok(format!("{} aberto na Árvore de Arquivos.", full.display()))
+    }
+
+    /// `file_link`'s `open`: `path` (with its `:line` or not; a relative one from the folder of the chat or terminal
+    /// that asked) opened as a click on a link to it opens it (filetree/link.rs).
+    pub(super) fn act_file_link(&mut self, path: &str, line: Option<usize>, asker: &str) -> Result<String, String> {
+        use crate::app::filetree::link::{FileLink, split_line};
+        if path.is_empty() {
+            return Err("diga `path`: o arquivo a abrir".into());
+        }
+        let (path, said) = split_line(path);
+        let base = match self.chats.iter().find(|chat| chat.id == asker) {
+            Some(chat) => folder(&chat.cwd),
+            None => self.scene.elements.iter().find(|element| element.id == asker).and_then(|element| folder(&element.terminal.as_ref()?.cwd)),
+        };
+        // the tree, when new, beside the one that asked (its card), else beside the open chat
+        let known = self.is_chat(asker) || self.scene.elements.iter().any(|element| element.id == asker);
+        let near = if known { Some(asker.to_string()) } else { self.chat_agent.clone() };
+        let link = FileLink { path: crate::app::chat::segments::resolve(path, base.as_deref()), line: line.or(said) };
+        self.open_file_link(&link, near.as_deref())
     }
 
     /// The app's window (`app`: maximize, restore, minimize, or a size) or a terminal, portal or

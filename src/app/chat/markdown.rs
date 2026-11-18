@@ -4,6 +4,7 @@
 use crate::app::chat::list::code_card;
 use crate::app::chat::segments::{Seg, segments};
 use crate::app::chat::{bubble_fill, tint};
+use crate::app::filetree::link::{FileLink, ask_open, file_link_at, link_base, path_like, trimmed};
 use crate::prelude::*;
 use egui::Galley;
 use egui::text::LayoutJob;
@@ -129,13 +130,31 @@ fn list_item(ui: &mut egui::Ui, mark: &str, rest: &str, indent: usize, c: &UiCol
 
 /// One line of Markdown, wrapped and selectable, with its `code`, **bold** (`bold`: all of it) and *italic* runs. The UI
 /// font has no bold weight, so bold runs are drawn a second time one pixel to the right: the same layout with everything
-/// else transparent.
+/// else transparent. In a chat's words (`with_link_base`) the files it names are links: a click opens them in a tree on
+/// the canvas (filetree/link.rs).
 fn md_line(ui: &mut egui::Ui, text: &str, size: f32, color: egui::Color32, bold: bool, c: &UiColors) -> egui::Rect {
     let width = ui.available_width();
     let (mut job, mut ghost) = (egui::text::LayoutJob::default(), egui::text::LayoutJob::default());
-    let any = md_runs(&mut job, &mut ghost, text, size, color, bold, c);
+    let base = link_base(ui.ctx());
+    let time = ui.input(|input| input.time);
+    let find = |token: &str| base.as_ref().and_then(|(folder, _)| file_link_at(token, folder.as_deref(), time));
+    let mut links = base.is_some().then(|| Links { find: &find, found: Vec::new() });
+    let any = md_runs(&mut job, &mut ghost, text, size, color, bold, c, links.as_mut());
     (job.wrap.max_width, ghost.wrap.max_width) = (width, width);
-    let rect = ui.add(egui::Label::new(job).wrap()).rect;
+    let galley = ui.fonts_mut(|f| f.layout_job(job));
+    let found = links.map(|links| links.found).unwrap_or_default();
+    let label = egui::Label::new(galley.clone()).wrap();
+    let response = ui.add(if found.is_empty() { label } else { label.sense(Sense::click()) });
+    let rect = response.rect;
+    if let Some((range, link)) = response.hover_pos().and_then(|at| link_under(&galley, &found, at - rect.min)) {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+        underline(ui.painter(), &galley, rect.min, range.clone(), c.code);
+        let line = link.line.map(|line| format!(", linha {line}")).unwrap_or_default();
+        let response = response.on_hover_text(format!("Abrir na Árvore de Arquivos: {}{line}", link.path.display()));
+        if response.clicked() {
+            ask_open(ui.ctx(), link.clone(), base.and_then(|(_, chat)| chat));
+        }
+    }
     if any {
         let ghost = ui.fonts_mut(|f| f.layout_job(ghost));
         // a whole pixel: text snaps to the pixel grid, a fraction could round back onto the original
@@ -144,22 +163,68 @@ fn md_line(ui: &mut egui::Ui, text: &str, size: f32, color: egui::Color32, bold:
     rect
 }
 
-/// The runs of one line of Markdown added to `job` (and to `ghost`, its bold runs alone): `code` in monospace on its
-/// ground, **bold** (all of it when `bold`) and *italics*. True when any run is bold.
-fn md_runs(job: &mut LayoutJob, ghost: &mut LayoutJob, text: &str, size: f32, color: Color32, bold: bool, c: &UiColors) -> bool {
+/// `text` as `code` on a line of its own (a path that is not a file there): a link when it names one with its line.
+pub(crate) fn code_words(ui: &mut egui::Ui, text: &str, c: &UiColors) {
+    md_line(ui, &format!("`{text}`"), PROSE, c.text, false, c);
+}
+
+/// The links `md_runs` found in a line: `find` says whether a word names a file, `found` where each landed in the job's
+/// letters (counted in chars).
+struct Links<'a> {
+    find: &'a dyn Fn(&str) -> Option<FileLink>,
+    found: Vec<(std::ops::Range<usize>, FileLink)>,
+}
+
+/// The link at `at` (from the galley's corner), and its letters.
+fn link_under<'a>(galley: &Galley, found: &'a [(std::ops::Range<usize>, FileLink)], at: Vec2) -> Option<(std::ops::Range<usize>, &'a FileLink)> {
+    if !galley.rect.expand(2.0).contains(at.to_pos2()) {
+        return None;
+    }
+    // the cursor nearest the pointer is between two letters: the one under it is before or after it
+    let cursor = galley.cursor_from_pos(at);
+    let letter = if at.x < galley.pos_from_cursor(cursor).min.x { cursor.index.0.saturating_sub(1) } else { cursor.index.0 };
+    found.iter().find(|(range, _)| range.contains(&letter)).map(|(range, link)| (range.clone(), link))
+}
+
+/// A line under the letters `range` of `galley` at `at`, row by row.
+fn underline(painter: &Painter, galley: &Galley, at: Pos2, range: std::ops::Range<usize>, color: Color32) {
+    let place = |index: usize| galley.pos_from_cursor(egui::text::CCursor::new(index));
+    for index in range {
+        let (from, to) = (place(index), place(index + 1));
+        if (from.min.y - to.min.y).abs() < 1.0 {
+            let y = at.y + from.max.y - 1.0;
+            painter.hline((at.x + from.min.x)..=(at.x + to.min.x), y, Stroke::new(1.0, color));
+        }
+    }
+}
+
+/// The runs of one line of Markdown added to `job` (and to `ghost`, its bold runs alone): `code` in monospace in its
+/// colour, **bold** (all of it when `bold`) and *italics*. True when any run is bold. With `links`, the files named
+/// (in `code` or in the words) are in the code colour and noted in it.
+#[allow(clippy::too_many_arguments)]
+fn md_runs(job: &mut LayoutJob, ghost: &mut LayoutJob, text: &str, size: f32, color: Color32, bold: bool, c: &UiColors, links: Option<&mut Links>) -> bool {
+    let (find, mut found) = match links {
+        Some(links) => (Some(links.find), Some(&mut links.found)),
+        None => (None, None),
+    };
     let mut any = false;
-    let mut add = |run: &str, font: FontId, color, background, thick: bool, italics: bool| {
-        let format = |color, background| egui::TextFormat { font_id: font.clone(), color, background, italics, ..Default::default() };
-        job.append(run, 0.0, format(color, background));
-        ghost.append(run, 0.0, format(if thick { color } else { Color32::TRANSPARENT }, Color32::TRANSPARENT));
+    let mut add = |run: &str, font: FontId, color, thick: bool, italics: bool, link: Option<FileLink>| {
+        let format = |color| egui::TextFormat { font_id: font.clone(), color, italics, ..Default::default() };
+        let start = job.text.chars().count();
+        job.append(run, 0.0, format(color));
+        ghost.append(run, 0.0, format(if thick { color } else { Color32::TRANSPARENT }));
         any |= thick && !run.is_empty();
+        if let (Some(link), Some(found)) = (link, found.as_mut()) {
+            found.push((start..start + run.chars().count(), link));
+        }
     };
     // inside **…**; `code` spans don't reset it
     let mut on = false;
     for (k, piece) in text.split('`').enumerate() {
         if k % 2 == 1 {
-            // 1.5 smaller; small on a card's picture far out, half
-            add(piece, FontId::monospace((size - 1.5).max(size / 2.0)), c.text, c.surface_low, false, false);
+            // 1.5 smaller; small on a card's picture far out, half. In the chat's code colour on no ground (`UiColors::code`)
+            let link = find.and_then(|find| find(piece.trim()));
+            add(piece, FontId::monospace((size - 1.5).max(size / 2.0)), c.code, false, false, link);
             continue;
         }
         for (b, run) in piece.split("**").enumerate() {
@@ -167,7 +232,29 @@ fn md_runs(job: &mut LayoutJob, ghost: &mut LayoutJob, text: &str, size: f32, co
                 on = !on;
             }
             for (words, italics) in emphasis(run) {
-                add(words, FontId::proportional(size), color, Color32::TRANSPARENT, bold || on, italics);
+                let font = FontId::proportional(size);
+                let Some(find) = find else {
+                    add(words, font, color, bold || on, italics, None);
+                    continue;
+                };
+                // a path in the words (`src/x.rs:12.`): in the code colour, the marks around it as they were
+                let mut rest = words;
+                while !rest.is_empty() {
+                    let gap = rest.len() - rest.trim_start().len();
+                    let word_end = rest[gap..].find(char::is_whitespace).map_or(rest.len(), |end| gap + end);
+                    let (start, token) = trimmed(&rest[gap..word_end]);
+                    let link = (token.contains(['/', '\\', '.']) && path_like(token)).then(|| find(token)).flatten();
+                    match link {
+                        Some(link) => {
+                            let (before, after) = (gap + start, gap + start + token.len());
+                            add(&rest[..before], font.clone(), color, bold || on, italics, None);
+                            add(token, font.clone(), c.code, bold || on, italics, Some(link));
+                            add(&rest[after..word_end], font.clone(), color, bold || on, italics, None);
+                        }
+                        None => add(&rest[..word_end], font.clone(), color, bold || on, italics, None),
+                    }
+                    rest = &rest[word_end..];
+                }
             }
         }
     }
@@ -223,7 +310,7 @@ pub(crate) fn md_layout(text: &str, size: f32, ink: Color32, width: f32, rows: u
             ghost.append("\n", 0.0, egui::TextFormat::simple(FontId::proportional(size), Color32::TRANSPARENT));
         }
         if fence {
-            any |= md_runs(&mut job, &mut ghost, &format!("`{line}`"), size, ink, false, c);
+            any |= md_runs(&mut job, &mut ghost, &format!("`{line}`"), size, ink, false, c, None);
             continue;
         }
         let hashes = line.chars().take_while(|&letter| letter == '#').count();
@@ -232,7 +319,7 @@ pub(crate) fn md_layout(text: &str, size: f32, ink: Color32, width: f32, rows: u
             None if (1..=6).contains(&hashes) && line[hashes..].starts_with(' ') => ("", line[hashes..].trim_start(), true),
             None => ("", line.strip_prefix('>').map_or(line, str::trim_start), false),
         };
-        any |= md_runs(&mut job, &mut ghost, &format!("{mark}{words}"), size, ink, bold, c);
+        any |= md_runs(&mut job, &mut ghost, &format!("{mark}{words}"), size, ink, bold, c, None);
     }
     for layout in [&mut job, &mut ghost] {
         layout.wrap.max_width = width;
@@ -297,7 +384,7 @@ fn table(ui: &mut egui::Ui, rows: &[&str], c: &UiColors, dark: bool) {
     for (n, row) in cells.iter().enumerate() {
         for (column, cell) in row.iter().enumerate() {
             let (mut job, mut ghost) = (LayoutJob::default(), LayoutJob::default());
-            md_runs(&mut job, &mut ghost, cell, CELL, ink(n), n == 0, c);
+            md_runs(&mut job, &mut ghost, cell, CELL, ink(n), n == 0, c, None);
             let width = ui.fonts_mut(|f| f.layout_job(job)).size().x.ceil() + 1.0 + CELL_MARGIN.sum().x;
             match natural.get_mut(column) {
                 Some(widest) => *widest = widest.max(width),

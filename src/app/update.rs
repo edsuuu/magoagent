@@ -286,6 +286,8 @@ impl eframe::App for DrawingApp {
             self.cover_live_parts(&ctx);
             self.portal_chrome(&ctx);
             self.dock_grip(&ctx);
+            self.element_links_ui(&ctx);
+            self.link_back_ui(&ctx);
         }
         self.welcome_ui(&ctx);
         self.tour_ui(&ctx);
