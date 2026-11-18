@@ -94,6 +94,14 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["paths"] },
         }),
         json!({
+            "name": "open_as_note",
+            "description": "Abre um arquivo de texto (.md, .markdown ou .txt, até 1 MB) no canvas numa nota com o conteúdo, como o clique no cartão do arquivo no chat: do tamanho de ler (560 de largura, alta como o texto até quase a altura da vista), ao lado do cartão do chat `chat` (ou no meio da vista), selecionada e com o canvas nela. O mesmo arquivo de novo vai à nota que já o tem. A nota é um editor (markdown) que a pessoa redimensiona pelas bordas e cantos e rola com a roda; para mudar o tamanho dela use note com o id, width e height.",
+            "inputSchema": { "type": "object", "properties": {
+                "path": { "type": "string" },
+                "chat": name("o chat ao lado de cujo cartão a nota abre; vazio: o chat aberto, ou o meio da vista"),
+            }, "required": ["path"] },
+        }),
+        json!({
             "name": "resize_window",
             "description": "Redimensiona uma janela: `target` é o nome de um terminal, navegador ou árvore de arquivos do canvas (state enlarge amplia, shrink volta ao canvas, ou width/height em pontos), ou `app` para a janela do MagoAgent (state maximize, restore, minimize, ou width/height).",
             "inputSchema": { "type": "object", "properties": {
@@ -274,6 +282,14 @@ pub(crate) fn app_tools() -> Vec<Value> {
             "name": "chat_send",
             "description": "Manda uma mensagem a um chat, como se a pessoa a escrevesse lá; o agente dele responde no chat.",
             "inputSchema": { "type": "object", "properties": { "chat": chat, "text": { "type": "string" } }, "required": ["chat", "text"] },
+        }),
+        json!({
+            "name": "chat_queue",
+            "description": "A mensagem que a pessoa deixou na fila de um agente (escrita enquanto um chat ainda respondia, ou enquanto um terminal esperava numa pergunta ou permissão), mostrada no fim da conversa com Enviar agora e Editar. `action` list (o padrão) diz o que está na fila; send_now a manda já, como o botão Enviar agora (Ctrl+Shift+Enter): num chat a resposta em curso para onde está e a mensagem vai como a próxima; num terminal esperando um menu, ele recebe Esc (recusa o pedido) e a mensagem entra assim que ele voltar ao prompt; edit a devolve à caixa da conversa, como Editar.",
+            "inputSchema": { "type": "object", "properties": {
+                "agent": name("o nome do chat ou do terminal, como list_agents mostra; vazio: a conversa aberta"),
+                "action": { "type": "string", "enum": ["list", "send_now", "edit"] },
+            } },
         }),
         json!({
             "name": "chat_command",

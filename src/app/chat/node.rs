@@ -182,6 +182,14 @@ impl DrawingApp {
         for (id, prompt) in free {
             self.chat_send(ctx, &id, &prompt);
         }
+        // a text file's card clicked in a conversation: its note on the canvas (notes/file.rs); a file the note can't
+        // hold opens in the system's program, as before
+        if let Some((path, chat)) = crate::app::chat::media::take_note_ask(ctx)
+            && let Err(why) = self.open_file_as_note(&path, chat.as_deref())
+        {
+            self.toast(why);
+            crate::app::browser::open_external(&path.to_string_lossy());
+        }
         self.chat_asks_tick(ctx);
         self.recruit_popups_tick();
     }

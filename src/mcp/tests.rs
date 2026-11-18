@@ -188,6 +188,8 @@ fn every_app_action_is_a_tool_once() {
         "open_default",
         "canvas_drop",
         "chat_send",
+        "chat_queue",
+        "open_as_note",
         "mini_chat",
         "chats_view",
         "chat_command",

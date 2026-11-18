@@ -69,6 +69,8 @@ pub(crate) struct DrawingApp {
     /// The note text's last selection (label index, from, to) while its editor had the keys: a
     /// click on the note bar takes them away before the button acts.
     pub(crate) note_selection: Option<(usize, usize, usize)>,
+    /// How far each resting note's text is scrolled and how much of it the card hides, by note id (notes/scroll.rs).
+    pub(crate) note_scroll: std::cell::RefCell<std::collections::HashMap<String, crate::app::notes::scroll::NoteScroll>>,
     pub(crate) clipboard: Vec<Element>,
     pub(crate) export_open: bool,
     pub(crate) export_background: bool,

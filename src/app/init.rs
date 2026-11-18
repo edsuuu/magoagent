@@ -39,6 +39,7 @@ impl Default for DrawingApp {
             editing: None,
             edit_focused: false,
             note_selection: None,
+            note_scroll: Default::default(),
             clipboard: Vec::new(),
             export_open: false,
             export_background: true,

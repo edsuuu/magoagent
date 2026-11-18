@@ -185,3 +185,78 @@ fn the_pill_goes_where_it_is_dragged_and_stays_there() {
         assert!(small.contains_rect(whole), "{whole:?}");
     }
 }
+
+/// The letters of the working row's line painted in `shapes` (one by one, for the shine), on the row of `button`: the
+/// box they fill and the last one.
+fn working_line(shapes: &[egui::epaint::ClippedShape], button: Rect) -> (Rect, String) {
+    let letters: Vec<_> = shapes
+        .iter()
+        .filter_map(|shape| match &shape.shape {
+            Shape::Text(text) if text.galley.text().chars().count() == 1 => Some((text.visual_bounding_rect(), text.galley.text().to_string())),
+            _ => None,
+        })
+        // a space paints nothing (no box)
+        .filter(|(at, _)| at.is_finite() && (at.center().y - button.center().y).abs() < 9.0)
+        .collect();
+    assert!(letters.len() > 5, "the line: {letters:?}");
+    let union = letters.iter().fold(Rect::NOTHING, |union, (at, _)| union.union(*at));
+    (union, letters.last().unwrap().1.clone())
+}
+
+#[test]
+fn a_long_title_in_the_working_row_ends_in_an_ellipsis_before_the_stop_button() {
+    let ctx = Context::default();
+    install_fonts(&ctx, false);
+    let mut app = app_with_chat();
+    // a Codex chat (the dots, not Claude's mascot) named by its long first message, answering, as in the print
+    app.chats = vec![chat("a", "codex", "Faz o gabarito da prova em markdown e confere cada resposta")];
+    let child = if cfg!(windows) {
+        crate::editor::command("powershell").args(["-NoProfile", "-Command", "Start-Sleep 60"]).spawn()
+    } else {
+        std::process::Command::new("sleep").arg("60").spawn()
+    };
+    app.chat_runs.insert("a".into(), crate::app::chat::direct::ChatRun::stand_in(child.unwrap(), 0.0));
+    let row = app.agent_rows().into_iter().find(|row| row.id == "a").unwrap();
+    let c = app.colors();
+    let look = crate::app::chat::list::Look::new(true, &c);
+    // the mini chat's own window, 330 wide: its round stop button
+    app.mini.window = true;
+    let window = Rect::from_min_size(Pos2::ZERO, Vec2::new(330.0, 600.0));
+    // an area shows from its second frame
+    let mut output = Default::default();
+    for _ in 0..2 {
+        let raw = egui::RawInput { screen_rect: Some(window), ..Default::default() };
+        output = ctx.run_ui(raw, |_| app.mini_panel(&ctx, &row, window, &look, &c, 1.0));
+        output.textures_delta.clear();
+    }
+    let output: egui::FullOutput = output;
+    let button = output
+        .shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            Shape::Rect(rect) if rect.rect.size() == Vec2::splat(28.0) => Some(rect.rect),
+            _ => None,
+        })
+        .expect("the stop button");
+    let (line, last) = working_line(&output.shapes, button);
+    assert!(line.right() <= button.left() && window.contains_rect(line), "{line:?} before {button:?}, in {window:?}");
+    assert_eq!(last, "…");
+    // the chat screen's band at a small width (the canvas card's is the mini chat's): before Interromper
+    let column = Rect::from_min_size(Pos2::ZERO, Vec2::new(420.0, 200.0));
+    let raw = egui::RawInput { screen_rect: Some(column), ..Default::default() };
+    let mut output = ctx.run_ui(raw, |ui| {
+        app.work_band(ui, &row, app.transcripts.get("a"), &look, false, 1.0);
+    });
+    output.textures_delta.clear();
+    let button = output
+        .shapes
+        .iter()
+        .find_map(|shape| match &shape.shape {
+            Shape::Rect(rect) if rect.rect.height() == 28.0 && rect.rect.right() > 380.0 => Some(rect.rect),
+            _ => None,
+        })
+        .expect("Interromper");
+    let (line, last) = working_line(&output.shapes, button);
+    assert!(line.right() <= button.left(), "{line:?} before {button:?}");
+    assert_eq!(last, "…");
+}

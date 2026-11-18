@@ -127,7 +127,7 @@ impl DrawingApp {
                 ui.label(egui::RichText::new(note).size(13.0).color(look.muted));
             }
         }
-        self.queued_bubbles(ui, &row.id, width, look, &mut out.unqueue);
+        self.queued_bubbles(ui, &row.id, width, look, out);
     }
 }
 
