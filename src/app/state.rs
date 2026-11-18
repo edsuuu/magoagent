@@ -220,6 +220,8 @@ pub(crate) struct DrawingApp {
     /// it last changed (`sync_portals`).
     pub(crate) portal_stills: std::collections::HashMap<String, egui::TextureHandle>,
     pub(crate) portal_motion: std::collections::HashMap<String, (Rect, f64)>,
+    /// Linux: each page's last picture standing still, and when it was asked (`sync_portals`).
+    pub(crate) portal_snaps: std::collections::HashMap<String, (f64, Option<egui::ColorImage>)>,
     pub(crate) chat_agent: Option<String>,
     pub(crate) chat_draft: String,
     pub(crate) maestro_note: Option<chat::code_comment::Note>,

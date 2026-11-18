@@ -29,6 +29,9 @@ pub(crate) enum PortalEvent {
     Shot { portal: String, seq: u64, png: Option<Vec<u8>> },
     /// The open page's picture for Copiar Captura de Tela, once the system has it.
     Copied { picture: Result<(u32, u32, Vec<u8>), String> },
+    /// Linux: the picture of a page standing still, for the card to carry while the canvas moves (`sync_portals`).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    Still { portal: String, picture: (u32, u32, Vec<u8>) },
 }
 
 /// An address the webview can load: "exemplo.com" → "https://exemplo.com". A scheme counts only
@@ -278,8 +281,35 @@ pub(super) enum Chrome {
 }
 
 /// How long after the card last moved its page comes back (seconds).
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub(super) const PAGE_SETTLE: f64 = 0.15;
+/// Linux: how often the picture of a page standing still is taken again, at most (seconds; only on a frame).
+#[cfg(target_os = "linux")]
+pub(super) const SNAP_EVERY: f64 = 1.0;
+
+/// What a page does by how long ago its card last moved (`since`, seconds; None: not on the canvas), where the native
+/// view follows the card a frame late (Linux, Windows): moving, it hides and its picture goes with the card; just
+/// stopped, it lays out at its new size and zoom wholly cut away, the picture showing (WebKitGTK draws it black for a
+/// moment there); then it shows over its picture, which goes a moment later.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub(crate) enum Motion {
+    Moving,
+    Unseen,
+    Back,
+    Still,
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub(crate) fn motion(since: Option<f64>) -> Motion {
+    const SETTLE: f64 = 0.15;
+    match since {
+        Some(since) if since < SETTLE => Motion::Moving,
+        Some(since) if since < 2.0 * SETTLE => Motion::Unseen,
+        Some(since) if since <= 3.0 * SETTLE => Motion::Back,
+        _ => Motion::Still,
+    }
+}
 /// WebView2's smallest page zoom (25%).
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(super) const MIN_PAGE_ZOOM: f32 = 0.25;
