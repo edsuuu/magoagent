@@ -161,6 +161,9 @@ fn main() -> eframe::Result {
         Box::new(|cc| {
             #[cfg(target_os = "macos")]
             remember_window(cc);
+            // the areas SwiftUI draws (MAGOAGENT_SWIFTUI; docs/swiftui.md)
+            #[cfg(target_os = "macos")]
+            app::native::start(&cc.egui_ctx);
             let mut app =
                 DrawingApp { autosave: autosave_path(), script: Script::from_env(), perf: app::system::script::Perf::from_env(), ..Default::default() };
             app.bridge = Bridge::start(Some(cc.egui_ctx.clone())).ok();

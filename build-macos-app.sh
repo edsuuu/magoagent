@@ -18,7 +18,7 @@ cat > MagoAgent.app/Contents/Info.plist <<'PLIST'
   <key>CFBundleDisplayName</key><string>MagoAgent</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
-  <key>LSMinimumSystemVersion</key><string>12.0</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSAppleEventsUsageDescription</key><string>O MagoAgent mostra na ilha a música que toca no Spotify e a pausa ou pula a pedido.</string>
 </dict>

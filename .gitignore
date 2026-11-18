@@ -6,3 +6,4 @@
 *.mago
 CLAUDE.local.md
 /.idea
+/macos/MagoUI/.build

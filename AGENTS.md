@@ -22,6 +22,7 @@ src/
     maestro/     o Maestro: recrutar, linha do tempo, demandas, eventos dos hooks, fichário, skills, worktrees, avatar
     voice/       a chamada e o ditado: orbe, popup, o som do Codex (page)
     island/      a ilha: pílula fixa no topo da tela (janela própria por cima de tudo) com o resumo dos agentes, perguntas pendentes, voz e chat novo em espaço próprio (`Prefs.island`)
+    native/      só macOS: a ponte com a interface SwiftUI (macos/MagoUI), área por área (`MAGOAGENT_SWIFTUI`; docs/swiftui.md)
     integrations/ Ajustes › Integrações: um arquivo por serviço de fora mostrado na ilha (GitHub, Spotify, Hermes Agent); http (curl, segredos pelo stdin)
     notes/       notas adesivas e o fichário em pilha; groups/ (grupos com quadro); floors/ (andares); workspaces/ (espaços)
     tasks/       tarefas pedidas aos agentes (`tarefas.json`); usage/ (consumo do plano, teto de agentes); mascot/
@@ -46,6 +47,8 @@ src/
   tests/         testes gerais: formatos, exportação, desenho, transcrições, shells
 assets/          fontes (mão = Excalifont do Excalidraw, interface = Assistant; licenças OFL), editor-icons/ (JetBrains,
                  Apache 2.0, com NOTICE), mascot/, ícones do app
+macos/MagoUI/     a interface SwiftUI do macOS (pacote SwiftPM, biblioteca estática que o build.rs compila e liga), uma pasta
+                 por área em Sources/MagoUI/ (Bridge/ é a ponte); o contrato está em docs/swiftui.md
 installer/       MSI do Windows (WiX 3: build-msi.sh, magoagent.wxs)
 docs/            imagens do README e o exemplo arquitetura.mago
 build-macos-app.sh  gera MagoAgent.app (bundle com.edsuuu.magoagent)

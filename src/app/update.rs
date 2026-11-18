@@ -57,6 +57,8 @@ impl eframe::App for DrawingApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.save_on_exit();
         crate::mcp::bridge::remove_hook_endpoint();
+        #[cfg(target_os = "macos")]
+        crate::app::native::stop();
         // Linux: the pages' X11 windows live inside the app's; they go first, so GTK never draws in a window that is gone
         #[cfg(target_os = "linux")]
         if !self.portals.is_empty() {
@@ -86,6 +88,8 @@ impl eframe::App for DrawingApp {
         #[cfg(not(target_os = "linux"))]
         let _ = frame;
         self.background_window(ctx);
+        #[cfg(target_os = "macos")]
+        self.native_tick();
         if ctx.input(|i| i.viewport().visible()) != Some(false) {
             self.hidden_paint = None;
             return;
