@@ -178,6 +178,19 @@ impl GtkPage {
             });
         });
     }
+
+    /// Where the page's X11 window is inside the app's (x, y, width, height in pixels), the size WebKit lays the page
+    /// out at and its zoom, to `done` on GTK's thread: the roteiro's `shot` checks it against the card.
+    pub(crate) fn frame(&self, done: impl FnOnce([i32; 4], [i32; 2], f64) + Send + 'static) {
+        let _ = self.with(move |page| {
+            use gtk::prelude::WidgetExt;
+            use webkit2gtk::WebViewExt;
+            use wry::WebViewExtUnix;
+            let view = page.webview();
+            let (x, y, width, height) = view.parent_window().map_or((0, 0, 0, 0), |holder| holder.geometry());
+            done([x, y, width, height], [view.allocated_width(), view.allocated_height()], view.zoom_level());
+        });
+    }
 }
 
 /// A PNG of `rect` (x, y, width, height in the page's CSS px, of what shows) of the page; `done` runs on GTK's thread
