@@ -142,6 +142,9 @@ impl DrawingApp {
         }
         // AREAS: one line per area, each publishing its topics (`native_<area>` in the area's folder), e.g.
         // if enabled("island") { self.native_island(); }
+        if enabled("chat") {
+            self.native_chat();
+        }
         if enabled("canvas") {
             self.native_canvas();
         }
@@ -195,6 +198,7 @@ impl DrawingApp {
             None if name == "ping" => Ok("pong".into()),
             // AREAS: one arm per area (with `_args` renamed `args`), e.g.
             // Some(("island", verb)) => self.native_island_act(verb, args),
+            Some(("chat", verb)) => self.native_chat_act(verb, args),
             Some(("canvas", verb)) => self.native_canvas_act(verb, args),
             Some(("island", verb)) => self.native_island_act(verb, args),
             Some(("shell", verb)) => self.native_shell_act(verb, args),
