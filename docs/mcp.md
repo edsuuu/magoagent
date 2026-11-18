@@ -2,7 +2,7 @@
 
 <!-- gerado por docs/mcp.py a partir do tools/list do app: não edite à mão -->
 
-O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.32) e tem **108 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
+O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.32) e tem **109 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
 
 ## Ligar
 
@@ -133,14 +133,23 @@ A lateral dos espaços, como a pessoa a usa: `next` vai ao próximo agente que p
 
 ### `panel`
 
-O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.
+O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão) ou note (Nota rápida: texto simples da pessoa; o texto em si fica na ferramenta quick_note), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `name` | string: `changes` |  |
+| `name` | string: `changes`, `note` |  |
 | `open` | boolean |  |
 | `width` | number | a largura do painel em pixels (de 300 até deixar 360 ao canvas); 0 volta à padrão |
 | `worktree` | string | Alterações: o worktree a mostrar (nome da pasta, ramo ou caminho); todos: as Árvores do canvas |
+
+### `quick_note`
+
+A Nota rápida (o botão ao lado de Alterações, na barra de título): um bloco de texto simples da pessoa, sem markdown, guardado com as preferências. show abre o painel; get lê o texto; set troca o texto por `text`; append junta `text` numa linha embaixo; to_canvas leva o texto para o canvas como uma nota (mostrada como foi digitada, sem markdown) e esvazia o painel.
+
+| Parâmetro | Tipo | O que é |
+|---|---|---|
+| `action` (obrigatório) | string: `show`, `get`, `set`, `append`, `to_canvas` |  |
+| `text` | string | set e append: o texto |
 
 ### `changes_review`
 

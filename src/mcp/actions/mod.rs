@@ -246,6 +246,7 @@ impl DrawingApp {
             }
             "sidebar" => self.act_sidebar(&text("action"), &text("team")),
             "panel" => self.act_panel(args),
+            "quick_note" => self.act_quick_note(args),
             "changes_review" => self.act_changes_review(args),
             "file_tree" => self.act_file_tree(args),
             "tasks" => self.act_tasks(args),
