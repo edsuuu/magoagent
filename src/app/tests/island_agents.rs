@@ -223,7 +223,10 @@ fn an_agents_message_to_a_chat_goes_signed_and_chat_open_shows_one_in_the_island
     app.act("chat_send", &json!({ "chat": "projeto", "text": "roda os testes" })).unwrap();
     app.act("chat_send", &json!({ "chat": name, "text": "pode subir", "asker": luna })).unwrap();
     let said: Vec<String> = app.chat_outbox.iter().map(|(_, text)| text.clone()).collect();
-    assert_eq!(said, [format!("{name}: estou parado esperando a chave"), format!("{name} aqui: terminei"), "roda os testes".into(), "Luna: pode subir".into()]);
+    assert_eq!(said, [format!("{name}: estou parado esperando a chave"), format!("{name} aqui: terminei"), "roda os testes".into()]);
+    // Luna's to the agent she recruited goes in its line as her question, whose answer comes back to her (chat/ask.rs)
+    let asked: Vec<String> = app.chat_asks.iter().map(|ask| ask.prompt()).collect();
+    assert_eq!(asked, ["Pergunta de \"Luna\" (a sua resposta volta para quem perguntou):\n\npode subir".to_string()]);
     // a notice by the bridge's notify says who too, once
     app.notify(&agents[0], "preciso de você");
     assert_eq!(app.status, format!("{name}: preciso de você"));

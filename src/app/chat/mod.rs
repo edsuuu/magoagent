@@ -406,9 +406,14 @@ impl DrawingApp {
         match item {
             ChatItem::User(text) => {
                 let right = egui::Layout::right_to_left(egui::Align::TOP);
-                // another agent's question: said whose, in a grey bubble
+                // another agent's question, its answer brought back or a task it gave: said whose, in a grey bubble
                 if let Some(who) = from {
-                    ui.with_layout(right, |ui| ui.label(egui::RichText::new(format!("Pergunta de {who}")).size(12.0).color(c.muted)));
+                    let kind = match crate::app::chat::ask::asked_by(text) {
+                        Some(_) if crate::app::chat::ask::is_answer(text) => "Resposta de",
+                        Some(_) => "Pergunta de",
+                        None => "Mensagem de",
+                    };
+                    ui.with_layout(right, |ui| ui.label(egui::RichText::new(format!("{kind} {who}")).size(12.0).color(c.muted)));
                 }
                 let (fill, ink) = if from.is_some() { (c.surface_high, c.text) } else { (bubble_fill(self.dark(), true), Color32::WHITE) };
                 // a gutter of 48 pt on the other side

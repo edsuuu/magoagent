@@ -173,8 +173,9 @@ impl DrawingApp {
                 continue;
             }
             self.chat_starts.remove(i);
-            if self.is_chat(&id) {
-                self.chat_send(ctx, &id, &prompt);
+            // what it says at the end of it goes to the chat that recruited it (ask.rs)
+            if self.is_chat(&id) && self.chat_send(ctx, &id, &prompt) {
+                self.task_sent(&id, &prompt);
             }
         }
         // what was written while a chat answered, once it is done (`chat_send`)

@@ -47,6 +47,7 @@ mod props;
 mod session;
 mod shapes;
 mod sidebar;
+mod team;
 mod terminals;
 mod tools;
 mod tour;

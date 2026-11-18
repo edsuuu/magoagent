@@ -157,6 +157,14 @@ impl DrawingApp {
                 }
                 // another agent's words go signed with its name: in the chat they are not taken for the person's
                 let asker = text("asker");
+                // the boss to its recruit: a question in the recruit's line, whose answer comes back to the boss's chat
+                // when it is done (ask.rs), as a recruit's first task does
+                if self.is_chat(&asker) && self.boss_of(&id).as_deref() == Some(asker.as_str()) {
+                    let (reply, _) = std::sync::mpsc::channel();
+                    let name = self.speaker(&asker);
+                    self.ask_chat(&id, &asker, &name, &text("text"), reply);
+                    return Ok("Mensagem enviada ao agente do seu time; a resposta dele chega neste chat quando ele terminar.".into());
+                }
                 let words = if asker.is_empty() || asker == id { text("text") } else { crate::app::maestro::signed(&self.speaker(&asker), &text("text")) };
                 self.chat_outbox.push((id, words));
                 Ok("Mensagem enviada ao chat.".into())

@@ -298,7 +298,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "chat_send",
-            "description": "Manda uma mensagem a um chat, como se a pessoa a escrevesse lá; o agente dele responde no chat.",
+            "description": "Manda uma mensagem a um chat, como se a pessoa a escrevesse lá; o agente dele responde no chat. Para um agente que o seu chat recrutou, ela entra na fila dele como pergunta sua, e a resposta dele chega no seu chat quando ele terminar, sem você esperar.",
             "inputSchema": { "type": "object", "properties": { "chat": chat, "text": { "type": "string" } }, "required": ["chat", "text"] },
         }),
         json!({

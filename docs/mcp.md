@@ -553,7 +553,7 @@ A área de Chats fora do canvas (o botão de chat da barra de título): tudo o q
 
 ### `chat_send`
 
-Manda uma mensagem a um chat, como se a pessoa a escrevesse lá; o agente dele responde no chat.
+Manda uma mensagem a um chat, como se a pessoa a escrevesse lá; o agente dele responde no chat. Para um agente que o seu chat recrutou, ela entra na fila dele como pergunta sua, e a resposta dele chega no seu chat quando ele terminar, sem você esperar.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|

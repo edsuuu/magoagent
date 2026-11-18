@@ -217,8 +217,9 @@ impl DrawingApp {
         self.ft_reveal_all(&id, &full);
         self.chat_open = false;
         self.set_elevated(None);
+        // nothing picked on the canvas: its bar would cover the button back
         self.moving = false;
-        self.selected = vec![index];
+        self.selected.clear();
         self.fit_view(element_bounds(&self.scene.elements[index]), None);
         self.card_focus = Some(id);
         self.filetrees.link_back = Some(back);
@@ -252,7 +253,7 @@ impl DrawingApp {
         self.ft_reveal(id, path);
     }
 
-    /// The "Voltar" button over the canvas while a link's tree is on screen: back to the chat (or the camera) it came
+    /// The "Voltar" button at the foot of the canvas while a link's tree is on screen: back to the chat (or the camera) it came
     /// from; its ✕ only lets it go. Gone when the chat opens some other way or the tree goes.
     pub(crate) fn link_back_ui(&mut self, ctx: &Context) {
         let Some(back) = &self.filetrees.link_back else { return };
@@ -265,7 +266,8 @@ impl DrawingApp {
         let ink = glass_ink(dark);
         let font = FontId::proportional(13.5);
         let width = ctx.fonts_mut(|fonts| fonts.layout_no_wrap(words.into(), font.clone(), ink).size().x) + 64.0;
-        let at = Pos2::new(self.canvas_rect.center().x - width / 2.0, TOOLBAR_BOTTOM + 12.0);
+        // at the foot of the canvas, in the middle, in the row of its corner pills (the top has a selection's bar)
+        let at = Pos2::new(self.canvas_rect.center().x - width / 2.0, self.canvas_rect.bottom() - 45.0);
         let (mut back_pressed, mut dismissed) = (false, false);
         egui::Area::new(egui::Id::unique("file_link_back")).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
             let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 34.0), Sense::hover());

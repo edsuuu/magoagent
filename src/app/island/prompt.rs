@@ -139,7 +139,7 @@ impl DrawingApp {
         let (log, chip_row, bar) = chat_body(page, bar_height(ui, draft_id), NAME_ROW);
         let messages: Vec<&ChatItem> = self.transcripts.get(&row.id).map(|transcript| said(&transcript.items).collect()).unwrap_or_default();
         let working = matches!(row.state, AgentState::Working(_));
-        out.picture = self.island_log(ui, log, &messages, working, time).or(out.picture.take());
+        out.picture = self.island_log(ui, log, &messages, working, Some(&row.id), time).or(out.picture.take());
 
         // `.model-btn`: the agent and its model; a click opens the whole chat, where they are chosen
         let chat = self.chats.iter().find(|chat| chat.id == row.id);

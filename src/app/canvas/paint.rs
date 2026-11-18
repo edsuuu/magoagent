@@ -58,7 +58,9 @@ impl DrawingApp {
         // ropes first: the part of one that crosses a window or note stays under it, so a
         // connection only ever shows leaving their edges
         // a rope lights up while one of its agents asks the other something
-        let asking = self.bridge.as_ref().map(|bridge| locked(&bridge.shared).asking.clone()).unwrap_or_default();
+        let mut asking = self.bridge.as_ref().map(|bridge| locked(&bridge.shared).asking.clone()).unwrap_or_default();
+        // and while a recruit works on what its boss asked, though the boss no longer waits on the line (ask.rs)
+        asking.extend(self.asks_running());
         let clicked: &[String] = match self.links_popover.as_ref().map(|popover| &popover.of) {
             Some(crate::app::ui::links::LinksOf::Ropes(ids)) => ids,
             _ => &[],
