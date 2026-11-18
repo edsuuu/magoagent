@@ -123,6 +123,13 @@ pub(crate) struct DrawingApp {
     pub(crate) glide: Option<(f64, Vec2, Vec2)>,
     /// Dispositivo de entrada = Automático: the last scroll came from a mouse wheel (else a touchpad).
     pub(crate) wheel_is_mouse: bool,
+    /// When the canvas's zoom last changed, and the zoom the text is laid out at meanwhile (`text_zoom`).
+    pub(crate) zoomed_at: f64,
+    pub(crate) held_text_zoom: std::cell::Cell<f32>,
+    /// When the canvas last took the wheel: the gesture stays the canvas's over the windows it passes (`canvas_wheel`).
+    pub(crate) wheel_latch: Option<f64>,
+    /// The zoom of an enlarged or docked file tree, its own (`lifted_zoom_by`): the canvas's does not reach it.
+    pub(crate) lifted_zoom: f32,
     /// The minimap's held area and focus.
     pub(crate) minimap_area: canvas::minimap::MinimapArea,
     /// Prompts left half-written when their terminal's workspace was hidden, by terminal id.

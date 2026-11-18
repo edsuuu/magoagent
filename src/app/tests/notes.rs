@@ -51,6 +51,8 @@ fn an_empty_note_can_be_typed_into_after_leaving_it() {
     app.selected.clear();
     app.scene.elements.truncate(1);
     app.tool = Tool::Select;
+    // a frame without the editor (it covers the whole text box while typing): the pointer on its way to the note
+    frame(&mut app, &ctx, vec![]);
     let at = app.to_screen(element_bounds(&app.scene.elements[0]).center());
     click(&mut app, &ctx, at);
     assert!(app.editing.is_some(), "a click on an empty note edits it");

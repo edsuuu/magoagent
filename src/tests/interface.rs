@@ -34,6 +34,22 @@ fn text_box_follows_its_glyphs() {
 }
 
 #[test]
+fn a_text_is_measured_once_and_again_when_it_changes() {
+    // a 200-line note's text: measured glyph by glyph the first time, then known by its fingerprint
+    let text: String = (1..=200).map(|line| format!("Linha {line}: um texto longo para medir uma vez só.\n")).collect();
+    let first = text_size(&text, 20.0);
+    assert_eq!(text_size(&text, 20.0), first);
+    assert_eq!(first.y, 201.0 * 20.0 * LINE_HEIGHT);
+    // the same length with other letters, and another size: measured again
+    let narrow = text.replacen("Linha 1:", "iiiii 1:", 1).replace('m', "i");
+    assert_eq!(narrow.len(), text.len());
+    assert!(text_size(&narrow, 20.0).x < first.x);
+    assert_eq!(text_size(&text, 10.0).y, first.y / 2.0);
+    assert_ne!(fingerprint(b"abcdefgh1"), fingerprint(b"abcdefgh2"));
+    assert_ne!(fingerprint(b""), fingerprint(b"\0"), "the length counts");
+}
+
+#[test]
 fn the_minimap_starts_closed_and_stays_as_left() {
     assert!(!Prefs::default().minimap);
     // preferences saved before the field read closed

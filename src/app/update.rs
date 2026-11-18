@@ -117,6 +117,11 @@ impl eframe::App for DrawingApp {
             edge_resize(ctx, raw);
             self.caption_drag(ctx, raw);
         }
+        // Ctrl + wheel over the window while another has the keyboard (canvas/wheel.rs); a script's keys are its own
+        if self.script.is_none() {
+            let current = ctx.input(|input| input.modifiers);
+            crate::app::canvas::wheel::wheel_modifiers(&mut raw.events, raw.focused, current, crate::app::canvas::wheel::system_modifiers);
+        }
         // Tab on the bare canvas moves no focus: egui would hand the keys to the first button, and
         // the shortcuts and Space would stop until the next click
         if !self.keyboard_taken(ctx) {
@@ -198,42 +203,8 @@ impl eframe::App for DrawingApp {
             let response = ui.allocate_rect(rect, Sense::CLICK | Sense::DRAG);
             let painter = ui.painter_at(rect);
             self.handle_canvas(&response, rect);
-            // Ctrl + wheel over a window on the canvas (a file tree, an IDE, a terminal) zooms the
-            // canvas too: the window's own wheel only scrolls
-            let over_window = !response.hovered()
-                && ctx.input(|i| i.modifiers.command && i.zoom_delta() != 1.0)
-                && ctx.pointer_hover_pos().is_some_and(|p| rect.contains(p))
-                && self.terminal_elevated.is_none()
-                && !egui::Popup::is_any_open(&ctx)
-                && self.focus(&ctx) != crate::app::canvas::shortcuts::Focus::Dialog;
-            // the wheel over a long note's text scrolls it, not the canvas (notes/scroll.rs)
-            let note_took = response.hovered() && !self.chat_open && ctx.current_pass_index() == 0 && self.note_wheel(&ctx);
-            if (response.hovered() || over_window) && !self.chat_open && ctx.current_pass_index() == 0 && !note_took {
-                let (scroll, zoom, pointer) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
-                let shift = ctx.input(|i| i.modifiers.shift);
-                if let Some(mouse) = ctx.input(|i| wheel_from_mouse(&i.raw.events)) {
-                    self.wheel_is_mouse = mouse;
-                }
-                let wheel_zooms = if self.prefs.wheel_auto { self.wheel_is_mouse } else { self.prefs.mouse_wheel_zooms };
-                if zoom != 1.0 && ctx.input(|i| i.modifiers.command) {
-                    // Ctrl + wheel: egui makes a notch a factor of e^0.2 (40 points at 1/200); the
-                    // reference app adds a step per notch instead
-                    self.wheel_step(zoom.ln() / 0.2, pointer.unwrap_or(rect.center()));
-                } else if zoom != 1.0 {
-                    // a pinch
-                    self.wheel_zoom(zoom, pointer.unwrap_or(rect.center()));
-                } else if scroll != Vec2::ZERO && wheel_zooms && !shift {
-                    // a mouse: the wheel zooms, a notch (40 points) a step; the side wheel (tilt) pans sideways
-                    self.glide = None;
-                    self.pan.x += scroll.x;
-                    if scroll.y != 0.0 {
-                        self.wheel_step(scroll.y / 40.0, pointer.unwrap_or(rect.center()));
-                    }
-                } else if scroll != Vec2::ZERO {
-                    self.glide = None;
-                    self.pan += scroll;
-                }
-            }
+            // the wheel and the pinch: the canvas's, a long note's or a window's (canvas/wheel.rs)
+            self.canvas_wheel(&ctx, &response, rect);
             self.update_cursor(&ctx, &response);
             self.paint_stage(&ctx, &painter, rect);
         });

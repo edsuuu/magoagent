@@ -264,7 +264,7 @@ impl DrawingApp {
             .scene
             .elements
             .iter()
-            .filter(|e| lifted.as_ref().is_none_or(|id| *id == e.id))
+            .filter(|e| e.filetree.is_some() && lifted.as_ref().is_none_or(|id| *id == e.id))
             .filter_map(|e| {
                 let (frame, z) = self.terminal_frame(e);
                 Some((e.id.clone(), e.filetree.clone()?, frame, z))

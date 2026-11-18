@@ -83,7 +83,9 @@ impl DrawingApp {
         // a lifted note is a sheet of its own at 100% (`shown_note`), as the reference app's
         let note = element.created.is_some() && self.dock.is_none() && self.dock_drag.is_none();
         let target = if note { self.note_lift_rect() } else { self.elevated_rect() };
-        (Rect::from_min_max(on_canvas.min.lerp(target.min, t), on_canvas.max.lerp(target.max, t)), self.zoom + (1.0 - self.zoom) * t)
+        // an enlarged tree has a zoom of its own (canvas/wheel.rs); the others are at 100%
+        let lifted = if element.filetree.is_some() { self.lifted_zoom } else { 1.0 };
+        (Rect::from_min_max(on_canvas.min.lerp(target.min, t), on_canvas.max.lerp(target.max, t)), self.zoom + (lifted - self.zoom) * t)
     }
 
     /// The focused or enlarged terminal's own layer above the canvas. It holds egui's focus

@@ -4,8 +4,30 @@ impl DrawingApp {
     pub(crate) fn zoom_at(&mut self, zoom: f32, anchor: Pos2) {
         let world = self.to_world(anchor);
         self.glide = None;
-        self.zoom = zoom.clamp(0.1, 30.0);
+        let zoom = zoom.clamp(0.1, 30.0);
+        if zoom != self.zoom {
+            self.zoomed_at = self.now;
+        }
+        self.zoom = zoom;
         self.pan = anchor - self.canvas_rect.min - world.to_vec2() * self.zoom;
+    }
+
+    /// The zoom the canvas's text is laid out at (notes, texts, terminals' grids), drawn scaled to `zoom`. At rest it is
+    /// the zoom itself, crisp; while the zoom moves it holds still (until the text would grow or shrink past a quarter),
+    /// so a zoom's frames scale what is laid out instead of laying out and rasterizing every line at every new size,
+    /// and no line wraps again under the eye (asked: "dar zoom no Linux dá uma sensação de estar travado, em notebooks
+    /// que não têm placa de vídeo" and "o conteúdo de alguns elementos fica tremendo, como notas").
+    pub(crate) fn text_zoom(&self) -> f32 {
+        let held = self.held_text_zoom.get();
+        let moving = self.now - self.zoomed_at < ZOOM_SETTLES;
+        let zoom = if moving && held > 0.0 && (0.8..=1.25).contains(&(self.zoom / held)) { held } else { self.zoom };
+        self.held_text_zoom.set(zoom);
+        zoom
+    }
+
+    /// `text_zoom` for something drawn at `zoom` (a window on its way up is at its own): the canvas's, or its own.
+    pub(crate) fn text_zoom_at(&self, zoom: f32) -> f32 {
+        if zoom == self.zoom { self.text_zoom() } else { zoom }
     }
 
     /// − / + and their shortcuts: the next step down or up (only the sign of `delta` counts),
