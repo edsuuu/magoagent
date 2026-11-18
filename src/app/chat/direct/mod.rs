@@ -429,7 +429,13 @@ impl DrawingApp {
             self.queue_message(id, prompt.to_string());
             return true;
         }
-        wsl_settle();
+        // WSL's first probe still runs: the message waits in the queue and goes once it ends (`chat_nodes_tick`)
+        if wsl_settling() {
+            self.chat_note(id, "Preparando o WSL: a mensagem sai assim que ele responder.");
+            self.queue_message(id, prompt.to_string());
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            return true;
+        }
         let Some(cli) = agent_cli(&chat.agent) else {
             self.toast(format!("{} não foi encontrado no PATH nem no WSL.", chat.agent));
             return false;

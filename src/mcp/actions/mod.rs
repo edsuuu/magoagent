@@ -56,7 +56,8 @@ impl DrawingApp {
                     self.tour.as_ref().map_or(1, |tour| tour.step + 1)
                 ))
             }
-            "memory" => Ok(crate::app::system::memory::format(&self.memory.snapshot())),
+            // the bridge's ask goes by `memory_job` (act_later), off the interface's thread
+            "memory" => self.memory_job()(),
             "ide_folder" => self.act_ide_folder(&text("path")),
             "open_default" => self.act_open_default(&text("path")),
             "canvas_drop" => {
