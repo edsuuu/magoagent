@@ -11,7 +11,7 @@ use x11rb::protocol::randr::ConnectionExt as _;
 use x11rb::protocol::shape::{ConnectionExt as _, SK, SO};
 use x11rb::protocol::sync::{ConnectionExt as _, Int64};
 use x11rb::protocol::xproto::{
-    AtomEnum, ClientMessageEvent, ClipOrdering, ConnectionExt as _, CreateWindowAux, EventMask, PropMode, Rectangle, Window, WindowClass,
+    AtomEnum, ClientMessageEvent, ClipOrdering, ConnectionExt as _, CreateWindowAux, EventMask, InputFocus, PropMode, Rectangle, Window, WindowClass,
 };
 use x11rb::rust_connection::RustConnection;
 
@@ -117,6 +117,32 @@ pub(crate) fn input_shape(title: &str, area: Rect, scale: f32) {
         // the window is gone (the island was turned off and on): looked for again
         link.window = None;
     }
+    let _ = link.connection.flush();
+}
+
+/// Leaves `holes` (pixels of `window`) out of `window`, what lies under it showing and taking the clicks there; no holes
+/// make it whole again. A portal's page (browser/webkit.rs) under the app's menus, as Windows cuts it with a region.
+pub(crate) fn cut(window: u32, holes: &[Rectangle]) {
+    let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(link) = guard.as_ref() else { return };
+    let connection = &link.connection;
+    // a page's window that is already gone answers with an error, which is only dropped
+    if holes.is_empty() {
+        let _ = connection.shape_mask(SO::SET, SK::BOUNDING, window, 0, 0, x11rb::NONE);
+    } else {
+        let whole = Rectangle { x: 0, y: 0, width: u16::MAX, height: u16::MAX };
+        let _ = connection.shape_rectangles(SO::SET, SK::BOUNDING, ClipOrdering::UNSORTED, window, 0, 0, &[whole]);
+        let _ = connection.shape_rectangles(SO::SUBTRACT, SK::BOUNDING, ClipOrdering::UNSORTED, window, 0, 0, holes);
+    }
+    let _ = connection.flush();
+}
+
+/// Gives the keyboard to `window`, as the window manager gives it: a portal's page when clicked, the app's window back
+/// when the app is clicked (browser/webkit.rs).
+pub(crate) fn give_keyboard(window: u32) {
+    let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(link) = guard.as_ref() else { return };
+    let _ = link.connection.set_input_focus(InputFocus::PARENT, window, x11rb::CURRENT_TIME);
     let _ = link.connection.flush();
 }
 

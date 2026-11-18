@@ -158,7 +158,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "portal_screenshot",
-            "description": "Tira uma imagem do que a página de um navegador conectado mostra agora, para você ver o resultado de verdade (layout, cores, o que apareceu). O navegador precisa estar na tela. Só no Windows por enquanto.",
+            "description": "Tira uma imagem do que a página de um navegador conectado mostra agora, para você ver o resultado de verdade (layout, cores, o que apareceu). O navegador precisa estar na tela. No Windows e no Linux (no Linux só no X11); ainda não no macOS.",
             "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
         },
         {

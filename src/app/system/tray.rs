@@ -90,29 +90,29 @@ impl Tray {
         Some(Self { _icon: icon, items: Some(items) })
     }
 
-    /// The AppIndicator is GTK's: GTK starts on a thread of its own, the icon is made there and its loop runs there for as
-    /// long as the app does; the app does not wait for it (`poll` takes the menu when it is ready). None without the
-    /// library (libayatana-appindicator3, or the older libappindicator3: the tray-icon crate would stop the app without it).
+    /// The AppIndicator is GTK's: the icon is made on GTK's thread (system/gtk.rs, shared with the portals' pages) and
+    /// lives there for as long as the app does; the app does not wait for it (`poll` takes the menu when it is ready).
+    /// None without the library (libayatana-appindicator3, or the older libappindicator3: the tray-icon crate would stop
+    /// the app without it).
     #[cfg(target_os = "linux")]
     pub(crate) fn new() -> Option<Self> {
         let library = |name: &str| unsafe { libloading::Library::new(name) }.is_ok();
         if !library("libayatana-appindicator3.so.1") && !library("libappindicator3.so.1") {
             return None;
         }
+        thread_local! {
+            /// The icon, on GTK's thread.
+            static ICON: std::cell::RefCell<Option<tray_icon::TrayIcon>> = const { std::cell::RefCell::new(None) };
+        }
         let (made, built) = std::sync::mpsc::channel();
-        let gtk_thread = move || {
-            // the app's number formats stay C's: GTK would take the system's locale for the whole process
-            gtk::disable_setlocale();
-            let Some((icon, items)) = gtk::init().ok().and_then(|_| build()) else {
-                let _ = made.send(None);
-                return;
-            };
-            let _ = made.send(Some(items));
-            gtk::main();
-            drop(icon);
-        };
-        std::thread::Builder::new().name("bandeja".into()).spawn(gtk_thread).ok()?;
-        Some(Self { items: None, built })
+        let sent = crate::app::system::gtk::run(move || {
+            let items = build().map(|(icon, items)| {
+                ICON.with(|kept| *kept.borrow_mut() = Some(icon));
+                items
+            });
+            let _ = made.send(items);
+        });
+        sent.then_some(Self { items: None, built })
     }
 
     pub(crate) fn poll(&mut self) -> Option<TrayAsk> {

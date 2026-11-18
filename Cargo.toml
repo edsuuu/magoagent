@@ -38,6 +38,9 @@ hayro = "0.8"
 regex = "1"
 # the voice call: the microphone and the speaker (the engines are HTTP servers, see src/voice/)
 cpal = "0.16"
+# portals (web pages on the canvas) use the system's own webview: WebKit on macOS, WebView2 on Windows, WebKitGTK on
+# Linux (X11 only, on GTK's thread: app/browser/webkit.rs); the .deb depends on libwebkit2gtk-4.1-0
+wry = "0.57"
 
 # macOS: the window buttons move onto the toolbar row (already in the tree through winit)
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -54,8 +57,6 @@ tray-icon = "0.21"
 winit = { version = "0.30", default-features = false }
 raw-window-handle = "0.6"
 
-# portals (web pages on the canvas) use the system's own webview: WebKit on macOS, WebView2 on
-# Windows; ponytail: Linux would need GTK/WebKitGTK, so portals there only show their address
 # Fechar mantém em segundo plano: the icon by the clock (app/system/tray.rs)
 [target.'cfg(windows)'.dependencies]
 tray-icon = "0.21"
@@ -83,12 +84,14 @@ x11rb = { version = "0.13", default-features = false, features = ["randr", "shap
 # whether the libraries winit's X11 opens are there, before asking for it (already in the tree through winit)
 libloading = "0.8"
 # Fechar mantém em segundo plano: the icon in the top bar, an AppIndicator (its library is opened at run time) that GTK
-# runs on a thread of its own (system/tray.rs); without libxdo, which only the copy and paste items of menus use
+# runs on its own thread (system/gtk.rs, with the portals' pages); without libxdo, which only the copy and paste items of
+# menus use
 tray-icon = { version = "0.21", default-features = false }
 gtk = "0.18"
-
-[target.'cfg(not(target_os = "linux"))'.dependencies]
-wry = "0.57"
+# the picture of a portal's page (WebKitGTK's snapshot) at wry's own version, and the X11 window that holds the page
+# (its id, for the holes the app's menus cut in it): both already in the tree through wry
+webkit2gtk = { version = "=2.0.2", features = ["v2_38"] }
+gdkx11 = "0.18"
 
 # the CI runs clippy with `-D warnings`; these are the style lints this codebase goes against on purpose
 [lints.clippy]

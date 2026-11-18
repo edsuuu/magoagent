@@ -14,8 +14,7 @@ pub(crate) struct PortalDialog {
     pub(crate) spec: PortalSpec,
 }
 
-/// What pages report back (on the UI thread, from wry's handlers).
-#[cfg(not(target_os = "linux"))]
+/// What pages report back (from wry's handlers: on the UI thread, on GTK's on Linux).
 pub(crate) enum PortalEvent {
     /// A tab finished loading an address (a link clicked inside the page, too).
     Loaded { portal: String, tab: u64, url: String },
@@ -26,8 +25,10 @@ pub(crate) enum PortalEvent {
     /// A message from the Design overlay in a tab's page (design.rs).
     Design { portal: String, tab: u64, message: String },
     /// The picture of a region the stroke made: `seq` tells it from the later strokes.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))] // no picture on Windows yet
+    #[cfg_attr(windows, allow(dead_code))] // no picture on Windows yet
     Shot { portal: String, seq: u64, png: Option<Vec<u8>> },
+    /// The open page's picture for Copiar Captura de Tela, once the system has it.
+    Copied { picture: Result<(u32, u32, Vec<u8>), String> },
 }
 
 /// An address the webview can load: "exemplo.com" → "https://exemplo.com". A scheme counts only
@@ -46,7 +47,6 @@ pub(crate) fn normalize_url(url: &str) -> String {
 }
 
 /// Maps each new tab to a live page, preserving pages across closes and appends.
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub(super) fn match_portal_tabs(live: &[String], next: &[String]) -> Vec<Option<usize>> {
     if live.len() == next.len() {
         return (0..next.len()).map(Some).collect();
@@ -123,10 +123,20 @@ pub(crate) fn open_external(url: &str) {
     }
 }
 
-/// One tab's live page.
+/// A tab's page: wry's own on Windows and macOS; on Linux a handle to it on GTK's thread (webkit.rs).
 #[cfg(not(target_os = "linux"))]
+pub(crate) type PageView = wry::WebView;
+#[cfg(target_os = "linux")]
+pub(crate) type PageView = super::webkit::GtkPage;
+/// A portal's profile, the same way.
+#[cfg(not(target_os = "linux"))]
+pub(crate) type PageContext = wry::WebContext;
+#[cfg(target_os = "linux")]
+pub(crate) type PageContext = super::webkit::GtkProfile;
+
+/// One tab's live page.
 pub(crate) struct TabView {
-    pub(crate) webview: wry::WebView,
+    pub(crate) webview: PageView,
     pub(crate) uid: u64,
     /// What it was last told to load (or reported loading), so the URL isn't re-sent.
     pub(super) url: String,
@@ -136,21 +146,19 @@ pub(crate) struct TabView {
     pub(crate) secret: Option<String>,
 }
 
-#[cfg(not(target_os = "linux"))]
 impl TabView {
     /// wry drops a page's `ipc.postMessage` when the page's URL isn't an `http::Uri`, as file:///C:/…
-    /// on Windows: there Design's overlay keeps its messages and the app fetches them each frame.
+    /// on Windows and file:///… on Linux: there Design's overlay keeps its messages and the app fetches them each frame.
     pub(crate) fn polls_design(&self) -> bool {
-        cfg!(windows) && self.url.starts_with("file:")
+        !cfg!(target_os = "macos") && self.url.starts_with("file:")
     }
 }
 
-#[cfg(not(target_os = "linux"))]
 pub(crate) struct PortalView {
     pub(crate) tabs: Vec<TabView>,
     /// The portal's own profile (cookies, logins), in a folder beside the drawing; its tabs share
     /// it. After `tabs`: the pages go before the profile they use.
-    pub(super) context: wry::WebContext,
+    pub(super) context: PageContext,
     /// Box, zoom, open tab and the holes cut in it last applied, so unchanged values aren't
     /// re-sent every frame.
     pub(super) shown: Option<(Rect, f32, usize, Vec<Rect>, f32)>,
@@ -168,10 +176,30 @@ pub(super) fn new_tab_view(
 ) -> wry::Result<TabView> {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let uid = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let webview = page_builder(web_context, portal, uid, url, events, ctx, extras).build_as_child(window)?;
+    // wry anchors a child page to the window's bottom edge (ViewMinYMargin), so a window that
+    // settles at another height would move the page off its card; its place is set from the
+    // canvas instead, so AppKit must leave it alone
+    #[cfg(target_os = "macos")]
+    wry::WebViewExtMacOS::webview(&webview).setAutoresizingMask(objc2_app_kit::NSAutoresizingMaskOptions::empty());
+    Ok(TabView { webview, uid, url: url.into(), loading: true, secret: None })
+}
+
+/// A tab's page as wry makes it, on the thread that makes it: the console kept, hidden and
+/// without the keyboard until shown and clicked, and what it reports going to `events`.
+pub(super) fn page_builder<'a>(
+    web_context: &'a mut wry::WebContext,
+    portal: &str,
+    uid: u64,
+    url: &str,
+    events: &std::sync::mpsc::Sender<PortalEvent>,
+    ctx: &Context,
+    extras: &crate::app::browser::extras::TabExtras,
+) -> wry::WebViewBuilder<'a> {
     let (loaded, new_window, note) = (events.clone(), events.clone(), events.clone());
     let (portal_loaded, portal_window, portal_note) = (portal.to_string(), portal.to_string(), portal.to_string());
     let (ctx_note, ctx_loaded) = (ctx.clone(), ctx.clone());
-    let webview = crate::app::browser::extras::tune(wry::WebViewBuilder::new_with_web_context(web_context), extras)
+    crate::app::browser::extras::tune(wry::WebViewBuilder::new_with_web_context(web_context), extras)
         .with_url(url)
         .with_initialization_script(crate::app::browser::console::initialization_script())
         .with_visible(false)
@@ -200,13 +228,6 @@ pub(super) fn new_tab_view(
                 ctx_note.request_repaint();
             }
         })
-        .build_as_child(window)?;
-    // wry anchors a child page to the window's bottom edge (ViewMinYMargin), so a window that
-    // settles at another height would move the page off its card; its place is set from the
-    // canvas instead, so AppKit must leave it alone
-    #[cfg(target_os = "macos")]
-    wry::WebViewExtMacOS::webview(&webview).setAutoresizingMask(objc2_app_kit::NSAutoresizingMaskOptions::empty());
-    Ok(TabView { webview, uid, url: url.into(), loading: true, secret: None })
 }
 
 /// Leaves `holes` (window points) out of a page's native view, so the app's floating UI over it
@@ -260,5 +281,5 @@ pub(super) enum Chrome {
 #[cfg(windows)]
 pub(super) const PAGE_SETTLE: f64 = 0.15;
 /// WebView2's smallest page zoom (25%).
-#[cfg_attr(target_os = "linux", allow(dead_code))]
+#[cfg_attr(not(windows), allow(dead_code))]
 pub(super) const MIN_PAGE_ZOOM: f32 = 0.25;

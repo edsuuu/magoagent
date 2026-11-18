@@ -2,8 +2,9 @@
 
 use crate::prelude::*;
 
-/// BGRA pixels as GDI gives them (its alpha left at zero) into opaque RGBA.
-fn opaque_rgba(mut pixels: Vec<u8>) -> Vec<u8> {
+/// BGRA pixels as GDI and Cairo give them (GDI's alpha left at zero) into opaque RGBA.
+#[cfg_attr(target_os = "macos", allow(dead_code))] // no picture of the page on the Mac yet
+pub(crate) fn opaque_rgba(mut pixels: Vec<u8>) -> Vec<u8> {
     for p in pixels.as_chunks_mut::<4>().0 {
         p.swap(0, 2);
         p[3] = 255;
@@ -11,13 +12,21 @@ fn opaque_rgba(mut pixels: Vec<u8>) -> Vec<u8> {
     pixels
 }
 
-/// The picture as a PNG in base64, as the MCP sends images.
-fn png_base64(width: u32, height: u32, rgba: Vec<u8>) -> Result<String, String> {
+/// The picture as a PNG.
+pub(crate) fn png(width: u32, height: u32, rgba: Vec<u8>) -> Result<Vec<u8>, String> {
     let image = image::RgbaImage::from_raw(width, height, rgba).ok_or("imagem vazia")?;
     let mut png = Vec::new();
     image.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).map_err(|e| e.to_string())?;
-    Ok(crate::render::base64(&png))
+    Ok(png)
 }
+
+/// The picture as a PNG in base64, as the MCP sends images.
+fn png_base64(width: u32, height: u32, rgba: Vec<u8>) -> Result<String, String> {
+    Ok(crate::render::base64(&png(width, height, rgba)?))
+}
+
+/// What is said when the page is not on screen to be pictured.
+const NOT_SHOWN: &str = "não foi possível capturar a página: ela precisa estar na tela, com o navegador visível";
 
 /// What a window shows, as BGRA: the system draws it into a bitmap (PrintWindow), the parts under
 /// other windows too. None when it has no size or the system could not draw it (a hidden window).
@@ -104,24 +113,29 @@ pub(crate) fn webview_rgba(webview: &wry::WebView) -> Option<(u32, u32, Vec<u8>)
 }
 
 impl DrawingApp {
-    /// The agents' `portal_screenshot`: the open tab of portal `id` as a PNG in base64.
-    pub(crate) fn portal_shot(&self, id: &str) -> Result<String, String> {
-        let (width, height, rgba) = self.page_rgba(id)?;
-        png_base64(width, height, rgba)
+    /// The agents' `portal_screenshot`: the open tab of portal `id` as a PNG in base64, to `reply` once the
+    /// system has it (at once on Windows; on Linux from GTK's thread, the app going on meanwhile).
+    pub(crate) fn portal_shot(&self, id: &str, reply: std::sync::mpsc::Sender<Result<String, String>>) {
+        self.page_picture(id, move |picture| {
+            let _ = reply.send(picture.and_then(|(width, height, rgba)| png_base64(width, height, rgba)));
+        });
     }
 
-    /// The open tab's picture as opaque RGBA (also what Copiar Captura de Tela puts on the clipboard).
-    // ponytail: Windows only (the Mac has `browser::design::snapshot`, which answers later; wire it when the Mac's turn comes)
-    pub(crate) fn page_rgba(&self, id: &str) -> Result<(u32, u32, Vec<u8>), String> {
+    /// The open tab's picture as opaque RGBA (also what Copiar Captura de Tela puts on the clipboard), to `done`.
+    // ponytail: Windows and Linux (the Mac has `browser::design::snapshot`, which answers later; wire it when the Mac's turn comes)
+    pub(crate) fn page_picture(&self, id: &str, done: impl FnOnce(Result<(u32, u32, Vec<u8>), String>) + Send + 'static) {
+        #[cfg(any(windows, target_os = "linux"))]
+        let Some(tab) = self.open_tab_view(id) else {
+            return done(Err("a página desse navegador não está aberta".into()));
+        };
         #[cfg(windows)]
+        done(webview_rgba(&tab.webview).ok_or_else(|| NOT_SHOWN.into()));
+        #[cfg(target_os = "linux")]
+        tab.webview.picture(move |picture| done(picture.map(|(width, height, rgba, _)| (width, height, rgba)).ok_or_else(|| NOT_SHOWN.into())));
+        #[cfg(target_os = "macos")]
         {
-            let tab = self.open_tab_view(id).ok_or("a página desse navegador não está aberta")?;
-            webview_rgba(&tab.webview).ok_or_else(|| "não foi possível capturar a página: ela precisa estar na tela, com o navegador visível".into())
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = id;
-            Err("a captura da página só existe no Windows por enquanto; use portal_read ou o screenshot do app".into())
+            let _ = (id, NOT_SHOWN);
+            done(Err("a captura da página ainda não existe no macOS; use portal_read ou o screenshot do app".into()));
         }
     }
 }

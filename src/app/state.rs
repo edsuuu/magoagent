@@ -116,7 +116,6 @@ pub(crate) struct DrawingApp {
     /// When `dirty` last went from false to true (`ui`'s clock): the autosave waits 0.4 s after it.
     pub(crate) dirty_since: f64,
     /// When the Design overlay of a page that can't send by ipc was last asked for its messages.
-    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) design_polled: f64,
     /// The camera on its way to a node: when it set off, from where, to where (pans).
     pub(crate) glide: Option<(f64, Vec2, Vec2)>,
@@ -217,9 +216,7 @@ pub(crate) struct DrawingApp {
     pub(crate) island: island::Island,
     /// A portal's page as a picture while the canvas moves, and where its page box was and when
     /// it last changed (`sync_portals`).
-    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) portal_stills: std::collections::HashMap<String, egui::TextureHandle>,
-    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub(crate) portal_motion: std::collections::HashMap<String, (Rect, f64)>,
     pub(crate) chat_agent: Option<String>,
     pub(crate) chat_draft: String,
@@ -322,12 +319,10 @@ pub(crate) struct DrawingApp {
     /// Each rope's simulated chain: it swings behind moved ends and settles under its weight.
     pub(crate) ropes: std::collections::HashMap<String, RopeSim>,
     /// Live pages by portal element id, and what they report back.
-    #[cfg(not(target_os = "linux"))]
     pub(crate) portals: std::collections::HashMap<String, PortalView>,
     /// The page that holds a call's sound on Codex's voice (voice/page.rs).
     #[cfg(not(target_os = "linux"))]
     pub(crate) voice_page: Option<crate::app::voice::page::VoicePage>,
-    #[cfg(not(target_os = "linux"))]
     pub(crate) portal_events: (std::sync::mpsc::Sender<PortalEvent>, std::sync::mpsc::Receiver<PortalEvent>),
     /// The address being typed in a portal's bar (portal id, text, whether to take focus).
     pub(crate) portal_url_edit: Option<(String, String, bool)>,

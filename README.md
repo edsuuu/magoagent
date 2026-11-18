@@ -49,7 +49,7 @@ cargo test                # testes (gestos, arquivos, exportação, MCP, ponte)
   ```
 
 - **macOS e Linux:** dados em `~/Library/Application Support/MagoAgent/` (macOS) ou `~/.local/share/magoagent/` (Linux).
-- **Linux:** o diálogo de arquivos usa xdg-desktop-portal; portais ainda não abrem no Linux.
+- **Linux:** o diálogo de arquivos usa xdg-desktop-portal; os navegadores no quadro usam o WebKitGTK (o `.deb` instala o `libwebkit2gtk-4.1-0`) e abrem a página no X11 (o XWayland numa sessão Wayland); com `MAGOAGENT_WAYLAND=1` mostram só o endereço.
 - **Primeira vez:** a Luna apresenta o app e pede o primeiro espaço de trabalho (um projeto: um quadro e uma pasta).
 - **Começar do zero:** Ajustes › Dados › Limpar todos os dados apaga os desenhos, os chats, os ajustes e as senhas guardadas, e abre o app como na primeira vez. Pergunta antes e não tem volta.
 

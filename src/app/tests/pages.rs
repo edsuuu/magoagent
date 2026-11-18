@@ -63,7 +63,6 @@ fn clicks_on_a_note_select_its_card_never_its_text() {
 }
 
 #[test]
-#[cfg(not(target_os = "linux"))] // portals have no native page on Linux yet
 fn portal_page_fills_the_card_under_the_bar() {
     // the native page is the card's inside, under the header and the bar, at any zoom
     for zoom in [1.0, 2.0] {
@@ -91,7 +90,6 @@ fn an_enlarged_portal_keeps_its_bar_at_any_canvas_zoom() {
     assert!(app.chrome_live(&e));
 }
 
-#[cfg(not(target_os = "linux"))]
 #[test]
 fn the_apps_floating_ui_cuts_holes_in_a_portal_page() {
     let ctx = Context::default();

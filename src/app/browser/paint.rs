@@ -29,10 +29,14 @@ impl DrawingApp {
             }
         }
         let page = Rect::from_min_max(Pos2::new(rect.left(), rect.top() + chrome), rect.max);
+        #[cfg(target_os = "linux")]
+        let closed = !pages_open();
+        #[cfg(not(target_os = "linux"))]
+        let closed = false;
         let note = if spec.unloaded {
             "Descarregado"
-        } else if cfg!(target_os = "linux") {
-            "Navegadores ainda não abrem no Linux"
+        } else if closed {
+            "No Linux o navegador abre só no X11"
         } else {
             "Carregando…"
         };
@@ -47,8 +51,7 @@ impl DrawingApp {
                 muted,
             );
         }
-        // while the canvas moves, the page's picture moves with the card (`sync_portals`)
-        #[cfg(not(target_os = "linux"))]
+        // while the canvas moves, the page's picture moves with the card (`sync_portals`, Windows)
         if let (Some(still), Some(r)) = (self.portal_stills.get(&element.id), self.portal_page_rect(element)) {
             painter.image(still.id(), r, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
         }
@@ -80,7 +83,6 @@ impl DrawingApp {
 
     /// Where a portal's page goes on screen, if it should show: the card's inside, under the
     /// header and the bar (nothing above it when the bar is hidden).
-    #[cfg(not(target_os = "linux"))]
     pub(crate) fn portal_page_rect(&self, element: &Element) -> Option<Rect> {
         let (frame, zoom) = self.terminal_frame(element);
         let chrome = if element.portal.as_ref()?.chrome_hidden { 0.0 } else { PORTAL_CHROME * zoom };
@@ -94,10 +96,9 @@ impl DrawingApp {
     /// cards (a portal's bar, a terminal's grid): they keep under the page, as before. Last
     /// frame's areas count too. In a fixed order, so an unchanged set compares equal from frame to
     /// frame.
-    #[cfg(not(target_os = "linux"))]
     pub(crate) fn page_holes(ctx: &Context, page: Rect, cards: &[egui::Id]) -> Vec<Rect> {
-        // off Windows a hole hides the whole page: a tooltip of its own bar would blink it away
-        let tooltips = cfg!(windows);
+        // on macOS a hole hides the whole page: a tooltip of its own bar would blink it away
+        let tooltips = !cfg!(target_os = "macos");
         let mut holes: Vec<Rect> = ctx.memory(|m| {
             m.areas()
                 .visible_layer_ids()
@@ -116,11 +117,6 @@ impl DrawingApp {
 
     /// Whether a portal's open tab is still loading (the bar shows × then).
     pub(super) fn tab_loading(&self, id: &str) -> bool {
-        #[cfg(not(target_os = "linux"))]
-        if let Some(tab) = self.open_tab_view(id) {
-            return tab.loading;
-        }
-        let _ = id;
-        false
+        self.open_tab_view(id).is_some_and(|tab| tab.loading)
     }
 }

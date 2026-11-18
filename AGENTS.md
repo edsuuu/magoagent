@@ -18,14 +18,14 @@ src/
     chat/        o chat: direct/ (claude -p / codex exec em JSON; título pelo Haiku), composer, conversation, footer (chips),
                  tools (o MCP do app e o prompt do Maestro), commands/, context*, node* (o chat no canvas), mini* (mini chat)
     filetree/    a Árvore de Arquivos: lista, git (diff, blame, ramos, alterações), painel de editor, Localizar, problemas
-    browser/     o navegador (`PortalSpec`, wry): abas, console e imagem da página para os agentes, modo Design, cofre (vault)
+    browser/     o navegador (`PortalSpec`, wry; no Linux o WebKitGTK na thread do GTK, webkit.rs, só no X11): abas, console e imagem da página para os agentes, modo Design, cofre (vault)
     maestro/     o Maestro: recrutar, linha do tempo, demandas, eventos dos hooks, fichário, skills, worktrees, avatar
     voice/       a chamada e o ditado: orbe, popup, o som do Codex (page)
     island/      a ilha: pílula fixa no topo da tela (janela própria por cima de tudo) com o resumo dos agentes, perguntas pendentes, voz e chat novo em espaço próprio (`Prefs.island`)
     integrations/ Ajustes › Integrações: um arquivo por serviço de fora mostrado na ilha (GitHub, Spotify, Hermes Agent); http (curl, segredos pelo stdin)
     notes/       notas adesivas e o fichário em pilha; groups/ (grupos com quadro); floors/ (andares); workspaces/ (espaços)
     tasks/       tarefas pedidas aos agentes (`tarefas.json`); usage/ (consumo do plano, teto de agentes); mascot/
-    system/      arquivos, atualizações (release do GitHub; download.rs confere o sha256; update_flow.rs e updater.rs salvam, param os processos, atualizam e reabrem, no Windows; no Linux instalado pelo .deb, deb_update.rs instala o .deb da release pelo pkexec e reabre), memória, bandeja, `MAGOAGENT_SCRIPT` (script.rs)
+    system/      arquivos, atualizações (release do GitHub; download.rs confere o sha256; update_flow.rs e updater.rs salvam, param os processos, atualizam e reabrem, no Windows; no Linux instalado pelo .deb, deb_update.rs instala o .deb da release pelo pkexec e reabre), memória, bandeja, a thread do GTK no Linux (gtk.rs: bandeja e páginas), `MAGOAGENT_SCRIPT` (script.rs)
     ui/          a interface flutuante: widgets e fontes (mod), ícones, barra, menus (`menu_look`), propriedades,
                  estado dos agentes, barra lateral, diálogos, settings/ (Ajustes)
     tests/       testes de interface, um arquivo por assunto (gestos com `frame` e `drag`)

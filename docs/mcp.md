@@ -765,7 +765,7 @@ Espera até um seletor CSS existir e estar visível na página do navegador, ou 
 
 ### `portal_screenshot`
 
-Tira uma imagem do que a página de um navegador conectado mostra agora, para você ver o resultado de verdade (layout, cores, o que apareceu). O navegador precisa estar na tela. Só no Windows por enquanto.
+Tira uma imagem do que a página de um navegador conectado mostra agora, para você ver o resultado de verdade (layout, cores, o que apareceu). O navegador precisa estar na tela. No Windows e no Linux (no Linux só no X11); ainda não no macOS.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -773,7 +773,7 @@ Tira uma imagem do que a página de um navegador conectado mostra agora, para vo
 
 ### `portal_copy_screenshot`
 
-Copiar Captura de Tela: põe a imagem da página aberta do navegador na área de transferência da pessoa (só no Windows por enquanto). Para ver a página você mesmo, use portal_screenshot.
+Copiar Captura de Tela: põe a imagem da página aberta do navegador na área de transferência da pessoa (no Windows e no Linux; ainda não no macOS). Para ver a página você mesmo, use portal_screenshot.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|

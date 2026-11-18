@@ -1,14 +1,11 @@
 //! Portals: small browsers on the canvas. Each one is the system's own webview (wry: WebKit on
-//! macOS, WebView2 on Windows) laid over the canvas and moved with it every frame; the app draws
-//! the header and the address bar above the page. Agents drive them through the bridge.
+//! macOS, WebView2 on Windows, WebKitGTK on Linux) laid over the canvas and moved with it every
+//! frame; the app draws the header and the address bar above the page. Agents drive them through
+//! the bridge.
 
 pub(crate) mod console;
-// Linux has no webview (wry) yet: the pages' Design mode, extras and pictures go unused there
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub(crate) mod design;
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub(crate) mod extras;
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub(crate) mod shot;
 pub(crate) mod vault;
 
@@ -21,12 +18,17 @@ mod sync;
 #[cfg(test)]
 mod tests;
 mod types;
+#[cfg(target_os = "linux")]
+mod webkit;
 pub(crate) use types::*;
+#[cfg(target_os = "linux")]
+pub(crate) use webkit::{PAGES_UNAVAILABLE, pages_open};
+#[cfg(target_os = "linux")]
+use webkit::{cut_page, new_tab_view, release_keys};
 
 impl DrawingApp {}
 
 /// The selection box's outline as four 2-point strips, for the page to let through.
-#[cfg(not(target_os = "linux"))]
 pub(crate) fn marquee_edges(m: Rect) -> [Rect; 4] {
     let (a, b) = (m.min - Vec2::splat(1.0), m.max + Vec2::splat(1.0));
     [

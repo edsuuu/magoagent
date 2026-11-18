@@ -198,7 +198,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "portal_copy_screenshot",
-            "description": "Copiar Captura de Tela: põe a imagem da página aberta do navegador na área de transferência da pessoa (só no Windows por enquanto). Para ver a página você mesmo, use portal_screenshot.",
+            "description": "Copiar Captura de Tela: põe a imagem da página aberta do navegador na área de transferência da pessoa (no Windows e no Linux; ainda não no macOS). Para ver a página você mesmo, use portal_screenshot.",
             "inputSchema": { "type": "object", "properties": { "portal": { "type": "string" } }, "required": ["portal"] },
         }),
         json!({
