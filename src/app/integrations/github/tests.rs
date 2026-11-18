@@ -583,6 +583,47 @@ fn the_description_is_saved_and_a_comment_sent_one_write_at_a_time() {
 }
 
 #[test]
+fn a_pull_request_is_approved_and_merged_only_when_it_can_be() {
+    let mut app = app_with_pulse();
+    // Aprovar: someone else's, never the person's own
+    assert_eq!(app.github_approve("ana-dev/loja#42").unwrap_err(), "O GitHub não deixa aprovar o próprio pull request.");
+    app.github_approve("time/api#310").unwrap();
+    assert_eq!(app.integrations.github.sent, [approve_request("PR_kwDOAAAB310")]);
+    let query = approve_request("x")["query"].as_str().unwrap().to_string();
+    assert!(query.contains("addPullRequestReview(input: {pullRequestId: $id, event: APPROVE})"), "{query}");
+    app.integrations.github.receive(Message::Detail("time/api#310".into(), Ok(Box::new(PrDetail::default()))), 5);
+    app.integrations.github.receive(Message::Wrote(Write::Approve, "time/api#310".into(), Ok(())), 10);
+    assert_eq!(app.github_last_write(), Some(&Ok("Pull request aprovado.".to_string())));
+    assert!(app.github_detail("time/api#310").is_none() && app.integrations.github.next_pulse <= 10, "read again, and the list soon");
+    // Mesclar: only one read, and ready
+    assert!(app.github_merge("ana-dev/loja#42").unwrap_err().starts_with("Leia ana-dev/loja#42 antes de mesclar"));
+    let conflicting = PrDetail::parse(&recorded_detail(), 5).unwrap();
+    assert_eq!(conflicting.merge_method, "SQUASH");
+    app.integrations.github.receive(Message::Detail("ana-dev/site#7".into(), Ok(Box::new(conflicting.clone()))), 20);
+    assert_eq!(app.github_merge("ana-dev/site#7").unwrap_err(), "ana-dev/site#7 tem conflito com main: resolva antes.");
+    assert_eq!(app.github_last_write(), Some(&Err("ana-dev/site#7 tem conflito com main: resolva antes.".to_string())), "the tab reads why");
+    let with = |change: fn(&mut PullRequest)| {
+        let mut detail = conflicting.clone();
+        change(&mut detail.request);
+        detail.unmergeable()
+    };
+    assert_eq!(with(|request| request.draft = true).unwrap(), "ana-dev/site#7 é um rascunho: marque como pronto para revisão antes.");
+    assert_eq!(with(|request| request.state = PrState::Merged).unwrap(), "ana-dev/site#7 já foi mesclado.");
+    assert!(with(|request| request.mergeable = MergeableState::Unknown).unwrap().contains("ainda está vendo"));
+    assert_eq!(with(|request| request.mergeable = MergeableState::Mergeable), None);
+    let ready = PrDetail { request: app.integrations.github.pulse.as_ref().unwrap().mine[0].clone(), merge_method: "REBASE", ..Default::default() };
+    app.integrations.github.receive(Message::Detail("ana-dev/loja#42".into(), Ok(Box::new(ready))), 30);
+    app.github_merge("ana-dev/loja#42").unwrap();
+    assert_eq!(app.integrations.github.sent.last(), Some(&merge_request("PR_kwDOAAAB42", "REBASE", Some("aaa111"))), "only at the commit read");
+    let merge = merge_request("x", "MERGE", None);
+    assert!(merge["query"].as_str().unwrap().contains("mergePullRequest(input: {pullRequestId: $id, mergeMethod: $method, expectedHeadOid: $head})"));
+    assert_eq!(merge["variables"], json!({ "id": "x", "method": "MERGE", "head": null }));
+    app.integrations.github.receive(Message::Wrote(Write::Merge("REBASE", Some("aaa111".into())), "ana-dev/loja#42".into(), Ok(())), 40);
+    assert_eq!(app.github_last_write(), Some(&Ok("Pull request mesclado.".to_string())));
+    assert_eq!((conflicting.merge_words(), PrDetail::default().merge_words()), ("em um commit só (squash)", "com um commit de merge"));
+}
+
+#[test]
 fn the_agents_list_read_edit_and_comment_on_pull_requests_through_the_mcp() {
     let mut app = app_with_pulse();
     let github = |app: &mut DrawingApp, args: Value| {
@@ -614,5 +655,11 @@ fn the_agents_list_read_edit_and_comment_on_pull_requests_through_the_mcp() {
     assert!(status.ends_with("Última escrita: Descrição salva.") && !status.contains("#40"), "the merged ones stay out of status: {status}");
     github(&mut app, json!({ "action": "pr_comment", "pr": "time/api#310", "text": "Pode revisar de novo?" })).unwrap();
     assert_eq!(app.integrations.github.sent.last(), Some(&comment_request("PR_kwDOAAAB310", "Pode revisar de novo?")));
+    app.integrations.github.receive(Message::Wrote(Write::Comment("Pode revisar de novo?".into()), "time/api#310".into(), Ok(())), now_ms());
+    let approving = github(&mut app, json!({ "action": "pr_approve", "pr": "time/api#310" })).unwrap();
+    assert!(approving.starts_with("Enviando a aprovação de time/api#310"), "{approving}");
+    assert_eq!(app.integrations.github.sent.last(), Some(&approve_request("PR_kwDOAAAB310")));
+    app.integrations.github.receive(Message::Wrote(Write::Approve, "time/api#310".into(), Ok(())), now_ms());
+    assert!(github(&mut app, json!({ "action": "pr_merge", "pr": "ana-dev/site#7" })).unwrap_err().contains("tem conflito com main"));
     assert!(!format!("{all}{read}{status}").contains(TOKEN), "never the token");
 }

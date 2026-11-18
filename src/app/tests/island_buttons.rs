@@ -507,6 +507,37 @@ fn the_github_tab_walks_its_list_by_the_keyboard() {
     assert_eq!(app.integrations.pressed.borrow().as_slice(), ["open https://github.com/ana-dev/loja/pull/42"], "back at the first, never before it");
 }
 
+/// Mesclar and Aprovar ask before they go: Cancelar sends nothing, Confirmar sends it.
+#[test]
+fn the_github_tab_asks_before_it_merges_or_approves() {
+    use crate::app::integrations::github::PrDetail;
+    let (mut app, ctx, mut time) = github_tab();
+    // the person's own, ready: Mesclar, and no Aprovar
+    let request = app.integrations.github.pulse.as_ref().unwrap().mine[0].clone();
+    app.integrations.github.answered(PrDetail { request, merge_method: "SQUASH", ..Default::default() });
+    let texts: Vec<String> = island_frame(&mut app, &ctx, time, vec![]).into_iter().map(|(text, _)| text).collect();
+    assert!(!texts.iter().any(|text| text == "Aprovar"), "never one's own: {texts:?}");
+    let merge = painted(&mut app, &ctx, time, "Mesclar").center();
+    click(&mut app, &ctx, &mut time, merge);
+    painted(&mut app, &ctx, time, "Mesclar ana-dev/loja#42 na main em um commit só (squash)?");
+    assert!(!app.github_writing(), "asked, not sent");
+    let cancel = painted(&mut app, &ctx, time, "Cancelar").center();
+    click(&mut app, &ctx, &mut time, cancel);
+    painted(&mut app, &ctx, time, "Abrir no navegador");
+    assert!(!app.github_writing() && app.github_last_write().is_none());
+    click(&mut app, &ctx, &mut time, merge);
+    let confirm = painted(&mut app, &ctx, time, "Confirmar").center();
+    click(&mut app, &ctx, &mut time, confirm);
+    assert!(app.github_writing(), "confirmed: on its way");
+    // someone else's, asking for the person's review: Aprovar
+    let key = egui::Event::Key { key: egui::Key::ArrowDown, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::CTRL };
+    step(&mut app, &ctx, time, vec![key]);
+    time += 0.05;
+    let approve = painted(&mut app, &ctx, time, "Aprovar").center();
+    click(&mut app, &ctx, &mut time, approve);
+    painted(&mut app, &ctx, time, "Aprovar time/api#310?");
+}
+
 /// The Spotify tab: its height, aleatório pressed, and a song of the queue played at once, not skipped to.
 #[test]
 fn the_spotify_tab_plays_what_is_pressed() {

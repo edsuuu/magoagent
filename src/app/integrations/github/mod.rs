@@ -15,9 +15,11 @@ mod detail;
 mod fake;
 mod pulls;
 mod token;
+mod write;
 pub(crate) use activity::*;
 pub(crate) use detail::*;
 pub(crate) use pulls::*;
+pub(crate) use write::*;
 
 /// The token's item in the keychain.
 pub(crate) const TOKEN_ID: &str = "integration-github-token";

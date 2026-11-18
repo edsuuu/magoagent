@@ -1,26 +1,22 @@
 //! A pull request's detail on the island's GitHub tab, read when it is picked (the polls never carry a description):
-//! its description, the latest review of each reviewer and what blocks it; and the tab's two writes, the description
-//! saved and a comment posted. Each is one GraphQL request off the UI's thread, as the polls; the request bodies and
-//! what the answers say are plain functions, away from the network.
+//! its description, the latest review of each reviewer and what blocks it (the writes are in `write.rs`). Each read is
+//! one GraphQL request off the UI's thread, as the polls; the request bodies and what the answers say are plain
+//! functions, away from the network.
 
-use super::{CiState, Failure, GitHub, Message, PrFilter, PullRequest, ago, http, nodes, pull_request, text_at};
+use super::{CiState, Failure, GitHub, MergeableState, Message, PrFilter, PrState, PullRequest, ago, nodes, pull_request, text_at};
 use crate::prelude::*;
 
 /// The description is shown and edited up to this many characters.
 const BODY_MOST: usize = 20_000;
-/// What GitHub takes in a description or a comment.
-const GITHUB_MOST: usize = 65_536;
 /// A detail older than this is read again when the MCP asks for it, ms.
 const DETAIL_FRESH: i64 = 60_000;
-/// What a token that may only read hears when it writes.
-pub(crate) const NO_WRITE: &str = "O token não pode escrever em pull requests: dê a permissão Pull requests (leitura e escrita) ao token.";
 
 /// A pull request with its description and its reviews; its failed checks among the first 100.
 const DETAIL_QUERY: &str = r#"query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       id number title url body isDraft state mergeable reviewDecision updatedAt headRefName baseRefName
-      repository { nameWithOwner }
+      repository { nameWithOwner viewerDefaultMergeMethod }
       latestOpinionatedReviews(first: 50) { nodes { state author { login } } }
       commits(last: 1) { nodes { commit { oid statusCheckRollup { state contexts(first: 100) { nodes {
         ... on CheckRun { name conclusion detailsUrl }
@@ -29,14 +25,6 @@ const DETAIL_QUERY: &str = r#"query($owner: String!, $name: String!, $number: In
     }
   }
   rateLimit { remaining }
-}"#;
-
-const SAVE_BODY: &str = r#"mutation($id: ID!, $body: String!) {
-  updatePullRequest(input: {pullRequestId: $id, body: $body}) { pullRequest { id } }
-}"#;
-
-const ADD_COMMENT: &str = r#"mutation($id: ID!, $body: String!) {
-  addComment(input: {subjectId: $id, body: $body}) { commentEdge { node { url } } }
 }"#;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -50,6 +38,8 @@ pub(crate) struct PrDetail {
     /// Reviewers whose latest review approved it, and who asked for changes.
     pub(crate) approved: usize,
     pub(crate) changes_requested: usize,
+    /// How the person merges in its repository, as GitHub names it: MERGE, SQUASH or REBASE.
+    pub(crate) merge_method: &'static str,
     /// When it was read, ms.
     pub(crate) fetched_at: i64,
 }
@@ -78,7 +68,13 @@ impl PrDetail {
             }
         }
         let count = |wanted: &str| latest.iter().filter(|(_, state)| state == wanted).count();
-        Some(PrDetail { approved: count("APPROVED"), changes_requested: count("CHANGES_REQUESTED"), request, body, truncated, fetched_at: now })
+        let merge_method = match node.get("repository").and_then(|repository| repository.get("viewerDefaultMergeMethod")).and_then(Value::as_str) {
+            Some("SQUASH") => "SQUASH",
+            Some("REBASE") => "REBASE",
+            _ => "MERGE",
+        };
+        let (approved, changes_requested) = (count("APPROVED"), count("CHANGES_REQUESTED"));
+        Some(PrDetail { approved, changes_requested, merge_method, request, body, truncated, fetched_at: now })
     }
 
     /// What blocks it, in order: a conflict with its base, each failed check, the changes asked for. Nothing once it
@@ -123,6 +119,28 @@ impl PrDetail {
             count => parts.push(format!("{count} pedidos de mudanças")),
         }
         parts.join(" · ")
+    }
+
+    /// Why Mesclar cannot be pressed now, if so (GitHub may still refuse: a required check, a review, the permission).
+    pub(crate) fn unmergeable(&self) -> Option<String> {
+        let request = &self.request;
+        match (request.state, request.draft, request.mergeable) {
+            (PrState::Merged, ..) => Some(format!("{} já foi mesclado.", request.id)),
+            (PrState::Closed, ..) => Some(format!("{} está fechado.", request.id)),
+            (_, true, _) => Some(format!("{} é um rascunho: marque como pronto para revisão antes.", request.id)),
+            (_, _, MergeableState::Conflicting) => Some(format!("{} tem conflito com {}: resolva antes.", request.id, request.base_ref)),
+            (_, _, MergeableState::Unknown) => Some("O GitHub ainda está vendo se ele mescla: espere um pouco.".into()),
+            _ => None,
+        }
+    }
+
+    /// The merge in the person's words: "em um commit só (squash)".
+    pub(crate) fn merge_words(&self) -> &'static str {
+        match self.merge_method {
+            "SQUASH" => "em um commit só (squash)",
+            "REBASE" => "por rebase",
+            _ => "com um commit de merge",
+        }
     }
 
     /// The detail in words, for the MCP's `pr`.
@@ -186,42 +204,6 @@ pub(crate) fn detail_request(owner: &str, name: &str, number: u64) -> Value {
     json!({ "query": DETAIL_QUERY, "variables": { "owner": owner, "name": name, "number": number } })
 }
 
-/// The body of Salvar's request: the pull request's node and its whole new description.
-pub(crate) fn save_body_request(node_id: &str, body: &str) -> Value {
-    json!({ "query": SAVE_BODY, "variables": { "id": node_id, "body": body } })
-}
-
-/// The body of Comentar's request: the pull request's node and the comment.
-pub(crate) fn comment_request(node_id: &str, text: &str) -> Value {
-    json!({ "query": ADD_COMMENT, "variables": { "id": node_id, "body": text } })
-}
-
-/// What a write's answer says: done (`data.<field>` came), or why not; a token that may only read is told what to give it.
-pub(super) fn written(answer: Result<http::Answer, String>, field: &str) -> Result<(), Failure> {
-    let refused = |message: &str| Failure { message: message.to_string(), unauthorized: false };
-    // a 403 is the token's permission, unless it is the hour's budget
-    if let Ok(answer) = &answer
-        && answer.status == 403
-        && !answer.body.to_ascii_lowercase().contains("rate limit")
-    {
-        return Err(refused(NO_WRITE));
-    }
-    let root = super::read(answer)?;
-    if let Some(error) = root.get("errors").and_then(Value::as_array).and_then(|errors| errors.first()) {
-        let kind = error.get("type").and_then(Value::as_str).unwrap_or_default();
-        let message = text_at(error, "message", 200).unwrap_or_default();
-        let lower = message.to_lowercase();
-        if matches!(kind, "FORBIDDEN" | "INSUFFICIENT_SCOPES") || ["not accessible", "permission", "scope"].iter().any(|word| lower.contains(word)) {
-            return Err(refused(NO_WRITE));
-        }
-        return Err(refused(&format!("O GitHub recusou: {}", if message.is_empty() { kind } else { &message })));
-    }
-    match root.get("data").and_then(|data| data.get(field)).is_some_and(Value::is_object) {
-        true => Ok(()),
-        false => Err(refused("O GitHub não confirmou a escrita.")),
-    }
-}
-
 fn fetch_detail(token: &str, owner: &str, name: &str, number: u64) -> Result<PrDetail, Failure> {
     let root = super::post(token, &detail_request(owner, name, number))?;
     PrDetail::parse(&root, now_ms()).ok_or_else(|| {
@@ -233,10 +215,6 @@ fn fetch_detail(token: &str, owner: &str, name: &str, number: u64) -> Result<PrD
     })
 }
 
-fn send_write(token: &str, payload: &Value, field: &str) -> Result<(), Failure> {
-    written(http::send(&super::request(token, "POST", super::GRAPHQL, Some(payload.to_string()))), field)
-}
-
 /// A pull request's detail as it stands: the last one read, a read out, why the last one failed.
 #[derive(Default)]
 pub(super) struct DetailEntry {
@@ -245,29 +223,13 @@ pub(super) struct DetailEntry {
     pub(super) error: Option<String>,
 }
 
-/// One of the tab's writes, with its text.
-#[derive(Clone, Debug, PartialEq)]
-pub(super) enum Write {
-    Body(String),
-    Comment(String),
-}
-
-impl Write {
-    fn done(&self) -> &'static str {
-        match self {
-            Write::Body(_) => "Descrição salva.",
-            Write::Comment(_) => "Comentário enviado.",
-        }
-    }
-}
-
-fn unknown(id: &str) -> String {
+pub(super) fn unknown(id: &str) -> String {
     format!("Não entendi o pull request {id:?}: diga dono/repo#número ou o endereço dele no GitHub.")
 }
 
 impl GitHub {
     /// The id the tab knows a pull request by: as the pulse or an earlier read wrote it (GitHub's names ignore case).
-    fn key(&self, owner: &str, name: &str, number: u64) -> String {
+    pub(super) fn key(&self, owner: &str, name: &str, number: u64) -> String {
         let id = format!("{owner}/{name}#{number}");
         let known = self.pulse.as_ref().and_then(|pulse| pulse.find(&id)).map(|request| request.id.clone());
         known.or_else(|| self.details.keys().find(|key| key.eq_ignore_ascii_case(&id)).cloned()).unwrap_or(id)
@@ -278,14 +240,14 @@ impl GitHub {
     }
 
     /// GitHub's id of a pull request's node, from the pulse or a read.
-    fn node_id(&self, key: &str) -> Option<String> {
+    pub(super) fn node_id(&self, key: &str) -> Option<String> {
         let polled = self.pulse.as_ref().and_then(|pulse| pulse.find(key)).map(|request| request.node_id.clone());
         let read = || self.details.get(key).and_then(|entry| entry.detail.as_ref()).map(|detail| detail.request.node_id.clone());
         polled.filter(|id| !id.is_empty()).or_else(read).filter(|id| !id.is_empty())
     }
 
     /// Why nothing can be asked of GitHub now, if so.
-    fn unable(&self, enabled: bool) -> Option<String> {
+    pub(super) fn unable(&self, enabled: bool) -> Option<String> {
         if !enabled {
             Some("O GitHub está desligado em Ajustes › Integrações.".into())
         } else if !self.has_token() {
@@ -295,6 +257,12 @@ impl GitHub {
         } else {
             None
         }
+    }
+
+    /// A detail as if GitHub had answered it, for the island's tests.
+    #[cfg(test)]
+    pub(crate) fn answered(&mut self, detail: PrDetail) {
+        self.take_detail(detail.request.id.clone(), Ok(Box::new(detail)), 0);
     }
 
     pub(super) fn take_detail(&mut self, id: String, result: Result<Box<PrDetail>, Failure>, now: i64) {
@@ -309,28 +277,6 @@ impl GitHub {
                 }
             }
         }
-    }
-
-    pub(super) fn take_write(&mut self, write: Write, id: String, result: Result<(), Failure>, now: i64) {
-        self.writing = false;
-        self.last_write = Some(match result {
-            Ok(()) => {
-                // the description read is now the one saved
-                if let Write::Body(body) = &write
-                    && let Some(detail) = self.details.get_mut(&id).and_then(|entry| entry.detail.as_mut())
-                {
-                    (detail.body, detail.truncated) = body_text(body);
-                }
-                Ok(write.done().to_string())
-            }
-            Err(failure) => {
-                let message = failure.message.clone();
-                if failure.unauthorized {
-                    self.failed(failure, now);
-                }
-                Err(message)
-            }
-        });
     }
 }
 
@@ -381,72 +327,6 @@ impl DrawingApp {
     /// Why the last read of the pull request's detail failed.
     pub(crate) fn github_detail_error(&self, id: &str) -> Option<&str> {
         self.integrations.github.entry(id).and_then(|entry| entry.error.as_deref())
-    }
-
-    /// Salvar: `body` becomes the pull request's whole description. The outcome comes by a later tick, in
-    /// `github_last_write`; Err (also kept there) when it cannot be sent.
-    pub(crate) fn github_save_body(&mut self, id: &str, body: &str) -> Result<(), String> {
-        self.github_write(id, Write::Body(body.to_string()))
-    }
-
-    /// Comentar: posts `text` as a new comment on the pull request. As `github_save_body`.
-    pub(crate) fn github_comment(&mut self, id: &str, text: &str) -> Result<(), String> {
-        self.github_write(id, Write::Comment(text.to_string()))
-    }
-
-    fn github_write(&mut self, id: &str, write: Write) -> Result<(), String> {
-        let result = self.github_send_write(id, write);
-        if let Err(why) = &result {
-            self.integrations.github.last_write = Some(Err(why.clone()));
-        }
-        result
-    }
-
-    fn github_send_write(&mut self, id: &str, write: Write) -> Result<(), String> {
-        let enabled = self.prefs.integrations.github;
-        let github = &mut self.integrations.github;
-        github.load_token();
-        if let Some(why) = github.unable(enabled) {
-            return Err(why);
-        }
-        if github.writing {
-            return Err("Espere a escrita anterior terminar.".into());
-        }
-        let (owner, name, number) = parse_id(id).ok_or_else(|| unknown(id))?;
-        let key = github.key(&owner, &name, number);
-        let text = match &write {
-            Write::Body(body) => body,
-            Write::Comment(text) if text.trim().is_empty() => return Err("Escreva o comentário antes de enviar.".into()),
-            Write::Comment(text) => text,
-        };
-        if text.chars().count() > GITHUB_MOST {
-            return Err(format!("O texto passa do limite do GitHub ({GITHUB_MOST} caracteres)."));
-        }
-        let cut = github.details.get(&key).and_then(|entry| entry.detail.as_ref()).is_some_and(|detail| detail.truncated);
-        if matches!(write, Write::Body(_)) && cut {
-            return Err("A descrição é longa demais para editar aqui: edite no navegador.".into());
-        }
-        let node_id = github.node_id(&key).ok_or_else(|| format!("O app ainda não sabe o id de {key} no GitHub: leia o pull request antes."))?;
-        let (payload, field) = match &write {
-            Write::Body(body) => (save_body_request(&node_id, body), "updatePullRequest"),
-            Write::Comment(text) => (comment_request(&node_id, text), "addComment"),
-        };
-        if super::fake::pulse().is_some() {
-            let done = if matches!(write, Write::Body(_)) { "Descrição salva (cena de teste)." } else { "Comentário enviado (cena de teste)." };
-            github.last_write = Some(Ok(done.into()));
-            return Ok(());
-        }
-        (github.writing, github.last_write) = (true, None);
-        // never the network in a test: the request is kept to be looked at, and the answer is handed to `receive`
-        #[cfg(test)]
-        github.sent.push(payload.clone());
-        if !cfg!(test) {
-            github.spawn(move |token| {
-                let result = send_write(token, &payload, field);
-                Message::Wrote(write, key, result)
-            });
-        }
-        Ok(())
     }
 
     /// The MCP's `prs`: the tab's list as `filter` (a `PrFilter::key`, empty: all) keeps it, a pull request a line.
@@ -501,18 +381,5 @@ impl DrawingApp {
             Some(why) => Err(format!("{why} Pedi de novo: chame `pr` em alguns segundos.")),
             None => Ok(waiting),
         }
-    }
-}
-
-/// What only the island's GitHub tab reads and asks (it is drawn where the app is only read).
-impl DrawingApp {
-    /// A write is out (Salvar and Enviar wait for it).
-    pub(crate) fn github_writing(&self) -> bool {
-        self.integrations.github.writing
-    }
-
-    /// How the last write went: Ok("Descrição salva." / "Comentário enviado.") or Err(why), in pt-BR.
-    pub(crate) fn github_last_write(&self) -> Option<&Result<String, String>> {
-        self.integrations.github.last_write.as_ref()
     }
 }

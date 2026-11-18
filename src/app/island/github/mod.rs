@@ -43,6 +43,29 @@ pub(crate) struct Page {
     refused: String,
     /// Atividade shows at the right instead of the pull request.
     activity: bool,
+    /// A write pressed, waiting for Confirmar, and the pull request it is for.
+    confirm: Option<(Ask, String)>,
+}
+
+/// The writes that change something on GitHub: each asks before it goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Ask {
+    Save,
+    Comment,
+    Approve,
+    Merge,
+}
+
+/// The question Confirmar answers.
+fn question(ask: Ask, request: &PullRequest, merge: &str) -> String {
+    let id = &request.id;
+    match ask {
+        Ask::Save => format!("Trocar a descrição de {id} no GitHub?"),
+        Ask::Comment => format!("Publicar o comentário em {id}?"),
+        Ask::Approve => format!("Aprovar {id}?"),
+        Ask::Merge if request.base_ref.is_empty() => format!("Mesclar {id} {merge}?"),
+        Ask::Merge => format!("Mesclar {id} na {} {merge}?", request.base_ref),
+    }
 }
 
 /// The icon of a pull request's state, in its colour: open green, a draft grey, merged purple, closed red.
@@ -139,7 +162,8 @@ impl DrawingApp {
         if state.activity {
             self.github_activity(ui, right, &pulse.login, &mut state);
         } else if let Some(request) = picked {
-            self.github_side(ui, right, &request, colors, &mut state);
+            let mine = pulse.mine.iter().any(|known| known.id == request.id);
+            self.github_side(ui, right, &request, mine, colors, &mut state);
         } else {
             let words = if state.filter == PrFilter::NeedsYou { "Nada precisa de você agora" } else { "Nenhum pull request aqui" };
             ui.painter().text(right.center(), egui::Align2::CENTER_CENTER, words, font(12.0), DIM_3);
@@ -275,9 +299,12 @@ impl DrawingApp {
     }
 
     /// The pull request picked: its title, what holds it back, the description or a comment, the buttons.
-    fn github_side(&mut self, ui: &mut egui::Ui, card: Rect, request: &PullRequest, colors: &UiColors, state: &mut Page) {
+    fn github_side(&mut self, ui: &mut egui::Ui, card: Rect, request: &PullRequest, mine: bool, colors: &UiColors, state: &mut Page) {
         let inner = card.shrink2(Vec2::new(14.0, 12.0));
         let id = request.id.clone();
+        if state.confirm.as_ref().is_some_and(|(_, of)| *of != id) {
+            state.confirm = None;
+        }
         // the detail is read once the pull request shows
         if self.github_detail(&id).is_none() && !self.github_detail_loading(&id) && self.github_detail_error(&id).is_none() {
             let _ = self.github_load_detail(&id);
@@ -327,8 +354,23 @@ impl DrawingApp {
                 })
                 .collect()
         };
-        for (text, url, color, mark) in lines.into_iter().take(3) {
-            let row = Rect::from_min_size(Pos2::new(inner.left(), y), Vec2::new(inner.width(), 18.0));
+        // Aprovar (someone else's) and Mesclar (one ready) at the end of the first line
+        let mut actions_left = inner.right();
+        let ready = detail.as_ref().is_some_and(|detail| detail.unmergeable().is_none());
+        for (words, ask, shows) in [("Mesclar", Ask::Merge, ready), ("Aprovar", Ask::Approve, request.is_open() && !mine)] {
+            if !shows {
+                continue;
+            }
+            let width = ui.painter().layout_no_wrap(words.to_string(), font(11.5), INK).size().x + 22.0;
+            let response = forms::chip(ui, Pos2::new(actions_left - width, y - 4.0), words, false);
+            if response.clicked() {
+                state.confirm = Some((ask, id.clone()));
+            }
+            actions_left = response.rect.left() - 6.0;
+        }
+        for (index, (text, url, color, mark)) in lines.into_iter().take(3).enumerate() {
+            let width = if index == 0 { actions_left - inner.left() } else { inner.width() };
+            let row = Rect::from_min_size(Pos2::new(inner.left(), y), Vec2::new(width, 18.0));
             let hovered = url.as_ref().is_some_and(|url| {
                 let response = ui.interact(row, ui.scope_id().with(("github_blocker", &text)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
                 if response.clicked() {
@@ -355,7 +397,10 @@ impl DrawingApp {
         }
         // the buttons, and over them what the last press said
         let buttons_y = inner.bottom() - 26.0;
+        let merge = detail.as_ref().map_or("", |detail| detail.merge_words());
+        let confirming = state.confirm.as_ref().map(|(ask, _)| *ask);
         let said = match (self.github_writing(), self.github_last_write(), state.refused.is_empty()) {
+            _ if confirming.is_some() => confirming.map(|ask| (question(ask, request, merge), INK)),
             (_, _, false) => Some((state.refused.clone(), RED)),
             (true, ..) => Some(("Enviando ao GitHub…".to_string(), DIM)),
             (false, Some(Ok(done)), _) => Some((done.clone(), GREEN)),
@@ -402,6 +447,23 @@ impl DrawingApp {
                 }
             });
         });
+        if let Some(ask) = confirming {
+            let yes = forms::chip(ui, Pos2::new(inner.left(), buttons_y), "Confirmar", true);
+            let no = forms::chip(ui, Pos2::new(yes.rect.right() + 6.0, buttons_y), "Cancelar", false);
+            if yes.clicked() {
+                let sent = match ask {
+                    Ask::Save => self.github_save_body(&id, &state.draft),
+                    Ask::Comment => self.github_comment(&id, state.note.trim()).map(|()| state.note.clear()),
+                    Ask::Approve => self.github_approve(&id),
+                    Ask::Merge => self.github_merge(&id),
+                };
+                state.refused = sent.err().unwrap_or_default();
+            }
+            if yes.clicked() || no.clicked() {
+                state.confirm = None;
+            }
+            return;
+        }
         let mut x = inner.left();
         let open =
             forms::chip(ui, Pos2::new(x, buttons_y), "Abrir no navegador", true).on_hover_text("Ctrl+O · Ctrl+↓ e Ctrl+↑ passam de um pull request a outro");
@@ -416,13 +478,10 @@ impl DrawingApp {
         x = checks.rect.right() + 6.0;
         let changed = detail.as_ref().is_some_and(|detail| detail.body != state.draft);
         if !state.comment && changed && forms::chip(ui, Pos2::new(x, buttons_y), "Salvar", false).clicked() {
-            state.refused = self.github_save_body(&id, &state.draft).err().unwrap_or_default();
+            state.confirm = Some((Ask::Save, id.clone()));
         }
         if state.comment && !state.note.trim().is_empty() && forms::chip(ui, Pos2::new(x, buttons_y), "Comentar", false).clicked() {
-            match self.github_comment(&id, state.note.trim()) {
-                Ok(()) => state.note.clear(),
-                Err(error) => state.refused = error,
-            }
+            state.confirm = Some((Ask::Comment, id.clone()));
         }
     }
 }
