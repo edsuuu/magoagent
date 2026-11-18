@@ -1,13 +1,14 @@
 //! macOS: the SwiftUI interface (macos/MagoUI) beside egui, area by area (`MAGOAGENT_SWIFTUI`). Swift sends actions
-//! through `act` (an envelope queued here and run in the frame, by `DrawingApp::act` or a `ui.*` of its own); the app
+//! through `act` (an envelope queued here and run in the frame, by `DrawingApp::act` or a `ui.*`, the window's own); the app
 //! publishes topics, each sent only when its JSON changed. Everything on the main thread. Contract: docs/swiftui.md.
 
 use crate::prelude::*;
 use std::ffi::{CStr, CString, c_char};
 use std::sync::{Mutex, OnceLock};
 
-/// The areas moving to SwiftUI, in `MAGOAGENT_SWIFTUI=all`. `probe`, the bridge's proof, only by its name.
-pub(crate) const AREAS: [&str; 7] = ["island", "chat", "canvas", "terminal", "shell", "settings", "filetree"];
+/// The areas moving to SwiftUI, in `MAGOAGENT_SWIFTUI=all`, in the order Swift starts them (the views the shell
+/// embeds first). `probe`, the bridge's proof, only by its name.
+pub(crate) const AREAS: [&str; 7] = ["chat", "terminal", "filetree", "settings", "canvas", "island", "shell"];
 
 /// What Rust hands Swift (`MagoCallbacks` in macos/MagoUI/Sources/MagoBridgeC/include/mago_ui.h): same fields, same order.
 #[repr(C)]
@@ -85,7 +86,7 @@ pub(crate) fn stop() {
 }
 
 /// Sends `value` to Swift under `topic` when its JSON differs from the last sent. Main thread only.
-pub(crate) fn publish(topic: &str, value: &impl Serialize) {
+pub(crate) fn publish<T: Serialize>(topic: &str, value: &T) {
     if CONTEXT.get().is_none() {
         return;
     }
@@ -139,6 +140,8 @@ impl DrawingApp {
         if enabled("probe") {
             publish("app", &AppTopic { version: env!("CARGO_PKG_VERSION"), agents: self.terminals.len() });
         }
+        // AREAS: one line per area, each publishing its topics (`native_<area>` in the area's folder), e.g.
+        // if enabled("island") { self.native_island(); }
     }
 
     /// One envelope: its answer, or None when it runs on a thread (the answer comes through `LATER`).
@@ -173,10 +176,13 @@ impl DrawingApp {
         Some(Reply { id: envelope.id, ok, text })
     }
 
-    /// The actions only the interface asks for (`ui.<name>`): what has no MCP tool because only a window needs it.
+    /// The actions only the interface asks for, what has no MCP tool because only a window needs it: `ui.ping`, and
+    /// `ui.<area>.<verb>` handed to the area's `native_<area>_act(verb, args)`.
     fn ui_action(&mut self, name: &str, _args: &Value) -> Result<String, String> {
-        match name {
-            "ping" => Ok("pong".into()),
+        match name.split_once('.') {
+            None if name == "ping" => Ok("pong".into()),
+            // AREAS: one arm per area (with `_args` renamed `args`), e.g.
+            // Some(("island", verb)) => self.native_island_act(verb, args),
             _ => Err(format!("ação de interface desconhecida: ui.{name}")),
         }
     }
@@ -208,8 +214,8 @@ mod tests {
         let mut app = DrawingApp::default();
         let reply = app.native_act(r#"{"id": 3, "action": "ui.ping"}"#).unwrap();
         assert_eq!((reply.id, reply.ok, reply.text.as_str()), (3, true, "pong"));
-        let reply = app.native_act(r#"{"id": 4, "action": "ui.nada", "args": {}}"#).unwrap();
-        assert!(!reply.ok && reply.text.contains("ui.nada"));
+        let reply = app.native_act(r#"{"id": 4, "action": "ui.nada.abrir", "args": {}}"#).unwrap();
+        assert!(!reply.ok && reply.text.contains("ui.nada.abrir"), "an area that is not there says so");
         // one of the MCP's, through `DrawingApp::act`
         let reply = app.native_act(r#"{"id": 5, "action": "tasks", "args": {"action": "create", "title": "da interface"}}"#).unwrap();
         assert!(reply.ok, "{}", reply.text);

@@ -34,8 +34,8 @@ struct ProbeView: View {
 }
 
 @MainActor
-enum Probe {
-    static func open() {
-        MagoWindow.open(ProbeView(), frame: NSRect(x: 80, y: 80, width: 240, height: 110), title: "Sonda SwiftUI", panel: true, level: .floating)
+enum ProbeArea {
+    static func start() {
+        _ = MagoWindow.make(title: "Sonda SwiftUI", frame: NSRect(x: 80, y: 80, width: 240, height: 110), borderless: false, transparent: false, level: .floating, content: ProbeView())
     }
 }
