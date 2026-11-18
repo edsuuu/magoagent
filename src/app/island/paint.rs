@@ -53,6 +53,8 @@ pub(super) struct View {
     pub(super) mic: f32,
     pub(super) voice_note: String,
     pub(super) celebrating: bool,
+    /// An agent finished since the island was last open: Luna wears a check (`done.rs`).
+    pub(super) finished: bool,
     /// Where the wizard's eyes look, in the window's coordinates: the cursor when it is near (`cursor.rs`).
     pub(super) pointer: Option<Pos2>,
     pub(super) sound_on: bool,
@@ -271,6 +273,7 @@ impl DrawingApp {
             mic: f32::from_bits(self.voice.shared.level.load(Ordering::Relaxed)).min(1.0),
             voice_note: self.voice.status.clone(),
             celebrating: time < island.celebrate_until,
+            finished: island.finished,
             pointer: island.pointer,
             sound_on: self.prefs.island_sound,
             volume: self.prefs.island_volume,
@@ -397,6 +400,9 @@ impl DrawingApp {
                 }
                 None => mago(&painter, view.pointer, "island-main", center, size, wanted.state, time),
             }
+            if view.finished && view.shape == Shape::Compact {
+                super::done::paint_check(&painter, center, size);
+            }
         }
         self.island_keys(ui, view, &mut out);
         out
@@ -434,6 +440,9 @@ impl DrawingApp {
             match self.luna_groove().filter(|groove| calm && groove.dance != Dance::Nap) {
                 Some(groove) => paint_mago_dancing(ui.painter(), "island-main-dance", center, LUNA, self.luna_colour(LUME), &groove, time),
                 None => paint_mago_toward(ui.painter(), "island-main", center, LUNA, state, time, view.pointer),
+            }
+            if view.finished {
+                super::done::paint_check(ui.painter(), center, LUNA);
             }
             if let Some(now) = now {
                 self.island_playing(ui, rect, now, None, false, notch, groove.as_ref(), time, out);

@@ -284,13 +284,15 @@ Manda um prompt a um agente conectado (outro terminal do canvas, ou um chat), es
 
 ### `recruit_agent`
 
-Cria um agente novo (um terminal) abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você; ele ganha um nome (a resposta diz qual) e você fala com ele com ask_agent. Só de dentro de um terminal do MagoAgent. Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).
+Cria um agente novo abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você: um chat do app ou um terminal com o Claude Code, como a pessoa escolheu em Ajustes › Agentes › Invocação dos agentes. Ele ganha um nome (a resposta diz qual, o modelo e o esforço) e você fala com ele com ask_agent. Só de dentro de um terminal ou chat do MagoAgent. Escolha sempre model e effort à altura da tarefa e diga à pessoa o que escolheu. Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `command` | string | o que roda nele; padrão claude (ex.: codex) |
+| `command` | string | o agente e a tarefa; padrão claude (ex.: codex, ou claude "revise o diff") |
+| `model` | string | o modelo que você escolhe para a tarefa: haiku (simples e rápido), sonnet (o dia a dia) ou opus (o difícil e longo); no Codex, um modelo da lista dele (ex.: gpt-5-codex); sem isto vale o de Ajustes |
+| `effort` | string: `low`, `medium`, `high`, `xhigh`, `max` | o esforço que você escolhe para a tarefa: low, medium, high, xhigh ou max |
 | `worktree` | boolean | true: num git worktree próprio, num ramo dele |
-| `mode` | string: `terminal`, `chat` | terminal: Claude Code completo num terminal; chat: conversa leve num chat do app (usa o login do CLI, gasta bem menos memória); sem isto vale o ajuste Invocação dos agentes |
+| `mode` | string: `terminal`, `chat` | só quando a pessoa pedir com essas palavras ("em terminal", "em chat"); sem isto vale o ajuste Invocação dos agentes, o que ela escolheu: não passe por conta própria. terminal: Claude Code completo num terminal; chat: conversa leve num chat do app |
 
 ### `create_terminal`
 
