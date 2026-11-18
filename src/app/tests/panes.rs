@@ -6,13 +6,19 @@ use super::*;
 use crate::app::panes::{PANE_WIDTH, PANES, Pane};
 use egui::accesskit::Role;
 
-const SCREEN: Vec2 = Vec2::new(1200.0, 800.0);
+pub(super) const SCREEN: Vec2 = Vec2::new(1200.0, 800.0);
 
 /// One frame of the title bar and the panel, with the canvas's keys; gives what it showed, from
 /// its accessibility tree: each widget's role, text and rect.
-fn pane_frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) -> Vec<(Role, String, Rect)> {
+pub(super) fn pane_frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) -> Vec<(Role, String, Rect)> {
+    pane_input(app, ctx, events, Modifiers::NONE)
+}
+
+/// `pane_frame` with keys held (Shift on a click).
+pub(super) fn pane_input(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>, modifiers: Modifiers) -> Vec<(Role, String, Rect)> {
     ctx.enable_accesskit();
     let time = Some(ctx.input(|i| i.time) + 0.05);
+    let events = [egui::Event::ModifiersChanged(modifiers)].into_iter().chain(events).collect();
     let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SCREEN)), time, events, ..Default::default() };
     let mut output = ctx.run_ui(raw, |_| {
         app.screen_keys(ctx);
@@ -34,7 +40,7 @@ fn pane_frame(app: &mut DrawingApp, ctx: &Context, events: Vec<egui::Event>) -> 
         .collect()
 }
 
-fn pane_click(app: &mut DrawingApp, ctx: &Context, at: Pos2) -> Vec<(Role, String, Rect)> {
+pub(super) fn pane_click(app: &mut DrawingApp, ctx: &Context, at: Pos2) -> Vec<(Role, String, Rect)> {
     pane_frame(app, ctx, vec![egui::Event::PointerMoved(at), button(at, true)]);
     let shown = pane_frame(app, ctx, vec![button(at, false)]);
     // the pointer leaves, so no tooltip covers the next click
@@ -56,16 +62,16 @@ fn press_pane(app: &mut DrawingApp, ctx: &Context, k: usize) {
 }
 
 /// Where the widget of `role` whose text starts with `text` is.
-fn find(shown: &[(Role, String, Rect)], role: Role, text: &str) -> Option<Rect> {
+pub(super) fn find(shown: &[(Role, String, Rect)], role: Role, text: &str) -> Option<Rect> {
     shown.iter().find(|(r, t, _)| *r == role && t.starts_with(text)).map(|(_, _, rect)| *rect)
 }
 
-fn texts(shown: &[(Role, String, Rect)]) -> Vec<String> {
+pub(super) fn texts(shown: &[(Role, String, Rect)]) -> Vec<String> {
     shown.iter().map(|(_, text, _)| text.clone()).collect()
 }
 
 /// The panel opened by its button, settled.
-fn opened(pane: Pane) -> (Context, DrawingApp, Vec<(Role, String, Rect)>) {
+pub(super) fn opened(pane: Pane) -> (Context, DrawingApp, Vec<(Role, String, Rect)>) {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     settle(&mut app, &ctx);
@@ -186,8 +192,8 @@ fn a_changed_file_shows_its_lines_and_diff_and_opens_in_the_tree() {
     assert_eq!(app.change_line_counts(&dir.join("kept.txt")), Some((2, 1)));
     let row = find(&shown, Role::Button, "kept.txt").expect("the file's row");
     pane_click(&mut app, &ctx, row.center());
-    let diff = &app.panes.changes.diff;
-    assert!(diff.contains(&('-', "dois".into())) && diff.contains(&('+', "2".into())) && diff.contains(&('+', "quatro".into())), "{diff:?}");
+    let diff: Vec<(char, &str)> = app.panes.changes.diff.iter().map(|l| (l.mark, l.text.as_str())).collect();
+    assert!(diff.contains(&('-', "dois")) && diff.contains(&('+', "2")) && diff.contains(&('+', "quatro")), "{diff:?}");
     let shown = pane_frame(&mut app, &ctx, vec![]);
     assert!(find(&shown, Role::Button, "Descartar").is_none(), "no such action in the app");
     pane_click(&mut app, &ctx, find(&shown, Role::Button, "Abrir na Árvore").unwrap().center());

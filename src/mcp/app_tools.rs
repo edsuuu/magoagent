@@ -411,11 +411,30 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "panel",
-            "description": "O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto.",
+            "description": "O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.",
             "inputSchema": { "type": "object", "properties": {
                 "name": { "type": "string", "enum": ["changes"] },
                 "open": { "type": "boolean" },
+                "width": { "type": "number", "description": "a largura do painel em pixels (de 300 até deixar 360 ao canvas); 0 volta à padrão" },
+                "worktree": name("Alterações: o worktree a mostrar (nome da pasta, ramo ou caminho); todos: as Árvores do canvas"),
             } },
+        }),
+        json!({
+            "name": "changes_review",
+            "description": "A revisão do painel Alterações, como num pull request. worktrees lista os worktrees dos repositórios das Árvores do canvas (o principal e os dos agentes, em .magoagent/worktrees) com o ramo, o escolhido com *; com `worktree`, escolhe um (todos volta às Árvores). comment junta à revisão um comentário nas linhas `from` a `to` do arquivo alterado `path` (o caminho a partir da pasta, ou o fim dele), com o trecho do diff e o que está errado em `note`; list mostra os comentários numerados; remove tira o de número `index`; clear tira todos. send manda a revisão ao agente `agent` (nome ou id; vazio: o escolhido no painel ou o primeiro que trabalha na pasta) numa mensagem só: cada comentário com arquivo:linhas, o trecho e a nota, e a observação geral `note`; usa os comentários juntados ou, com `comments`, só esses (e os juntados ficam). pr pede ao agente uma análise de PR de todo o diff do worktree escolhido (ou das pastas das Árvores): bugs, riscos, testes faltando, por arquivo:linha. `worktree` em qualquer ação escolhe antes o worktree.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["worktrees", "comment", "list", "remove", "clear", "send", "pr"] },
+                "worktree": name("o worktree (nome da pasta, ramo ou caminho); todos: as Árvores do canvas"),
+                "path": name("comment: o arquivo alterado"),
+                "from": { "type": "integer", "description": "comment: a primeira linha (a primeira do arquivo é 1)" },
+                "to": { "type": "integer", "description": "comment: a última linha (vazio: só `from`)" },
+                "note": name("comment: o que está errado; send: a observação geral"),
+                "index": { "type": "integer", "description": "remove: o número do comentário, como list mostra" },
+                "agent": name("send, pr: o agente que recebe (nome ou id)"),
+                "comments": { "type": "array", "description": "send: os comentários a mandar no lugar dos juntados", "items": { "type": "object", "properties": {
+                    "path": { "type": "string" }, "from": { "type": "integer" }, "to": { "type": "integer" }, "note": { "type": "string" },
+                }, "required": ["path", "from", "note"] } },
+            }, "required": ["action"] },
         }),
         json!({
             "name": "file_tree",

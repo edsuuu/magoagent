@@ -33,7 +33,7 @@ process.terminate()
 
 GROUPS = [
     ("Canvas e desenho", ("add_elements", "update_elements", "delete_elements", "get_scene", "clear_canvas", "set_background", "view", "screenshot",
-                          "focus_canvas", "canvas_drop", "canvas_group", "minimap", "sidebar", "panel", "theme", "window_outline", "history", "open_file", "save_file")),
+                          "focus_canvas", "canvas_drop", "canvas_group", "minimap", "sidebar", "panel", "changes_review", "theme", "window_outline", "history", "open_file", "save_file")),
     ("Notas e fichário", ("create_note", "read_note", "write_note", "note", "note_buttons", "note_stack", "binder", "open_as_note")),
     ("Agentes, terminais e a Luna", ("list_agents", "ask_agent", "recruit_agent", "create_terminal", "connect", "disconnect", "connection_history", "read_terminal",
                                       "terminal_find", "terminal_look", "terminal_menu", "terminal_processes", "terminal_restart", "notify",

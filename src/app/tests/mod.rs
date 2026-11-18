@@ -2,6 +2,7 @@ use super::*;
 
 mod arrows;
 mod changelog;
+mod changes_pane;
 mod chat;
 mod chat_card;
 mod chat_node;

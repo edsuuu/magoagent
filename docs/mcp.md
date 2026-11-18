@@ -2,7 +2,7 @@
 
 <!-- gerado por docs/mcp.py a partir do tools/list do app: não edite à mão -->
 
-O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.29) e tem **105 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
+O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.29) e tem **106 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
 
 ## Ligar
 
@@ -124,12 +124,30 @@ A lateral dos espaços, como a pessoa a usa: `next` vai ao próximo agente que p
 
 ### `panel`
 
-O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto.
+O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
 | `name` | string: `changes` |  |
 | `open` | boolean |  |
+| `width` | number | a largura do painel em pixels (de 300 até deixar 360 ao canvas); 0 volta à padrão |
+| `worktree` | string | Alterações: o worktree a mostrar (nome da pasta, ramo ou caminho); todos: as Árvores do canvas |
+
+### `changes_review`
+
+A revisão do painel Alterações, como num pull request. worktrees lista os worktrees dos repositórios das Árvores do canvas (o principal e os dos agentes, em .magoagent/worktrees) com o ramo, o escolhido com *; com `worktree`, escolhe um (todos volta às Árvores). comment junta à revisão um comentário nas linhas `from` a `to` do arquivo alterado `path` (o caminho a partir da pasta, ou o fim dele), com o trecho do diff e o que está errado em `note`; list mostra os comentários numerados; remove tira o de número `index`; clear tira todos. send manda a revisão ao agente `agent` (nome ou id; vazio: o escolhido no painel ou o primeiro que trabalha na pasta) numa mensagem só: cada comentário com arquivo:linhas, o trecho e a nota, e a observação geral `note`; usa os comentários juntados ou, com `comments`, só esses (e os juntados ficam). pr pede ao agente uma análise de PR de todo o diff do worktree escolhido (ou das pastas das Árvores): bugs, riscos, testes faltando, por arquivo:linha. `worktree` em qualquer ação escolhe antes o worktree.
+
+| Parâmetro | Tipo | O que é |
+|---|---|---|
+| `action` (obrigatório) | string: `worktrees`, `comment`, `list`, `remove`, `clear`, `send`, `pr` |  |
+| `worktree` | string | o worktree (nome da pasta, ramo ou caminho); todos: as Árvores do canvas |
+| `path` | string | comment: o arquivo alterado |
+| `from` | integer | comment: a primeira linha (a primeira do arquivo é 1) |
+| `to` | integer | comment: a última linha (vazio: só `from`) |
+| `note` | string | comment: o que está errado; send: a observação geral |
+| `index` | integer | remove: o número do comentário, como list mostra |
+| `agent` | string | send, pr: o agente que recebe (nome ou id) |
+| `comments` | array | send: os comentários a mandar no lugar dos juntados |
 
 ### `history`
 

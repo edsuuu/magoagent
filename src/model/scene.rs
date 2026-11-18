@@ -220,6 +220,8 @@ pub(crate) struct Prefs {
     pub(crate) sidebar_agents_closed: bool,
     /// The sidebar's green "Nada esperando por você" closed by its × (ui/attention.rs); the amber card still shows.
     pub(crate) sidebar_clear_hidden: bool,
+    /// The right panel's width (app/panes/) as its edge was pulled; none: `PANE_WIDTH` (a double-click on the edge).
+    pub(crate) pane_width: Option<f32>,
     /// Mostrar Tamanho: when a portal's header shows its width × height.
     pub(crate) portal_size: crate::app::browser::extras::SizeReadout,
     /// Points of zoom a notch of the wheel adds (Ajustes › Geral › Tela), 2 to 50.
@@ -311,6 +313,7 @@ impl Default for Prefs {
             sidebar_hidden: false,
             sidebar_agents_closed: false,
             sidebar_clear_hidden: false,
+            pane_width: None,
             portal_size: Default::default(),
             zoom_step: 10,
             terminal: TermPrefs::default(),
