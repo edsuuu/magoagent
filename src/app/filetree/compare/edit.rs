@@ -5,23 +5,17 @@ use crate::prelude::*;
 use egui::text::LayoutJob;
 use std::sync::Arc;
 
-/// Puts the galley's rows on the grid the diff draws: line `n` at display row `n`, less the lines hidden before it. The
-/// first line of each hidden stretch keeps one row (the "N linhas sem mudança" marker is painted over it); the others sit
-/// on it, without glyphs. `hidden` is (first line, count), in order.
-pub(super) fn squeeze(galley: &mut egui::Galley, hidden: &[(usize, usize)], row_h: f32) {
-    let mut removed = 0;
-    let mut next = 0;
+/// Puts the galley's rows on the grid the diff draws: line `n` at the row `rows[n]` gives (`Compare::line_rows`), without
+/// glyphs when it is hidden (the "N linhas sem mudança" marker is painted over its row). Lines past `rows` (the last empty
+/// one, or what was just typed) follow the last row.
+pub(super) fn squeeze(galley: &mut egui::Galley, rows: &[(usize, bool)], row_h: f32) {
+    let after = rows.last().map_or(0, |(row, _)| row + 1);
     let mut last = 0.0;
     for (line, row) in galley.rows.iter_mut().enumerate() {
-        while next < hidden.len() && line >= hidden[next].0 + hidden[next].1 {
-            removed += hidden[next].1 - 1;
-            next += 1;
-        }
-        let inside = next < hidden.len() && line >= hidden[next].0;
-        let display = if inside { hidden[next].0 - removed } else { line - removed };
+        let (display, shown) = rows.get(line).copied().unwrap_or((after + line - rows.len(), true));
         row.pos.y = display as f32 * row_h;
         last = row.pos.y + row_h;
-        if inside {
+        if !shown {
             let row = Arc::make_mut(&mut row.row);
             row.visuals = Default::default();
         }
@@ -48,7 +42,7 @@ pub(super) fn column(
     text: &mut dyn egui::TextBuffer,
     job: &(u64, LayoutJob),
     lang: &'static highlight::Lang,
-    hidden: &[(usize, usize)],
+    rows: &[(usize, bool)],
     font: &egui::FontId,
     row_h: f32,
     origin: Pos2,
@@ -67,7 +61,7 @@ pub(super) fn column(
         let mut made = if hash(buffer.as_str(), font.size) == job.0 { job.1.clone() } else { highlight::layout(lang, buffer.as_str(), font.clone(), row_h) };
         made.wrap.max_width = f32::INFINITY;
         let mut galley = ui.fonts_mut(|fonts| fonts.layout_job(made));
-        squeeze(Arc::make_mut(&mut galley), hidden, row_h);
+        squeeze(Arc::make_mut(&mut galley), rows, row_h);
         galley
     };
     let out = egui::TextEdit::multiline(text)

@@ -1,10 +1,10 @@
-//! The tab that compares a file with the last commit, as the reference IDE's diff viewer: two columns (the HEAD's text and the
-//! file's), each with only its own lines, the changed ones colored (green added, gray removed, blue modified) and, in a
-//! modified line, its changed words stronger. Between the columns a strip joins each change's lines on the left to its lines
-//! on the right (band.rs); its » puts the HEAD's lines back in the file (`compare_ui` returns it; the pane reverts the
-//! change). Both columns scroll together, each at its own pace so the matching lines stay level (`map_row`). Long unchanged
-//! stretches collapse to a "N linhas sem mudança" row (fold.rs). F7 and Shift+F7 (and Alt+↓ and Alt+↑) walk the changes;
-//! the numbers of both files sit in the middle, a checkbox marks each change. "Unificado" puts both texts in one column, with the » at the left of the numbers.
+//! The tab that compares a file with the last commit: two columns (the HEAD's text and the file's), row for row, so a line
+//! only one side has faces an empty, hatched row on the other. Removed lines are a soft red, added ones a soft green and, in
+//! a modified line, the changed words stronger. Each column has its numbers at its left edge; between the columns a narrow
+//! strip marks each change, and its small arrow (on hover, or on the change the walk is on) puts the HEAD's lines back in
+//! the file (`compare_ui` returns it; the pane reverts the change). Both columns scroll together. Long unchanged stretches
+//! collapse to a "N linhas sem mudança" row (fold.rs). F7 and Shift+F7 (and Alt+↓ and Alt+↑) walk the changes. "Unificado"
+//! puts both texts in one column, with the arrow at the left of the numbers.
 
 use crate::editor::{DiffRow, RowKind, diff_rows, highlight, unified_rows};
 use crate::prelude::*;
@@ -12,30 +12,24 @@ use std::collections::HashSet;
 use std::ops::Range;
 use std::path::Path;
 
-mod band;
 mod edit;
 mod fold;
 mod ui;
 
-pub(crate) use band::map_row;
 pub(crate) use fold::{Plan, visible_plan};
 pub(crate) use ui::compare_ui;
 
-/// Darcula's DIFF_* colors, as the IDE's viewer paints them.
-const INSERTED: Color32 = Color32::from_rgb(0x29, 0x44, 0x36);
-const DELETED: Color32 = Color32::from_rgb(0x48, 0x4A, 0x4A);
-const CHANGED: Color32 = Color32::from_rgb(0x38, 0x55, 0x70);
-
-/// The soft tint of a modified line: the word color mixed into the editor's background.
-fn soft(color: Color32) -> Color32 {
-    let (bg, mix) = (crate::editor::theme::ISLAND, |a: u8, b: u8| (a as f32 * 0.4 + b as f32 * 0.6).round() as u8);
-    Color32::from_rgb(mix(color.r(), bg.r()), mix(color.g(), bg.g()), mix(color.b(), bg.b()))
-}
+/// A removed and an added line over the editor's background, and the changed words inside them.
+const REMOVED: Color32 = Color32::from_rgb(0x3A, 0x22, 0x25);
+const ADDED: Color32 = Color32::from_rgb(0x1F, 0x33, 0x27);
+const REMOVED_WORD: Color32 = Color32::from_rgb(0x6B, 0x2F, 0x34);
+const ADDED_WORD: Color32 = Color32::from_rgb(0x2C, 0x5C, 0x3A);
 
 /// One row of a column.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Item {
-    /// A line (side by side: only the column's own side of `row` is set), with the line it pairs with when modified.
+    /// A line (side by side: only the column's own side of `row` is set, and neither on the empty row across from a line
+    /// only the other side has), with the line it pairs with when modified.
     Line { row: DiffRow, partner: Option<usize> },
     /// `count` unchanged lines hidden (from line `starts` of the old and of the new text); `key` names the stretch (what `open_fold` takes).
     Fold { key: usize, count: usize, starts: [usize; 2] },
@@ -70,8 +64,8 @@ pub(crate) struct Compare {
     scroll_to: Option<usize>,
     /// How far each column is scrolled sideways, on its own (Shift+wheel, the touchpad or the bar under it).
     hscroll: [f32; 2],
-    /// The changes whose checkbox the person cleared (by index); the box is a mark for now, it changes nothing else.
-    pub(crate) unchecked: HashSet<usize>,
+    /// The HEAD's short hash, for the left column's header (empty out of a repository).
+    pub(crate) head: String,
     /// The colored text of each column (the changed words stronger), by the text it was made for and the font size.
     jobs: [Option<(u64, egui::text::LayoutJob)>; 2],
     /// Where each column's caret was last frame, to follow it only when it moves.
@@ -96,7 +90,7 @@ impl Compare {
             scroll: [0.0; 2],
             scroll_to: Some(0),
             hscroll: [0.0; 2],
-            unchecked: HashSet::new(),
+            head: String::new(),
             jobs: [None, None],
             caret: [None; 2],
         };
@@ -146,12 +140,8 @@ impl Compare {
                     if self.unified {
                         self.items[0].push(Item::Line { row, partner });
                     } else {
-                        if row.left.is_some() {
-                            self.items[0].push(Item::Line { row: DiffRow { right: None, ..row }, partner: row.right });
-                        }
-                        if row.right.is_some() {
-                            self.items[1].push(Item::Line { row: DiffRow { left: None, ..row }, partner: row.left });
-                        }
+                        self.items[0].push(Item::Line { row: DiffRow { right: None, ..row }, partner: row.left.and(row.right) });
+                        self.items[1].push(Item::Line { row: DiffRow { left: None, ..row }, partner: row.right.and(row.left) });
                     }
                     if spans.get(next).is_some_and(|span| span.end == index + 1) {
                         self.blocks.push(Block { rows: [started[0]..self.items[0].len(), started[1]..self.items[1].len()] });
@@ -161,8 +151,6 @@ impl Compare {
             }
         }
         self.cur = self.cur.min(self.blocks.len().saturating_sub(1));
-        let count = self.blocks.len();
-        self.unchecked.retain(|index| *index < count);
     }
 
     /// How many changes there are.
@@ -209,35 +197,36 @@ impl Compare {
         self.scroll
     }
 
-    /// The (old row, new row) pairs where each change starts and ends.
-    pub(crate) fn knots(&self) -> Vec<(f32, f32)> {
-        self.blocks
-            .iter()
-            .flat_map(|block| [(block.rows[0].start as f32, block.rows[1].start as f32), (block.rows[0].end as f32, block.rows[1].end as f32)])
-            .collect()
-    }
-
-    /// After column `driver` scrolled to `top` (a row): clamp it, and the other one follows so what is at a third of the
-    /// view stays level.
-    pub(crate) fn scroll_driver(&mut self, driver: usize, top: f32, most: [f32; 2], focal: f32) {
+    /// After column `driver` scrolled to `top` (a row): clamp it, and the other one follows (side by side the rows match).
+    pub(crate) fn scroll_driver(&mut self, driver: usize, top: f32, most: [f32; 2]) {
         self.scroll[driver] = top.clamp(0.0, most[driver]);
         if !self.unified {
-            let other = 1 - driver;
-            self.scroll[other] = (map_row(&self.knots(), driver, self.scroll[driver] + focal) - focal).clamp(0.0, most[other]);
+            self.scroll[1 - driver] = self.scroll[driver].clamp(0.0, most[1 - driver]);
         }
+    }
+
+    /// How many lines the file lost and gained against the HEAD.
+    pub(crate) fn totals(&self) -> (usize, usize) {
+        let changed = self.items.iter().flatten().filter_map(|item| match item {
+            Item::Line { row, .. } if row.kind != RowKind::Same => Some(row),
+            _ => None,
+        });
+        changed.fold((0, 0), |(removed, added), row| (removed + row.left.is_some() as usize, added + row.right.is_some() as usize))
     }
 }
 
 impl Compare {
-    /// The stretches a side-by-side column hides, as (first line, how many) in that column's text.
-    pub(crate) fn hidden(&self, column: usize) -> Vec<(usize, usize)> {
-        self.items[column]
-            .iter()
-            .filter_map(|item| match item {
-                Item::Fold { count, starts, .. } => Some((starts[column], *count)),
-                Item::Line { .. } => None,
-            })
-            .collect()
+    /// The row of each line of a side-by-side column's text, and whether it shows (a hidden line sits on its marker's row).
+    pub(crate) fn line_rows(&self, column: usize) -> Vec<(usize, bool)> {
+        let mut rows = vec![];
+        for (index, item) in self.items[column].iter().enumerate() {
+            match item {
+                Item::Line { row, .. } if row.left.or(row.right).is_some() => rows.push((index, true)),
+                Item::Fold { count, .. } => rows.extend(std::iter::repeat_n((index, false), *count)),
+                Item::Line { .. } => {}
+            }
+        }
+        rows
     }
 
     /// The colored text of `column` (0 the HEAD's, 1 the file's) with the changed words of its modified lines stronger, made
@@ -268,8 +257,9 @@ impl Compare {
                 _ => continue,
             };
             let Some(&start) = starts.get(line) else { continue };
+            let word = if column == 0 { REMOVED_WORD } else { ADDED_WORD };
             for mark in marks {
-                crate::editor::editor::restyle(&mut job, start + mark.start..start + mark.end, |format| format.background = CHANGED);
+                crate::editor::editor::restyle(&mut job, start + mark.start..start + mark.end, |format| format.background = word);
             }
         }
         self.jobs[column] = Some((key, job.clone()));
