@@ -74,3 +74,14 @@ fn a_message_shown_when_sent_is_not_shown_again_when_the_agent_writes_it_down() 
     assert_eq!(t.echoes, 0);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn the_build_of_the_repo_says_dev_in_its_title_and_icon() {
+    // the tests run from `target/`: the app in development
+    assert!(crate::file::development());
+    assert_eq!(crate::window_names().0, format!("{APP_TITLE} DEV"));
+    let dev = image::load_from_memory(crate::app_icon()).expect("the DEV icon is a png");
+    let installed = image::load_from_memory(include_bytes!("../../assets/icon.png")).expect("the icon is a png");
+    assert_eq!((dev.width(), dev.height()), (installed.width(), installed.height()), "same size as the app's icon");
+    assert_ne!(dev.to_rgba8().into_raw(), installed.to_rgba8().into_raw(), "with its badge");
+}

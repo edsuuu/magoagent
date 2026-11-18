@@ -11,6 +11,10 @@ use crate::prelude::*;
 /// The island's height on a question with options to pick (`QUESTION_PICKER_H`) and on a permission (`approval`).
 pub(super) const QUESTION_H: f32 = 200.0;
 pub(super) const APPROVAL_H: f32 = 160.0;
+/// A permission opened to read the whole request (`PersonAsk::details`).
+pub(super) const APPROVAL_OPEN_H: f32 = 380.0;
+/// "Responder no terminal" and "ver tudo": light enough to read on the amber wash.
+const LINK: Color32 = Color32::from_rgb(0xd4, 0xd7, 0xdd);
 const CYAN: Color32 = Color32::from_rgb(0x22, 0xd3, 0xee);
 
 /// What a button of the row does.
@@ -45,7 +49,15 @@ impl DrawingApp {
         let Some(index) = asks.iter().position(|ask| ask.chat == *chat) else { return };
         let ask = &mut asks[index];
         let approval = ask.questions.is_empty();
-        out.body = (if approval { APPROVAL_H } else { QUESTION_H }) - super::paint::PAGE_TOP - 10.0;
+        let open = approval && ask.open;
+        out.body = (if open {
+            APPROVAL_OPEN_H
+        } else if approval {
+            APPROVAL_H
+        } else {
+            QUESTION_H
+        }) - super::paint::PAGE_TOP
+            - 10.0;
         let (wash, strength, state) = if approval { (AMBER, 0.42, MagoState::NeedsYou) } else { (CYAN, 0.38, MagoState::Asking) };
 
         // `.card.wash`: radius 20, the hairline, the wash rising from under its bottom
@@ -74,7 +86,7 @@ impl DrawingApp {
         let name = outside.as_ref().map(|(label, _)| label.clone()).or_else(|| self.chats.iter().find(|item| item.id == *chat).map(|item| item.name.clone()));
         let color = color.unwrap_or(wash);
         let doing = match ask.questions.len() {
-            0 => "precisa de permissão".to_string(),
+            0 => format!("precisa de permissão · {}", ask.tool_label()),
             1 => "está perguntando".to_string(),
             total => format!("está perguntando ({} de {total})", ask.step.min(total - 1) + 1),
         };
@@ -118,16 +130,24 @@ impl DrawingApp {
         }
         let row_height = |row: &Vec<usize>| row.iter().map(|index| sizes[*index].y).fold(0.0, f32::max);
         let rows_height = rows.iter().map(row_height).sum::<f32>() + gap * (rows.len() - 1) as f32;
-        // the question in 600 15px, two lines at most (`.question-text`); the command in a one-line `.code`
+        // the question in 600 15px, two lines at most (`.question-text`); the command in a one-line `.code` with "ver tudo"
+        // at its end, or opened: the whole request in a well that scrolls, as tall as the card leaves
+        let more = ui.painter().layout_no_wrap(if open { "recolher" } else { "ver tudo" }.to_string(), font(11.0), LINK);
         let text = if approval {
-            clipped(ui.painter(), title.clone(), FontId::monospace(12.0), Color32::from_rgb(0xe8, 0xe9, 0xec), width - 20.0)
+            clipped(ui.painter(), title.clone(), FontId::monospace(12.0), Color32::from_rgb(0xe8, 0xe9, 0xec), width - 20.0 - more.size().x - 10.0)
         } else {
             let mut job = egui::text::LayoutJob::simple(title.clone(), semi(15.0), INK, width);
             job.wrap.max_rows = 2;
             job.wrap.overflow_character = Some('…');
             ui.painter().layout_job(job)
         };
-        let text_height = if approval { text.size().y + 10.0 } else { text.size().y };
+        let text_height = if open {
+            (page.height() - 28.0 - 20.0 - 5.0 - rows_height).max(60.0)
+        } else if approval {
+            text.size().y + 10.0
+        } else {
+            text.size().y
+        };
         // `.stack`: the three centred down the card, 5 apart
         let total = 15.0 + 5.0 + text_height + 5.0 + rows_height;
         let mut y = page.center().y - total / 2.0;
@@ -140,12 +160,36 @@ impl DrawingApp {
             painter.galley(Pos2::new(x, y + 7.5 - galley.size().y / 2.0), galley, INK);
             x = right + 7.0;
         }
-        painter.text(Pos2::new(x, y + 7.5), egui::Align2::LEFT_CENTER, doing, font(12.0), DIM);
+        let doing = clipped(&painter, doing, font(12.0), DIM, (page.right() - 40.0 - x).max(0.0));
+        painter.galley(Pos2::new(x, y + 7.5 - doing.size().y / 2.0), doing, DIM);
         y += 15.0 + 5.0;
         if approval {
-            let well = Rect::from_min_size(Pos2::new(left, y), Vec2::new(text.size().x + 20.0, text_height));
+            let well_width = if open { width } else { text.size().x + 20.0 + more.size().x + 10.0 };
+            let well = Rect::from_min_size(Pos2::new(left, y), Vec2::new(well_width, text_height));
             painter.rect(well, 10, Color32::from_white_alpha(18), Stroke::new(1.0, Color32::from_white_alpha(15)), StrokeKind::Inside);
-            painter.galley(Pos2::new(left + 10.0, y + 5.0), text, Color32::from_rgb(0xe8, 0xe9, 0xec));
+            // "ver tudo" / "recolher", at the right of the line (the top of the opened well)
+            let toggle = Rect::from_min_size(Pos2::new(well.right() - 10.0 - more.size().x, y + 5.0), more.size());
+            let hit = if open { toggle.expand(4.0) } else { well };
+            let response = ui.interact(hit, ui.scope_id().with("island_ask_more"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+            let ink = if response.hovered() { INK } else { LINK };
+            if response.hovered() {
+                painter.hline(toggle.x_range(), toggle.bottom(), Stroke::new(1.0, ink));
+            }
+            painter.galley(toggle.min, more, ink);
+            if open {
+                // the request, field by field, selectable to copy a piece of it
+                let inner = Rect::from_min_max(Pos2::new(well.left() + 10.0, toggle.bottom() + 6.0), well.max - Vec2::new(4.0, 6.0));
+                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
+                egui::ScrollArea::vertical().id_salt(("island_ask_details", index)).auto_shrink([false, false]).show(&mut child, |ui| {
+                    let details = egui::RichText::new(ask.details()).font(FontId::monospace(12.0)).color(Color32::from_rgb(0xe8, 0xe9, 0xec));
+                    ui.add(egui::Label::new(details).wrap());
+                });
+            } else {
+                painter.galley(Pos2::new(left + 10.0, y + 5.0), text, Color32::from_rgb(0xe8, 0xe9, 0xec));
+            }
+            if response.clicked() {
+                ask.open = !open;
+            }
         } else {
             let area = Rect::from_min_size(Pos2::new(left, y), text.size());
             painter.galley(area.min, text, INK);
@@ -211,7 +255,11 @@ fn paint_button(painter: &Painter, rect: Rect, label: &str, kind: Kind, key: Opt
     let response = response.clone().on_hover_cursor(CursorIcon::PointingHand);
     let fade = if off { 0.4 } else { 1.0 };
     if kind == Kind::Link {
-        painter.text(rect.center(), egui::Align2::CENTER_CENTER, label, font(11.0), DIM.gamma_multiply(fade));
+        let ink = if response.hovered() { INK } else { LINK };
+        let text = painter.text(rect.center(), egui::Align2::CENTER_CENTER, label, font(11.0), ink.gamma_multiply(fade));
+        if response.hovered() {
+            painter.hline(text.x_range(), text.bottom(), Stroke::new(1.0, ink));
+        }
         return;
     }
     // `:active` scale .94

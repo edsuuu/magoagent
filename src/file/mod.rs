@@ -118,7 +118,7 @@ pub(crate) fn default_install_dir() -> Option<PathBuf> {
 }
 
 /// A build run from the repo (`target/release/magoagent`, `target/debug/…`, a debug build): the app in development. It
-/// has a window ("MagoAgent (development)") and a data folder of its own (`magoagent-dev`), so it runs beside the
+/// has a window ("MagoAgent DEV", with the DEV icon) and a data folder of its own (`magoagent-dev`), so it runs beside the
 /// installed app without the two writing the same drawing. `MAGOAGENT_DEV=1` or `=0` says so instead.
 pub(crate) fn development() -> bool {
     static DEV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();

@@ -103,7 +103,7 @@ fn main() -> eframe::Result {
         .with_app_id(app_id)
         .with_inner_size([1440.0, 920.0])
         .with_min_inner_size([920.0, 640.0])
-        .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")).expect("assets/icon.png is a png"));
+        .with_icon(eframe::icon_data::from_png_bytes(app_icon()).expect("the app's icon is a png"));
     // a scripted run (screen tests) opens without taking the keyboard from the person's app
     let scripted = std::env::var_os("MAGOAGENT_SCRIPT").is_some_and(|s| !s.is_empty());
     if scripted {
@@ -274,7 +274,12 @@ pub(crate) fn place_window_buttons(center: f64) {
 /// The main window's title and class: in development (a build of the repo) a window apart from the installed app's,
 /// with a name and a class of its own. The island's window takes the same class.
 pub(crate) fn window_names() -> (String, &'static str) {
-    if file::development() { (format!("{APP_TITLE} (development)"), "magoagent-dev") } else { (APP_TITLE.to_string(), "magoagent") }
+    if file::development() { (format!("{APP_TITLE} DEV"), "magoagent-dev") } else { (APP_TITLE.to_string(), "magoagent") }
+}
+
+/// The app's icon (window, taskbar, tray): in development the one with the DEV badge, to tell it from the installed app.
+pub(crate) fn app_icon() -> &'static [u8] {
+    if file::development() { include_bytes!("../assets/icon-dev.png") } else { include_bytes!("../assets/icon.png") }
 }
 
 /// Asks the app already running on this scene (its `bridge.json`) to show its window; false when none answers.
