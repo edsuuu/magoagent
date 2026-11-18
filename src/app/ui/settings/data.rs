@@ -4,7 +4,7 @@ use super::kit::*;
 use crate::prelude::*;
 
 /// Opens a folder (or a file) in the system's own program.
-fn open_path(path: &std::path::Path) {
+pub(super) fn open_path(path: &std::path::Path) {
     let url = format!("file:///{}", path.to_string_lossy().replace('\\', "/").trim_start_matches('/'));
     crate::app::browser::open_external(&url);
 }
@@ -88,6 +88,9 @@ impl DrawingApp {
 impl DrawingApp {
     /// Limpar todos os dados asks first: what goes, where, and that it can't be undone (`system/wipe.rs` does it).
     pub(crate) fn wipe_confirm_ui(&mut self, ctx: &Context) {
+        if super::native_on() {
+            return;
+        }
         use crate::app::system::wipe::plan;
         let colors = self.colors();
         let plan = plan();
