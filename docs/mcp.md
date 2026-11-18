@@ -77,7 +77,7 @@ Sem parâmetros.
 
 ### `focus_canvas`
 
-Mostra o canvas à pessoa centralizado no que ela quer ver: `at` são ids ou nomes (de terminais, navegadores, árvores de arquivos ou textos), separados por vírgula; vazio é o desenho todo. O zoom se ajusta para caber, ou use `zoom` (1 = 100%, 0.1 a 4).
+Mostra o canvas à pessoa centralizado no que ela quer ver: `at` são ids ou nomes (de terminais, navegadores, árvores de arquivos ou textos), separados por vírgula; vazio é o desenho todo. O zoom se ajusta para caber, ou use `zoom` (1 = 100%, 0.1 a 4). Com uma Árvore de Arquivos ampliada, `at` com o nome ou id dela e `zoom` mudam o zoom dela (0.5 a 3), como Ctrl + roda sobre ela.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|

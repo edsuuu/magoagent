@@ -87,8 +87,12 @@ impl DrawingApp {
 
     /// The enlarged tree's zoom, `notches` tenths up (or down), between half and three times.
     pub(crate) fn lifted_zoom_by(&mut self, notches: f32) {
-        let step = notches.clamp(-4.0, 4.0) * 0.1;
-        self.lifted_zoom = (self.lifted_zoom + step).clamp(*LIFTED_ZOOM.start(), *LIFTED_ZOOM.end());
+        self.set_lifted_zoom(self.lifted_zoom + notches.clamp(-4.0, 4.0) * 0.1);
+    }
+
+    /// The enlarged tree's zoom at `zoom`, kept between half and three times (focus_canvas sets it too).
+    pub(crate) fn set_lifted_zoom(&mut self, zoom: f32) {
+        self.lifted_zoom = zoom.clamp(*LIFTED_ZOOM.start(), *LIFTED_ZOOM.end());
     }
 
     /// Aproximar, Afastar and Voltar a 100% (Ctrl + =, Ctrl + -, Ctrl + 0): an enlarged tree's own zoom, else the
@@ -138,29 +142,31 @@ pub(crate) fn wheel_modifiers(events: &mut Vec<egui::Event>, focused: bool, curr
     }
 }
 
-/// The modifiers the X server says are down (Linux on X11; None elsewhere or without a server).
+/// The modifiers the X server says are down (Linux on X11; None without a server).
+#[cfg(target_os = "linux")]
 pub(crate) fn system_modifiers() -> Option<Modifiers> {
-    #[cfg(target_os = "linux")]
-    {
-        use std::sync::{Mutex, OnceLock};
-        use x11rb::connection::Connection as _;
-        use x11rb::protocol::xproto::{ConnectionExt as _, KeyButMask};
-        static LINK: OnceLock<Mutex<Option<(x11rb::rust_connection::RustConnection, u32)>>> = OnceLock::new();
-        if !crate::app::island::x11::active() {
-            return None;
-        }
-        let link = LINK.get_or_init(|| {
-            Mutex::new(x11rb::connect(None).ok().map(|(connection, screen)| {
-                let root = connection.setup().roots[screen].root;
-                (connection, root)
-            }))
-        });
-        let guard = link.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        let (connection, root) = guard.as_ref()?;
-        let mask = connection.query_pointer(*root).ok()?.reply().ok()?.mask;
-        let (ctrl, shift, alt) = (mask.contains(KeyButMask::CONTROL), mask.contains(KeyButMask::SHIFT), mask.contains(KeyButMask::MOD1));
-        Some(Modifiers { alt, ctrl, shift, mac_cmd: false, command: ctrl })
+    use std::sync::{Mutex, OnceLock};
+    use x11rb::connection::Connection as _;
+    use x11rb::protocol::xproto::{ConnectionExt as _, KeyButMask};
+    static LINK: OnceLock<Mutex<Option<(x11rb::rust_connection::RustConnection, u32)>>> = OnceLock::new();
+    if !crate::app::island::x11::active() {
+        return None;
     }
-    #[cfg(not(target_os = "linux"))]
+    let link = LINK.get_or_init(|| {
+        Mutex::new(x11rb::connect(None).ok().map(|(connection, screen)| {
+            let root = connection.setup().roots[screen].root;
+            (connection, root)
+        }))
+    });
+    let guard = link.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (connection, root) = guard.as_ref()?;
+    let mask = connection.query_pointer(*root).ok()?.reply().ok()?.mask;
+    let (ctrl, shift, alt) = (mask.contains(KeyButMask::CONTROL), mask.contains(KeyButMask::SHIFT), mask.contains(KeyButMask::MOD1));
+    Some(Modifiers { alt, ctrl, shift, mac_cmd: false, command: ctrl })
+}
+
+/// Windows and macOS: the wheel's own event already says the keys held (winit).
+#[cfg(not(target_os = "linux"))]
+pub(crate) fn system_modifiers() -> Option<Modifiers> {
     None
 }
