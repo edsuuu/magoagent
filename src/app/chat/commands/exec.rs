@@ -185,15 +185,20 @@ Clique em Mandar de novo para reenviar a última mensagem."
         }
     }
 
-    /// /clear: a new session in the same chat, the conversation shown emptied.
+    /// /clear: a new session in the same chat (its card, ropes and team stay), headed "Nova sessão · 14:32"; the one so
+    /// far stays in the list as a chat of its own, to be read and resumed (direct/archive.rs). The agent names the new
+    /// session with its first message (Codex picks its thread's id itself).
     pub(crate) fn chat_clear(&mut self, id: &str) {
         self.chat_stop(id);
-        if let Some(chat) = self.chats.iter_mut().find(|c| c.id == id) {
-            chat.session = None;
-        }
+        let kept = self.archive_conversation(id);
         self.transcripts.insert(id.to_string(), Transcript::new(PathBuf::new()));
         self.chat_images.borrow_mut().clear();
         self.save_chats();
-        self.chat_note(id, "Conversa nova: a próxima mensagem começa uma sessão do zero.");
+        self.chat_transcript(id).items.push(ChatItem::System(crate::app::chat::direct::new_session_mark(now_ms())));
+        let note = match kept {
+            Some(title) => format!("A conversa anterior ficou na lista Conversas, como \"{title}\": abra para ler ou continuar."),
+            None => "A próxima mensagem começa a conversa do zero.".into(),
+        };
+        self.chat_note(id, note);
     }
 }

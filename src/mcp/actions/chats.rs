@@ -13,13 +13,18 @@ impl DrawingApp {
         self.chats.iter().map(line).collect::<Vec<_>>().join("\n")
     }
 
-    /// The Chats area (`chats_view`): open on the chip `filter` and the search `query` (None keeps it), with what it lists;
-    /// or the canvas back.
-    pub(super) fn act_chats_view(&mut self, state: &str, filter: &str, query: Option<&str>) -> Result<String, String> {
+    /// The Chats area (`chats_view`): open on the chip `filter` and the search `query` (None keeps it), with what it lists,
+    /// each Maestro's agents under it; `team` opens or folds a Maestro's agents (chat/list/team.rs) first. Or the canvas back.
+    pub(super) fn act_chats_view(&mut self, state: &str, filter: &str, query: Option<&str>, team: Option<(&str, bool)>) -> Result<String, String> {
         use crate::app::chat::list::running::{Show, chip, kept, running_counts, space_groups};
+        use crate::app::chat::list::team::{team_summary, under_maestros};
+        let folded = match team {
+            Some((maestro, open)) => format!("{}\n", self.act_team(maestro, open)?),
+            None => String::new(),
+        };
         if state == "close" {
             self.show_canvas();
-            return Ok("De volta ao canvas.".into());
+            return Ok(format!("{folded}De volta ao canvas."));
         }
         if !filter.is_empty() {
             self.chat_listing.show = Show::named(filter).ok_or_else(|| format!("Filtro desconhecido: {filter}. Use all, working, waiting ou ready."))?;
@@ -32,16 +37,29 @@ impl DrawingApp {
         let (running, waiting) = running_counts(entries.iter().map(|entry| entry.state));
         let show = self.chat_listing.show;
         let shown = kept(&entries, show, &self.chat_listing.filter.to_lowercase());
-        let mut report = format!("Chats · {running} rodando · {waiting} esperando (filtro: {})", show.label());
+        let mut report = format!("{folded}Chats · {running} rodando · {waiting} esperando (filtro: {})", show.label());
         if !self.chat_listing.filter.is_empty() {
             report += &format!(", busca: {}", self.chat_listing.filter);
         }
         let order: Vec<String> = self.spaces.list.iter().map(|space| space.id.clone()).collect();
+        let keyed: Vec<(&str, Option<&crate::app::ui::agents::AgentRow>)> = shown.iter().map(|entry| (entry.id.as_str(), entry.row.as_ref())).collect();
+        let parents = self.team_parents(&keyed);
+        let line = |entry: &crate::app::chat::list::running::Entry, indent: &str| {
+            let when = entry.ago.map(|seconds| format!(" ({})", crate::app::ui::agents::ago(seconds))).unwrap_or_default();
+            format!("\n{indent}- {} — {} — {}{when}", entry.name, chip(&entry.state).0, entry.last)
+        };
         for (space, members) in space_groups(&shown, &order) {
             report += &format!("\n\n{}:", self.group_look(&space).0);
-            for entry in members.into_iter().map(|index| shown[index]) {
-                let when = entry.ago.map(|seconds| format!(" ({})", crate::app::ui::agents::ago(seconds))).unwrap_or_default();
-                report += &format!("\n- {} — {} — {}{when}", entry.name, chip(&entry.state).0, entry.last);
+            for (top, team) in under_maestros(&members, &parents) {
+                report += &line(shown[top], "");
+                if !team.is_empty() {
+                    let states: Vec<_> = team.iter().map(|&index| shown[index].state).collect();
+                    let open = if self.team_open(&shown[top].id) { "abertos" } else { "recolhidos" };
+                    report += &format!("\n  agentes dele: {} ({open} na lista)", team_summary(&states));
+                }
+                for index in team {
+                    report += &line(shown[index], "  ");
+                }
             }
         }
         if shown.is_empty() {

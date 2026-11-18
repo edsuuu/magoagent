@@ -226,9 +226,15 @@ impl DrawingApp {
         if let Some(asked) = self.waiting_line(&row.id) {
             return asked;
         }
-        let said = self.transcripts.get(&row.id).and_then(|transcript| {
-            transcript.items.iter().rev().find_map(|item| match item {
-                ChatItem::User(text) | ChatItem::Agent(text) | ChatItem::Error(text) => text.lines().map(str::trim).rfind(|line| !line.is_empty()),
+        let items = self.transcripts.get(&row.id).map(|transcript| transcript.items.as_slice()).unwrap_or_default();
+        let said = items.iter().rev().find_map(|item| match item {
+            ChatItem::User(text) | ChatItem::Agent(text) | ChatItem::Error(text) => text.lines().map(str::trim).rfind(|line| !line.is_empty()),
+            _ => None,
+        });
+        // nothing said since /clear: the new session's line ("Nova sessão · 14:32")
+        let said = said.or_else(|| {
+            items.iter().rev().find_map(|item| match item {
+                ChatItem::System(text) if crate::app::chat::direct::is_new_session_mark(text) => Some(text.as_str()),
                 _ => None,
             })
         });

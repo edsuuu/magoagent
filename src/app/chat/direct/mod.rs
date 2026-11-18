@@ -10,8 +10,10 @@ use crate::prelude::*;
 use crate::transcript::{ChatItem, LOG_MAX, Step, Transcript, claude_dir, log_tail, project_folder, step_mut};
 use std::io::{BufRead, Read, Write};
 use std::sync::mpsc::{Receiver, channel};
+mod archive;
 mod sync;
 mod title;
+pub(crate) use archive::{is_new_session_mark, new_session_mark};
 pub(crate) use title::ChatTitles;
 
 /// What a chat runs, where, and how far it got.
@@ -410,6 +412,8 @@ impl DrawingApp {
         }
         self.chats.retain(|c| c.id != id);
         self.drop_chat_node(id);
+        // its team's fold, if it had one, is not remembered for nothing
+        self.set_team_open(id, false);
         if self.chat_agent.as_deref() == Some(id) {
             self.chat_agent = None;
         }

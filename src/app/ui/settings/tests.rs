@@ -239,6 +239,21 @@ fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
     assert!(!window.has("Chaves de API"), "the chats run on the agents' own logins only");
 }
 
+/// Asked: "Uma config para nunca usar a /tmp, só em alguns casos, pois reiniciou o PC e sumiu tudo". On by default; its
+/// switch is the preference the agents' instructions read.
+#[test]
+fn agentes_keeps_the_agents_work_out_of_the_temp_folder() {
+    let mut window = Window::at(tab_of("Agentes"));
+    window.scroll_to("Trabalho fora da pasta temporária");
+    assert!(window.has_under("ONDE OS AGENTES TRABALHAM", "Trabalho fora da pasta temporária"), "{:?}", window.texts);
+    assert!(window.app.prefs.work_outside_temp, "on by default");
+    let switch = window.switch_of("Trabalho fora da pasta temporária");
+    window.click(switch);
+    assert!(!window.app.prefs.work_outside_temp, "its switch is the real preference");
+    window.app.act("set_setting", &json!({ "name": "work_outside_temp", "value": "on" })).unwrap();
+    assert!(window.app.prefs.work_outside_temp, "and the MCP's");
+}
+
 #[test]
 fn the_usage_pill_opens_agentes_uso() {
     let mut window = Window::at(0);

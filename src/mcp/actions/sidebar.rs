@@ -3,8 +3,11 @@ use crate::app::ui::attention::waiting_text;
 
 impl DrawingApp {
     /// The MCP's `sidebar`: what the person does in the sidebar's top and foot (ui/attention.rs, usage/foot.rs).
-    pub(super) fn act_sidebar(&mut self, action: &str) -> Result<String, String> {
+    pub(super) fn act_sidebar(&mut self, action: &str, team: &str) -> Result<String, String> {
         match action {
+            // a Maestro's agents under it, in this list and in Conversas (chat/list/team.rs)
+            "team_open" | "team_close" if team.is_empty() => Err("Diga em `team` o Maestro (o nome dele na lista) ou all.".into()),
+            "team_open" | "team_close" => self.act_team(team, action == "team_open"),
             "next" => {
                 let id = self.next_needing_attention().ok_or("Nenhum agente precisa de você.")?;
                 Ok(format!("{} em foco.", self.agent_label(&id)))
