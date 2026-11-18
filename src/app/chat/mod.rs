@@ -3,6 +3,7 @@
 //! (chat/list/, chat/header.rs), and the box to write to it (chat/composer.rs). Over the box, what the agent runs now or, when it
 //! waits on its terminal, that terminal's last lines (chat/steps.rs).
 
+pub(crate) mod accordion;
 pub(crate) mod ask;
 pub(crate) mod bubble;
 pub(crate) mod cli_models;
@@ -200,7 +201,9 @@ impl DrawingApp {
                 {
                     let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(strip));
                     ui.spacing_mut().scroll = crate::app::ui::scroll_style();
-                    egui::ScrollArea::vertical().stick_to_bottom(true).auto_shrink(false).max_height(height).show(ui, |ui| {
+                    // stuck to the newest, but not while a run or a step clicked eases open (`scroll_held`)
+                    let held = crate::app::chat::node_ui::scroll_held(ctx, &row.id);
+                    egui::ScrollArea::vertical().stick_to_bottom(!held).auto_shrink(false).max_height(height).show(ui, |ui| {
                         let left = ui.max_rect().left() + ((ui.available_width() - width) / 2.0).max(0.0);
                         let inner = Rect::from_min_max(Pos2::new(left, ui.cursor().top()), Pos2::new(left + width, ui.max_rect().bottom()));
                         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {

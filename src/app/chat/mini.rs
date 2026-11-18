@@ -245,10 +245,14 @@ impl DrawingApp {
             quote_into(&mut self.chat_draft, &text);
             ctx.memory_mut(|m| m.request_focus(draft_id));
         }
-        if let Some(key) = out.fold
-            && !self.chat_unfolded.remove(&key)
-        {
-            self.chat_unfolded.insert(key);
+        // a run or a step opened or shut: the row clicked stays where it is while it eases (`scroll_held`)
+        if let Some(key) = out.fold {
+            if let Some(id) = &self.chat_agent {
+                crate::app::chat::node_ui::hold_scroll(ctx, id);
+            }
+            if !self.chat_unfolded.remove(&key) {
+                self.chat_unfolded.insert(key);
+            }
         }
         // one more page of this conversation
         if out.earlier
@@ -547,7 +551,7 @@ impl DrawingApp {
                 ui.spacing_mut().scroll = crate::app::ui::scroll_style();
                 egui::ScrollArea::vertical()
                     .id_salt("mini_scroll")
-                    .stick_to_bottom(true)
+                    .stick_to_bottom(!crate::app::chat::node_ui::scroll_held(ctx, &row.id))
                     .auto_shrink(false)
                     .max_height(ui.available_height() - footer_height)
                     .show(ui, |ui| self.conversation(ui, row, transcript, talks, only_chat, waiting, &asked, None, width, look, c, true, time, &mut conv));

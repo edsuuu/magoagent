@@ -2,6 +2,7 @@
 //! draws them, scaled with the canvas. Too small on screen, the card stays the picture
 //! `paint_chat_node` draws (the mascot and the last message).
 
+use crate::app::chat::accordion::UNFOLD_SECONDS;
 use crate::app::chat::composer::Hints;
 use crate::app::chat::list::Look;
 use crate::app::chat::mini::ConvOut;
@@ -47,19 +48,27 @@ pub(crate) fn keep_pinned(ctx: &Context, key: egui::Id, laid: Rect) {
 }
 
 /// The conversation's scroll: what is left above the pinned part, never more (egui's own floor would push the
-/// pinned part off the card), stuck to the newest; but not in the frame after a step of card `id` opened or closed
-/// (`hold_scroll`), so the row clicked stays under the pointer and its card opens below it.
-// ponytail: once a step opened, the card no longer follows what comes until it is scrolled back to its end, as egui does
+/// pinned part off the card), stuck to the newest unless held (`scroll_held`).
 pub(crate) fn card_scroll(ctx: &Context, id: &str, salt: (&str, &str), height: f32) -> egui::ScrollArea {
-    let held = ctx.data(|d| d.get_temp::<u64>(held_key(id))).is_some_and(|frame| frame + 1 >= ctx.cumulative_frame_nr());
+    let held = scroll_held(ctx, id);
     egui::ScrollArea::vertical().id_salt(salt).stick_to_bottom(!held).auto_shrink(false).min_scrolled_height(0.0).max_height(height)
 }
 
-/// A step of card `id` opened or closed this frame: `card_scroll` stays where it is in the next.
+/// A step or a run of chat `id` opened or shut this frame: its scrolls (the card's, the chat's, the mini chat's) stay
+/// where they are while it eases open or shut (`scroll_held`).
 pub(crate) fn hold_scroll(ctx: &Context, id: &str) {
     // read before: the context is locked inside `data_mut`
-    let frame = ctx.cumulative_frame_nr();
-    ctx.data_mut(|d| d.insert_temp(held_key(id), frame));
+    let (frame, time) = (ctx.cumulative_frame_nr(), ctx.input(|i| i.time));
+    ctx.data_mut(|d| d.insert_temp(held_key(id), (frame, time)));
+}
+
+/// Not stuck to the newest in the frame after a step or a run of chat `id` opened or shut (`hold_scroll`), nor while
+/// it eases (`UNFOLD_SECONDS` and a frame or two): the row clicked stays under the pointer and what it holds opens below.
+// ponytail: once a step opened, the chat no longer follows what comes until it is scrolled back to its end, as egui does
+pub(crate) fn scroll_held(ctx: &Context, id: &str) -> bool {
+    let (now, frame_now) = (ctx.input(|i| i.time), ctx.cumulative_frame_nr());
+    let easing = f64::from(UNFOLD_SECONDS) + 0.1;
+    ctx.data(|d| d.get_temp::<(u64, f64)>(held_key(id))).is_some_and(|(frame, time)| frame + 1 >= frame_now || now - time <= easing)
 }
 
 fn held_key(id: &str) -> egui::Id {
@@ -204,10 +213,7 @@ impl DrawingApp {
         // laid out at the card's size, shown at the canvas's
         ctx.set_transform_layer(area.response.layer_id, egui::emath::TSTransform::new(body.min.to_vec2(), z));
         self.chat_draft = draft;
-        // a run or a step opened or closed: the row clicked stays where it is
-        if conv.fold.is_some() {
-            hold_scroll(ctx, id);
-        }
+        // a run or a step opened or shut: the row clicked stays where it is (`conv_apply` holds the scroll)
         self.conv_apply(ctx, conv, draft_id);
         if attach {
             self.chat_attach_pick(ctx);

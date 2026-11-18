@@ -6,7 +6,7 @@
 use crate::app::chat::list::{DOWN, Look, RED, glyph};
 use crate::app::chat::markdown::{md_galleys, md_plain, paint_md, tight};
 use crate::app::chat::node_ui::{card_scroll, chat_live, hold_scroll, keep_pinned, mini_button, pinned_key, split_body};
-use crate::app::chat::steps::{Live, short_tool, step_card, step_row};
+use crate::app::chat::steps::{Live, short_tool, step_with_card};
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
 use crate::transcript::ChatItem;
@@ -146,12 +146,7 @@ impl DrawingApp {
                                 // an accordion, no tip: a click opens its card under it (its whole command wrapped, what it
                                 // printed, why it failed), kept open as the chat's are (`chat_unfolded`)
                                 let card = format!("card:{}", step.id);
-                                let unfolded = self.chat_unfolded.contains(&card);
-                                let mut clicked = step_row(ui, step, live, &look, true, unfolded, time);
-                                if unfolded {
-                                    clicked |= step_card(ui, step, live, &look, &c);
-                                }
-                                if clicked {
+                                if step_with_card(ui, step, live, &look, true, self.chat_unfolded.contains(&card), time, &c) {
                                     fold = Some(card);
                                 }
                             }
