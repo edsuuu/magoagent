@@ -146,6 +146,21 @@ pub(crate) fn keep_on_screen(anchor: [f32; 2], work: Rect) -> [f32; 2] {
     }
 }
 
+/// An anchor on the top edge of a screen with a camera notch (`notch`, screen points) goes to the notch's middle: the
+/// island grows out of it there, and anywhere else on that edge the notch would cut it.
+pub(crate) fn to_notch(anchor: [f32; 2], work: Rect, notch: Option<Rect>) -> [f32; 2] {
+    match notch {
+        Some(notch) if Dock::of(anchor, work) == Dock::Top => [notch.center().x, work.top()],
+        _ => anchor,
+    }
+}
+
+/// `to_notch` on the screen the anchor is on.
+fn on_notch(ctx: &Context, anchor: [f32; 2]) -> [f32; 2] {
+    let at = probe(anchor);
+    to_notch(anchor, crate::app::chat::mini::screen_work(ctx, at), super::notch_at(at))
+}
+
 /// Where an island let go at `island` (screen points) hangs from: on the edge of the monitor (`work`) it is near, a
 /// side first (in a corner it stands on the side), then the top or the bottom; away from them, where it is.
 pub(crate) fn dropped(island: Rect, work: Rect) -> [f32; 2] {
@@ -218,12 +233,12 @@ pub(crate) fn menus(ctx: &Context) -> Option<Rect> {
     })
 }
 
-/// Whether the island's window can let the clicks through all of it but the island: Windows, and Linux on X11.
+/// Whether the island's window can let the clicks through all of it but the island: Windows, macOS, and Linux on X11.
 fn clicks_through_part() -> bool {
     #[cfg(target_os = "linux")]
     return crate::app::island::x11::active();
     #[cfg(not(target_os = "linux"))]
-    cfg!(windows)
+    cfg!(any(windows, target_os = "macos"))
 }
 
 impl DrawingApp {
@@ -233,7 +248,7 @@ impl DrawingApp {
         if let Some(place) = self.island.place_ask.take() {
             let anchor = self.island_anchor(ctx);
             let work = crate::app::chat::mini::screen_work(ctx, probe(anchor));
-            let anchor = place_anchor(place, anchor, work);
+            let anchor = on_notch(ctx, place_anchor(place, anchor, work));
             (self.island.anchor, self.prefs.island_at) = (Some(anchor), Some(anchor));
             // the window goes where the anchor now is
             self.island.built = Vec2::ZERO;
@@ -243,14 +258,17 @@ impl DrawingApp {
             return anchor;
         }
         let work_of = |at: Pos2| crate::app::chat::mini::screen_work(ctx, at);
-        let anchor = match self.prefs.island_at {
-            Some(saved) => keep_on_screen(saved, work_of(probe(saved))),
-            None => {
-                let app = ctx.input(|input| input.viewport().outer_rect).unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)));
-                let work = work_of(app.center());
-                [work.center().x.round(), work.top()]
-            }
-        };
+        let anchor = on_notch(
+            ctx,
+            match self.prefs.island_at {
+                Some(saved) => keep_on_screen(saved, work_of(probe(saved))),
+                None => {
+                    let app = ctx.input(|input| input.viewport().outer_rect).unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)));
+                    let work = work_of(app.center());
+                    [work.center().x.round(), work.top()]
+                }
+            },
+        );
         self.island.anchor = Some(anchor);
         anchor
     }
@@ -287,8 +305,8 @@ impl DrawingApp {
         time: f64,
     ) -> paint::Out {
         let anchor = self.island_anchor(ctx);
-        // Windows and X11 let the clicks through all of the window but the island: the window keeps its room and is not
-        // resized as the island springs. Elsewhere (Wayland, macOS) a window cannot let them through part of it: there it
+        // Windows, macOS and X11 let the clicks through all of the window but the island: the window keeps its room and is
+        // not resized as the island springs. Elsewhere (Wayland) a window cannot let them through part of it: there it
         // is as big as the island is now, so no see-through room around the island swallows the clicks meant for what is
         // under it (while an edge is pulled it keeps the room it has, so that it does not fight the pull)
         let clicks_through_part = clicks_through_part();
@@ -332,6 +350,8 @@ impl DrawingApp {
             .with_inner_size(size);
         // the eyes follow the cursor over the whole screen
         let scale = ctx.input(|input| input.viewport().native_pixels_per_point).unwrap_or(1.0);
+        #[cfg(target_os = "macos")]
+        cursor::set_scale(scale);
         let shown = island_in(anchor, self.island.dock, origin, size, self.island.anim);
         self.island.pointer = cursor::eye_cursor().and_then(|at| cursor::eye_target(at, scale, origin));
         // outside the island the click goes through to what is under it; on it (a margin around it too), or while a press
@@ -342,7 +362,7 @@ impl DrawingApp {
         let hit = self.island.menus.map_or(shown, |menus| shown.union(menus));
         let capture = cursor::takes_click(cursor::screen_cursor, scale, origin, hit, holding);
         self.island.over = cursor.map(|at| cursor::captures(Some(at), shown, false));
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         {
             let room = self.island.room.get_or_insert_with(|| cursor::watch(ctx));
             let pixels = Rect::from_min_max((hit.min + origin.to_vec2()) * scale, (hit.max + origin.to_vec2()) * scale);
@@ -367,7 +387,8 @@ impl DrawingApp {
             if (out.drag && !drag_later) || drag_now {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
-            (out, ui.ctx().input(|input| input.viewport().outer_rect), menus(ui.ctx()))
+            let focused = ui.ctx().input(|input| input.focused);
+            (paint::Out { focused, ..out }, ui.ctx().input(|input| input.viewport().outer_rect), menus(ui.ctx()))
         });
         let (out, placed, menus) = out;
         self.island.menus = menus;
@@ -391,6 +412,19 @@ impl DrawingApp {
         // answer from before the frame would put it back for as long as the frame takes
         #[cfg(windows)]
         crate::app::voice::popup::plain::click_through(TITLE, !cursor::takes_click(cursor::screen_cursor, scale, origin, hit, holding));
+        // macOS: the window is set up once it is there (again when it is made anew), and lets the clicks through but on
+        // the island, asked with the cursor of now as on Windows
+        #[cfg(target_os = "macos")]
+        {
+            // made under the menu bar's level, the system had pushed it below the bar (y 65 on a notch): put where it goes
+            // again, and that push is not the person moving it (it was kept as where the island hangs)
+            if self.island.plain == 0 && super::macos::strip(TITLE) {
+                self.island.plain = 3;
+                self.island.moved = None;
+                ctx.send_viewport_cmd_to(id, egui::ViewportCommand::OuterPosition(origin));
+            }
+            super::macos::click_through(TITLE, !cursor::takes_click(cursor::screen_cursor, scale, origin, hit, holding));
+        }
         self.island_moved(ctx, placed, size, time);
         out
     }
@@ -414,6 +448,7 @@ impl DrawingApp {
                 let work = crate::app::chat::mini::screen_work(ctx, grab.unwrap_or(island.center()));
                 let island = pushed_to_top(island, placed.top(), work);
                 let anchor = keep_on_screen(dropped(island, work), work);
+                let anchor = to_notch(anchor, work, super::notch_at(probe(anchor)));
                 let target = kept_origin(anchor, self.island.built, work);
                 if time - since > settle_for(target, placed.min) {
                     self.island.anchor = Some(anchor);
@@ -447,6 +482,8 @@ impl DrawingApp {
         egui::Area::new(egui::Id::unique("island_area")).order(egui::Order::Foreground).fixed_pos(at).constrain(false).show(ctx, |ui| {
             out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
         });
+        // drawn in the app's window: that window's focus
+        out.focused = ctx.input(|input| input.focused);
         out
     }
 }
@@ -695,5 +732,19 @@ mod tests {
         let big = window_cap(Vec2::new(1344.0, 728.0), most, false);
         assert!(big.x > 1344.0 && big.y > 728.0, "the big conversation and its overshoot fit: {big:?}");
         assert_eq!(window_cap(Vec2::new(640.0, 360.0), most, true), most, "an edge pulled: the largest it can get, from the start");
+    }
+
+    #[test]
+    fn on_the_top_edge_of_a_screen_with_a_notch_the_island_hangs_from_the_notchs_middle() {
+        // a 13" Air with its Dock at the left: the work area's middle is not the notch's
+        let work = Rect::from_min_max(Pos2::new(64.0, 0.0), Pos2::new(1470.0, 956.0));
+        let notch = Some(Rect::from_min_max(Pos2::new(645.5, 0.0), Pos2::new(824.5, 32.0)));
+        assert_eq!(to_notch([300.0, 0.0], work, notch), [735.0, 0.0], "anywhere on the top edge");
+        assert_eq!(to_notch([767.0, 0.0], work, None), [767.0, 0.0], "no notch: where it is");
+        for away in [[300.0, 400.0], [64.0, 300.0], [1469.0, 300.0], [300.0, 955.0]] {
+            assert_eq!(to_notch(away, work, notch), away, "off the top edge: where it is");
+        }
+        let island = hung([735.0, 0.0], Dock::Top, Vec2::new(179.0 + 60.0, 32.0));
+        assert_eq!((island.center().x, island.top()), (735.0, 0.0), "around the notch, from the very top");
     }
 }

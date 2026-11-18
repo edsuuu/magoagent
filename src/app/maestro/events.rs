@@ -332,6 +332,19 @@ pub(crate) fn with_hooks(command: String, settings: Option<&Path>) -> String {
     }
 }
 
+/// A terminal's command with the app's MCP (what the chats already get): `claude …` gets `--mcp-config <file>`, so a
+/// recruit has `add_elements`, `binder`, `tasks`. The person's own servers still load. At the end, not the start: the
+/// flag takes several values, and a prompt written after it would be read as one of them.
+pub(crate) fn with_mcp(command: String, config: Option<&Path>) -> String {
+    let Some(config) = config else { return command };
+    match command.trim_start().strip_prefix("claude") {
+        Some(rest) if (rest.is_empty() || rest.starts_with(' ')) && !rest.contains("--mcp-config") => {
+            format!("{} --mcp-config \"{}\"", command.trim_end(), config.display())
+        }
+        _ => command,
+    }
+}
+
 /// Set on every agent CLI the app runs (`AgentCli::command`): the plan's reading, the models' list, a chat's turn.
 pub(crate) const OWN_RUN: &str = "MAGOAGENT_OWN";
 
@@ -482,5 +495,12 @@ mod tests {
         assert_eq!(with_hooks("claudette".into(), Some(file)), "claudette");
         assert_eq!(with_hooks("codex".into(), Some(file)), "codex");
         assert_eq!(with_hooks("claude".into(), None), "claude");
+        let config = Path::new("/dados/chat-mcp.json");
+        assert_eq!(with_mcp("claude --model sonnet".into(), Some(config)), "claude --model sonnet --mcp-config \"/dados/chat-mcp.json\"");
+        assert_eq!(with_mcp("claude \"faça x\"".into(), Some(config)), "claude \"faça x\" --mcp-config \"/dados/chat-mcp.json\"");
+        assert_eq!(with_mcp("claude --mcp-config a.json".into(), Some(config)), "claude --mcp-config a.json");
+        assert_eq!(with_mcp("codex".into(), Some(config)), "codex");
+        assert_eq!(with_mcp("claudette".into(), Some(config)), "claudette");
+        assert_eq!(with_mcp("claude".into(), None), "claude");
     }
 }

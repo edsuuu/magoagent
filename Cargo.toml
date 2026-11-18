@@ -1,6 +1,6 @@
 [package]
 name = "magoagent"
-version = "0.0.30"
+version = "0.0.31"
 edition = "2024"
 authors = ["edsuuu"]
 description = "MagoAgent: quadro branco nativo em Rust"
@@ -45,7 +45,7 @@ wry = "0.57"
 # macOS: the window buttons move onto the toolbar row (already in the tree through winit)
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow", "NSControl", "NSButton", "NSImage", "NSImageRep", "NSBitmapImageRep"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSView", "NSWindow", "NSControl", "NSButton", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSApplication", "NSColor", "NSScreen"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry", "NSData", "NSDictionary", "NSError", "NSString", "NSFileManager", "NSURL"] }
 # the pencil's picture of the circled region (WKWebView snapshot); both already come with wry
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "objc2-app-kit", "block2", "WKWebView", "WKSnapshotConfiguration"] }

@@ -92,3 +92,16 @@ fn a_linux_page_picture_is_unpadded_and_cropped() {
     assert!(webkit::crop(4, 2, &picture, [10.0, 0.0, 2.0, 2.0], 1.0).is_none());
     assert!(webkit::crop(4, 2, &picture[..16], [0.0, 0.0, 2.0, 2.0], 1.0).is_none());
 }
+
+/// Asked: "quando dou zoom e tiro zoom no canvas com o navegador aberto fica piscando preto". Moving, the page hides and
+/// its picture goes with the card; just stopped, it lays out unseen; then it shows over its picture, which goes after.
+#[test]
+fn a_page_hides_while_its_card_moves_and_comes_back_unseen_first() {
+    assert_eq!(motion(None), Motion::Still, "not on the canvas");
+    assert_eq!(motion(Some(f64::MAX)), Motion::Still, "never moved");
+    assert_eq!(motion(Some(0.0)), Motion::Moving, "the frame it moved");
+    assert_eq!(motion(Some(0.1)), Motion::Moving, "a zoom still going");
+    assert_eq!(motion(Some(0.2)), Motion::Unseen, "stopped: laying out at its new size, cut away");
+    assert_eq!(motion(Some(0.4)), Motion::Back, "shown over its picture");
+    assert_eq!(motion(Some(0.5)), Motion::Still, "settled: the picture goes");
+}

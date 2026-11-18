@@ -60,7 +60,7 @@ fn the_card_counts_who_needs_you_in_every_space() {
     app.terminal_unread.insert("longe".into());
     let painted = side(&mut app, &ctx, vec![]);
     assert!(found(&painted, "3 agentes precisam de você").is_some(), "{painted:?}");
-    assert!(found(&painted, "Ir para o próximo").is_some() && found(&painted, "Ctrl ⇧ A").is_some(), "the button and its keys");
+    assert!(found(&painted, "Ir para o próximo").is_some() && found(&painted, &keys_label("Cmd ⇧ A")).is_some(), "the button and its keys");
     // the agents of this space are only the two on its canvas
     assert!(found(&painted, "Revisor").is_some() && found(&painted, "Longe").is_none());
     assert!(painted.iter().any(|(text, _)| text.starts_with("Encerrado")), "its state under its name: {painted:?}");
@@ -204,4 +204,16 @@ fn ver_tudo_fits_the_drawing() {
         let bounds = element_bounds(element);
         assert!(screen.contains(app.to_screen(bounds.min)) && screen.contains(app.to_screen(bounds.max)), "{bounds:?} in {screen:?}");
     }
+}
+
+/// The canvas felt stuck: the minis of the agents at rest repainted the app at 30 frames a second while nothing moved.
+#[test]
+fn the_agents_at_rest_in_the_list_ask_for_no_frames() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    two_agents(&mut app);
+    side(&mut app, &ctx, vec![]);
+    assert!(found(&side(&mut app, &ctx, vec![]), "Revisor").is_some(), "its row is there");
+    let causes = ctx.repaint_causes();
+    assert!(!causes.iter().any(|cause| cause.file.contains("mascot")), "an ended agent's wizard is still: {causes:?}");
 }

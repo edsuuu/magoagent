@@ -107,6 +107,30 @@ fn a_card_off_the_screen_or_under_the_chat_is_not_painted() {
     assert_eq!(painted(&app, &ctx), ground, "only its ground");
 }
 
+/// A drawing outside the screen costs nothing (its rough strokes, hatching, text); one crossing its edge is painted.
+#[test]
+fn a_drawing_off_the_screen_is_not_painted_and_one_crossing_its_edge_is() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let empty = painted(&app, &ctx);
+    let far = app.new_element(ElementKind::Rectangle { x: 5000.0, y: 5000.0, width: 200.0, height: 100.0 });
+    let words = app.new_element(ElementKind::Text { x: -3000.0, y: 200.0, value: "longe".into() });
+    app.scene.elements.extend([far, words]);
+    assert_eq!(painted(&app, &ctx), empty, "off the screen");
+    // its left edge on the screen, the rest past the right side
+    let right = app.to_world(Pos2::new(780.0, 100.0));
+    let edge = app.new_element(ElementKind::Rectangle { x: right.x, y: right.y, width: 4000.0, height: 100.0 });
+    app.scene.elements.push(edge);
+    let crossing = painted(&app, &ctx);
+    assert!(crossing > empty, "crossing the edge");
+    // an arrow just above the screen: its points are off it, its head's wings reach into it
+    let above = app.to_world(Pos2::new(0.0, -5.0)).y;
+    let line = app.new_element(ElementKind::Line { points: vec![[100.0, above], [400.0, above]], arrow: true });
+    app.scene.elements.push(line);
+    assert!(painted(&app, &ctx) > crossing, "the head still shows");
+}
+
 #[test]
 fn minimized_the_app_keeps_painting_unseen() {
     let ctx = Context::default();

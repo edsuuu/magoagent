@@ -89,6 +89,7 @@ impl Default for DrawingApp {
             raise_window: false,
             raising: None,
             quitting: false,
+            #[cfg(windows)]
             caption_hooked: false,
             chat_popup: false,
             caption_press: None,
@@ -129,6 +130,7 @@ impl Default for DrawingApp {
             island: Default::default(),
             portal_stills: Default::default(),
             portal_motion: Default::default(),
+            portal_snaps: Default::default(),
             chat_agent: None,
             chat_draft: String::new(),
             maestro_note: None,

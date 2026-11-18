@@ -65,24 +65,24 @@ fn the_cover_and_the_bars_sit_in_the_middle_or_at_the_right() {
     use crate::app::island::pill::spread;
     let pill = Rect::from_min_size(Pos2::ZERO, Vec2::new(288.0, 40.0));
     // the bars take 42 (ten of 1.5 with 3 between); no agents: the pair ends 12 from the right, the minis' room
-    let (cover, bars) = spread(pill, None);
+    let (cover, bars) = spread(pill, None, 0.0);
     assert!(bars > cover + 22.0, "the bars after the cover");
     assert!((bars + 42.0 - (288.0 - 12.0)).abs() < 1.0, "at the right: the bars end at {}", bars + 42.0);
     // with agents: the pair's middle halfway between the wizard (42) and the minis' grid
     let grid = mini_cells(pill, 2).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
-    let (cover, bars) = spread(pill, Some(grid));
+    let (cover, bars) = spread(pill, Some(grid), 0.0);
     let middle = (cover + bars + 42.0) / 2.0;
     assert!((middle - (42.0 + grid.left()) / 2.0).abs() < 1.0, "in the middle: {middle} between 42 and {}", grid.left());
     assert!(bars + 42.0 < grid.left(), "clear of the minis");
     // the compact island as it is: Luna (her right at 42) and the minis by the sides, the song in the middle between them
     let pill = Rect::from_min_size(Pos2::ZERO, Vec2::new(crate::app::island::COMPACT_W, crate::app::island::COMPACT_H));
     let grid = mini_cells(pill, 1).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
-    let (cover, bars) = spread(pill, Some(grid));
+    let (cover, bars) = spread(pill, Some(grid), 0.0);
     let (before, after) = (cover - 42.0, grid.left() - (bars + 42.0));
     assert!((before - after).abs() < 1.0 && before > 10.0, "the gaps: {before} and {after}");
     // two minis side by side: still some room, not the wide gaps (asked: "diminuir mais um pouco esse espaço")
     let grid = mini_cells(pill, 2).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
-    let (cover, bars) = spread(pill, Some(grid));
+    let (cover, bars) = spread(pill, Some(grid), 0.0);
     let (before, after) = (cover - 42.0, grid.left() - (bars + 42.0));
     assert!((10.0..=20.0).contains(&before) && (before - after).abs() < 1.0, "the gaps: {before} and {after}");
 }
@@ -594,4 +594,47 @@ fn the_islands_box_wraps_its_words_and_holds_the_island_open_while_typing() {
     island_frame(&mut app, &ctx, 22.0, vec![key_press(Key::Escape)]);
     run(&mut app, &ctx, 22.05, 40.0, vec![]);
     assert!(app.island.size().x < EXPANDED_W - 50.0, "folded once the box let go: {:?}", app.island.size());
+}
+
+/// A frame of the island whose window the system has (`focused`) or took away (a click elsewhere).
+fn focus_frame(app: &mut DrawingApp, ctx: &Context, time: f64, focused: bool) {
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, ISLAND_SCREEN)), time: Some(time), focused, ..Default::default() };
+    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
+    output.textures_delta.clear();
+}
+
+/// Asked: "se eu abrir a ilha e clicar fora ela precisa fechar, apenas quando eu estiver com o chat da tab aberto, ou na
+/// música, git etc.; se for pergunta que fez, mantém como está hoje". The window losing the focus is the click elsewhere.
+#[test]
+fn a_click_elsewhere_folds_the_open_island_but_not_one_with_a_question() {
+    for page in ["chats", "spotify", "github"] {
+        let (mut app, ctx, mut time) = opened();
+        app.act("set_setting", &json!({ "name": "island_page", "value": page })).unwrap();
+        for _ in 0..10 {
+            focus_frame(&mut app, &ctx, time, true);
+            time += 0.05;
+        }
+        assert!(app.island.size().x > COMPACT_W + 20.0, "{page}: open");
+        for _ in 0..20 {
+            focus_frame(&mut app, &ctx, time, false);
+            time += 0.05;
+        }
+        assert!(app.island.size().x <= COMPACT_W + 1.0, "{page}: a click elsewhere folds it: {}", app.island.size().x);
+    }
+    // a question waiting on the person: as before, only its answer, the X or the clock
+    let (mut app, ctx, mut time) = opened();
+    let (reply, _answers) = std::sync::mpsc::channel();
+    let request = json!({ "tool_name": "AskUserQuestion", "input": { "questions": [
+        { "question": "Junto com merge ou rebase?", "header": "Merge", "multiSelect": false, "options": [{ "label": "Merge" }, { "label": "Rebase" }] },
+    ] } });
+    app.person_asks.get_mut().push(PersonAsk::new(format!("{}1", crate::app::maestro::outside::ASK_PREFIX), &request, reply));
+    for _ in 0..10 {
+        focus_frame(&mut app, &ctx, time, true);
+        time += 0.05;
+    }
+    for _ in 0..20 {
+        focus_frame(&mut app, &ctx, time, false);
+        time += 0.05;
+    }
+    assert!(!app.person_asks.borrow().is_empty() && app.island.size().x > COMPACT_W + 20.0, "the question keeps it open: {}", app.island.size().x);
 }

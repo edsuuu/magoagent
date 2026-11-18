@@ -132,11 +132,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "terminal_menu",
-            "description": "As opções do cartão de um terminal, as mesmas do menu do botão direito: copy devolve (e põe na área de transferência) o que está selecionado, paste cola `text`, select_all e clear_selection, rename dá o nome `value`, monitor liga ou desliga (`value` on ou off) o aviso de quando o trabalho termina, blur esconde a tela do terminal atrás de um véu (off tira), reload e unload (descarrega o shell até recarregar), use_size, use_font e use_theme fazem do tamanho, do tamanho de fonte e do tema deste terminal os padrões dos novos, copy_element, duplicate (a cópia fica ligada a você por corda), lock (`value` on ou off) e delete.",
+            "description": "As opções do cartão de um terminal, as mesmas do menu do botão direito: copy devolve (e põe na área de transferência) o que está selecionado, paste cola `text`, select_all e clear_selection, rename dá o nome `value`, message_box abre ou fecha (`value` on ou off) a caixa de mensagem embaixo do terminal, monitor liga ou desliga (`value` on ou off) o aviso de quando o trabalho termina, blur esconde a tela do terminal atrás de um véu (off tira), reload e unload (descarrega o shell até recarregar), use_size, use_font e use_theme fazem do tamanho, do tamanho de fonte e do tema deste terminal os padrões dos novos, copy_element, duplicate (a cópia fica ligada a você por corda), lock (`value` on ou off) e delete.",
             "inputSchema": { "type": "object", "properties": {
                 "name": { "type": "string", "description": "o nome do terminal" },
-                "action": { "type": "string", "enum": ["copy", "paste", "select_all", "clear_selection", "rename", "monitor", "blur", "reload", "unload", "use_size", "use_font", "use_theme", "copy_element", "duplicate", "lock", "delete"] },
-                "value": { "type": "string", "description": "rename: o nome novo; monitor, blur, lock: on ou off" },
+                "action": { "type": "string", "enum": ["copy", "paste", "select_all", "clear_selection", "rename", "message_box", "monitor", "blur", "reload", "unload", "use_size", "use_font", "use_theme", "copy_element", "duplicate", "lock", "delete"] },
+                "value": { "type": "string", "description": "rename: o nome novo; message_box, monitor, blur, lock: on ou off" },
                 "text": { "type": "string", "description": "paste: o texto" },
             }, "required": ["name", "action"] },
         }),
@@ -215,7 +215,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "portal_copy_screenshot",
-            "description": "Copiar Captura de Tela: põe a imagem da página aberta do navegador na área de transferência da pessoa (no Windows e no Linux; ainda não no macOS). Para ver a página você mesmo, use portal_screenshot.",
+            "description": "Copiar Captura de Tela: põe a imagem da página aberta do navegador na área de transferência da pessoa (no Windows, no macOS e no Linux). Para ver a página você mesmo, use portal_screenshot.",
             "inputSchema": { "type": "object", "properties": { "portal": { "type": "string" } }, "required": ["portal"] },
         }),
         json!({
@@ -261,8 +261,8 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "chat_open",
-            "description": "Mostra um chat à pessoa.",
-            "inputSchema": { "type": "object", "properties": { "chat": chat }, "required": ["chat"] },
+            "description": "Mostra um chat à pessoa: na tela de chat do app (place app, o padrão) ou na conversa da ilha (place island), como escolher um agente da Luna no botão Agentes da conversa da ilha (ou Voltar à Luna), sem abrir janela flutuante.",
+            "inputSchema": { "type": "object", "properties": { "chat": chat, "place": { "type": "string", "enum": ["app", "island"], "description": "onde mostrar: app (o padrão) ou island (a conversa da ilha)" } }, "required": ["chat"] },
         }),
         json!({
             "name": "chats_view",

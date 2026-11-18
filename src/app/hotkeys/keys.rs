@@ -288,7 +288,10 @@ mod tests {
         let shift = Modifiers::SHIFT;
         assert_eq!(pressed(Key::Exclamationmark, shift), parse_keys("Shift+1").unwrap());
         assert_eq!(pressed(Key::Plus, Modifiers::COMMAND), parse_keys("Ctrl++").unwrap());
-        assert_eq!(pressed(Key::S, Modifiers::CTRL), pressed(Key::S, Modifiers::COMMAND), "Ctrl from either flag");
+        // off the Mac the app's Ctrl is either flag; on it only ⌘ is
+        if !cfg!(target_os = "macos") {
+            assert_eq!(pressed(Key::S, Modifiers::CTRL), pressed(Key::S, Modifiers::COMMAND), "Ctrl from either flag");
+        }
         let event = |key, modifiers| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
         let save = parse_keys("Ctrl+S").unwrap();
         assert!(hits(&event(Key::S, Modifiers::COMMAND), &save));
@@ -307,17 +310,17 @@ mod tests {
         assert_eq!(display("Ctrl+Comma"), "Ctrl+,");
         assert_eq!(display("Ctrl+Minus"), "Ctrl+-");
         assert_eq!(display(""), "Sem tecla");
-        assert_eq!(held_label(Modifiers { ctrl: true, alt: true, ..Modifiers::NONE }), "Ctrl+Alt+…");
+        assert_eq!(held_label(Modifiers { command: true, alt: true, ..Modifiers::NONE }), "Ctrl+Alt+…");
         assert_eq!(held_label(Modifiers::NONE), "");
     }
 
     #[test]
     fn the_recorder_reads_a_combination_and_its_own_keys() {
-        let (ctrl_alt, none) = (Modifiers { ctrl: true, alt: true, ..Modifiers::NONE }, Modifiers::NONE);
+        let (ctrl_alt, none) = (Modifiers { command: true, alt: true, ..Modifiers::NONE }, Modifiers::NONE);
         assert_eq!(record(Key::Escape, none), Recorded::Cancel);
         assert_eq!(record(Key::Enter, none), Recorded::Save);
         assert_eq!(record(Key::Backspace, none), Recorded::Clear);
-        assert_eq!(record(Key::ControlLeft, Modifiers::CTRL), Recorded::Modifier, "Ctrl alone: still pressing");
+        assert_eq!(record(Key::ControlLeft, Modifiers::COMMAND), Recorded::Modifier, "Ctrl alone: still pressing");
         assert_eq!(record(Key::AltRight, ctrl_alt), Recorded::Modifier);
         assert_eq!(record(Key::K, none), Recorded::Keys(combo(false, false, false, Key::K)), "a key alone: check says why not");
         assert_eq!(record(Key::K, ctrl_alt), Recorded::Keys(combo(true, true, false, Key::K)));

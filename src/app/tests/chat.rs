@@ -504,3 +504,101 @@ fn the_chat_screen_makes_a_chat_only_with_its_first_message() {
     assert!(!app.chats.iter().any(|chat| chat.id == draft) && app.chats.len() == 1);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_recent_folder_picked_in_the_folder_chips_menu_becomes_the_chats_folder() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = push_chat(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id.clone());
+    let recent = std::env::temp_dir().join(format!("mago-recente-{}", std::process::id()));
+    fs::create_dir_all(&recent).unwrap();
+    let recent = recent.display().to_string();
+    app.prefs.folders.remember(&recent);
+    let size = Vec2::new(1200.0, 800.0);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    // the footer's folder chip (the header says the folder too, higher up)
+    let chip = texts.iter().filter(|(text, _)| *text == "~").map(|(_, rect)| *rect).max_by(|a, b| a.top().total_cmp(&b.top()));
+    let chip = chip.unwrap_or_else(|| panic!("the folder chip: {texts:?}"));
+    let texts = click(&mut app, &ctx, size, chip.center());
+    let name = crate::app::chat::direct::folder_label(&recent);
+    let line = texts.iter().filter(|(text, _)| *text == name).map(|(_, rect)| *rect).next().unwrap_or_else(|| panic!("listed under Recente: {texts:?}"));
+    click(&mut app, &ctx, size, line.center());
+    assert_eq!(app.chats.iter().find(|chat| chat.id == id).map(|chat| chat.cwd.as_str()), Some(recent.as_str()), "picked");
+    let _ = fs::remove_dir_all(&recent);
+}
+
+#[test]
+fn a_table_in_the_chat_takes_the_columns_width_with_nothing_cut() {
+    use crate::transcript::{ChatItem, Transcript};
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id.clone());
+    // the user's table, its headers as the agent wrote them in full; and a narrow one
+    let headers = ["Contrato 5 (A3VTQ8K2-9X, financiamento do apartamento)", "Contrato 76 (7CJ4M1PZ-2B, consórcio do carro)"];
+    let wide = format!(
+        "Os dois contratos:\n\n|  | {} | {} |\n|---|---|---|\n| Parcelas: total / pagas / a pagar | 48 / 12 / 36 | 60 / 30 / 30 |\n\
+         | Próxima | 10/12/2026 — R$ 1.234,56 | 15/12/2026 — R$ 987,65 |\n| Última | 10/11/2029 | 15/11/2028 |\n| Dia do vencimento | 10 | 15 |",
+        headers[0], headers[1]
+    );
+    let narrow = "| a | b |\n|---|---|\n| 1 | 2 |";
+    let mut t = Transcript::new(PathBuf::new());
+    t.items = vec![ChatItem::User("compare".into()), ChatItem::Agent(wide), ChatItem::Agent(narrow.into())];
+    app.transcripts.insert(id, t);
+    // what each text shows (its rows' letters, without the spaces it breaks at), in how many rows, cut or not, where;
+    // after a few frames of a window `wide` wide
+    let packed = |text: &str| text.chars().filter(|letter| !letter.is_whitespace()).collect::<String>();
+    let shown = |app: &mut DrawingApp, wide: f32| {
+        let mut texts: Vec<(String, usize, bool, Rect)> = Vec::new();
+        for _ in 0..4 {
+            let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(wide, 800.0))), ..Default::default() };
+            let output = ctx.run_ui(raw, |_| app.chat_screen(&ctx));
+            texts = output
+                .shapes
+                .into_iter()
+                .filter_map(|clipped| match clipped.shape {
+                    Shape::Text(text) => Some((
+                        packed(&text.galley.rows.iter().flat_map(|row| row.glyphs.iter().map(|glyph| glyph.chr)).collect::<String>()),
+                        text.galley.rows.len(),
+                        text.galley.elided,
+                        text.visual_bounding_rect(),
+                    )),
+                    _ => None,
+                })
+                .collect();
+        }
+        texts
+    };
+    let find = |texts: &[(String, usize, bool, Rect)], words: &str| {
+        texts.iter().find(|(text, ..)| *text == packed(words)).cloned().unwrap_or_else(|| panic!("{words}: {texts:?}"))
+    };
+    // a wide window: each header whole and on one line, the table wider than a bubble's 720 (what a squeezed table
+    // had) and inside the column (1100 at most)
+    let texts = shown(&mut app, 1700.0);
+    for header in headers {
+        let (_, rows, cut, _) = find(&texts, header);
+        assert!(rows == 1 && !cut, "{header}: {rows} rows, cut {cut}");
+    }
+    // in the conversation (the list at the left cuts its previews)
+    let words = find(&texts, "Os dois contratos:").3.left_top();
+    let cut: Vec<_> = texts.iter().filter(|(_, _, cut, rect)| *cut && rect.left() >= words.x - 1.0 && rect.top() >= words.y).collect();
+    assert!(cut.is_empty(), "nothing cut with …: {cut:?}");
+    let (left, right) = (find(&texts, "Parcelas: total / pagas / a pagar").3.left(), find(&texts, headers[1]).3.right());
+    assert!(right - left > 720.0 && right - left < 1100.0, "{left} → {right}");
+    // the narrow one at its own width: not stretched to the column
+    let cell = |words_: &str| texts.iter().find(|(text, .., rect)| text == words_ && rect.left() >= words.x - 1.0 && rect.top() >= words.y).unwrap().3;
+    let (one, two) = (cell("1"), cell("2"));
+    assert!(two.right() - one.left() < 120.0, "{one:?} {two:?}");
+    // a window narrower than the table: its wide cells wrap, whole, inside the conversation's column
+    let texts = shown(&mut app, 1000.0);
+    // the conversation's right edge: the person's bubble at it, its words 12 in
+    let column = find(&texts, "compare").3.right() + 12.0;
+    for header in headers {
+        let (_, rows, cut, rect) = find(&texts, header);
+        assert!(rows > 1 && !cut && rect.right() <= column + 1.0, "{header}: {rows} rows, cut {cut}, {rect:?} past {column}");
+    }
+}

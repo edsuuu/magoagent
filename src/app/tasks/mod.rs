@@ -352,8 +352,16 @@ impl DrawingApp {
         if self.is_chat(&task.owner) {
             self.chat_outbox.push((task.owner.clone(), text));
         } else if matches!(self.terminals.get(&task.owner), Some(Ok(_))) {
-            // one it can't take now (a menu on its screen) comes back to its composer or the clipboard
-            self.send_prompt_after(&task.owner, &text, std::time::Duration::ZERO);
+            // one it can't take now (the trust question of a new folder, a permission menu) waits in the chat queue and
+            // goes when it can (`flush_chat_queue`), instead of coming back to the composer
+            self.queue_message(&task.owner, text);
+            self.flush_chat_queue();
+            if self.chat_queue.iter().any(|(to, _)| to == &task.owner) {
+                self.task_event(&task, &format!("na fila de {name}, vai quando ele puder receber"));
+                return Ok(format!(
+                    "Na fila de {name}: ele espera uma resposta no terminal (como a pergunta de confiança da pasta); a tarefa vai quando ele puder receber."
+                ));
+            }
         } else {
             return Err(format!("Não entreguei: {name} não está rodando."));
         }

@@ -8,11 +8,28 @@ use crate::prelude::*;
 /// The DEV badge, the orange of the icon's star.
 const DEV_BADGE: Color32 = Color32::from_rgb(0xf0, 0xa0, 0x20);
 
-/// Windows' caption buttons are 46 wide; the close one turns this red under the pointer.
-const CAPTION_WIDTH: f32 = 46.0;
-/// How tall they are: their block is the reference app's window overlay, a tone apart from the canvas.
+/// The window's buttons, close at the right. Windows' are 46 wide, in a block as tall as the reference app's window overlay
+/// (a tone apart from the canvas), and close turns red under the pointer. On Linux they are GNOME's, as Chrome draws them
+/// there (asked: "porque o do Chrome fica diferente do nosso app, está com os botões do Windows"): round, 24 across, 32
+/// apart and 8 from the window's edge, on the top row with the canvas's buttons, with no ground of their own and close gray
+/// like the others.
+// ponytail: always minimize, maximize, close at the right; GNOME's own order (button-layout) is not read
+const GNOME: bool = cfg!(target_os = "linux");
+const CAPTION_WIDTH: f32 = if GNOME { 32.0 } else { 46.0 };
 const CAPTION_HEIGHT: f32 = 38.0;
+const CAPTION_MARGIN: f32 = if GNOME { 8.0 } else { 0.0 };
+const ROUND: f32 = 24.0;
+/// All of them, from the window's right edge.
+const CAPTIONS: f32 = 3.0 * CAPTION_WIDTH + CAPTION_MARGIN;
 const CLOSE_RED: Color32 = Color32::from_rgb(0xe8, 0x11, 0x23);
+
+/// Where the window's button `k` (0 close, 1 maximize / restore, 2 minimize) takes the click in a window `width` wide.
+/// GNOME's round ones are on the top row, their room reaching up to the window's edge.
+pub(crate) fn caption_button(width: f32, k: usize) -> Rect {
+    let left = width - CAPTION_MARGIN - CAPTION_WIDTH * (k + 1) as f32;
+    let bottom = if GNOME { TOP_ROW_Y + CAPTION_WIDTH / 2.0 } else { CAPTION_HEIGHT };
+    Rect::from_min_size(Pos2::new(left, 0.0), Vec2::new(CAPTION_WIDTH, bottom))
+}
 
 /// The band along the window's edge that resizes it, and how far a corner reaches along the sides.
 const EDGE: f32 = 5.0;
@@ -34,7 +51,7 @@ impl DrawingApp {
     /// Where the right panels' button `k` (panes/: 0 Alterações) sits in a window
     /// `width` wide: 12 before the window's buttons (the window's edge on the Mac), on the top row.
     pub(crate) fn pane_button(&self, width: f32, k: usize) -> Rect {
-        let captions = if TITLE_BAR > 0.0 { 3.0 * CAPTION_WIDTH } else { 0.0 };
+        let captions = if TITLE_BAR > 0.0 { CAPTIONS } else { 0.0 };
         let right = width - captions - 12.0 - (super::super::panes::PANES.len() - 1 - k) as f32 * (TOP_BUTTON + TOP_GAP);
         Rect::from_min_size(Pos2::new(right - TOP_BUTTON, TOP_ROW_Y - TOP_BUTTON / 2.0), Vec2::splat(TOP_BUTTON))
     }
@@ -77,6 +94,10 @@ impl DrawingApp {
             let pill = Rect::from_center_size(badge, Vec2::new((count.size().x + 8.0).max(16.0), 16.0));
             p.rect(pill, 8, crate::app::chat::list::AMBER, Stroke::new(1.5, if dark { Color32::from_gray(0x1a) } else { Color32::WHITE }), StrokeKind::Outside);
             p.galley(pill.center() - count.size() / 2.0, count, Color32::from_rgb(0x1d, 0x1d, 0x1f));
+        }
+        // on the Mac the buttons sit in the list's top row, which says Conversas, + and « itself
+        if chat && TITLE_BAR == 0.0 {
+            return second.right();
         }
         if chat {
             let at = Pos2::new(second.right() + TOP_GAP + 6.0, TOP_ROW_Y);
@@ -155,17 +176,24 @@ impl DrawingApp {
         side("title_bar_right", right, width, &mut |ui, bar| {
             self.pane_buttons(ui);
             let p = ui.painter().clone();
-            p.rect_filled(Rect::from_min_max(Pos2::new(bar.right() - 3.0 * CAPTION_WIDTH, 0.0), Pos2::new(bar.right(), CAPTION_HEIGHT)), 0, ground);
+            if !GNOME {
+                p.rect_filled(Rect::from_min_max(Pos2::new(bar.right() - CAPTIONS, 0.0), Pos2::new(bar.right(), CAPTION_HEIGHT)), 0, ground);
+            }
             // right to left: close, maximize / restore, minimize
             let names = ["Fechar", if maximized { "Restaurar" } else { "Maximizar" }, "Minimizar"];
             for (k, name) in names.into_iter().enumerate() {
-                let rect = Rect::from_min_size(Pos2::new(bar.right() - CAPTION_WIDTH * (k + 1) as f32, 0.0), Vec2::new(CAPTION_WIDTH, CAPTION_HEIGHT));
+                let rect = caption_button(bar.right(), k);
                 let button = ui.interact(rect, egui::Id::unique(("caption", k)), Sense::click()).tip(name);
                 let close = k == 0;
-                if button.hovered() {
+                let at = if GNOME { Pos2::new(rect.center().x, TOP_ROW_Y) } else { rect.center() };
+                if GNOME {
+                    if button.hovered() {
+                        p.circle_filled(at, ROUND / 2.0, if button.is_pointer_button_down_on() { ink.gamma_multiply(0.2) } else { hover });
+                    }
+                } else if button.hovered() {
                     p.rect_filled(rect, 0, if close { CLOSE_RED } else { hover });
                 }
-                caption_glyph(&p, k, maximized, rect.center(), if close && button.hovered() { Color32::WHITE } else { ink });
+                caption_glyph(&p, k, maximized, at, if !GNOME && close && button.hovered() { Color32::WHITE } else { ink });
                 if button.clicked() {
                     ctx.send_viewport_cmd(match k {
                         0 => egui::ViewportCommand::Close,
@@ -181,7 +209,7 @@ impl DrawingApp {
         {
             let stretch = |from: f32, to: f32| Rect::from_min_max(Pos2::new(from, EDGE), Pos2::new(to, TITLE_BAR));
             // up to the panels' buttons when they show
-            let end = self.panes.buttons.map_or(width - 3.0 * CAPTION_WIDTH, |buttons| buttons.left() - 4.0);
+            let end = self.panes.buttons.map_or(width - CAPTIONS, |buttons| buttons.left() - 4.0);
             let bare = [stretch(self.title_buttons.right() + 4.0, left), stretch(right, end)];
             native_caption::set(&bare, ctx.pixels_per_point());
         }
@@ -219,7 +247,7 @@ impl DrawingApp {
         let welcome = self.welcome.is_some();
         let empty = |pos: Pos2| {
             if welcome {
-                return pos.y < TITLE_BAR && pos.x < screen.right() - 3.0 * CAPTION_WIDTH;
+                return pos.y < TITLE_BAR && pos.x < screen.right() - CAPTIONS;
             }
             let bar = [egui::Id::unique("title_bar"), egui::Id::unique("title_bar_right")];
             let on_bar = match ctx.layer_id_at(pos) {
@@ -233,7 +261,7 @@ impl DrawingApp {
                 && on_bar
                 && !buttons.contains(pos)
                 && !panes.is_some_and(|rect| rect.expand(4.0).contains(pos))
-                && pos.x < screen.right() - 3.0 * CAPTION_WIDTH
+                && pos.x < screen.right() - CAPTIONS
         };
         raw.events.retain(|e| {
             let egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, .. } = e else { return true };
@@ -356,11 +384,29 @@ pub(crate) fn resize_edge(screen: Rect, pos: Pos2) -> Option<(egui::ResizeDirect
     })
 }
 
-/// Windows' 10 px caption glyphs: k = 0 close, 1 maximize (restore when maximized), 2 minimize.
+/// The caption glyphs: k = 0 close, 1 maximize (restore when maximized), 2 minimize. Windows' are 10 px; GNOME's 8, its
+/// minimize a line low in the button.
 fn caption_glyph(p: &Painter, k: usize, maximized: bool, at: Pos2, color: Color32) {
     let stroke = Stroke::new(1.0, color);
     // on the pixel grid, so the 1 px lines stay sharp
     let at = at.round() + Vec2::splat(0.5);
+    if GNOME {
+        let square = |min: Vec2, size: f32| Rect::from_min_size(at + min, Vec2::splat(size));
+        match (k, maximized) {
+            (0, _) => cross(p, at, 4.0, stroke),
+            (1, false) => {
+                p.rect_stroke(square(Vec2::splat(-4.0), 8.0), 1, stroke, StrokeKind::Middle);
+            }
+            (1, true) => {
+                p.rect_stroke(square(Vec2::new(-4.0, -2.0), 6.0), 1, stroke, StrokeKind::Middle);
+                p.line(vec![at + Vec2::new(-2.0, -4.0), at + Vec2::new(4.0, -4.0), at + Vec2::new(4.0, 2.0)], stroke);
+            }
+            _ => {
+                p.hline(at.x - 4.0..=at.x + 4.0, at.y + 3.0, stroke);
+            }
+        }
+        return;
+    }
     let square = |min: Vec2, size: f32| Rect::from_min_size(at + min, Vec2::splat(size));
     match (k, maximized) {
         (0, _) => cross(p, at, 5.0, stroke),

@@ -23,6 +23,7 @@ mod frames;
 mod gestures;
 mod groups;
 mod island;
+mod island_agents;
 mod island_buttons;
 mod island_open;
 mod layout;

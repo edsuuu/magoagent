@@ -16,6 +16,9 @@ fn screen_frame(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui
         app.sidebar(ctx);
         if TITLE_BAR > 0.0 {
             app.title_bar(ctx);
+        } else {
+            // no drawn bar (the Mac): the panes' buttons are painted by the panes' own area
+            app.panes_ui(ctx);
         }
         app.tour_ui(ctx);
     });

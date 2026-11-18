@@ -136,3 +136,42 @@ fn a_task_goes_to_its_chat_with_its_id_and_how_to_report() {
     assert_eq!(to, &chat.id);
     assert!(text.starts_with("Tarefa t1 para você: Revisar o PR.") && text.contains("action update, id t1"), "{text}");
 }
+
+#[test]
+fn a_task_for_an_agent_on_a_menu_waits_in_the_queue_and_goes_when_it_is_ready() {
+    let dir = std::env::temp_dir().join(format!("mago-tarefa-fila-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let saved = dir.join("linha.txt");
+    let script = if cfg!(windows) {
+        format!("$l = [Console]::ReadLine(); Set-Content -LiteralPath '{}' $l; Start-Sleep 30", saved.display())
+    } else {
+        format!("read l; printf '%s' \"$l\" > '{}'; sleep 30", saved.display())
+    };
+    let program = if cfg!(windows) { ("powershell", &["-NoProfile", "-Command", script.as_str()][..]) } else { ("sh", &["-c", script.as_str()][..]) };
+    let session = crate::terminal::TerminalSession::spawn("", "", (60, 10), None, vec![], Some(program), 10_000).unwrap();
+    let mut app = DrawingApp::default();
+    let mut element = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+    element.terminal = Some(TerminalSpec { name: "Dev".into(), ..Default::default() });
+    let id = element.id.clone();
+    app.scene.elements.push(element);
+    app.terminals.insert(id.clone(), Ok(session));
+    // plain letters: Windows PowerShell reads and writes the console's code page, not UTF-8
+    app.tasks.list.push(Task { id: "t1".into(), title: "revise o login".into(), owner: id.clone(), ..Default::default() });
+    // the trust question of the folder is on its screen: the task stays queued
+    app.terminal_waiting.insert(id.clone());
+    let said = app.deliver_task("t1").unwrap();
+    assert!(said.starts_with("Na fila de Dev"), "{said}");
+    assert_eq!(app.chat_queue.len(), 1);
+    assert!(!saved.exists());
+    // answered: it goes
+    app.terminal_waiting.clear();
+    app.flush_chat_queue();
+    assert!(app.chat_queue.is_empty());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let read = || String::from_utf8_lossy(&fs::read(&saved).unwrap_or_default()).into_owned();
+    while read().trim().is_empty() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(read().contains("revise o login"), "{}", read());
+    let _ = fs::remove_dir_all(&dir);
+}

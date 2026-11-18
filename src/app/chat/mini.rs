@@ -5,6 +5,7 @@
 
 use crate::app::chat::composer::Hints;
 use crate::app::chat::list::{AMBER, CROSS, Look, clipped, glyph, quote_into};
+use crate::app::chat::mini_agents::pressable;
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 
@@ -502,16 +503,19 @@ impl DrawingApp {
                 moved = Some(mini_place(area, size, Some(rect.min - area.min + grip.drag_delta())).min - area.min);
             }
             stopped = grip.drag_stopped();
+            // the header's buttons take their press (the grip under them would move the window), and in the island no
+            // tip covers the conversation under them (asked: "tem o tooltip que atrapalha")
+            let in_island = self.mini.in_island;
+            let tip = |hit: egui::Response, text: &str| if in_island { hit } else { hit.tip(text) };
             // close, at the left like the reference's panels
             let x = Rect::from_center_size(Pos2::new(rect.left() + 24.0, cy), Vec2::splat(22.0));
-            let hit = ui.interact(x, ui.scope_id().with("mini_close"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip("Recolher (Esc)");
+            let hit = tip(pressable(ui, x, ui.scope_id().with("mini_close"), "Recolher"), "Recolher (Esc)");
             ui.painter().circle_filled(x.center(), 10.0, if hit.hovered() { look.selected } else { look.raised });
             glyph(ui.painter(), x.center(), 13.0, 2.2, look.text, CROSS);
             close |= hit.clicked();
             // expand, at the right
             let big = Rect::from_center_size(Pos2::new(rect.right() - 24.0, cy), Vec2::splat(28.0));
-            let hit =
-                ui.interact(big, ui.scope_id().with("mini_expand"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip("Abrir em tela cheia (⌘1)");
+            let hit = tip(pressable(ui, big, ui.scope_id().with("mini_expand"), "Abrir em tela cheia"), "Abrir em tela cheia (⌘1)");
             if hit.hovered() {
                 ui.painter().rect_filled(big, 8, look.raised);
             }
@@ -621,9 +625,13 @@ impl DrawingApp {
         }
         self.mini.left = switch.is_none() && (expand || close);
         if let Some(other) = switch {
-            // another chat in the same panel: the Maestro's agent, or back to the Maestro
+            // another chat in the same panel: the Maestro's agent, or back to the Maestro. In the island it is the
+            // island's conversation that changes: no mini chat opens over the screen besides it (asked: "quando ele sai o
+            // chat fica em popover")
             self.chat_agent = Some(other);
-            self.mini_set(true);
+            if !self.mini.in_island {
+                self.mini_set(true);
+            }
         } else if expand {
             self.mini.open = false;
             self.chat_agent = Some(id);
@@ -652,13 +660,18 @@ pub(crate) fn panel_place(pill: Rect, size: Vec2, work: Rect) -> Rect {
     Rect::from_min_size(Pos2::new(left, top), size)
 }
 
-/// The usable part of the screen around `at` (points): the monitor's work area on Windows, the desktop's less its
+/// The usable part of the screen around `at` (points): the monitor's work area on Windows, the screen less its Dock on
+/// macOS (`island::macos::work_at`), the desktop's less its
 /// panels on X11 (on the monitor), else the monitor's size from the origin; unknown, anywhere.
 pub(crate) fn screen_work(ctx: &Context, at: Pos2) -> Rect {
     let scale = ctx.input(|i| i.viewport().native_pixels_per_point).unwrap_or(1.0);
     #[cfg(windows)]
     if let Some([l, t, r, b]) = crate::app::voice::popup::plain::work_area((at.x * scale) as i32, (at.y * scale) as i32) {
         return Rect::from_min_max(Pos2::new(l as f32, t as f32) / scale, Pos2::new(r as f32, b as f32) / scale);
+    }
+    #[cfg(target_os = "macos")]
+    if let Some(work) = crate::app::island::macos::work_at(at) {
+        return work;
     }
     // X11: the monitor it is on (GNOME's top bar and dock only on theirs), not the first one's from the corner
     #[cfg(target_os = "linux")]
@@ -677,8 +690,8 @@ pub(crate) fn screen_work(ctx: &Context, at: Pos2) -> Rect {
 }
 
 /// Of the monitors' work areas (`works`), the one `at` is on, else the nearest: a place saved on a monitor that is gone,
-/// or off them all, comes back onto one. Only X11 lists the monitors' work areas (and the tests).
-#[cfg(any(target_os = "linux", test))]
+/// or off them all, comes back onto one. Only X11 and macOS list the monitors' work areas (and the tests).
+#[cfg(any(target_os = "linux", target_os = "macos", test))]
 pub(crate) fn work_at(works: &[Rect], at: Pos2) -> Option<Rect> {
     works.iter().copied().filter(|work| work.is_positive()).min_by(|a, b| a.distance_sq_to_pos(at).total_cmp(&b.distance_sq_to_pos(at)))
 }

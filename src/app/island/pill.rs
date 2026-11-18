@@ -40,10 +40,16 @@ const PAIR_GAP: f32 = 10.0;
 
 /// Where the cover and the bars start on the compact island `rect`, which go side by side: with the agents' minis
 /// (`minis`, their grid) in the middle between the wizard and them; with none, at the right, as far from the edge as the
-/// wizard is from the left (asked: "Luna à esquerda, capa e frequência no meio, os mini agentes à direita").
-pub(crate) fn spread(rect: Rect, minis: Option<Rect>) -> (f32, f32) {
+/// wizard is from the left (asked: "Luna à esquerda, capa e frequência no meio, os mini agentes à direita"). Around a
+/// camera `notch` (its width; 0 without one) the middle is under it: the cover goes in the left wing after the wizard and
+/// the bars in the right one before the minis.
+pub(crate) fn spread(rect: Rect, minis: Option<Rect>, notch: f32) -> (f32, f32) {
     let pair = COVER + PAIR_GAP + BARS_ROOM;
     let edge = WIZARD_AT - WIZARD / 2.0;
+    if notch > 0.0 {
+        let bars_end = minis.map_or(rect.right() - edge, |grid| grid.left() - PAIR_GAP);
+        return (rect.left() + edge + WIZARD + PAIR_GAP, bars_end - BARS_ROOM);
+    }
     let cover = match minis {
         Some(grid) => (rect.left() + edge + WIZARD + grid.left()) / 2.0 - pair / 2.0,
         // no minis: the song by the right side, with the minis' room to the edge
@@ -89,6 +95,7 @@ pub(super) fn spotify(
     playing: bool,
     compact: Option<Option<Rect>>,
     upright: bool,
+    notch: f32,
     groove: Option<&Groove>,
     time: f64,
 ) -> bool {
@@ -103,7 +110,7 @@ pub(super) fn spotify(
     // standing up (`upright`), the cover under the wizard and the bars under it, each bar lying down
     let (cover_left, bars_left) = match compact {
         Some(minis) if upright => spread_upright(rect, minis),
-        Some(minis) => spread(rect, minis),
+        Some(minis) => spread(rect, minis, notch),
         None => (rect.left() + COVER_LEFT_SMALL, rect.right() - BARS_RIGHT_SMALL - total / 2.0),
     };
     let art = if upright {
@@ -185,5 +192,25 @@ mod tests {
         }
         // the bars lying down fit its width
         const { assert!(BARS_TALL < COMPACT_H - 8.0) };
+    }
+
+    /// Asked: "ajustar a ilha com a ilha da câmera do Mac": around a notch nothing goes under it; the cover in the left
+    /// wing after the wizard, the bars in the right one before the minis, with room to the notch.
+    #[test]
+    fn around_a_notch_the_cover_and_the_bars_go_on_the_wings() {
+        use crate::app::island::{Shape, around_notch, minis::mini_cells};
+        let notch = Vec2::new(179.0, 32.0);
+        let island = Rect::from_min_size(Pos2::ZERO, around_notch(Shape::Compact, Vec2::new(188.0, COMPACT_H), notch, true, false));
+        let under = Rect::from_center_size(Pos2::new(island.center().x, 16.0), notch);
+        for count in [0, 1, 2, 4] {
+            let grid = mini_cells(island, count).into_iter().reduce(Rect::union);
+            let (cover, bars) = spread(island, grid, notch.x);
+            let (cover, bars) = (cover..cover + COVER, bars..bars + BARS_ROOM);
+            assert!(cover.start >= WIZARD_AT + WIZARD / 2.0 + 8.0, "after the wizard: {cover:?}");
+            assert!(cover.end <= under.left() - 8.0 && bars.start >= under.right() + 8.0, "off the notch: {cover:?} {bars:?}");
+            assert!(bars.end <= grid.map_or(island.right() - 12.0, |grid| grid.left() - 8.0), "before the minis: {bars:?} {grid:?}");
+        }
+        // with no notch, as always
+        assert_eq!(spread(Rect::from_min_size(Pos2::ZERO, Vec2::new(188.0, COMPACT_H)), None, 0.0).1 + BARS_ROOM, 188.0 - 12.0);
     }
 }
