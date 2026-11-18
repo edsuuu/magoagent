@@ -46,7 +46,9 @@ impl DrawingApp {
     }
 
     /// What the running answers printed since the last frame; an answer that ended leaves its
-    /// process, and its errors when it failed.
+    /// process, and its errors when it failed. A turn over whose output stays open (`ChatRun::over`) ends after
+    /// `RUN_GRACE` all the same: asked "ela finalizou, mas ainda ficou com uma mensagem pendente, rodando há mais de
+    /// 30 minutos".
     pub(crate) fn poll_chats(&mut self) {
         let ids: Vec<String> = self.chat_runs.keys().cloned().collect();
         for id in ids {
@@ -54,10 +56,12 @@ impl DrawingApp {
             let events: Vec<ChatEvent> = self.chat_runs.get(&id).map(|r| r.events.try_iter().collect()).unwrap_or_default();
             let Some(i) = self.chats.iter().position(|c| c.id == id) else { continue };
             let (agent, now) = (self.chats[i].agent.clone(), self.now);
+            let mut last = false;
             for event in events {
                 if let ChatEvent::Line(value) = &event {
                     // the answer to a question another agent asked it (chat/ask.rs)
                     self.chat_heard(&id, value, agent == "codex");
+                    last |= turn_over(&agent, value);
                 }
                 match event {
                     ChatEvent::Line(value) if agent == "codex" => {
@@ -100,10 +104,28 @@ impl DrawingApp {
                     ChatEvent::Done(errors) => done = Some(errors),
                 }
             }
+            // its turn over (its last event, or its process gone) and still no end of its output: it ends after a while
+            let mut forced = false;
+            if done.is_none()
+                && let Some(run) = self.chat_runs.get_mut(&id)
+            {
+                if run.over.is_none() && (last || run.child.try_wait().is_ok_and(|status| status.is_some())) {
+                    run.over = Some(now);
+                }
+                if run.over.is_some_and(|since| now - since >= RUN_GRACE) {
+                    (done, forced) = (Some(String::new()), true);
+                }
+            }
             if let Some(errors) = done
                 && let Some(mut run) = self.chat_runs.remove(&id)
             {
-                let ok = run.child.wait().is_ok_and(|s| s.success());
+                // ended all the same, its process may still be there: not waited on (its drop stops it); its last event
+                // said how the turn went
+                let ok = match run.child.try_wait() {
+                    Ok(Some(status)) => status.success(),
+                    Ok(None) if forced => true,
+                    _ => run.child.wait().is_ok_and(|s| s.success()),
+                };
                 self.chat_ended.insert(id.clone(), now);
                 self.avatar_listen();
                 self.avatar_set(AvatarState::Idle);

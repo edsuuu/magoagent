@@ -2,10 +2,11 @@
 //! agora by its button, its keys and the MCP, and Editar.
 
 use super::*;
-use crate::app::chat::direct::{ChatRun, NewChat};
+use crate::app::chat::direct::{ChatEvent, ChatRun, NewChat, RUN_GRACE, turn_over};
 use crate::app::chat::list::Look;
 use crate::app::chat::mini::ConvOut;
 use crate::app::hotkeys::local::AppAction;
+use crate::app::ui::agents::AgentState;
 use crate::transcript::ChatItem;
 
 /// A chat as the form makes it: its id.
@@ -214,4 +215,68 @@ fn the_mcp_lists_and_edits_the_queue() {
     assert!(app.chat_queue.is_empty());
     assert_eq!(app.chat_draft, "depois\njá escrito", "back in the box, ahead of what was there");
     assert!(app.act("chat_queue", &json!({ "action": "send_now" })).unwrap_err().contains("Nada na fila"));
+}
+
+/// A stand-in agent that ends at once (`exits`) or runs until stopped, its events sent by the test: as long as the test
+/// keeps the sender the output stays open, as when something the agent left running holds it.
+fn fed(app: &mut DrawingApp, id: &str, exits: bool) -> std::sync::mpsc::Sender<ChatEvent> {
+    let child = match (exits, cfg!(windows)) {
+        (true, _) => crate::editor::command(std::env::current_exe().unwrap()).arg("--list").stdout(std::process::Stdio::null()).spawn(),
+        (false, true) => crate::editor::command("powershell").args(["-NoProfile", "-Command", "Start-Sleep 60"]).spawn(),
+        (false, false) => std::process::Command::new("sleep").arg("60").spawn(),
+    };
+    let mut child = child.unwrap();
+    if exits {
+        // gone already, whatever the machine's pace
+        child.wait().unwrap();
+    }
+    let (run, sender) = ChatRun::fed(child, app.now);
+    app.chat_runs.insert(id.to_string(), run);
+    sender
+}
+
+/// `poll_chats` every 0.1 s for `seconds`.
+fn poll_for(app: &mut DrawingApp, seconds: f64) {
+    let end = app.now + seconds;
+    while app.now < end {
+        app.now += 0.1;
+        app.poll_chats();
+    }
+}
+
+/// Asked ("ela finalizou, mas ainda ficou com uma mensagem pendente, rodando há mais de 30 minutos"): the agent's process
+/// is gone but something it left running holds its output open, so the end of it never comes. The chat stops working a
+/// little after, and what waits in its queue can go.
+#[test]
+fn a_chat_whose_agent_exited_with_its_output_held_open_stops_working() {
+    let mut app = DrawingApp::default();
+    let id = new_chat(&mut app);
+    let _held = fed(&mut app, &id, true);
+    app.queue_message(&id, "e os testes?".into());
+    poll_for(&mut app, 1.0);
+    assert!(matches!(app.chat_state(&id), Some(AgentState::Working(_))), "the lines still on their way get a moment");
+    poll_for(&mut app, RUN_GRACE + 0.5);
+    assert!(!app.chat_runs.contains_key(&id), "the run ended without the end of its output");
+    assert!(matches!(app.chat_state(&id), Some(AgentState::Idle(Some(_)))), "done, not working: {:?}", app.chat_state(&id));
+    assert_eq!(app.chat_queue, [(id.clone(), "e os testes?".to_string())], "the queue goes on the next tick, the chat being free");
+}
+
+/// The agent said its turn is over (Claude Code's `result`) and its process lingers, its output open: the chat is done all
+/// the same, and the process is stopped. Without that last word a process at work keeps the chat working.
+#[test]
+fn a_chat_whose_agent_said_its_last_word_stops_working_even_if_its_process_lingers() {
+    let mut app = DrawingApp::default();
+    let id = new_chat(&mut app);
+    let sender = fed(&mut app, &id, false);
+    poll_for(&mut app, RUN_GRACE + 1.0);
+    assert!(matches!(app.chat_state(&id), Some(AgentState::Working(_))), "at work, no last word: still working");
+    sender.send(ChatEvent::Line(json!({ "type": "result", "subtype": "success", "is_error": false, "result": "pronto" }))).unwrap();
+    poll_for(&mut app, RUN_GRACE + 0.5);
+    assert!(!app.chat_runs.contains_key(&id), "ended after its last word");
+    assert!(matches!(app.chat_state(&id), Some(AgentState::Idle(Some(_)))));
+    let said_an_error = app.transcripts.get(&id).is_some_and(|t| t.items.iter().any(|item| matches!(item, ChatItem::Error(_))));
+    assert!(!said_an_error, "no error said: its turn went well");
+    // Codex says it its own way
+    assert!(turn_over("codex", &json!({ "type": "turn.completed" })) && turn_over("codex", &json!({ "type": "turn.failed" })));
+    assert!(!turn_over("codex", &json!({ "type": "item.completed" })) && !turn_over("claude", &json!({ "type": "assistant" })));
 }
