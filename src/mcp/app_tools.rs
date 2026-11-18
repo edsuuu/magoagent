@@ -284,7 +284,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "mini_chat",
-            "description": "Abre (state open, o padrão) o chat em miniatura flutuante sobre o canvas, no chat `chat` (vazio: o último aberto), ou o recolhe para a pílula (state close).",
+            "description": "Abre (state open, o padrão) o chat pequeno no chat `chat` (vazio: o último aberto): na ilha, com a ilha ligada; sem ela, flutuante sobre o canvas. state close recolhe o flutuante para a pílula.",
             "inputSchema": { "type": "object", "properties": { "chat": chat, "state": { "type": "string", "enum": ["open", "close"] } } },
         }),
         json!({

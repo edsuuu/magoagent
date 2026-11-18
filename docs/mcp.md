@@ -644,7 +644,7 @@ O cartão de um chat no canvas: ali o chat é a Luna (list_agents a chama de Lun
 
 ### `mini_chat`
 
-Abre (state open, o padrão) o chat em miniatura flutuante sobre o canvas, no chat `chat` (vazio: o último aberto), ou o recolhe para a pílula (state close).
+Abre (state open, o padrão) o chat pequeno no chat `chat` (vazio: o último aberto): na ilha, com a ilha ligada; sem ela, flutuante sobre o canvas. state close recolhe o flutuante para a pílula.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|

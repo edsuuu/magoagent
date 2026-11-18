@@ -507,8 +507,10 @@ fn the_card_has_the_words_on_top_and_its_buttons_under_them() {
     assert_eq!(keys, Rect::NOTHING, "no keys' hint under it");
 }
 
+/// Asked: "do chat abrir em um pop, remove 'Abrir em miniatura', deixa apenas na ilha". The header's last button is no
+/// longer Abrir em miniatura: a click at the header's right end opens no panel over the canvas.
 #[test]
-fn abrir_em_miniatura_leaves_the_chat_for_its_panel_over_the_canvas() {
+fn the_header_has_no_abrir_em_miniatura() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     let id = push_chat(&mut app, "Claude");
@@ -521,8 +523,10 @@ fn abrir_em_miniatura_leaves_the_chat_for_its_panel_over_the_canvas() {
     chat_frame(&mut app, &ctx, size, vec![]);
     // the header's last button, at its right end
     let at = Pos2::new(size.x - 16.0 - 16.0, TOP_ROW.max(TITLE_BAR) + 27.0);
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    assert!(painted(&texts, "Ver no canvas").is_some_and(|rect| rect.right() > size.x - 60.0), "Ver no canvas is the last button");
     click(&mut app, &ctx, size, at);
-    assert!(!app.chat_open && app.mini.open && app.mini.on, "the chat closed and its panel, not the pill, is open");
+    assert!(!app.mini.open, "no panel over the canvas");
 }
 
 #[test]

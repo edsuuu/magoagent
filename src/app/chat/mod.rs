@@ -304,11 +304,6 @@ impl DrawingApp {
         self.chat_draft = draft;
         self.chat_search = search;
         (self.chat_listing.filter, self.chat_listing.show) = (filter, show);
-        // Abrir em miniatura: the chat closes and its panel opens over the canvas
-        if act.mini {
-            self.chat_open = false;
-            self.mini_set(true);
-        }
         // Nova conversa: a draft, made a chat by its first message
         if act.new_chat {
             self.start_draft_chat(false);
