@@ -70,8 +70,7 @@ pub(crate) enum Icon {
     Layers(bool),
     /// lucide's palette (the note's color button); `Palette` is the bolt.
     PaintPalette,
-    /// The right panels' buttons: Linha do tempo and Alterações (Tarefas is `Todo`).
-    Clock,
+    /// The right panel's button: Alterações (Tarefas is `Todo`).
     Diff,
 }
 
@@ -391,10 +390,6 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             line(&[(-5.0, -6.0), (-5.0, 6.0)]);
             line(&[(5.0, -6.0), (5.0, 6.0)]);
             line(&[(-5.0, 0.0), (5.0, 0.0)]);
-        }
-        Icon::Clock => {
-            p.circle_stroke(c, 7.0, s);
-            line(&[(0.0, -4.0), (0.0, 0.0), (3.0, 2.0)]);
         }
         Icon::Diff => {
             line(&[(-4.0, -6.5), (-4.0, -0.5)]);

@@ -348,8 +348,7 @@ fn the_panel_tool_opens_and_closes_the_right_panels() {
     // one at a time: another takes its place
     app.act("panel", &json!({ "name": "changes", "open": true })).unwrap();
     assert_eq!(app.panes.open, Some(Pane::Changes));
-    assert_eq!(app.act("panel", &json!({ "name": "Linha do tempo" })).unwrap(), "Painel Linha do tempo aberto.");
-    assert_eq!(app.act("panel", &json!({ "name": "timeline" })).unwrap(), "Painel Linha do tempo fechado.", "no `open` toggles");
+    assert_eq!(app.act("panel", &json!({ "name": "Alterações" })).unwrap(), "Painel Alterações fechado.", "no `open` toggles");
     assert_eq!(app.panes.open, None);
     app.act("panel", &json!({ "name": "changes", "open": true })).unwrap();
     // closing another one leaves the open one alone; no name closes it
@@ -357,6 +356,6 @@ fn the_panel_tool_opens_and_closes_the_right_panels() {
     assert_eq!(app.panes.open, Some(Pane::Changes));
     assert_eq!(app.act("panel", &json!({ "open": false })).unwrap(), "Painel fechado.");
     assert_eq!(app.panes.open, None);
-    assert!(app.act("panel", &json!({ "name": "nada" })).unwrap_err().contains("tasks, timeline ou changes"));
+    assert!(app.act("panel", &json!({ "name": "nada" })).unwrap_err().contains("tasks ou changes"));
     assert!(app.act("panel", &json!({ "open": true })).is_err());
 }

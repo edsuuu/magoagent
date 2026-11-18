@@ -187,38 +187,6 @@ fn a_task_is_made_for_an_agent_and_concluded_with_its_box() {
 }
 
 #[test]
-fn the_timeline_shows_the_newest_first_filters_by_agent_and_takes_the_canvas_to_it() {
-    let (ctx, mut app, _) = opened(Pane::Timeline);
-    let mut ids = Vec::new();
-    for (k, name) in ["Revisor", "Front"].iter().enumerate() {
-        let mut terminal = app.new_element(ElementKind::Rectangle { x: k as f32 * 600.0, y: 0.0, width: 400.0, height: 300.0 });
-        terminal.terminal = Some(TerminalSpec { name: name.to_string(), command: "claude".into(), ..Default::default() });
-        ids.push(terminal.id.clone());
-        app.scene.elements.push(terminal);
-    }
-    let event = |at: i64, id: &str, name: &str, what: &str| AgentEvent { at, ..AgentEvent::new(id, name, EventKind::ToolStarted, what) };
-    app.agent_events.push_back(event(1_000, &ids[0], "Revisor", "Bash: cargo test"));
-    app.agent_events.push_back(event(2_000, &ids[1], "Front", "Edit: tela.rs"));
-    let shown = pane_frame(&mut app, &ctx, vec![]);
-    let all = texts(&shown);
-    let (newer, older) = (all.iter().position(|t| t == "Edit: tela.rs").unwrap(), all.iter().position(|t| t == "Bash: cargo test").unwrap());
-    assert!(newer < older, "the newest first: {all:?}");
-    // the agent's chip leaves only its events
-    let shown = pane_click(&mut app, &ctx, find(&shown, Role::Button, "Revisor").unwrap().center());
-    assert_eq!(app.panes.timeline_agent.as_deref(), Some(ids[0].as_str()));
-    let shown = if texts(&shown).iter().any(|t| t == "Edit: tela.rs") { pane_frame(&mut app, &ctx, vec![]) } else { shown };
-    assert!(!texts(&shown).iter().any(|t| t == "Edit: tela.rs") && texts(&shown).iter().any(|t| t == "Bash: cargo test"));
-    // a click on the row: the canvas goes to the agent's card
-    pane_click(&mut app, &ctx, find(&shown, Role::Label, "Bash: cargo test").unwrap().center());
-    assert_eq!(app.terminal_focus.as_deref(), Some(ids[0].as_str()));
-    assert_eq!(app.selected, vec![0]);
-    // Todos brings them all back
-    let shown = pane_frame(&mut app, &ctx, vec![]);
-    pane_click(&mut app, &ctx, find(&shown, Role::Button, "Todos").unwrap().center());
-    assert_eq!(app.panes.timeline_agent, None);
-}
-
-#[test]
 fn a_changed_file_shows_its_lines_and_diff_and_opens_in_the_tree() {
     if crate::editor::command("git").arg("--version").output().is_err() {
         return;

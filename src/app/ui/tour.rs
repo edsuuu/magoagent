@@ -42,9 +42,7 @@ pub(crate) const STEPS: [Step; 7] = [
         text: "Cada espaço é um projeto, com o seu quadro e a sua pasta. O botão ☰ dobra e abre esta lateral.",
     },
     Step {
-        spot: Some(Spot::Panes),
-        title: "Painéis",
-        text: "Tarefas, Linha do tempo e Alterações abrem ao lado do quadro. O número no botão diz quanto espera por você.",
+        spot: Some(Spot::Panes), title: "Painéis", text: "Tarefas e Alterações abrem ao lado do quadro. O número no botão diz quanto espera por você."
     },
     Step {
         spot: Some(Spot::Corners), title: "Navegar no canvas", text: "Andares, minimapa e zoom ficam neste canto. O uso dos planos fica no pé da lateral."
