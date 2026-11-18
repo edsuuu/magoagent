@@ -5,7 +5,7 @@
 //! `Stop` hook, whose answer blocks the stop with it (mcp/bridge/handle.rs) and Claude Code goes on: at the end of this
 //! turn, or of the next one for a session already idle.
 
-use super::outside::{PillView, TURN_OVER};
+use super::outside::{PILL_PREFIX, PillView, TURN_OVER};
 use crate::prelude::*;
 
 /// Between the text and its Enter: Claude Code takes keys that come together as a paste, and an Enter inside a paste
@@ -232,13 +232,18 @@ impl DrawingApp {
             return Err("Nenhuma sessão do Claude Code fora do app agora (as que os hooks do Claude Code avisam).".into());
         }
         let wanted = name.trim().to_lowercase();
-        let folder = |pill: &PillView| pill.name.rsplit(" · ").next().unwrap_or_default().to_lowercase();
-        let exact: Vec<&PillView> = pills.iter().filter(|pill| pill.name.to_lowercase() == wanted || folder(pill) == wanted).collect();
-        let found = if exact.is_empty() { pills.iter().filter(|pill| pill.name.to_lowercase().contains(&wanted)).collect() } else { exact };
-        let names = pills.iter().map(|pill| format!("\"{}\"", pill.name)).collect::<Vec<_>>().join(", ");
+        // what it is called: "Claude Code · loja", "loja" and its folder's whole name (the pill's is cut, `short_name`)
+        let called = |pill: &PillView| {
+            let cwd = pill.id.strip_prefix(PILL_PREFIX).and_then(|key| key.split_once(':')).map_or("", |(_, cwd)| cwd);
+            let folder = if cwd.is_empty() { pill.name.clone() } else { crate::app::chat::direct::folder_label(cwd) };
+            [pill.label(), pill.name.clone(), folder].map(|name| name.to_lowercase())
+        };
+        let exact: Vec<&PillView> = pills.iter().filter(|pill| called(pill).contains(&wanted)).collect();
+        let found = if exact.is_empty() { pills.iter().filter(|pill| called(pill).iter().any(|name| name.contains(&wanted))).collect() } else { exact };
+        let names = pills.iter().map(|pill| format!("\"{}\"", pill.label())).collect::<Vec<_>>().join(", ");
         match found.as_slice() {
             [pill] => {
-                let (id, label) = (pill.id.clone(), pill.name.clone());
+                let (id, label) = (pill.id.clone(), pill.label());
                 Ok(format!("{label}: {}", self.outside_message(&id, text)?.notice()))
             }
             [] => Err(format!("Nenhuma sessão de fora chamada \"{name}\". Há: {names}.")),

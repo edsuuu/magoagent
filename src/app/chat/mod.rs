@@ -444,9 +444,11 @@ impl DrawingApp {
             // the mascot's bad day at its left (the plug pulled when it is the login)
             // (a terminal's conversation is Claude Code's; a direct chat says its agent)
             ChatItem::Error(text) if !self.chats.iter().any(|ch| Some(&ch.id) == self.chat_agent.as_ref() && !ch.agent.trim_start().starts_with("claude")) => {
+                // in the colour of the agent whose conversation it is
+                let color = self.chat_agent.as_deref().map_or(crate::app::mascot::mago::LUME, |id| self.agent_color(id));
                 ui.horizontal_top(|ui| {
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 42.0), Sense::hover());
-                    paint_mago_for(ui.painter(), "chat-error", rect.center(), 46.0, MagoState::Error, ui.input(|i| i.time));
+                    paint_agent_mago(ui.painter(), "chat-error", color, rect.center(), 46.0, MagoState::Error, ui.input(|i| i.time));
                     ui.vertical(|ui| {
                         ui.label(egui::RichText::new(text).size(13.0).color(c.danger));
                         if let Some(hint) = error_hint(text) {

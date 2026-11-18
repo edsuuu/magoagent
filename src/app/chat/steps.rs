@@ -233,7 +233,7 @@ impl DrawingApp {
                 let mut x = if claude {
                     // the agent's own state in its turn (talking while it writes, the error of a step), on a motion of its own
                     let state = MagoState::in_turn(row.state, transcript.map_or(&[], |transcript| &transcript.items), self.now);
-                    paint_mago_for(p, &format!("{}-steps", row.id), Pos2::new(rect.left() + 26.0, cy), 52.0, state, t);
+                    paint_agent_mago(p, &format!("{}-steps", row.id), self.agent_color(&row.id), Pos2::new(rect.left() + 26.0, cy), 52.0, state, t);
                     rect.left() + 54.0 + gap
                 } else {
                     busy_dots(p, Pos2::new(rect.left(), cy), GREEN, t);

@@ -147,13 +147,22 @@ thread_local! {
     static MOTIONS: RefCell<HashMap<u64, MagoMotion>> = RefCell::new(HashMap::new());
 }
 
-/// Paints the wizard `size` tall at `center`, advancing `motion` to `time`. `pointer` is where the eyes look (none:
-/// around, by themselves).
-pub(crate) fn paint_mago(painter: &Painter, center: Pos2, size: f32, state: MagoState, motion: &mut MagoMotion, time: f64, pointer: Option<Pos2>) {
+/// Paints the wizard `size` tall at `center` in `color` (Luna's `LUME`, an agent's own), advancing `motion` to `time`.
+/// `pointer` is where the eyes look (none: around, by themselves).
+pub(crate) fn paint_mago(
+    painter: &Painter,
+    center: Pos2,
+    size: f32,
+    color: Color32,
+    state: MagoState,
+    motion: &mut MagoMotion,
+    time: f64,
+    pointer: Option<Pos2>,
+) {
     // a pointer that is not a number would make the gaze NaN, which the eyes never recover from
     let toward = pointer.map(|pointer| gaze_toward(center, pointer)).filter(|toward| toward.x.is_finite() && toward.y.is_finite());
     motion.advance(state, time, toward);
-    draw::paint(painter, center, size, motion, time);
+    draw::paint(painter, center, size, color, motion, time);
     // at rest it only sways slowly and blinks (0.12 s): 15 frames a second show it, and a wizard always on screen (the
     // island's) no longer keeps the whole app at 30 while nothing happens; a click or the pointer bring frames anyway
     let frame = if matches!(state, MagoState::Idle | MagoState::Sleeping) { 66 } else { 33 };
@@ -186,10 +195,16 @@ pub(crate) fn paint_scaled(painter: &Painter, center: Pos2, scale: Vec2, paint: 
     });
 }
 
-/// The same, for any place that has no state of its own: the motion lives under `id`, the eyes follow the
+/// Luna, for any place that has no state of its own: the motion lives under `id`, the eyes follow the
 /// pointer and a click on the wizard makes it react.
 pub(crate) fn paint_mago_for(painter: &Painter, id: &str, center: Pos2, size: f32, state: MagoState, time: f64) {
     paint_mago_toward(painter, id, center, size, state, time, painter.ctx().pointer_latest_pos());
+}
+
+/// The same for an agent, in its own `color` (`DrawingApp::agent_color`), as its minis in the lists have it: its
+/// mascot in its conversation, its card and its pill.
+pub(crate) fn paint_agent_mago(painter: &Painter, id: &str, color: Color32, center: Pos2, size: f32, state: MagoState, time: f64) {
+    paint_mago_tinted(painter, id, color, center, size, state, time, painter.ctx().pointer_latest_pos());
 }
 
 /// How many times the wizard under `id` was poked, and whether it is dizzy from it at `time`.
@@ -244,6 +259,10 @@ fn motion_key(id: &str) -> u64 {
 /// `paint_mago_for` with the eyes looking at `pointer` (in the painter's own coordinates; none: ahead): for a place whose
 /// pointer is not the window's own, like the island following the cursor over the whole screen.
 pub(crate) fn paint_mago_toward(painter: &Painter, id: &str, center: Pos2, size: f32, state: MagoState, time: f64, pointer: Option<Pos2>) {
+    paint_mago_tinted(painter, id, LUME, center, size, state, time, pointer);
+}
+
+fn paint_mago_tinted(painter: &Painter, id: &str, color: Color32, center: Pos2, size: f32, state: MagoState, time: f64, pointer: Option<Pos2>) {
     let poked = pointer.is_some_and(|at| at.distance(center) < size * 0.45) && painter.ctx().input(|input| input.pointer.primary_pressed());
     let key = motion_key(id);
     MOTIONS.with(|motions| {
@@ -255,6 +274,6 @@ pub(crate) fn paint_mago_toward(painter: &Painter, id: &str, center: Pos2, size:
         if poked {
             motion.poke(time);
         }
-        paint_mago(painter, center, size, state, motion, time, pointer);
+        paint_mago(painter, center, size, color, state, motion, time, pointer);
     });
 }
