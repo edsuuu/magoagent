@@ -85,17 +85,23 @@ pub(crate) fn wsl_distro_in_use() -> Option<WslDistro> {
     state().distro.clone()
 }
 
-/// Before a chat runs its agent: the first probe for this choice, right after the app opens, is waited for (up to 15 s),
-/// or that first message would go to Windows' agent (or find none, with the agents only in WSL).
-pub(crate) fn wsl_settle() {
-    probe_soon(false);
-    let start = std::time::Instant::now();
-    while start.elapsed().as_secs() < 15 && {
-        let state = state();
-        state.running && state.at.is_none()
-    } {
-        std::thread::sleep(std::time::Duration::from_millis(50));
+/// Whether the first probe for this choice still runs (right after the app opens, or Ajustes changed it): a chat's
+/// message waits for it in the queue, or it would go to Windows' agent (or find none, with the agents only in WSL). It
+/// is never waited for on the interface's thread: the window froze up to 15 s there.
+pub(crate) fn wsl_settling() -> bool {
+    #[cfg(test)]
+    if SETTLING.with(std::cell::Cell::get) {
+        return true;
     }
+    probe_soon(false);
+    let state = state();
+    state.running && state.at.is_none()
+}
+
+// a test's own thread pretends the first probe runs
+#[cfg(test)]
+thread_local! {
+    pub(crate) static SETTLING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 fn probe_soon(in_use: bool) {
