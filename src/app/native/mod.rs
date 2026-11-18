@@ -145,6 +145,9 @@ impl DrawingApp {
         if enabled("canvas") {
             self.native_canvas();
         }
+        if enabled("island") {
+            self.native_island();
+        }
     }
 
     /// One envelope: its answer, or None when it runs on a thread (the answer comes through `LATER`).
@@ -187,6 +190,7 @@ impl DrawingApp {
             // AREAS: one arm per area (with `_args` renamed `args`), e.g.
             // Some(("island", verb)) => self.native_island_act(verb, args),
             Some(("canvas", verb)) => self.native_canvas_act(verb, args),
+            Some(("island", verb)) => self.native_island_act(verb, args),
             _ => Err(format!("ação de interface desconhecida: ui.{name}")),
         }
     }

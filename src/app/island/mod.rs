@@ -30,6 +30,8 @@ pub(crate) mod macos;
 mod marquee;
 pub(crate) mod minis;
 pub(crate) mod music;
+#[cfg(target_os = "macos")]
+mod native;
 pub(crate) mod paint;
 pub(crate) mod picture;
 pub(crate) mod pill;
@@ -572,6 +574,11 @@ impl Island {
 impl DrawingApp {
     /// Every frame: the island, when it is on.
     pub(crate) fn island_ui(&mut self, ctx: &Context) {
+        // SwiftUI draws it (`native.rs`): egui steps aside
+        #[cfg(target_os = "macos")]
+        if crate::app::native::enabled("island") {
+            return;
+        }
         let now = crate::app::system::tray::unix_seconds();
         if crate::app::system::tray::alerts_paused(self.prefs.pause_alerts_until, now) {
             self.island = Island::default();

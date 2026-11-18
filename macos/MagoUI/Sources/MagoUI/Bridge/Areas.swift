@@ -11,6 +11,7 @@ enum Areas {
             switch name {
             // ÁREAS: um caso por área, ex.: case "island": IslandArea.start()
             case "canvas": CanvasArea.start()
+            case "island": IslandArea.start()
             case "probe": ProbeArea.start()
             default: break
             }
