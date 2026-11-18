@@ -95,6 +95,29 @@ pub(crate) fn tie_to_caller(scene: &mut Scene, caller: Option<&str>, created: &[
     Ok(windows)
 }
 
+/// A window an agent added over another window or a note moves to the free place nearest to the agent (to where it put
+/// it, when no window asked): it reads the canvas from a list, and stacked what it opened (asked: "a posição dos
+/// terminais, às vezes ele junta tudo na direita"). Its label goes with it.
+pub(crate) fn make_room(scene: &mut Scene, caller: Option<&str>, created: &[Value]) {
+    let around = caller.and_then(|id| scene.elements.iter().find(|e| e.id == id)).map(element_bounds);
+    let ids: Vec<&str> = created.iter().filter_map(|c| c["id"].as_str()).collect();
+    for (index_of, id) in ids.iter().copied().enumerate() {
+        let Some(index) = scene.elements.iter().position(|e| e.id == id && e.is_node()) else { continue };
+        let at = element_bounds(&scene.elements[index]);
+        // in the order it made them: the later one gives way
+        let later = &ids[index_of..];
+        let spot = free_spot_among(scene.elements.iter().filter(|e| !later.contains(&e.id.as_str())), at, around.unwrap_or(at));
+        let delta = spot.min - at.min;
+        if delta != Vec2::ZERO {
+            let label = format!("{id}-label");
+            for element in scene.elements.iter_mut().filter(|e| e.id == id || e.id == label) {
+                element.move_by(delta);
+            }
+        }
+    }
+    resolve_bindings(&mut scene.elements);
+}
+
 pub(crate) fn center_of(scene: &Scene, id: &str) -> Result<Pos2, String> {
     scene.elements.iter().find(|e| e.id == id).map(|e| element_bounds(e).center()).ok_or_else(|| format!("elemento `{id}` não existe"))
 }

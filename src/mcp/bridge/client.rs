@@ -45,10 +45,10 @@ pub(super) const HELP: &str = "Uso: magoagent <comando>
   portal eval <nome> <js>      roda JavaScript na página e mostra o resultado
   portal click <nome> <css>    seu cursor vai até o elemento e clica
   portal fill <nome> <css> <texto>  seu cursor vai até o campo e digita
-  recruit [--worktree] [comando]  cria um agente abaixo de você, ligado a você (padrão: claude); ele ganha um nome;
+  recruit [--worktree] [comando]  cria um agente abaixo de você (ou no lugar livre mais perto), ligado a você (padrão: claude); ele ganha um nome;
                                com --worktree, num git worktree próprio, num ramo dele
-  portal create <url> [nome]   abre um navegador à sua direita, ligado a você
-  terminal [comando]           abre um terminal à sua direita rodando o comando (testes, uma API), ligado a você;
+  portal create <url> [nome]   abre um navegador à sua direita (ou no lugar livre mais perto), ligado a você
+  terminal [comando]           abre um terminal à sua direita (ou no lugar livre mais perto) rodando o comando (testes, uma API), ligado a você;
                                acompanhe com check <nome>
   connect <a> [b]              liga você a <a>, ou <a> a <b> (qualquer coisa do canvas)
   notify <texto>               avisa a pessoa (no app e numa notificação do sistema; no Windows, a barra de tarefas pisca)";

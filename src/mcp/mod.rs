@@ -43,7 +43,8 @@ páginas web no canvas: portal_navigate, portal_read e portal_eval os controlam.
 Para a pessoa acompanhar o seu trabalho numa árvore \
 ligada a você, use ide_open (abre pastas na árvore e arquivos numa linha) e ide_search (procura no projeto); o resto está em file_tree. Para montar um time: recruit_agent cria um \
 agente abaixo de você já ligado a você, create_portal abre uma página à sua direita, connect liga duas coisas do \
-canvas e notify avisa a pessoa. Para rodar testes, uma API ou um servidor e acompanhar, create_terminal abre um terminal à sua direita \
+canvas e notify avisa a pessoa (com o lugar tomado, cada um vai para o lugar livre mais perto de você; a resposta diz onde). Para rodar \
+testes, uma API ou um servidor e acompanhar, create_terminal abre um terminal à sua direita \
 rodando o comando; todo terminal, navegador ou árvore que você abre (também por add_elements) fica ligado a você por corda, e você o \
 acompanha com read_terminal. Para mover ou redimensionar uma janela (terminal, navegador, árvore de arquivos), use update_elements com \
 x, y, width e height. Pediu para abrir, mostrar ou ver algo (arquivo, pasta, PDF, página, chat, um ponto do canvas): faça o que for preciso e abra na tela da pessoa com a ferramenta certa (open_path, ide_folder, focus_canvas, show_screen, chat_open), sem perguntar e sem só descrever onde está. \

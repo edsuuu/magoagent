@@ -203,3 +203,48 @@ pub(crate) fn local_bounds(e: &Element) -> Rect {
         }
     }
 }
+
+/// Where a window the size of `want` goes among `elements`: at `want` when that is free, else in the rings around
+/// `around` (the window that opens it, or `want` itself), lined up with its edges 60 away: first below, right, left and
+/// above it, then its corners, then the next ring out, overlapping no window or note. What an agent opens stays around
+/// it, not piled up on one side (asked: "a posição dos terminais, às vezes ele junta tudo na direita").
+pub(crate) fn free_spot_among<'a>(elements: impl Iterator<Item = &'a Element>, want: Rect, around: Rect) -> Rect {
+    const GAP: f32 = 60.0;
+    let taken: Vec<Rect> = elements.filter(|e| e.is_node() || e.created.is_some()).map(|e| element_bounds(e).expand(20.0)).collect();
+    let free = |spot: &Rect| !taken.iter().any(|t| t.intersects(*spot));
+    if free(&want) {
+        return want;
+    }
+    let size = want.size();
+    // column or row `k` of the rings: 0 lines up with `around`, past it one window (and the gap) at a time
+    let place = |k: i32, low: f32, high: f32, length: f32| match k {
+        0 => low,
+        k if k > 0 => high + GAP + (k - 1) as f32 * (length + GAP),
+        k => low - GAP - length - (-k - 1) as f32 * (length + GAP),
+    };
+    // ponytail: six rings; a canvas packed past that overlaps at `want`
+    let mut spots: Vec<(i32, i32)> = (-6..=6).flat_map(|column| (-6..=6).map(move |row| (column, row))).filter(|spot| *spot != (0, 0)).collect();
+    spots.sort_by_key(|&(column, row)| (column.abs().max(row.abs()), column.abs() + row.abs(), row < 0, column < 0, row == 0));
+    spots
+        .into_iter()
+        .map(|(column, row)| {
+            let x = place(column, around.min.x, around.max.x, size.x);
+            let y = place(row, around.min.y, around.max.y, size.y);
+            Rect::from_min_size(Pos2::new(x, y), size)
+        })
+        .find(free)
+        .unwrap_or(want)
+}
+
+/// Where `spot` sits from `of`, in the words an agent reads ("aberto à sua direita").
+pub(crate) fn side_of(spot: Rect, of: Rect) -> &'static str {
+    let away = spot.center() - of.center();
+    // by how far past the other it is on each axis, in its own size
+    let (across, down) = (away.x / (spot.width() + of.width()), away.y / (spot.height() + of.height()));
+    match (across.abs() >= down.abs(), across >= 0.0, down >= 0.0) {
+        (true, true, _) => "à sua direita",
+        (true, false, _) => "à sua esquerda",
+        (false, _, true) => "abaixo de você",
+        (false, _, false) => "acima de você",
+    }
+}

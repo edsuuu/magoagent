@@ -25,16 +25,15 @@ use std::sync::mpsc::Sender;
 pub(crate) const RECRUIT_CARD: Vec2 = Vec2::new(380.0, 400.0);
 
 impl DrawingApp {
-    /// A box the size of `want` at its place, or the nearest free one in a grid of three beside it and down,
-    /// overlapping no window or note: a team of recruits stays together under its Maestro, not in a column off the screen.
+    /// A box the size of `want` at its place, or the free one nearest to it, overlapping no window or note.
     pub(crate) fn free_spot(&self, want: Rect) -> Rect {
-        let taken: Vec<Rect> = self.scene.elements.iter().filter(|e| e.is_node() || e.created.is_some()).map(element_bounds).collect();
-        let step = want.size() + Vec2::splat(40.0);
-        // ponytail: 30 rows of 3 at most; a packed canvas may still overlap
-        (0..90)
-            .map(|k| want.translate(Vec2::new((k % 3) as f32 * step.x, (k / 3) as f32 * step.y)))
-            .find(|at| !taken.iter().any(|t| t.expand(20.0).intersects(*at)))
-            .unwrap_or(want)
+        free_spot_among(self.scene.elements.iter(), want, want)
+    }
+
+    /// The same, around `around` (the window that opens it) when `want` is taken: a team of recruits, the terminals and
+    /// the pages an agent opens stay around it instead of piling up on one side.
+    pub(crate) fn free_spot_near(&self, want: Rect, around: Rect) -> Rect {
+        free_spot_among(self.scene.elements.iter(), want, around)
     }
 
     /// `recruit`: a terminal the caller's size and folder, below it, running `command`, with an agent's name.
@@ -69,7 +68,8 @@ impl DrawingApp {
             _ => (String::new(), b.size()),
         };
         let size = if chat_mode { RECRUIT_CARD } else { size };
-        let at = self.free_spot(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), size));
+        let at = self.free_spot_near(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), size), b);
+        let side = side_of(at, b);
         let name = self.agent_name();
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
         // its own environment first: without it there is no recruit
@@ -108,7 +108,7 @@ impl DrawingApp {
         // one Cmd+Z takes back the recruit and its rope together
         self.rope_between(from, &id, false);
         self.publish_nodes();
-        let _ = reply.send(Ok(format!("Agente \"{name}\" criado abaixo de você e conectado; fale com ele com `magoagent ask \"{name}\" …`.{own}")));
+        let _ = reply.send(Ok(format!("Agente \"{name}\" criado {side} e conectado; fale com ele com `magoagent ask \"{name}\" …`.{own}")));
     }
 
     /// The chat of a recruit (same id as its card), its first message queued: `raw` is the recruit's command, its
@@ -157,7 +157,7 @@ impl DrawingApp {
             "" => host_of(&url).to_string(),
             name => name.to_string(),
         };
-        let at = self.free_spot(Rect::from_min_size(Pos2::new(b.max.x + 60.0, b.min.y), Vec2::new(720.0, 520.0)));
+        let at = self.free_spot_near(Rect::from_min_size(Pos2::new(b.max.x + 60.0, b.min.y), Vec2::new(720.0, 520.0)), b);
         let mut portal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
         portal.style = node_style(portal.style);
         portal.portal = Some(PortalSpec { name: name.clone(), url, ..Default::default() });
@@ -166,7 +166,7 @@ impl DrawingApp {
         self.scene.elements.push(portal);
         self.rope_between(from, &id, false);
         self.publish_nodes();
-        let _ = reply.send(Ok(format!("Navegador \"{name}\" aberto à sua direita e conectado.")));
+        let _ = reply.send(Ok(format!("Navegador \"{name}\" aberto {} e conectado.", side_of(at, b))));
     }
 
     /// The MCP's `create_terminal`: a terminal an agent opens to run what it watches (tests, an API), to its right and
@@ -188,7 +188,8 @@ impl DrawingApp {
         let cwd = Some(text("cwd")).filter(|cwd| !cwd.is_empty()).unwrap_or(folder);
         let name = Some(text("name")).filter(|name| !name.is_empty()).unwrap_or_else(|| self.command_name(&command));
         let name = self.unique_terminal_name(&name, None);
-        let at = self.free_spot(Rect::from_min_size(Pos2::new(b.max.x + 60.0, b.min.y), self.new_terminal_size()));
+        let at = self.free_spot_near(Rect::from_min_size(Pos2::new(b.max.x + 60.0, b.min.y), self.new_terminal_size()), b);
+        let side = side_of(at, b);
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
         terminal.style = node_style(terminal.style);
         terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command: command.clone(), maestro: false, ..Default::default() });
@@ -200,7 +201,7 @@ impl DrawingApp {
         self.publish_nodes();
         let running = if command.is_empty() { String::new() } else { format!(", rodando `{command}`") };
         Ok(format!(
-            "Terminal \"{name}\" aberto à sua direita{running} e ligado a você por corda: leia a tela com read_terminal \"{name}\" (ou `magoagent check \"{name}\"`), \
+            "Terminal \"{name}\" aberto {side}{running} e ligado a você por corda: leia a tela com read_terminal \"{name}\" (ou `magoagent check \"{name}\"`), \
              mande teclas com ask_agent raw (\\x03 para parar) e veja os processos com terminal_processes."
         ))
     }
