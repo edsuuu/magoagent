@@ -38,15 +38,15 @@ desenhar sobre o código que a pessoa pediu para abrir ou ver na IDE do canvas, 
 linha) de que ela fala, com o caminho absoluto. file_link abre um desses links (ou volta) como o clique da pessoa. \
 Fluxo sugerido: planeje o layout (ex.: caixas de 180x80 com 80px de espaço), crie tudo com add_elements, chame \
 view para ver a imagem e corrija com update_elements. \
-Agentes: o canvas também tem terminais (type \"terminal\" com name, command e cwd; ex.: command \"claude\" ou \"codex\") \
-e uma seta presa a dois deles os conecta. Um terminal com command \"claude\" retoma a conversa de antes ao reiniciar \
+Agentes: o canvas também tem terminais (type \"terminal\" com name, command e cwd) e uma seta presa a dois deles os conecta; \
+um agente novo para uma tarefa é recruit_agent, que segue o ajuste Invocação dos agentes (um chat do app ou um terminal), não um terminal com claude. Um terminal com command \"claude\" retoma a conversa de antes ao reiniciar \
 (claude --resume); update_elements com resume false desliga isso, resume true liga. De dentro de um terminal do MagoAgent, list_agents mostra quem está \
 ligado a você, ask_agent manda um prompt a outro agente e espera a resposta, read_terminal lê a tela dele, e \
 read_note, write_note e create_note mexem nas notas conectadas. `note` cria uma nota no canvas ou muda texto, título e cor (10 papéis); com `buttons` [{label, action, args}] (ou `note_buttons`) a nota ganha botões que a pessoa clica para rodar uma ação do app (as ferramentas do app: chat_new, open_path, ide_folder...). Navegadores (type \"portal\" com url e name) são \
 páginas web no canvas: portal_navigate, portal_read e portal_eval os controlam. Árvores de Arquivos (type \"filetree\" com root, a pasta do projeto; com editor true ganham o painel de código) mostram o projeto; \
 Para a pessoa acompanhar o seu trabalho numa árvore \
 ligada a você, use ide_open (abre pastas na árvore e arquivos numa linha) e ide_search (procura no projeto); o resto está em file_tree. Para montar um time: recruit_agent cria um \
-agente abaixo de você já ligado a você, create_portal abre uma página à sua direita, connect liga duas coisas do \
+agente abaixo de você já ligado a você (com o model e o effort que você escolher), create_portal abre uma página à sua direita, connect liga duas coisas do \
 canvas e notify avisa a pessoa (com o lugar tomado, cada um vai para o lugar livre mais perto de você; a resposta diz onde). Para rodar \
 testes, uma API ou um servidor e acompanhar, create_terminal abre um terminal à sua direita \
 rodando o comando; todo terminal, navegador ou árvore que você abre (também por add_elements) fica ligado a você por corda, e você o \

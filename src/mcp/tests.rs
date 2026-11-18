@@ -266,6 +266,7 @@ fn every_app_action_is_a_tool_once() {
         "voice_call",
         "portal_tab",
         "canvas_group",
+        "organize_canvas",
         "history",
         "demands",
         "outside_message",

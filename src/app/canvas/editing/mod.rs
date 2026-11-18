@@ -376,10 +376,113 @@ impl DrawingApp {
         self.tidy_last = Some((ids, layout));
     }
 
+    /// Organizar o canvas (asked: "cria uma tela para organizar o canvas ou um MCP para isso, para
+    /// o Claude organizar"): every window, note, group and drawing of the canvas (or of `only`) in
+    /// rows WINDOW_GAP apart, those tied by a rope or an arrow next to each other, as one undo
+    /// step, then the whole in view. Strokes and shapes near each other or tied by an arrow are one
+    /// drawing and keep their shape; a canvas group moves whole. Ropes and bound arrows follow their ends. How many it moved.
+    // ponytail: locked elements stay where they are and the rows may cover them; leaving room around them is the next step
+    pub(crate) fn arrange_canvas(&mut self, only: Option<&[usize]>) -> usize {
+        let elements = &self.scene.elements;
+        let tied = |element: &Element| element.rope || element.ends.start.is_some() || element.ends.end.is_some();
+        let candidates: Vec<usize> = only
+            .map_or_else(|| (0..elements.len()).collect(), <[usize]>::to_vec)
+            .into_iter()
+            .filter(|&index| elements.get(index).is_some_and(|element| !tied(element) && !element.locked) && !self.is_card_text(index))
+            .collect();
+        let (units, boxes) = self.units_of(&candidates);
+        let unit_of = |index: usize| units.iter().position(|unit| unit.contains(&index));
+        let ties: Vec<(usize, usize)> = elements
+            .iter()
+            .filter(|element| tied(element))
+            .filter_map(|element| {
+                let end = |binding: &Option<Binding>| binding.as_ref().and_then(|binding| elements.iter().position(|other| other.id == binding.element_id));
+                Some((unit_of(end(&element.ends.start)?)?, unit_of(end(&element.ends.end)?)?))
+            })
+            .collect();
+        // a drawing: no window, note, frame or canvas group in it (a shape and its label share a `group_id`: still a drawing)
+        let drawing: Vec<bool> = units
+            .iter()
+            .map(|unit| {
+                unit.iter().all(|&member| {
+                    let element = &elements[member];
+                    !element.is_node() && element.created.is_none() && element.frame.is_none() && element.frame_group.is_none()
+                })
+            })
+            .collect();
+        let canvas_group: Vec<Option<&str>> = units.iter().map(|unit| unit.iter().find_map(|&member| elements[member].frame_group.as_deref())).collect();
+        let mut parent: Vec<usize> = (0..units.len()).collect();
+        fn root(parent: &mut [usize], mut index: usize) -> usize {
+            while parent[index] != index {
+                parent[index] = parent[parent[index]];
+                index = parent[index];
+            }
+            index
+        }
+        for first in 0..units.len() {
+            for second in first + 1..units.len() {
+                let near = drawing[first] && drawing[second] && boxes[first].expand(20.0).intersects(boxes[second]);
+                let arrow = drawing[first] && drawing[second] && ties.iter().any(|&tie| tie == (first, second) || tie == (second, first));
+                // the members of a canvas group (Grupo) move as one, its frame around them
+                let grouped = canvas_group[first].is_some() && canvas_group[first] == canvas_group[second];
+                if near || arrow || grouped {
+                    let (first_root, second_root) = (root(&mut parent, first), root(&mut parent, second));
+                    parent[second_root] = first_root;
+                }
+            }
+        }
+        // the drawings joined: one unit each
+        let (mut merged, mut merged_boxes): (Vec<Vec<usize>>, Vec<Rect>) = (Vec::new(), Vec::new());
+        let mut slot_of = vec![usize::MAX; units.len()];
+        for index in 0..units.len() {
+            let top = root(&mut parent, index);
+            if slot_of[top] == usize::MAX {
+                slot_of[top] = merged.len();
+                merged.push(Vec::new());
+                merged_boxes.push(Rect::NOTHING);
+            }
+            let slot = slot_of[top];
+            merged[slot].extend(&units[index]);
+            merged_boxes[slot] = merged_boxes[slot].union(boxes[index]);
+        }
+        if merged.len() < 2 {
+            return 0;
+        }
+        // what a rope or an arrow ties goes side by side: each tied set where its first one is, in reading order
+        let mut cluster: Vec<usize> = (0..merged.len()).collect();
+        for &(first, second) in &ties {
+            let (first, second) = (root(&mut cluster, slot_of[root(&mut parent, first)]), root(&mut cluster, slot_of[root(&mut parent, second)]));
+            cluster[second] = first;
+        }
+        let reading = |first: &usize, second: &usize| {
+            let (first, second) = (merged_boxes[*first], merged_boxes[*second]);
+            first.min.y.total_cmp(&second.min.y).then(first.min.x.total_cmp(&second.min.x))
+        };
+        let mut order: Vec<usize> = (0..merged.len()).collect();
+        order.sort_by(reading);
+        let tops: Vec<usize> = (0..merged.len()).map(|index| root(&mut cluster, index)).collect();
+        let (mut lead, mut read_at) = (vec![usize::MAX; merged.len()], vec![0; merged.len()]);
+        for (position, &index) in order.iter().enumerate() {
+            lead[tops[index]] = lead[tops[index]].min(position);
+            read_at[index] = position;
+        }
+        order.sort_by_key(|&index| (lead[tops[index]], read_at[index]));
+        let deltas = arrange_deltas(&merged_boxes, &order, WINDOW_GAP);
+        self.move_units(&merged, deltas);
+        self.update_bindings();
+        self.zoom_to_fit(false);
+        merged.len()
+    }
+
     /// The selection as units that move whole, each with its box.
     fn selected_units(&self) -> (Vec<Vec<usize>>, Vec<Rect>) {
+        self.units_of(&self.selected.clone())
+    }
+
+    /// `indices` as units that move whole, each with its box.
+    fn units_of(&self, indices: &[usize]) -> (Vec<Vec<usize>>, Vec<Rect>) {
         let mut units: Vec<Vec<usize>> = Vec::new();
-        for &index in &self.selected {
+        for &index in indices {
             let Some(element) = self.scene.elements.get(index) else { continue };
             if element.rope || self.is_card_text(index) || units.iter().any(|unit| unit.contains(&index)) {
                 continue;

@@ -5,6 +5,14 @@ pub(crate) fn tools() -> Value {
     let ids = json!({ "type": "array", "items": { "type": "string" } });
     let agent_name = json!({ "type": "string", "description": "o nome do agente, como list_agents mostra" });
     let tree_name = json!({ "type": "string", "description": "o nome da Árvore de Arquivos, como list_agents mostra; opcional com uma só ligada a você" });
+    // its own value: the list is past what one `json!` expands
+    let recruit = json!({
+        "command": { "type": "string", "description": "o agente e a tarefa; padrão claude (ex.: codex, ou claude \"revise o diff\")" },
+        "model": { "type": "string", "description": "o modelo que você escolhe para a tarefa: haiku (simples e rápido), sonnet (o dia a dia) ou opus (o difícil e longo); no Codex, um modelo da lista dele (ex.: gpt-5-codex); sem isto vale o de Ajustes" },
+        "effort": { "type": "string", "enum": ["low", "medium", "high", "xhigh", "max"], "description": "o esforço que você escolhe para a tarefa: low, medium, high, xhigh ou max" },
+        "worktree": { "type": "boolean", "description": "true: num git worktree próprio, num ramo dele" },
+        "mode": { "type": "string", "enum": ["terminal", "chat"], "description": "só quando a pessoa pedir com essas palavras (\"em terminal\", \"em chat\"); sem isto vale o ajuste Invocação dos agentes, o que ela escolheu: não passe por conta própria. terminal: Claude Code completo num terminal; chat: conversa leve num chat do app" },
+    });
     json!([
         {
             "name": "get_scene",
@@ -222,15 +230,13 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "recruit_agent",
-            "description": "Cria um agente novo (um terminal) abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você; ele ganha \
-                um nome (a resposta diz qual) e você fala com ele com ask_agent. Só de dentro de um terminal do MagoAgent. \
+            "description": "Cria um agente novo abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você: \
+                um chat do app ou um terminal com o Claude Code, como a pessoa escolheu em Ajustes › Agentes › Invocação dos agentes. Ele ganha \
+                um nome (a resposta diz qual, o modelo e o esforço) e você fala com ele com ask_agent. Só de dentro de um terminal ou chat do MagoAgent. \
+                Escolha sempre model e effort à altura da tarefa e diga à pessoa o que escolheu. \
                 Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para \
                 dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).",
-            "inputSchema": { "type": "object", "properties": {
-                "command": { "type": "string", "description": "o que roda nele; padrão claude (ex.: codex)" },
-                "worktree": { "type": "boolean", "description": "true: num git worktree próprio, num ramo dele" },
-                "mode": { "type": "string", "enum": ["terminal", "chat"], "description": "terminal: Claude Code completo num terminal; chat: conversa leve num chat do app (usa o login do CLI, gasta bem menos memória); sem isto vale o ajuste Invocação dos agentes" },
-            } },
+            "inputSchema": { "type": "object", "properties": recruit },
         },
         {
             "name": "create_portal",

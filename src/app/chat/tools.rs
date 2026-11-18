@@ -121,6 +121,7 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          \"Me manda um print\" é o screenshot mostrado aqui, sem open_path.",
         chat.cwd
     );
+    prompt.push_str(&crate::app::maestro::tuning::recruit_brief(prefs));
     prompt.push_str(
         " Tarefas: ao delegar trabalho a um agente, crie a tarefa com tasks (action create, owner com o nome dele e send true para entregá-la); \
          ao trazer as demandas, cite as tarefas travadas (aguardando aprovação, bloqueadas, que falharam) com os pontos de atenção que demands e tasks trouxeram, \

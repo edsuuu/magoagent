@@ -86,7 +86,7 @@ fn fixed_claude_more() -> Vec<Choice> {
 
 const EFFORT_NAMES: [(&str, &str); 6] = [("low", "Baixo"), ("medium", "Médio"), ("high", "Alto"), ("xhigh", "Extra"), ("max", "Máx"), ("ultra", "Ultra")];
 
-fn effort_name(id: &str) -> String {
+pub(crate) fn effort_name(id: &str) -> String {
     EFFORT_NAMES.iter().find(|(e, _)| *e == id).map_or_else(|| id.to_string(), |(_, n)| n.to_string())
 }
 
@@ -192,7 +192,7 @@ pub(crate) fn agent_default(agent: &str) -> (String, String) {
 }
 
 /// Claude Code's aliases to the model they run now: "opus[1m]" → claude-opus-5-5.
-fn claude_alias(model: &str) -> String {
+pub(crate) fn claude_alias(model: &str) -> String {
     let base = model.split('[').next().unwrap_or(model).trim();
     match base {
         "opus" | "default" | "best" => "claude-opus-5-5",
