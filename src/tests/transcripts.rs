@@ -349,3 +349,20 @@ fn a_chat_resuming_a_session_is_named_by_that_session() {
     assert_eq!(resumed_in(&projects, "claude --resume 00000000-0000"), None, "a session not here");
     let _ = fs::remove_dir_all(&projects);
 }
+
+#[test]
+fn a_tool_that_fails_in_json_says_its_message_whole_after_its_action() {
+    use crate::transcript::{ChatItem, chat_items};
+    let failed = |content: &str| chat_items(&json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": content}]}}));
+    let why = "X11 input verification failed after typing; text may have been sent. Inspect the target before submitting or retrying, \
+               or press Escape to clear the field and type it again with a slower delay between the keys.";
+    let answer = json!({"action": "type_text", "implemented": true, "message": why, "details": {"display": ":0"}}).to_string();
+    assert!(why.chars().count() > 160, "longer than a line was cut at");
+    assert_eq!(failed(&answer), vec![ChatItem::Error(format!("Ferramenta falhou (type_text): {why}"))], "no JSON, nothing cut");
+    // `error` when there is no `message`, as a string or an object; no action, no parentheses
+    assert_eq!(failed(r#"{"error": "sem permissão"}"#), vec![ChatItem::Error("Ferramenta falhou: sem permissão".into())]);
+    assert_eq!(failed(r#"{"ok": false, "error": {"message": "porta ocupada"}}"#), vec![ChatItem::Error("Ferramenta falhou: porta ocupada".into())]);
+    // JSON with nothing that says why, and plain text, as before: the first line
+    assert_eq!(failed(r#"{"ok": false}"#), vec![ChatItem::Error(r#"Ferramenta falhou: {"ok": false}"#.into())]);
+    assert_eq!(failed("Exit code 1\nerro: x"), vec![ChatItem::Error("Ferramenta falhou: Exit code 1".into())]);
+}

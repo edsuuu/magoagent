@@ -165,7 +165,7 @@ impl DrawingApp {
                 };
                 // a click on its row opens its card, kept open as the runs are (`chat_unfolded`)
                 let card = format!("card:{}", step.id);
-                if step_row(ui, step, live, look, narrow, t) {
+                if step_row(ui, step, live, look, narrow, self.chat_unfolded.contains(&card), t) {
                     *fold = Some(card.clone());
                 }
                 if self.chat_unfolded.contains(&card) && step_card(ui, step, live, look, &c) {
@@ -346,8 +346,9 @@ pub(crate) fn short_tool(name: &str) -> &str {
 }
 
 /// One step: ✓ (✗ failed) or a pulsing dot while it runs, its name in a 6ch column, what it was
-/// given and what its answer says; a running command's last output line under it. True: clicked.
-pub(crate) fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: bool, t: f64) -> bool {
+/// given and what its answer says, and at the end a chevron: it opens (`open`: it is, its card under it, `step_card`);
+/// a running command's last output line under it. No tip: what the line cuts, the card shows whole. True: clicked.
+pub(crate) fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: bool, open: bool, t: f64) -> bool {
     let size = if narrow { 12.0 } else { 12.5 };
     let font = FontId::monospace(size);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::click());
@@ -388,11 +389,14 @@ pub(crate) fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, 
             }
         }
     }
+    // the chevron at the right edge, what comes before it cut short of it
+    glyph(p, Pos2::new(rect.right() - 6.0, cy), 11.0, 2.4, look.muted, if open { DOWN } else { RIGHT });
+    let end = rect.right() - 14.0;
     let tail: Vec<_> = tail.into_iter().map(|(text, color)| p.layout_no_wrap(text, font.clone(), color)).collect();
     let tail_width: f32 = tail.iter().map(|g| g.size().x + 8.0).sum();
     let what_x = name_x + column + 8.0;
     let what_color = if live_now { look.text.gamma_multiply(0.9) } else { look.soft };
-    let what = clipped(p, step.what.clone(), font.clone(), what_color, (rect.right() - what_x - tail_width).max(0.0));
+    let what = clipped(p, step.what.clone(), font.clone(), what_color, (end - what_x - tail_width).max(0.0));
     let mut x = what_x + what.size().x + 8.0;
     p.galley(Pos2::new(what_x, cy - what.size().y / 2.0), what, what_color);
     for g in tail {
@@ -422,7 +426,7 @@ fn card_output(log: &str) -> Option<String> {
 /// A step opened: how it stands and how long it took, its folder and files, its whole input
 /// and what it printed (each with Copiar), and why it failed. True: clicked where nothing else
 /// takes the click (its text, Copiar), which closes it as its row does.
-fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColors) -> bool {
+pub(crate) fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColors) -> bool {
     // under what it holds, so Copiar and the selectable text keep their clicks: last frame's place
     let key = ui.scope_id().with(("step_card", &step.id));
     let last = ui.ctx().data_mut(|d| d.get_temp::<Rect>(key));

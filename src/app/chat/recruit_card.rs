@@ -4,8 +4,9 @@
 //! and when it ends pop at the top of the window, under the toolbar.
 
 use crate::app::chat::list::{DOWN, Look, RED, glyph};
-use crate::app::chat::node_ui::{card_scroll, chat_live, keep_pinned, mini_button, pinned_key, split_body};
-use crate::app::chat::steps::{Live, short_tool, step_row};
+use crate::app::chat::markdown::{md_galleys, md_plain, paint_md, tight};
+use crate::app::chat::node_ui::{card_scroll, chat_live, hold_scroll, keep_pinned, mini_button, pinned_key, split_body};
+use crate::app::chat::steps::{Live, short_tool, step_card, step_row};
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
 use crate::transcript::ChatItem;
@@ -73,21 +74,23 @@ impl DrawingApp {
             return;
         }
         let rows = ((body.height() / (12.5 * zoom)).floor() as usize).max(1);
-        let (text, ink) = match self.recruit_task(id) {
+        // one row (folded): on one line; more, its lines kept for its lists
+        let task = if rows == 1 { self.recruit_task(id) } else { self.recruit_prompt(id).map(|task| tight(task, usize::MAX)) };
+        let (text, ink) = match task {
             Some(task) => (task, light.gamma_multiply(0.85)),
             None => ("Sem tarefa ainda.".into(), muted),
         };
-        let mut job = egui::text::LayoutJob::simple(text, FontId::proportional(10.5 * zoom), ink, body.width());
-        job.wrap.max_rows = rows;
-        job.wrap.overflow_character = Some('…');
-        let g = painter.layout_job(job);
+        // in the chat's Markdown (no ** nor ` painted), as far as the card has rows for
+        let colors = UiColors { text: ink, surface_low: light.gamma_multiply(0.1), ..self.colors() };
+        let galleys = md_galleys(painter, &text, 10.5 * zoom, ink, body.width(), rows, &colors);
         // one row: in the middle of what is left under the header
-        let y = if rows == 1 { body.center().y - g.size().y / 2.0 } else { body.top() };
-        painter.galley(Pos2::new(body.left(), y), g, ink);
+        let y = if rows == 1 { body.center().y - galleys.0.size().y / 2.0 } else { body.top() };
+        paint_md(painter, Pos2::new(body.left(), y), galleys, ink);
     }
 
-    /// The live card: its task and what it did and does (tools, what it said, in the chat's Markdown), whole, scrolling
-    /// when the card is short of room; under them, pinned to the bottom edge, the band while it works.
+    /// The live card: its task and what it did and does (tools, each opening on a click; what it said, in the chat's
+    /// Markdown), whole, scrolling when the card is short of room; under them, pinned to the bottom edge, the band while
+    /// it works.
     /// Laid out at the card's size and shown at the canvas's, like `chat_card_ui`.
     pub(crate) fn recruit_card_ui(&mut self, ctx: &Context, id: &str, body: Rect, z: f32, canvas: Rect) {
         let Some(row) = self.chat_rows().into_iter().find(|r| r.id == id) else { return };
@@ -99,7 +102,7 @@ impl DrawingApp {
         let clip = Rect::from_min_max(((clip.min - body.min) / z).to_pos2(), ((clip.max - body.min) / z).to_pos2());
         let transcript = self.transcripts.get(id);
         let working = matches!(row.state, AgentState::Working(_));
-        let (mut interrupt, mut open) = (false, false);
+        let (mut interrupt, mut open, mut fold) = (false, false, None);
         // the recruit's folder for the paths its words name (`agent_words`)
         let outer_agent = self.chat_agent.replace(id.to_string());
         let area = egui::Area::new(egui::Id::unique(("recruit_card", id))).fixed_pos(Pos2::ZERO).constrain(false).order(egui::Order::Middle).show(ctx, |ui| {
@@ -113,7 +116,7 @@ impl DrawingApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
                 ui.set_max_width(inner.width());
                 ui.spacing_mut().scroll = crate::app::ui::scroll_style();
-                card_scroll(("recruit_scroll", id), top.height()).show(ui, |ui| {
+                card_scroll(ui.ctx(), id, ("recruit_scroll", id), top.height()).show(ui, |ui| {
                     // room between the words and the scroll bar at the right edge
                     let width = inner.width() - 14.0;
                     ui.set_max_width(width);
@@ -140,14 +143,32 @@ impl DrawingApp {
                         match item {
                             ChatItem::Tool(step) => {
                                 let live = if t.running.iter().any(|(s, _)| *s == step.id) { Live::Running } else { Live::Done };
-                                open |= step_row(ui, step, live, &look, true, time);
+                                // an accordion, no tip: a click opens its card under it (its whole command wrapped, what it
+                                // printed, why it failed), kept open as the chat's are (`chat_unfolded`)
+                                let card = format!("card:{}", step.id);
+                                let unfolded = self.chat_unfolded.contains(&card);
+                                let mut clicked = step_row(ui, step, live, &look, true, unfolded, time);
+                                if unfolded {
+                                    clicked |= step_card(ui, step, live, &look, &c);
+                                }
+                                if clicked {
+                                    fold = Some(card);
+                                }
                             }
                             ChatItem::Agent(text) => self.agent_words_in(ui, text.trim(), width, &c, false),
                             ChatItem::Error(text) => {
                                 ui.label(egui::RichText::new(text.trim()).size(13.0).color(RED));
                             }
+                            // what it was asked since (the Maestro writes Markdown too), quieter than its own words
                             ChatItem::User(text) => {
-                                ui.label(egui::RichText::new(format!("→ {}", said(text).trim())).size(13.0).color(look.muted));
+                                ui.horizontal_top(|ui| {
+                                    ui.label(egui::RichText::new("→").size(13.0).color(look.muted));
+                                    let quiet = UiColors { text: look.muted, ..self.colors() };
+                                    ui.vertical(|ui| {
+                                        let room = ui.available_width();
+                                        self.agent_words_in(ui, said(text).trim(), room, &quiet, false);
+                                    });
+                                });
                             }
                             _ => {}
                         }
@@ -171,6 +192,13 @@ impl DrawingApp {
             let outer = self.chat_agent.replace(id.to_string());
             self.interrupt_agent();
             self.chat_agent = outer;
+        }
+        if let Some(card) = fold {
+            // the row clicked stays where it is, its card opening below it
+            hold_scroll(ctx, id);
+            if !self.chat_unfolded.remove(&card) {
+                self.chat_unfolded.insert(card);
+            }
         }
         if open {
             self.open_mini_chat(id);
@@ -236,7 +264,8 @@ impl DrawingApp {
                     ChatItem::Error(text) => Some(Err(text)),
                     _ => None,
                 }) {
-                    Some(Ok(text)) => format!("terminou: {}", text.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim()),
+                    // its words without their Markdown marks (the popup is one plain line)
+                    Some(Ok(text)) => format!("terminou: {}", md_plain(text.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim())),
                     Some(Err(text)) => format!("parou: {}", text.trim()),
                     None => "terminou".into(),
                 }
@@ -277,7 +306,9 @@ impl DrawingApp {
                             ui.set_max_width(440.0);
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new(&p.who).strong().size(13.0).color(look.text.gamma_multiply(fade)));
-                                ui.add(egui::Label::new(egui::RichText::new(&p.text).size(13.0).color(look.soft.gamma_multiply(fade))).truncate());
+                                // cut, with no tip: a click goes to the card, where it is whole
+                                let text = egui::RichText::new(&p.text).size(13.0).color(look.soft.gamma_multiply(fade));
+                                ui.add(egui::Label::new(text).truncate().show_tooltip_when_elided(false));
                             });
                         })
                         .response

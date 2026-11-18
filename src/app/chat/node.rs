@@ -9,6 +9,7 @@
 
 use crate::app::chat::direct::{CHAT_MODES, NewChat};
 use crate::app::chat::list::clipped;
+use crate::app::chat::markdown::{md_galleys, paint_md, tight};
 use crate::app::ui::agents::{AMBER, AgentState, ago};
 use crate::app::ui::context::{Entry, Target, entry, item, sub};
 use crate::prelude::*;
@@ -230,7 +231,7 @@ impl DrawingApp {
         env
     }
 
-    /// The last thing said in the chat, on one line: whose it is, and how it starts.
+    /// The last thing said in the chat: whose it is, and how it starts (its lines kept, for its Markdown).
     pub(crate) fn chat_preview(&self, id: &str) -> Option<String> {
         let (who, text) = self.transcripts.get(id)?.items.iter().rev().find_map(|item| match item {
             // what another agent asked it is that agent's, not the person's (chat/ask.rs)
@@ -239,8 +240,9 @@ impl DrawingApp {
             ChatItem::Error(text) => Some(("Erro", text.as_str())),
             _ => None,
         })?;
-        // ponytail: the first 60 words, cut again by the card's rows; a longer look is the chat itself
-        let words = text.split_whitespace().take(60).collect::<Vec<_>>().join(" ");
+        // ponytail: the first 60 words, cut again by the picture's rows; a longer look is the chat itself (the card made
+        // bigger shows its conversation whole)
+        let words = tight(text, 60);
         Some(if who.is_empty() { words } else { format!("{who}: {words}") })
     }
 
@@ -330,10 +332,10 @@ impl DrawingApp {
             let preview = self.chat_preview(&element.id);
             let ink = if preview.is_some() { light.gamma_multiply(0.85) } else { muted };
             let text = preview.unwrap_or_else(|| "Sem mensagens ainda. Clique duplo para abrir o chat.".into());
-            let mut job = egui::text::LayoutJob::simple(text, FontId::proportional(10.5 * zoom), ink, width);
-            job.wrap.max_rows = rows as usize;
-            job.wrap.overflow_character = Some('…');
-            painter.galley(Pos2::new(text_left, body.top() + line + gap), painter.layout_job(job), ink);
+            // in the chat's Markdown (no ** nor ` painted), in the card's own ink
+            let colors = UiColors { text: ink, surface_low: light.gamma_multiply(0.1), ..self.colors() };
+            let galleys = md_galleys(&painter, &text, 10.5 * zoom, ink, width, rows as usize, &colors);
+            paint_md(&painter, Pos2::new(text_left, body.top() + line + gap), galleys, ink);
         }
         let painter = painter.with_clip_rect(rect.shrink(1.0).intersect(painter.clip_rect()));
         self.paint_chat_footer(&painter, footer, radius, strip, muted, pad, &spec.cwd, look.rule());

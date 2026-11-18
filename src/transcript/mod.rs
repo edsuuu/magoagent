@@ -539,7 +539,7 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
             if text.starts_with("The user doesn't want to proceed with this tool use") {
                 return Some(ChatItem::System("Você recusou o uso da ferramenta.".into()));
             }
-            Some(ChatItem::Error(format!("Ferramenta falhou: {}", one_line(untag(text.trim()), 160))))
+            Some(ChatItem::Error(tool_failure(untag(text.trim()))))
         }
         "image" => image(block, user, at),
         _ => None,
@@ -594,6 +594,24 @@ fn input_text(input: &Value) -> &str {
 /// A tool's input in one line.
 fn summary(input: &Value) -> String {
     one_line(input_text(input), 90)
+}
+
+/// What the chat says of a tool that failed. A tool outside that answers in JSON (`{"action": "type_text", "message":
+/// "…"}`) says why in its `message` (or `error`): that, whole (the chat wraps it), after its action. Any other answer,
+/// its first line (the step's card under its row has all of it).
+fn tool_failure(text: &str) -> String {
+    if let Ok(Value::Object(answer)) = serde_json::from_str::<Value>(text) {
+        let field = |key: &str| answer.get(key).and_then(Value::as_str).map(str::trim).filter(|said| !said.is_empty());
+        let why =
+            field("message").or_else(|| field("error")).or_else(|| answer.get("error")?["message"].as_str().map(str::trim).filter(|said| !said.is_empty()));
+        if let Some(why) = why {
+            return match field("action") {
+                Some(action) => format!("Ferramenta falhou ({action}): {why}"),
+                None => format!("Ferramenta falhou: {why}"),
+            };
+        }
+    }
+    format!("Ferramenta falhou: {}", one_line(text, 160))
 }
 
 /// A tool answer's text: a string, or its first text block.
