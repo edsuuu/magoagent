@@ -113,3 +113,51 @@ fn a_note_typed_in_comes_in_front_of_the_card_covering_it() {
     frame(&mut app, &ctx, vec![]);
     assert!(!app.dirty && app.editing == Some(label_index));
 }
+
+/// A frame as the app runs it, the terminal's grid included after the editor (update.rs): the terminal with the keyboard
+/// asks for it again every frame.
+fn frame_with_terminal(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>) {
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), time: Some(time), events, ..Default::default() };
+    let mut output = ctx.run_ui(raw, |ui| {
+        app.screen_keys(ctx);
+        app.handle_shortcuts(ctx);
+        egui::CentralPanel::no_frame().show(ui, |ui| {
+            let (response, _) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
+            app.handle_canvas(&response, response.rect);
+        });
+        app.text_editor(ctx);
+        app.terminal_overlay(ctx);
+    });
+    output.textures_delta.clear();
+}
+
+/// A note in front of the terminal with the keyboard, inside its frame: a click on the note takes the keys from the
+/// terminal, and what is typed in the note stays in the note.
+#[test]
+fn a_click_on_a_note_in_front_of_the_terminal_with_the_keyboard_takes_the_keys() {
+    let ctx = Context::default();
+    install_fonts(&ctx, false);
+    let mut app = DrawingApp::default();
+    frame_with_terminal(&mut app, &ctx, 0.0, vec![]);
+    let mut terminal = app.new_element(ElementKind::Rectangle { x: 50.0, y: 100.0, width: 500.0, height: 400.0 });
+    terminal.terminal = Some(TerminalSpec { name: "Shell".into(), ..Default::default() });
+    let terminal_id = terminal.id.clone();
+    let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(200.0, 200.0), Vec2::splat(200.0)), String::new());
+    let label_id = label.id.clone();
+    app.scene.elements = vec![terminal, note, label];
+    app.terminal_focus = Some(terminal_id);
+    frame_with_terminal(&mut app, &ctx, 0.1, vec![]);
+    // a click on the note's text, inside the terminal's frame
+    let at = app.to_screen(Pos2::new(300.0, 320.0));
+    for (time, pressed) in [(1.0, true), (1.05, false)] {
+        frame_with_terminal(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at), button(at, pressed)]);
+    }
+    assert_eq!(app.terminal_focus, None);
+    assert_eq!(app.selected, vec![1]);
+    for (time, events) in [(1.3, vec![]), (1.31, vec![egui::Event::Text("oi".into())]), (1.32, vec![])] {
+        frame_with_terminal(&mut app, &ctx, time, events);
+    }
+    let label = app.scene.elements.iter().find(|element| element.id == label_id).unwrap();
+    assert!(matches!(&label.kind, ElementKind::Text { value, .. } if value == "oi"), "{:?}", label.kind);
+    assert_eq!(app.terminal_focus, None);
+}

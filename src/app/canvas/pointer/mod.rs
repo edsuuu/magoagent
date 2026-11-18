@@ -111,6 +111,11 @@ impl DrawingApp {
             });
         } else if let Some(index) = self.hit(world) {
             let index = self.raise_card(index);
+            // another card, though inside the frame of the terminal with the keyboard (a note in front of it): the keys
+            // are no longer the terminal's (terminal/overlay.rs only lets go of them for a press outside its frame)
+            if self.terminal_focus.as_ref().is_some_and(|focused| *focused != self.scene.elements[index].id) {
+                self.terminal_focus = None;
+            }
             if !self.drags(index, world, modifiers.shift) {
                 let element = &self.scene.elements[index];
                 if element.terminal.is_some() {
