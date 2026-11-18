@@ -11,7 +11,7 @@ use crate::prelude::*;
 
 /// What a shortcut's row was asked to do.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Ask {
+pub(super) enum Ask {
     Record,
     Save,
     Cancel,
@@ -27,7 +27,7 @@ fn shortcut_matches(label: &str, keys: &str, query: &str) -> bool {
 }
 
 /// The keys no shortcut takes, as the page tells them (written the Mac way: `keys_label` turns them into Ctrl).
-const FIXED: &str = "Não mudam, e nenhum atalho pode usá-las: as letras e os números das ferramentas (V, H, C, G, W, N…; as de desenho só \
+pub(super) const FIXED: &str = "Não mudam, e nenhum atalho pode usá-las: as letras e os números das ferramentas (V, H, C, G, W, N…; as de desenho só \
                      com a fileira de desenho aberta), Esc, Enter, Delete, as setas, o Espaço, Cmd+C, Cmd+X e Cmd+V; na ilha aberta, Cmd+1 a 9, \
                      Cmd+O, Cmd+K, Cmd+, e Esc; e as do sistema, como Alt+Tab e Alt+F4. Dentro de um terminal, as teclas são dele.";
 
@@ -150,34 +150,40 @@ impl DrawingApp {
             }
             ask
         });
+        if let Some(ask) = ask {
+            self.hotkey_ask(def, ask);
+        }
+    }
+
+    /// What a shortcut's row asked for (the egui page's buttons and the native one's), applied.
+    pub(super) fn hotkey_ask(&mut self, def: &'static ShortcutDef, ask: Ask) {
         let stored = &mut self.prefs.shortcuts;
         match ask {
-            Some(Ask::Record) => self.hotkeys.recording = Some(Editing::new(def.id)),
-            Some(Ask::Cancel) => self.hotkeys.recording = None,
-            Some(Ask::Save) => {
+            Ask::Record => self.hotkeys.recording = Some(Editing::new(def.id)),
+            Ask::Cancel => self.hotkeys.recording = None,
+            Ask::Save => {
                 if let Some(editing) = self.hotkeys.recording.as_mut()
                     && editing.save(stored)
                 {
                     self.hotkeys.recording = None;
                 }
             }
-            Some(Ask::Clear) => {
+            Ask::Clear => {
                 let _ = editor::apply(def, Pending::Clear, stored);
                 self.hotkeys.recording = None;
             }
             // the default keys back, unless another shortcut took them since: then they wait, with whose they are
-            Some(Ask::Default) => {
+            Ask::Default => {
                 self.hotkeys.recording = editor::apply(def, Pending::Default, stored).err().map(|problem| Editing {
                     id: def.id,
                     pending: Some(Pending::Default),
                     problem: Some(problem),
                 });
             }
-            Some(Ask::Switch(on)) => {
+            Ask::Switch(on) => {
                 let binding = Binding { enabled: on, ..hotkeys::effective(def, stored) };
                 hotkeys::set_binding(stored, def, binding);
             }
-            None => {}
         }
     }
 

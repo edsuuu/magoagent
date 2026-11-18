@@ -21,7 +21,7 @@ pub(super) fn hooks_row(state: HooksState, preview: bool) -> (&'static str, &'st
 }
 
 /// The row's line under the state: where the file is and what follows from it.
-fn hooks_hint(state: HooksState, path: Option<&std::path::Path>) -> String {
+pub(super) fn hooks_hint(state: HooksState, path: Option<&std::path::Path>) -> String {
     let Some(path) = path else { return "Não achei a pasta de configuração.".into() };
     let path = path.display();
     match state {
@@ -46,6 +46,20 @@ fn hooks_buttons(ui: &mut egui::Ui, k: &K, state: HooksState, path: Option<&std:
 }
 
 impl DrawingApp {
+    /// The question before Claude Code's settings.json is written: the file as it is and as it will be.
+    pub(super) fn claude_hooks_open_preview(&mut self) {
+        let preview = (|| {
+            let path = claude_hooks::settings_path().ok_or("Não achei a pasta do Claude Code (.claude).")?;
+            let relay = claude_hooks::relay_path().ok_or("Não achei a pasta de dados do MagoAgent para o relay dos hooks.")?;
+            let (before, after) = claude_hooks::preview_at(&path, &relay.to_string_lossy())?;
+            Ok::<_, String>((path, relay.to_string_lossy().into_owned(), before, after))
+        })();
+        match preview {
+            Ok(preview) => self.claude_hooks_preview = Some(preview),
+            Err(error) => self.toast(error),
+        }
+    }
+
     /// The app's hooks in the person's own Claude Code settings and Codex hooks file: what is there, and the buttons.
     pub(super) fn settings_hooks(&mut self, ui: &mut egui::Ui, k: &K) {
         title(ui, k, "CLAUDE CODE FORA DO APP");
@@ -69,18 +83,7 @@ impl DrawingApp {
                 self.toast(message);
             }
             // Instalar, Reinstalar or Atualizar: the file as it is and as it will be, before anything is written
-            Some(_) => {
-                let preview = (|| {
-                    let path = path.ok_or("Não achei a pasta do Claude Code (.claude).")?;
-                    let relay = relay.ok_or("Não achei a pasta de dados do MagoAgent para o relay dos hooks.")?;
-                    let (before, after) = claude_hooks::preview_at(&path, &relay.to_string_lossy())?;
-                    Ok::<_, String>((path, relay.to_string_lossy().into_owned(), before, after))
-                })();
-                match preview {
-                    Ok(preview) => self.claude_hooks_preview = Some(preview),
-                    Err(error) => self.toast(error),
-                }
-            }
+            Some(_) => self.claude_hooks_open_preview(),
             None => {}
         }
         title(ui, k, "CODEX FORA DO APP");

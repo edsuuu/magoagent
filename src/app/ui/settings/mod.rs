@@ -14,6 +14,8 @@ mod hooks_preview;
 mod hotkeys;
 mod integrations;
 pub(in crate::app::ui) mod kit;
+#[cfg(target_os = "macos")]
+mod native;
 mod ok_mago;
 mod studio;
 mod terminal;
@@ -55,6 +57,14 @@ const SUBTITLES: [&str; 10] = [
 /// How long the veil fades and the sheet grows in.
 const OPEN_TIME: f64 = 0.16;
 
+/// Whether Ajustes is the SwiftUI one (macOS, `MAGOAGENT_SWIFTUI`): the egui sheet steps aside.
+pub(in crate::app::ui) fn native_on() -> bool {
+    #[cfg(target_os = "macos")]
+    return crate::app::native::enabled("settings");
+    #[cfg(not(target_os = "macos"))]
+    false
+}
+
 impl DrawingApp {
     /// Ajustes opened on a page by its name (the usage pill's "Configurações…" on Agentes, the island's on Geral).
     pub(crate) fn open_settings_at(&mut self, tab: &str) {
@@ -90,6 +100,9 @@ fn opening(ctx: &Context) -> f32 {
 
 impl DrawingApp {
     pub(crate) fn settings_ui(&mut self, ctx: &Context) {
+        if native_on() {
+            return;
+        }
         let k = K::with_cards(self.dark());
         let t = opening(ctx);
         let eased = 1.0 - (1.0 - t).powi(3);

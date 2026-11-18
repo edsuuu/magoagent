@@ -32,6 +32,10 @@ pub(super) fn preview_words(state: HooksState, unchanged: bool) -> (&'static str
 
 impl DrawingApp {
     pub(crate) fn claude_hooks_preview_ui(&mut self, ctx: &Context) {
+        // the native Ajustes (Swift) asks its own question
+        if super::native_on() {
+            return;
+        }
         let Some((path, relay, before, after)) = self.claude_hooks_preview.clone() else { return };
         let colors = self.colors();
         let (title, confirm_word, state_line) = preview_words(state_in(&before, &relay), before == after);
@@ -76,17 +80,22 @@ impl DrawingApp {
         if cancel {
             self.claude_hooks_preview = None;
         } else if confirm {
-            self.claude_hooks_preview = None;
-            let result = (|| {
-                let (current, _) = crate::app::maestro::claude_hooks::preview_at(&path, &relay)?;
-                if current != before {
-                    return Err("settings.json mudou desde a prévia; confira de novo antes de instalar.".into());
-                }
-                let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-                crate::app::maestro::claude_hooks::ensure_relay(&executable, std::path::Path::new(&relay))?;
-                crate::app::maestro::claude_hooks::install_preview_at(&path, &after)
-            })();
-            self.toast(result.unwrap_or_else(|error| error));
+            self.claude_hooks_confirm();
         }
+    }
+
+    /// The question's yes: the file written, unless it changed since the preview.
+    pub(super) fn claude_hooks_confirm(&mut self) {
+        let Some((path, relay, before, after)) = self.claude_hooks_preview.take() else { return };
+        let result = (|| {
+            let (current, _) = crate::app::maestro::claude_hooks::preview_at(&path, &relay)?;
+            if current != before {
+                return Err("settings.json mudou desde a prévia; confira de novo antes de instalar.".into());
+            }
+            let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+            crate::app::maestro::claude_hooks::ensure_relay(&executable, std::path::Path::new(&relay))?;
+            crate::app::maestro::claude_hooks::install_preview_at(&path, &after)
+        })();
+        self.toast(result.unwrap_or_else(|error| error));
     }
 }

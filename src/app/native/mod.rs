@@ -151,6 +151,9 @@ impl DrawingApp {
         if enabled("terminal") {
             self.native_terminal();
         }
+        if enabled("settings") {
+            self.native_settings();
+        }
         if enabled("shell") {
             self.native_shell();
         }
@@ -200,6 +203,7 @@ impl DrawingApp {
             Some(("shell", verb)) => self.native_shell_act(verb, args),
             Some(("filetree", verb)) => self.native_filetree_act(verb, args),
             Some(("terminal", verb)) => self.native_terminal_act(verb, args),
+            Some(("settings", verb)) => self.native_settings_act(verb, args),
             _ => Err(format!("ação de interface desconhecida: ui.{name}")),
         }
     }

@@ -5,9 +5,9 @@ use crate::app::island::Place;
 use crate::prelude::*;
 
 /// The seconds the island's "Fechar sozinho" offers (the same as the island's own chips and `set_setting`).
-const CLOSE_AFTER: [u8; 4] = [5, 10, 15, 30];
+pub(super) const CLOSE_AFTER: [u8; 4] = [5, 10, 15, 30];
 /// How long the compact island waits before it shrinks to the notch, in seconds; 0 is never.
-const COMPACT_AFTER: [u16; 5] = [15, 30, 60, 300, 0];
+pub(super) const COMPACT_AFTER: [u16; 5] = [15, 30, 60, 300, 0];
 
 impl DrawingApp {
     pub(super) fn settings_general(&mut self, ui: &mut egui::Ui, k: &K) {

@@ -15,6 +15,7 @@ enum Areas {
             case "shell": ShellArea.start()
             case "filetree": FileTreeArea.start()
             case "terminal": TerminalArea.start()
+            case "settings": SettingsArea.start()
             case "probe": ProbeArea.start()
             default: break
             }

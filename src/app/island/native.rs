@@ -497,7 +497,7 @@ impl DrawingApp {
                 headline: activity.headline.clone(),
             }),
             glimpse: view.glimpse.iter().map(|(number, text)| Said { person: false, number: *number, text: text.clone() }).collect(),
-            chat: self.native_chat(view.chat_row.as_ref(), view.session.clone(), view.chat_full),
+            chat: self.island_chat_out(view.chat_row.as_ref(), view.session.clone(), view.chat_full),
             voice: view.voice_on,
             voice_state: match view.voice_state {
                 crate::voice::VoiceState::Off => "off",
@@ -587,7 +587,7 @@ impl DrawingApp {
     }
 
     /// The conversation page: the chat shown and the last things said in it.
-    fn native_chat(&self, row: Option<&AgentRow>, session: Option<String>, full: bool) -> Option<ChatOut> {
+    fn island_chat_out(&self, row: Option<&AgentRow>, session: Option<String>, full: bool) -> Option<ChatOut> {
         if let Some(session) = session {
             let name = self.outside_pills().into_iter().find(|pill| pill.id == session).map(|pill| pill.name).unwrap_or_default();
             return Some(ChatOut { id: session.clone(), name, working: false, full: false, session: Some(session), said: Vec::new() });
