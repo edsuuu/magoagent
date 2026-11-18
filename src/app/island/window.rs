@@ -399,9 +399,14 @@ impl DrawingApp {
         let drag_later = slims && self.island.slim.is_none();
         let id = egui::ViewportId::from_hash_of("island_window");
         let (anim, radius) = (self.island.anim, self.island.radius);
-        let out = ctx.show_viewport_immediate(id, builder, |ui, _| {
+        self.island.eyes = Some((scale, origin));
+        let rest = self.island.at_rest;
+        let out = ctx.show_viewport_immediate(id, builder.clone(), |ui, _| {
             let at = (ui.max_rect().min + shown.min.to_vec2()).round();
+            let layer = ui.layer_id();
+            super::replay::begin(rest);
             let out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
+            let taken = super::replay::end(ui.ctx(), layer);
             // Windows: `plain::click_through`, below; X11: the input shape, below
             if send_capture && !clicks_through_part {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::MousePassthrough(!capture));
@@ -410,10 +415,18 @@ impl DrawingApp {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
             let focused = ui.ctx().input(|input| input.focused);
-            (paint::Out { focused, ..out }, ui.ctx().input(|input| input.viewport().outer_rect), menus(ui.ctx()))
+            (paint::Out { focused, ..out }, ui.ctx().input(|input| input.viewport().outer_rect), menus(ui.ctx()), taken)
         });
-        let (out, placed, menus) = out;
+        let (out, placed, menus, taken) = out;
         self.island.menus = menus;
+        // at rest, the window draws the island again by itself, and what moves in it, until the app draws again: its
+        // frames no longer paint the app's window too (`replay.rs`)
+        self.island.replaying = taken.is_some();
+        if let Some(taken) = taken {
+            *self.island.replay.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = taken;
+            let replay = self.island.replay.clone();
+            ctx.show_viewport_deferred(id, builder, move |ui, _| super::replay::frame(ui, &replay));
+        }
         if out.drag && drag_later {
             self.island.slim = Some(self.island.anim.ceil());
             (self.island.drag_next, self.island.drag_since) = (true, Some(time));
@@ -505,7 +518,13 @@ impl DrawingApp {
         let at = Pos2::new((content.center().x - anim.x / 2.0).round(), content.top());
         let mut out = paint::Out::default();
         egui::Area::new(egui::Id::unique("island_area")).order(egui::Order::Foreground).fixed_pos(at).constrain(false).show(ctx, |ui| {
+            // taken down at rest as the window's is (the tests see it); drawn here, it is never drawn again by itself
+            let layer = ui.layer_id();
+            super::replay::begin(self.island.at_rest);
             out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
+            if let Some(taken) = super::replay::end(ui.ctx(), layer) {
+                *self.island.replay.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = taken;
+            }
         });
         // drawn in the app's window: that window's focus
         out.focused = ctx.input(|input| input.focused);

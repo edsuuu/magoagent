@@ -54,10 +54,12 @@ fn a_script_wait_lets_the_app_idle_and_perf_logs_each_second() {
     let mut perf = Perf::default();
     perf.path = path.clone();
     perf.frame(10.0, Some(0.002), &[]);
+    // the frames the island's window drew by itself meanwhile (`island/replay.rs`)
+    crate::app::island::replay::FRAMES.fetch_add(3, std::sync::atomic::Ordering::Relaxed);
     perf.frame(10.5, Some(0.004), &[]);
     perf.frame(11.0, Some(0.006), &[]);
     let lines: Vec<String> = fs::read_to_string(&path).unwrap().lines().map(String::from).collect();
-    assert_eq!(lines[0], "tempo	quadros	cpu_med_ms	cpu_max_ms	gtk	causas");
+    assert_eq!(lines[0], "tempo	quadros	cpu_med_ms	cpu_max_ms	gtk	ilha_sozinha	causas");
     // the jobs sent to GTK's thread (Linux, a count; `-` elsewhere) between the CPU and the causes
     let without_jobs = |line: &String| {
         let mut columns: Vec<&str> = line.split('\t').collect();
@@ -65,7 +67,7 @@ fn a_script_wait_lets_the_app_idle_and_perf_logs_each_second() {
         assert!(jobs == "-" || jobs.parse::<u64>().is_ok(), "{jobs}");
         columns.join("\t")
     };
-    assert_eq!(lines[1..].iter().map(without_jobs).collect::<Vec<_>>(), ["10.0	1	2.00	2.00	", "11.0	2	5.00	6.00	"]);
+    assert_eq!(lines[1..].iter().map(without_jobs).collect::<Vec<_>>(), ["10.0	1	2.00	2.00	0	", "11.0	2	5.00	6.00	3	"]);
     let _ = fs::remove_file(&path);
 }
 

@@ -3,10 +3,12 @@
 //! window points; MAGOAGENT_SCRIPT holds them or the path of a file with them:
 //!   move x y · click x y · rclick x y · dclick x y · down x y · up x y · drag x1 y1 x2 y2
 //!   type texto · key J cmd shift alt · hold cmd (the clicks after it are Ctrl+clicks; `hold` alone lets go) · paste /imagem.png
-//!   drop x y /arquivo · scroll x y dy dx · pinch x y fator · wait ms · shot /caminho.png · size w h · minimize · quit
+//!   drop x y /arquivo · scroll x y dy dx · pinch x y fator · wait ms · shot /caminho.png · shot-ilha /caminho.png
+//!   size w h · minimize · quit
 //! They go in through raw input, the same path as a real mouse. `shot` saves what egui drew;
-//! native web pages are not in it (macOS and Linux save each page beside it, `<shot>-<id>.png`). A `wait` lets the
-//! app idle as it would, so MAGOAGENT_PERF (`Perf`) measures it.
+//! native web pages are not in it (macOS and Linux save each page beside it, `<shot>-<id>.png`). `shot-ilha` saves the
+//! island's window, only while it draws itself (`island/replay.rs`: eframe takes no picture of it otherwise). A `wait`
+//! lets the app idle as it would, so MAGOAGENT_PERF (`Perf`) measures it.
 
 use crate::prelude::*;
 use std::collections::VecDeque;
@@ -26,8 +28,9 @@ pub(crate) struct Script {
 }
 
 /// MAGOAGENT_PERF=<file>: once a second, the frames painted, the CPU they took (mean and worst,
-/// in ms), the jobs sent to GTK's thread (Linux: the portals' pages and the tray; `-` elsewhere) and what asked for the
-/// frames (`file:line`), appended to the file as a tab-separated line.
+/// in ms), the jobs sent to GTK's thread (Linux: the portals' pages and the tray; `-` elsewhere), the frames the island's
+/// window drew by itself (`island/replay.rs`) and what asked for the frames (`file:line`), appended to the file as a
+/// tab-separated line.
 #[derive(Default)]
 pub(crate) struct Perf {
     pub(crate) path: std::path::PathBuf,
@@ -56,7 +59,7 @@ impl Perf {
         if now - self.since < 1.0 {
             return;
         }
-        let head = if self.since == 0.0 { "tempo\tquadros\tcpu_med_ms\tcpu_max_ms\tgtk\tcausas\n" } else { "" };
+        let head = if self.since == 0.0 { "tempo\tquadros\tcpu_med_ms\tcpu_max_ms\tgtk\tilha_sozinha\tcausas\n" } else { "" };
         let causes = std::mem::take(&mut self.causes).into_iter().collect::<Vec<_>>().join(", ");
         #[cfg(target_os = "linux")]
         let jobs = {
@@ -65,7 +68,8 @@ impl Perf {
         };
         #[cfg(not(target_os = "linux"))]
         let jobs = "-";
-        let line = format!("{head}{now:.1}\t{}\t{:.2}\t{:.2}\t{jobs}\t{causes}\n", self.frames, self.cpu_ms / self.frames as f32, self.worst_ms);
+        let island = crate::app::island::replay::FRAMES.swap(0, std::sync::atomic::Ordering::Relaxed);
+        let line = format!("{head}{now:.1}\t{}\t{:.2}\t{:.2}\t{jobs}\t{island}\t{causes}\n", self.frames, self.cpu_ms / self.frames as f32, self.worst_ms);
         use std::io::Write;
         let _ = std::fs::OpenOptions::new().create(true).append(true).open(&self.path).and_then(|mut file| file.write_all(line.as_bytes()));
         (self.since, self.frames, self.cpu_ms, self.worst_ms) = (now, 0, 0.0, 0.0);
@@ -237,6 +241,17 @@ impl Script {
                     }
                     shooting.store(false, Ordering::Relaxed);
                 });
+            }
+            ["shot-ilha", path] => {
+                let path = path.to_string();
+                let island = egui::ViewportId::from_hash_of("island_window");
+                let saved = move |image: Arc<egui::ColorImage>| {
+                    let pixels = image.pixels.iter().flat_map(|pixel| pixel.to_array()).collect();
+                    if !matches!(image::RgbaImage::from_raw(image.size[0] as u32, image.size[1] as u32, pixels).map(|rgba| rgba.save(&path)), Some(Ok(()))) {
+                        eprintln!("roteiro: não salvei {path}");
+                    }
+                };
+                ctx.send_viewport_cmd_to(island, egui::ViewportCommand::Screenshot(egui::ScreenshotCallback::new(saved)));
             }
             ["minimize"] => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
             // below the window's minimum too, to see the narrow layouts
