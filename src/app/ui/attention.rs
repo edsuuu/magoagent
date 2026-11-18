@@ -1,6 +1,7 @@
 //! The top of the sidebar's list: "Precisa de você" (the agents waiting on the person in every workspace, and Ir para o
 //! próximo, the same as ⌘⇧A) and "Agentes deste espaço" (one row per agent of the space on screen, foldable).
 
+use crate::app::chat::list::team::{team_summary, under_maestros};
 use crate::app::hotkeys::local::AppAction;
 use crate::app::mascot::identity::distinct_names;
 use crate::app::mascot::mago::{MagoState, paint_mini, paint_mini_still};
@@ -15,11 +16,14 @@ pub(crate) enum Attention {
     /// The × of the green notice: hides it (asked: "precisa ter uma opção x para ocultar ou remover").
     HideClear,
     Agent(String),
+    /// A Maestro's agents opened (true) or folded under it (chat/list/team.rs).
+    Team(String, bool),
 }
 
-/// A row of "Agentes deste espaço", and the heading's.
+/// A row of "Agentes deste espaço", and the heading's; a Maestro's agents go this much to the right, under their fold.
 const AGENT_ROW: f32 = 40.0;
 const HEADING: f32 = 24.0;
+const TEAM_INDENT: f32 = 14.0;
 
 /// The card's header: "1 agente precisa de você", "3 agentes precisam de você", "Nada esperando por você".
 pub(crate) fn waiting_text(count: usize) -> String {
@@ -49,6 +53,24 @@ pub(crate) fn chevron(painter: &Painter, center: Pos2, open: bool, color: Color3
         [Pos2::new(x - 1.5, y - 3.5), Pos2::new(x + 2.0, y), Pos2::new(x - 1.5, y + 3.5)]
     };
     painter.add(egui::Shape::line(points.to_vec(), Stroke::new(1.3, color)));
+}
+
+/// A team's fold under its Maestro's row: the chevron and how many they are ("2 agentes · 1 esperando"), at the agents'
+/// indent. True when clicked.
+fn team_fold(ui: &mut egui::Ui, t: &Tones, maestro: &str, summary: &str, open: bool) -> bool {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), HEADING), Sense::hover());
+    let response = ui.interact(rect, ui.scope_id().with(("sidebar_team", maestro)), Sense::click());
+    let painter = ui.painter();
+    if response.hovered() {
+        painter.rect_filled(rect, 6, t.hover);
+    }
+    // the chevron under the agents' wizards, the words where their names start
+    let left = rect.left() + TEAM_INDENT;
+    chevron(painter, Pos2::new(left + 19.0, rect.center().y), open, t.muted);
+    let text = rect.with_min_x(left + 36.0).with_max_x(rect.right() - 6.0);
+    painter.with_clip_rect(text).text(text.left_center(), egui::Align2::LEFT_CENTER, summary, FontId::proportional(12.0), t.muted);
+    let tip = if open { "Recolher os agentes" } else { "Mostrar os agentes" };
+    response.on_hover_cursor(CursorIcon::PointingHand).tip(tip).clicked()
 }
 
 impl DrawingApp {
@@ -157,9 +179,26 @@ impl DrawingApp {
             }
             // no two by the same name (a chat and a terminal both "Claude Code"): the next take a number
             let names = distinct_names(&agents.iter().map(|row| row.spec.label().to_string()).collect::<Vec<_>>());
-            for (row, name) in agents.iter().zip(names) {
-                if self.agent_row_ui(ui, t, row, name) {
-                    picked = Some(Attention::Agent(row.id.clone()));
+            // a Maestro's agents under it, folded until opened (chat/list/team.rs)
+            let keyed: Vec<(&str, Option<&AgentRow>)> = agents.iter().map(|row| (row.id.as_str(), Some(row))).collect();
+            let members: Vec<usize> = (0..agents.len()).collect();
+            for (top, team) in under_maestros(&members, &self.team_parents(&keyed)) {
+                if self.agent_row_ui(ui, t, &agents[top], names[top].clone(), 0.0) {
+                    picked = Some(Attention::Agent(agents[top].id.clone()));
+                }
+                if team.is_empty() {
+                    continue;
+                }
+                let maestro = &agents[top].id;
+                let open = self.team_open(maestro);
+                let states: Vec<AgentState> = team.iter().map(|&index| agents[index].state).collect();
+                if team_fold(ui, t, maestro, &team_summary(&states), open) {
+                    picked = Some(Attention::Team(maestro.clone(), !open));
+                }
+                for index in team.into_iter().filter(|_| open) {
+                    if self.agent_row_ui(ui, t, &agents[index], names[index].clone(), TEAM_INDENT) {
+                        picked = Some(Attention::Agent(agents[index].id.clone()));
+                    }
                 }
             }
         }
@@ -167,14 +206,16 @@ impl DrawingApp {
         picked
     }
 
-    /// One agent: its mini wizard in its color, its `name`, and its state with the last thing it said. True when clicked.
-    fn agent_row_ui(&self, ui: &mut egui::Ui, t: &Tones, row: &AgentRow, name: String) -> bool {
+    /// One agent, `indent` to the right: its mini wizard in its color, its `name`, and its state with the last thing it
+    /// said. True when clicked.
+    fn agent_row_ui(&self, ui: &mut egui::Ui, t: &Tones, row: &AgentRow, name: String, indent: f32) -> bool {
         let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), AGENT_ROW), Sense::click());
         let painter = ui.painter().clone();
         let on = self.selected.iter().any(|&index| self.scene.elements.get(index).is_some_and(|element| element.id == row.id));
         if on || ui.rect_contains_pointer(rect) {
             painter.rect_filled(rect, 7, if on { t.active } else { t.hover });
         }
+        let rect = rect.with_min_x(rect.left() + indent);
         let mini = Pos2::new(rect.left() + 19.0, rect.center().y);
         // at rest it is drawn still, and one scrolled out of the list not at all: a sidebar at rest asks for no frames
         let (id, color, state) = (format!("sidebar-{}", row.id), self.agent_color(&row.id), MagoState::from_agent(row.state, self.now));
@@ -204,6 +245,7 @@ impl DrawingApp {
             Attention::ToggleAgents => self.prefs.sidebar_agents_closed = !self.prefs.sidebar_agents_closed,
             Attention::HideClear => self.prefs.sidebar_clear_hidden = true,
             Attention::Agent(id) => self.open_agent(&id),
+            Attention::Team(maestro, open) => self.set_team_open(&maestro, open),
         }
     }
 }

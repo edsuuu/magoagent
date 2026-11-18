@@ -424,7 +424,7 @@ mod tests {
         assert!(recruit(&mut app).is_ok());
         let recruited =
             app.scene.elements.iter().filter_map(|element| element.terminal.as_ref()).find(|terminal| terminal.command.contains("--model")).unwrap();
-        assert_eq!(recruited.command, "claude --model sonnet");
+        assert_eq!(recruited.command, crate::app::maestro::temp_folder::with_temp_rule("claude --model sonnet", &app.prefs));
         app.prefs.max_agents = 2;
         assert!(recruit(&mut app).unwrap_err().starts_with("Já há 2 agentes rodando"));
         // the settings by the MCP

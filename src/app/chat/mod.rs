@@ -311,6 +311,9 @@ impl DrawingApp {
         if let Some(id) = act.remove.take() {
             self.remove_chat(&id);
         }
+        if let Some((maestro, open)) = act.team.take() {
+            self.set_team_open(&maestro, open);
+        }
         if let Some(id) = act.rename.take()
             && let Some(row) = self.chat_rows().into_iter().find(|r| r.id == id)
         {
@@ -421,11 +424,11 @@ impl DrawingApp {
                 let bubble = bubble::person_bubble(ui, words, width - 48.0, fill, 16, egui::Margin::symmetric(12, 7));
                 message_menu(&bubble, text, cite);
             }
-            // what a terminal said before it restarted, above; what comes now, below
-            ChatItem::System(text) if text == EARLIER => {
+            // what a terminal said before it restarted, above; what comes now, below; and the top of a new session (/clear)
+            ChatItem::System(text) if text == EARLIER || crate::app::chat::direct::is_new_session_mark(text) => {
                 let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
                 let p = ui.painter();
-                let label = p.layout_no_wrap(EARLIER.into(), FontId::proportional(12.0), c.muted);
+                let label = p.layout_no_wrap(text.clone(), FontId::proportional(12.0), c.muted);
                 let (half, y, line) = (label.size().x / 2.0 + 10.0, rect.center().y, Stroke::new(1.0, tint(self.dark(), 30)));
                 p.hline(rect.left()..=rect.center().x - half, y, line);
                 p.hline(rect.center().x + half..=rect.right(), y, line);

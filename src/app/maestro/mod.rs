@@ -15,6 +15,7 @@ pub(crate) mod outside;
 pub(crate) mod relay;
 pub(crate) mod session_window;
 pub(crate) mod skills;
+pub(crate) mod temp_folder;
 pub(crate) mod timeline;
 pub(crate) mod tuning;
 
@@ -125,6 +126,8 @@ impl DrawingApp {
             ("um chat do app", chat.map(|chat| (chat.agent.clone(), chat.model.clone(), chat.effort.clone())).unwrap_or_default())
         } else {
             let tuning = crate::app::maestro::tuning::of_command(&command, "claude");
+            // told to keep its work out of the temporary folder (Ajustes › Agentes), as a chat's agent is
+            let command = temp_folder::with_temp_rule(&command, &self.prefs);
             let mut spec = TerminalSpec { name: name.clone(), cwd, command, maestro: false, ..Default::default() };
             // its agent only in WSL (system/wsl.rs): the terminal opens in that distro
             if let Some(distro) = spec.command.split_whitespace().next().and_then(agent_cli).as_ref().and_then(|cli| cli.wsl()) {

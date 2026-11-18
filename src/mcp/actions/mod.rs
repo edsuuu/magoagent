@@ -123,7 +123,10 @@ impl DrawingApp {
             "chat_decide" => self.act_chat_decide(args),
             "disconnect" => self.act_disconnect(&text("a"), &text("b")),
             "chat_list" => Ok(self.act_chat_list()),
-            "chats_view" => self.act_chats_view(&text("state"), &text("filter"), args["query"].as_str()),
+            "chats_view" => {
+                let team = Some(text("team")).filter(|team| !team.is_empty());
+                self.act_chats_view(&text("state"), &text("filter"), args["query"].as_str(), team.as_deref().map(|team| (team, args["team_open"] != false)))
+            }
             "chat_new" => self.act_chat_new(&text("agent"), &text("folder")),
             "chat_provider" => {
                 let id = if text("chat").is_empty() { self.chat_agent.clone().ok_or("nenhum chat aberto")? } else { self.chat_named(&text("chat"))? };
@@ -240,7 +243,7 @@ impl DrawingApp {
                 self.prefs.minimap = args["open"].as_bool().unwrap_or(!self.prefs.minimap);
                 Ok(if self.prefs.minimap { "Minimapa aberto." } else { "Minimapa fechado." }.into())
             }
-            "sidebar" => self.act_sidebar(&text("action")),
+            "sidebar" => self.act_sidebar(&text("action"), &text("team")),
             "panel" => self.act_panel(args),
             "changes_review" => self.act_changes_review(args),
             "file_tree" => self.act_file_tree(args),

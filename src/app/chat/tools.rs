@@ -3,6 +3,7 @@
 //! the app; the app answers its show, set_folder, screenshot and review commands.
 
 use crate::app::chat::direct::{CHAT_MODES, Chat, NewChat, folder};
+use crate::app::maestro::temp_folder::temp_rule;
 use crate::mcp::bridge::UiCommand;
 use crate::prelude::*;
 use std::sync::mpsc::Sender;
@@ -77,8 +78,11 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
              (ou o MCP magoagent). Para rodar testes ou uma API e acompanhar, abra um terminal com create_terminal (ou `magoagent terminal <comando>`): ele fica \
              ligado a você por corda e você lê a tela dele com read_terminal (`magoagent check <nome>`). Para dar notícia de como você está \
              (\"estou parado esperando X\", \"terminei\", \"preciso de você\") use notify (`magoagent notify <texto>`); o que você avisa ou manda a \
-             um chat (chat_send) chega com o seu nome na frente (\"{}: …\"), então a pessoa e a Luna sabem quem fala. {language}",
-            chat.name, chat.cwd, chat.name
+             um chat (chat_send) chega com o seu nome na frente (\"{}: …\"), então a pessoa e a Luna sabem quem fala.{} {language}",
+            chat.name,
+            chat.cwd,
+            chat.name,
+            temp_rule(prefs)
         );
     }
     let language = match prefs.language {
@@ -121,6 +125,8 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          \"Me manda um print\" é o screenshot mostrado aqui, sem open_path.",
         chat.cwd
     );
+    // the work kept out of the temporary folder a restart empties (Ajustes › Agentes)
+    prompt.push_str(&temp_rule(prefs));
     prompt.push_str(&crate::app::maestro::tuning::recruit_brief(prefs));
     prompt.push_str(
         " Tarefas: ao delegar trabalho a um agente, crie a tarefa com tasks (action create, owner com o nome dele e send true para entregá-la); \
@@ -370,6 +376,18 @@ mod tests {
             named: false,
             draft: false,
         }
+    }
+
+    /// Asked: "Uma config para nunca usar a /tmp, só em alguns casos, pois reiniciou o PC e sumiu tudo".
+    #[test]
+    fn the_maestro_and_its_recruits_keep_their_work_out_of_the_temp_folder_unless_ajustes_says_otherwise() {
+        let mut prefs = Prefs::default();
+        let recruit = Chat { name: "Ana".into(), recruit: true, ..chat("x") };
+        let rule = temp_rule(&prefs);
+        assert!(!rule.is_empty());
+        assert!(system_prompt(&prefs, &chat("x")).contains(&rule) && system_prompt(&prefs, &recruit).contains(&rule));
+        prefs.work_outside_temp = false;
+        assert!(!system_prompt(&prefs, &chat("x")).contains("Pasta temporária") && !system_prompt(&prefs, &recruit).contains("Pasta temporária"));
     }
 
     #[test]
