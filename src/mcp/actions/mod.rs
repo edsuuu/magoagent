@@ -189,6 +189,7 @@ impl DrawingApp {
             }
             "sidebar" => self.act_sidebar(&text("action")),
             "panel" => self.act_panel(args),
+            "changes_review" => self.act_changes_review(args),
             "file_tree" => self.act_file_tree(args),
             "tasks" => self.act_tasks(args),
             "flow" => self.act_flow(args),

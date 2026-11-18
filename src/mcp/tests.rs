@@ -204,6 +204,7 @@ fn every_app_action_is_a_tool_once() {
         "minimap",
         "sidebar",
         "panel",
+        "changes_review",
         "terminal_menu",
         "terminal_find",
         "terminal_look",

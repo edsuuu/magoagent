@@ -1,14 +1,20 @@
 //! The panels on the window's right, as in Claude Code: Tarefas and Alterações (Linha do tempo went: "remove o botão linha do tempo e o modal dele")
 //! (the Fichário went: "não entendi muito bem para o que ele serve, remove"). A button each in the title bar (`pane_buttons`); one open at a time, 340 wide under
-//! the bar, the canvas narrower beside it (update.rs takes `pane_width` off its rect). X, Esc or
-//! the same button close it; the MCP's `panel` opens and closes them for the Maestro.
+//! the bar, the canvas narrower beside it (update.rs takes `pane_width` off its rect). Its left edge pulls it wider or
+//! narrower ("precisa ter uma opção só para expandir a largura manual"), kept in the prefs; a double-click there gives
+//! back the 340. X, Esc or the same button close it; the MCP's `panel` opens, closes and widens them for the Maestro.
 
-mod changes;
+pub(crate) mod changes;
 mod tasks;
 
 use crate::prelude::*;
 
 pub(crate) const PANE_WIDTH: f32 = 340.0;
+/// The narrowest the edge pulls the panel to, and the canvas the widest one still leaves beside it.
+pub(crate) const PANE_MIN: f32 = 300.0;
+pub(crate) const CANVAS_MIN: f32 = 360.0;
+/// How far each side of the panel's left line takes a press to pull it.
+const EDGE_GRAB: f32 = 4.0;
 /// The panel starts under the title bar (the top row's buttons on the Mac).
 const PANE_TOP: f32 = 60.0;
 const HEAD: f32 = 46.0;
@@ -40,12 +46,28 @@ pub(crate) struct Panes {
     /// Feitas instead of Abertas.
     pub(crate) tasks_done: bool,
     pub(crate) changes: changes::ChangesPane,
+    /// The width while the edge is pulled: the prefs take it when it is let go (not at every frame of the pull).
+    pub(crate) pulled: Option<f32>,
+    /// The window's width beside the sidebar, last frame: what the panel and the canvas share.
+    pub(crate) room: f32,
+}
+
+/// The panel's width for `wanted` where it and the canvas share `room` (0: not known yet): from `PANE_MIN` to what
+/// still leaves the canvas `CANVAS_MIN`.
+pub(crate) fn clamp_pane_width(wanted: f32, room: f32) -> f32 {
+    let widest = if room > 0.0 { (room - CANVAS_MIN).max(PANE_MIN) } else { f32::INFINITY };
+    wanted.clamp(PANE_MIN, widest).round()
 }
 
 impl DrawingApp {
     /// How much of the window's right the open panel takes from the canvas.
     pub(crate) fn pane_width(&self) -> f32 {
-        if self.panes.open.is_some() && !self.chat_open { PANE_WIDTH } else { 0.0 }
+        if self.panes.open.is_some() && !self.chat_open { self.panel_width() } else { 0.0 }
+    }
+
+    /// The panel's width, open or not: the one being pulled, else the one kept, else `PANE_WIDTH`.
+    pub(crate) fn panel_width(&self) -> f32 {
+        clamp_pane_width(self.panes.pulled.or(self.prefs.pane_width).unwrap_or(PANE_WIDTH), self.panes.room)
     }
 
     /// Opens `pane` (closing the one open) or, when it is the open one, closes it.
@@ -102,8 +124,29 @@ impl DrawingApp {
     }
 
     /// Where the open panel sits in a window of `screen`.
-    pub(crate) fn pane_rect(screen: Rect) -> Rect {
-        Rect::from_min_max(Pos2::new(screen.right() - PANE_WIDTH, PANE_TOP), screen.max)
+    pub(crate) fn pane_rect(&self, screen: Rect) -> Rect {
+        Rect::from_min_max(Pos2::new(screen.right() - self.panel_width(), PANE_TOP), screen.max)
+    }
+
+    /// The panel's left edge: pulled, it widens or narrows the panel (the canvas gives or takes the difference);
+    /// double-clicked, it goes back to `PANE_WIDTH`.
+    fn pane_edge(&mut self, ui: &mut egui::Ui, rect: Rect) {
+        let edge = Rect::from_min_max(Pos2::new(rect.left() - EDGE_GRAB, rect.top()), Pos2::new(rect.left() + EDGE_GRAB, rect.bottom()));
+        let pull = ui.interact(edge, egui::Id::unique("pane_edge"), Sense::click_and_drag()).on_hover_cursor(CursorIcon::ResizeHorizontal);
+        if pull.dragged()
+            && let Some(at) = pull.interact_pointer_pos()
+        {
+            self.panes.pulled = Some(clamp_pane_width(rect.right() - at.x, self.panes.room));
+            ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
+        } else if let Some(width) = self.panes.pulled.take() {
+            self.prefs.pane_width = Some(width);
+        }
+        if pull.double_clicked() && live(ui) {
+            (self.prefs.pane_width, self.panes.pulled) = (None, None);
+        }
+        if pull.hovered() || pull.dragged() {
+            ui.painter().vline(rect.left(), rect.y_range(), Stroke::new(2.0, glass_accent(self.dark())));
+        }
     }
 
     /// The open panel (and, on the Mac, whose window has no drawn bar, its buttons in the top row).
@@ -111,8 +154,9 @@ impl DrawingApp {
         if TITLE_BAR == 0.0 {
             egui::Area::new(egui::Id::unique("pane_buttons")).fixed_pos(Pos2::ZERO).order(egui::Order::Foreground).show(ctx, |ui| self.pane_buttons(ui));
         }
+        self.panes.room = ctx.content_rect().width() - self.sidebar_width();
         let Some(pane) = self.panes.open.filter(|_| !self.chat_open) else { return };
-        let rect = Self::pane_rect(ctx.content_rect());
+        let rect = self.pane_rect(ctx.content_rect());
         let (colors, ink) = (self.colors(), glass_ink(self.dark()));
         let line = ink.gamma_multiply(0.12);
         let area = egui::Area::new(egui::Id::unique("side_pane")).order(egui::Order::Foreground).fixed_pos(rect.min).constrain(false);
@@ -122,6 +166,7 @@ impl DrawingApp {
             let p = ui.painter().clone();
             p.rect_filled(rect, 0, colors.island);
             p.vline(rect.left(), rect.y_range(), Stroke::new(1.0, line));
+            self.pane_edge(ui, rect);
             let head = Rect::from_min_size(rect.min, Vec2::new(rect.width(), HEAD));
             p.text(head.left_center() + Vec2::new(14.0, 0.0), egui::Align2::LEFT_CENTER, pane.name(), FontId::proportional(14.0), colors.text);
             p.hline(rect.x_range(), head.bottom(), Stroke::new(1.0, line));
@@ -137,7 +182,14 @@ impl DrawingApp {
                 self.set_pane(None);
                 return;
             }
-            let body = Rect::from_min_max(Pos2::new(rect.left() + 12.0, head.bottom() + 12.0), rect.max - Vec2::new(12.0, 0.0));
+            // Alterações' comment on the lines picked: a bar pinned to the bottom, the rest scrolling above it
+            let bar = if pane == Pane::Changes { self.comment_bar_height() } else { 0.0 };
+            let body = Rect::from_min_max(Pos2::new(rect.left() + 12.0, head.bottom() + 12.0), rect.max - Vec2::new(12.0, bar));
+            if bar > 0.0 {
+                let strip = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - bar), rect.max);
+                p.hline(strip.x_range(), strip.top(), Stroke::new(1.0, line));
+                ui.scope_builder(egui::UiBuilder::new().max_rect(strip.shrink(12.0)), |ui| self.review_comment_bar(ui));
+            }
             ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {
                 egui::ScrollArea::vertical().id_salt(("pane_scroll", pane.name())).auto_shrink(false).show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 10.0;
@@ -152,10 +204,32 @@ impl DrawingApp {
     }
 
     /// The MCP's `panel`: opens `name` (tasks, changes), closes it with `open`
-    /// false, toggles it with no `open`; no name with `open` false closes whichever is open.
+    /// false, toggles it with no `open`; no name with `open` false closes whichever is open. `width` pulls the
+    /// panel's edge (0: back to the default); `worktree` shows Alterações on that worktree ("todos": all the trees).
     pub(crate) fn act_panel(&mut self, args: &Value) -> Result<String, String> {
-        let name = args["name"].as_str().unwrap_or_default().trim().to_lowercase();
-        let open = args["open"].as_bool();
+        let mut name = args["name"].as_str().unwrap_or_default().trim().to_lowercase();
+        let mut open = args["open"].as_bool();
+        let mut said = Vec::new();
+        if let Some(width) = args["width"].as_f64() {
+            self.prefs.pane_width = (width > 0.0).then(|| clamp_pane_width(width as f32, self.panes.room));
+            said.push(format!("Largura do painel: {} px.", self.panel_width()));
+        }
+        if let Some(wanted) = args["worktree"].as_str().map(str::trim).filter(|w| !w.is_empty()) {
+            said.push(self.choose_worktree(wanted)?);
+            // the worktree is Alterações': it shows there
+            if name.is_empty() && open != Some(false) {
+                (name, open) = ("changes".into(), Some(true));
+            }
+        }
+        if name.is_empty() && open.is_none() && !said.is_empty() {
+            return Ok(said.join(" "));
+        }
+        let done = self.act_panel_open(&name, open)?;
+        Ok([done].into_iter().chain(said).collect::<Vec<_>>().join(" "))
+    }
+
+    /// `act_panel`'s opening and closing.
+    fn act_panel_open(&mut self, name: &str, open: Option<bool>) -> Result<String, String> {
         if name.is_empty() {
             if open == Some(false) || open.is_none() {
                 self.set_pane(None);

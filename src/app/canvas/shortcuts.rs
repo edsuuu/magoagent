@@ -161,6 +161,9 @@ impl DrawingApp {
         } else if pressed(AppAction::EditPoints) && self.single_line().is_some() {
             self.line_editor = self.single_line();
             self.selected_point = None;
+        } else if plain(Key::Escape) && self.panes.open == Some(crate::app::panes::Pane::Changes) && self.panes.changes.review.picked.is_some() {
+            // Alterações' lines picked for a comment let go before the panel closes (its draft stays)
+            self.panes.changes.review.picked = None;
         } else if plain(Key::Escape) && self.panes.open.is_some() {
             // the panel on the right goes first, as in Claude Code
             self.set_pane(None);
