@@ -239,6 +239,21 @@ fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
     assert!(!window.has("Chaves de API"), "the chats run on the agents' own logins only");
 }
 
+/// Asked: "Uma config para nunca usar a /tmp, só em alguns casos, pois reiniciou o PC e sumiu tudo". On by default; its
+/// switch is the preference the agents' instructions read.
+#[test]
+fn agentes_keeps_the_agents_work_out_of_the_temp_folder() {
+    let mut window = Window::at(tab_of("Agentes"));
+    window.scroll_to("Trabalho fora da pasta temporária");
+    assert!(window.has_under("ONDE OS AGENTES TRABALHAM", "Trabalho fora da pasta temporária"), "{:?}", window.texts);
+    assert!(window.app.prefs.work_outside_temp, "on by default");
+    let switch = window.switch_of("Trabalho fora da pasta temporária");
+    window.click(switch);
+    assert!(!window.app.prefs.work_outside_temp, "its switch is the real preference");
+    window.app.act("set_setting", &json!({ "name": "work_outside_temp", "value": "on" })).unwrap();
+    assert!(window.app.prefs.work_outside_temp, "and the MCP's");
+}
+
 #[test]
 fn the_usage_pill_opens_agentes_uso() {
     let mut window = Window::at(0);
@@ -266,10 +281,12 @@ fn the_outside_hooks_are_in_integracoes() {
     assert!(window.texts.iter().any(|(text, _)| text.contains("Os hooks das sessões de fora")), "the page's line says so");
 }
 
+/// Asked: "oculta no menu de configurações a opção Ok Mago" and "oculta também o modo voz". Off the menu, their code kept
+/// and the others in their places.
 #[test]
-fn the_voice_tab_is_back_with_the_call_and_the_others_keep_their_places() {
+fn voz_and_ok_mago_are_off_the_menu_and_the_others_keep_their_places() {
     let window = Window::at(0);
-    assert!(window.has("Voz"), "{:?}", window.texts);
+    assert!(!window.has("Voz") && !window.has("Ok Mago"), "{:?}", window.texts);
     assert_eq!(SETTINGS_TABS[4], "Voz");
     let (atalhos, sobre) = (Window::at(tab_of("Atalhos")), Window::at(tab_of("Sobre")));
     assert!(atalhos.has("Atalhos") && sobre.has("Sobre"));
@@ -684,7 +701,7 @@ fn chat_has_its_own_tab_with_the_new_chat_defaults() {
 #[test]
 fn every_page_is_in_the_sidebar_at_once() {
     let window = Window::at(SETTINGS_TABS.len() - 1);
-    for name in SETTINGS_TABS {
+    for name in SETTINGS_TABS.into_iter().filter(|name| !super::HIDDEN_TABS.contains(name)) {
         assert!(window.has(name), "{name}: {:?}", window.texts);
     }
 }

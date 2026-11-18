@@ -129,12 +129,12 @@ impl DrawingApp {
             seen.push(e.id.clone());
         }
         // the rope that follows the pointer while "Conectar" waits for its other end: it leaves the
-        // source's edge facing the pointer, and the retain below drops it once the mode ends
+        // middle of the source's side closest to the pointer, and the retain below drops it once the mode ends
         if let (Some(from), Some(pointer)) = (self.connecting.clone(), self.last_pointer)
             && let Some(source) = self.scene.elements.iter().find(|e| e.id == from)
         {
             let b = self.to_world(pointer);
-            let a = bound_endpoint(source, &Binding { element_id: from.clone(), fixed: [0.5, 0.5], inside: false }, b);
+            let a = closest_edge_middle(element_bounds(source), b);
             let obstacles: Vec<Rect> = nodes.iter().filter(|(id, _)| id != &from).map(|(_, r)| *r).collect();
             let rope = self.ropes.entry(CONNECT_DRAFT.into()).or_insert_with(|| RopeSim::hanging(a, b));
             rope.advance(a, b, dt, &obstacles);

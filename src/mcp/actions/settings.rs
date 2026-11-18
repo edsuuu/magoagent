@@ -87,6 +87,8 @@ impl DrawingApp {
             ("max_agents", n) if n.parse::<usize>().is_ok_and(|n| n <= 50) => self.prefs.max_agents = n.parse().unwrap_or(0),
             ("usage_stop", n) if n.parse::<u8>().is_ok_and(|n| n <= 100) => self.prefs.usage_stop = n.parse().unwrap_or(0),
             ("agent_mode", mode) if AgentMode::parse(mode).is_some() => self.prefs.agent_mode = AgentMode::parse(mode).unwrap_or_default(),
+            ("work_outside_temp", "on" | "ligado") => self.prefs.work_outside_temp = true,
+            ("work_outside_temp", "off" | "desligado") => self.prefs.work_outside_temp = false,
             ("update_check", "always" | "sempre") => self.prefs.update_check = 0,
             ("update_check", "open" | "ao abrir") => self.prefs.update_check = 1,
             ("update_check", "never" | "nunca") => self.prefs.update_check = 2,

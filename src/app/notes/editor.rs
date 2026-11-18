@@ -41,23 +41,43 @@ impl DrawingApp {
             ui.set_height(screen.height());
             let shown = scroll.show(ui, |ui| {
                 if let Some(Element { kind: ElementKind::Text { value, .. }, .. }) = self.scene.elements.get_mut(index) {
+                    // only what the caret is on shows its markdown (the reference's live preview): the rest of the note
+                    // stays as it rests (asked: "só muda o texto que eu quero editar")
+                    let id = crate::app::notes::editor_id();
+                    let caret_of = |range: egui::text::CCursorRange| markdown::Caret { head: range.primary.index.into(), anchor: range.secondary.index.into() };
+                    let caret = ui
+                        .memory(|memory| memory.has_focus(id))
+                        .then(|| egui::TextEdit::load_state(ui.ctx(), id).and_then(|state| state.cursor.char_range()).map(caret_of))
+                        .flatten();
+                    // the last text laid out, kept for the bold and the ornaments painted after it
+                    let mut laid: Option<std::sync::Arc<markdown::LiveText>> = None;
                     let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap: f32| {
-                        let job = markdown::edit_job(text.as_str(), size, ink, wrap);
-                        ui.ctx().fonts_mut(|fonts| fonts.layout_job(job))
+                        let live = live_text_of(ui.ctx(), text.as_str(), size, ink, wrap, caret);
+                        let galley = ui.ctx().fonts_mut(|fonts| fonts.layout_job(live.job.clone()));
+                        laid = Some(live);
+                        galley
                     };
-                    let response = ui.add(
-                        egui::TextEdit::multiline(value)
-                            .id(crate::app::notes::editor_id())
-                            .frame(egui::Frame::NONE)
-                            .margin(Vec2::ZERO)
-                            .text_color(ink)
-                            .background_color(Color32::TRANSPARENT)
-                            .layouter(&mut layouter)
-                            .desired_width(screen.width())
-                            .desired_rows(1)
-                            // a click under the last line is the text's (its end), not the canvas's
-                            .min_size(screen.size()),
-                    );
+                    let output = egui::TextEdit::multiline(value)
+                        .id(id)
+                        .frame(egui::Frame::NONE)
+                        .margin(Vec2::ZERO)
+                        .text_color(ink)
+                        .background_color(Color32::TRANSPARENT)
+                        .layouter(&mut layouter)
+                        .desired_width(screen.width())
+                        .desired_rows(1)
+                        // a click under the last line is the text's (its end), not the canvas's
+                        .min_size(screen.size())
+                        .show(ui);
+                    let response = output.response.response;
+                    // the bold text again, and the bullets, boxes, bars and rules over their hidden marks
+                    if let Some(live) = laid.filter(|live| live.job.text == *value) {
+                        paint_live(ui, &output.galley, output.galley_pos, screen.width(), &live, ink, zoom);
+                    }
+                    // the caret moved to another line: it shows its markdown on the next frame
+                    if output.cursor_range.map(caret_of) != caret {
+                        ui.ctx().request_repaint();
+                    }
                     // the resting note's placeholder, in the same letters and ink (egui's own hint_text takes the theme's
                     // weak color, near white on the paper)
                     if value.is_empty() {
@@ -96,6 +116,62 @@ impl DrawingApp {
                 self.set_elevated(None);
             } else {
                 self.finish_text();
+            }
+        }
+    }
+}
+
+/// The note's text for the editor, built again only when the text, the caret, the size or the width changed: egui asks
+/// for it every frame the note is on screen.
+fn live_text_of(ctx: &Context, text: &str, size: f32, ink: Color32, wrap: f32, caret: Option<markdown::Caret>) -> std::sync::Arc<markdown::LiveText> {
+    let key = egui::Id::unique("note_live_text");
+    let hash = egui::util::hash((text, size.to_bits(), ink, wrap.to_bits(), caret));
+    if let Some((_, live)) = ctx.data(|data| data.get_temp::<(u64, std::sync::Arc<markdown::LiveText>)>(key)).filter(|(at, _)| *at == hash) {
+        return live;
+    }
+    let live = std::sync::Arc::new(markdown::live_text(text, size, ink, wrap, caret));
+    ctx.data_mut(|data| data.insert_temp(key, (hash, live.clone())));
+    live
+}
+
+/// What the editor paints over its text, as the resting note does: the bold text half a point to the right, and a
+/// bullet, a task's box, a quote's bar or a rule (across the text box's `width`) where the mark is hidden.
+fn paint_live(ui: &egui::Ui, galley: &egui::Galley, at: Pos2, width: f32, live: &markdown::LiveText, ink: Color32, zoom: f32) {
+    let painter = ui.painter();
+    if !live.ornaments.is_empty() || live.bold.sections.iter().any(|section| section.format.color != Color32::TRANSPARENT) {
+        let bold = ui.fonts_mut(|fonts| fonts.layout_job(live.bold.clone()));
+        if bold.rows.len() == galley.rows.len() {
+            for dx in [0.0, 0.5 * zoom] {
+                painter.galley(at + Vec2::new(dx, 0.0), bold.clone(), ink);
+            }
+        }
+    }
+    let faint = ink.gamma_multiply(0.4);
+    for ornament in &live.ornaments {
+        let index = match ornament {
+            markdown::Ornament::Bullet(index) | markdown::Ornament::Task(index, _) | markdown::Ornament::Quote(index) | markdown::Ornament::Rule(index) => {
+                *index
+            }
+        };
+        let cell = galley.pos_from_cursor(egui::text::CCursor::new(index)).translate(at.to_vec2());
+        match ornament {
+            markdown::Ornament::Bullet(_) => {
+                painter.circle_filled(Pos2::new(cell.left() + 4.0 * zoom, cell.center().y), 2.0 * zoom, faint);
+            }
+            markdown::Ornament::Task(_, done) => {
+                let check = Rect::from_center_size(Pos2::new(cell.left() + 6.0 * zoom, cell.center().y), Vec2::splat(12.0 * zoom));
+                if *done {
+                    painter.rect_filled(check, 2.0 * zoom, ink.gamma_multiply(0.5));
+                } else {
+                    painter.rect_stroke(check, 2.0 * zoom, Stroke::new(zoom, ink.gamma_multiply(0.5)), StrokeKind::Inside);
+                }
+            }
+            markdown::Ornament::Quote(_) => {
+                painter.rect_filled(Rect::from_min_size(cell.left_top(), Vec2::new(2.5 * zoom, cell.height())), 0.0, ink.gamma_multiply(0.2));
+            }
+            markdown::Ornament::Rule(_) => {
+                let y = cell.center().y;
+                painter.line_segment([Pos2::new(at.x, y), Pos2::new(at.x + width, y)], Stroke::new(zoom, ink.gamma_multiply(0.2)));
             }
         }
     }

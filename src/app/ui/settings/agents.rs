@@ -32,6 +32,11 @@ impl DrawingApp {
             self.prefs.usage_stop = [70, 80, 90, 0][i];
         }
         divider(ui, k);
+        // what the agents are told about the temporary folder (maestro/temp_folder.rs)
+        title(ui, k, "ONDE OS AGENTES TRABALHAM");
+        let hint = format!("Os agentes do app não guardam trabalho em {}, que pode sumir ao reiniciar: usam a pasta do projeto.", temp_names());
+        toggle(ui, k, "Trabalho fora da pasta temporária", &hint, &mut self.prefs.work_outside_temp);
+        divider(ui, k);
         self.settings_mcp_elsewhere(ui, k);
         if cfg!(windows) {
             divider(ui, k);
@@ -102,6 +107,17 @@ impl DrawingApp {
             wsl_choose(&self.prefs.wsl);
             self.chat_installed = None;
         }
+    }
+}
+
+/// The temporary folders the hint names, as this system has them.
+fn temp_names() -> &'static str {
+    if cfg!(windows) {
+        "%TEMP%"
+    } else if cfg!(target_os = "macos") {
+        "/tmp ou /var/folders"
+    } else {
+        "/tmp"
     }
 }
 
