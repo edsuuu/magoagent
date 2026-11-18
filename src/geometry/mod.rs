@@ -211,13 +211,13 @@ pub(crate) fn text_size(value: &str, size: f32) -> Vec2 {
 pub(crate) fn fingerprint(bytes: &[u8]) -> u64 {
     const SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
     let mix = |hash: u64, word: u64| (hash.rotate_left(5) ^ word).wrapping_mul(SEED);
-    let mut chunks = bytes.chunks_exact(8);
+    let (words, rest) = bytes.as_chunks::<8>();
     let mut hash = mix(0, bytes.len() as u64);
-    for chunk in &mut chunks {
-        hash = mix(hash, u64::from_le_bytes(chunk.try_into().unwrap_or_default()));
+    for word in words {
+        hash = mix(hash, u64::from_le_bytes(*word));
     }
     let mut tail = [0u8; 8];
-    tail[..chunks.remainder().len()].copy_from_slice(chunks.remainder());
+    tail[..rest.len()].copy_from_slice(rest);
     mix(hash, u64::from_le_bytes(tail))
 }
 
