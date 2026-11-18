@@ -153,6 +153,8 @@ pub(crate) struct Out {
     pub(super) holding: bool,
     /// A field of the island has the keyboard, in a window the system has in focus: it holds the island open.
     pub(super) typing: bool,
+    /// The system has the island's window in focus: a click inside gives it, a click anywhere else takes it away.
+    pub(super) focused: bool,
     /// The agent whose pill the pointer is on.
     pub(super) focus: Option<String>,
     /// The height of the page's content (for the pages that grow with it).

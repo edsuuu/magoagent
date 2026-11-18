@@ -378,6 +378,8 @@ pub(crate) struct Island {
     holding: bool,
     /// A field of the island has the keyboard (`Out::typing`): it holds the island open.
     typing: bool,
+    /// Its window had the system's focus last frame (`Out::focused`): losing it folds the open island.
+    focused: bool,
     /// The cursor, read on the whole screen, is over it; `None` where the system gives no cursor (only egui's pointer).
     pub(crate) over: Option<bool>,
     /// Whether the window takes the cursor (it passes through outside the island), as last sent.
@@ -730,6 +732,14 @@ impl DrawingApp {
         island.hovered = island.over.unwrap_or(out.hovered);
         island.holding = out.holding;
         island.typing = out.typing;
+        // its window lost the focus: a click elsewhere (another program, the app's window, the desktop). The open island
+        // folds, as a menu does (asked: "se eu abrir a ilha e clicar fora ela precisa fechar"); a question waiting on
+        // the person, or a new agent's form half filled, keeps it open as before ("se for pergunta, mantém como está")
+        let blurred = std::mem::replace(&mut island.focused, out.focused) && !out.focused;
+        if blurred && island.open && !pinned && island.form.is_none() && !island.holding {
+            island.machine.force_petit(time);
+            ctx.request_repaint();
+        }
         if out.hovered && !was_open && !open {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
