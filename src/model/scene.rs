@@ -228,6 +228,8 @@ pub(crate) struct Prefs {
     pub(crate) teams_open: Vec<String>,
     /// The right panel's width (app/panes/) as its edge was pulled; none: `PANE_WIDTH` (a double-click on the edge).
     pub(crate) pane_width: Option<f32>,
+    /// Nota rápida's text (app/panes/quick_note.rs), as typed.
+    pub(crate) quick_note: String,
     /// Mostrar Tamanho: when a portal's header shows its width × height.
     pub(crate) portal_size: crate::app::browser::extras::SizeReadout,
     /// Points of zoom a notch of the wheel adds (Ajustes › Geral › Tela), 2 to 50.
@@ -322,6 +324,7 @@ impl Default for Prefs {
             sidebar_clear_hidden: false,
             teams_open: Vec::new(),
             pane_width: None,
+            quick_note: String::new(),
             portal_size: Default::default(),
             zoom_step: 10,
             terminal: TermPrefs::default(),
