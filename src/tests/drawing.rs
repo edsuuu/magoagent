@@ -30,6 +30,53 @@ fn text_over_lines_gets_an_outline() {
     assert!(svg_text_line(0.0, 0.0, false, 20.0, "#000", Some("#ffffff"), "x").contains("paint-order=\"stroke\""));
 }
 
+/// The halo skips the paths whose box misses the text's: the same answer as walking every segment, with and without
+/// crossings (a line through it, a point in it, a curve, a rope, freehand, nothing near).
+#[test]
+fn the_halo_answers_as_walking_every_segment_did() {
+    fn walked(elements: &[Element], text: &Element) -> bool {
+        let area = local_bounds(text).expand(2.0);
+        let edges = [
+            (area.left_top(), area.right_top()),
+            (area.right_top(), area.right_bottom()),
+            (area.right_bottom(), area.left_bottom()),
+            (area.left_bottom(), area.left_top()),
+        ];
+        elements.iter().filter(|e| e.id != text.id).any(|e| {
+            let path = match &e.kind {
+                ElementKind::Line { .. } => line_path(e),
+                ElementKind::FreeDraw { points } => points.clone(),
+                _ => return false,
+            };
+            path.windows(2).any(|w| {
+                let (a, b) = (Pos2::new(w[0][0], w[0][1]), Pos2::new(w[1][0], w[1][1]));
+                area.contains(a) || area.contains(b) || edges.iter().any(|(c, d)| segment_intersection(a, b, [c.x, c.y], [d.x, d.y]).is_some())
+            })
+        })
+    }
+    let app = DrawingApp::default();
+    let line = |points: Vec<[f32; 2]>| app.new_element(ElementKind::Line { points, arrow: false });
+    let mut curve = line(vec![[0.0, 0.0], [150.0, 120.0], [300.0, 0.0]]);
+    curve.style.round = true;
+    let mut rope = line(vec![[0.0, 300.0], [300.0, 300.0]]);
+    rope.rope = true;
+    let drawn = app.new_element(ElementKind::FreeDraw { points: vec![[500.0, 0.0], [520.0, 40.0], [560.0, 60.0]] });
+    let paths = [line(vec![[100.0, -50.0], [100.0, 400.0]]), line(vec![[0.0, 50.0], [300.0, 50.0]]), curve, rope, drawn];
+    let (mut with, mut without) = (0, 0);
+    for x in (-200..700).step_by(37) {
+        for y in (-100..450).step_by(23) {
+            let text = app.new_element(ElementKind::Text { x: x as f32, y: y as f32, value: "rótulo".into() });
+            for path in &paths {
+                let elements = vec![path.clone(), text.clone()];
+                let halo = text_needs_halo(&elements, &text);
+                assert_eq!(halo, walked(&elements, &text), "{x} {y} over {:?}", path.kind);
+                if halo { with += 1 } else { without += 1 }
+            }
+        }
+    }
+    assert!(with > 20 && without > 20, "both cases seen: {with} with, {without} without");
+}
+
 #[test]
 fn hachure_stays_inside_shape() {
     let mut e = rect_element(0.0, 0.0, 100.0, 60.0, Some([255, 0, 0, 255]));

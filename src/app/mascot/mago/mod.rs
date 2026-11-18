@@ -1,8 +1,7 @@
 //! The mascot, Lume: a small magic flame that licks and sways, with two dark eyes on its round bottom and nothing
 //! else (all the expression is in the eyes and the flame); sparks fly from its tip when an agent finishes.
-//! The technique (properties chasing a target with easing, a table of states -> face,
-//! eyes that follow the pointer and blink alone, particles, reactions to clicks) is adapted from
-//! an MIT engine (THIRD-PARTY-NOTICES.md); the character, shapes and palette are this app's own.
+//! Properties chase a target with easing, a table of states gives the face, the eyes follow the pointer and blink
+//! alone, particles fly, and clicks get reactions.
 
 mod dance;
 mod draw;
@@ -219,6 +218,17 @@ pub(crate) fn paint_mini(painter: &Painter, id: &str, center: Pos2, body: f32, c
         draw::paint_mini(painter, center, body, color, motion, time);
     });
     painter.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+}
+
+/// The same, still: one pose of `state`, and no frames asked for (an agent at rest in the sidebar's list leaves the
+/// app idle).
+pub(crate) fn paint_mini_still(painter: &Painter, id: &str, center: Pos2, body: f32, color: Color32, state: MagoState) {
+    if body < 1.0 {
+        return;
+    }
+    let mut motion = MagoMotion::seeded(motion_key(id));
+    motion.advance(state, 0.0, Some(Vec2::ZERO));
+    draw::paint_mini(painter, center, body, color, &motion, 0.0);
 }
 
 /// A poke on the wizard under `id` without drawing it (while it dances its motion is another): it counts towards dizziness.

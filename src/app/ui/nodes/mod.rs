@@ -4,7 +4,8 @@ use crate::app::ui::context::{ContextMenu, Target, item};
 use crate::prelude::*;
 mod bar;
 
-/// A prompt that never reached terminal `id`, and why: its words come back to be sent again.
+/// A prompt that never reached terminal `id`, and why: its words come back to be sent again. An empty `why` says it was
+/// typed after all (a task sent again), and its words leave the box they came back to.
 pub(crate) struct Returned {
     pub(crate) id: String,
     pub(crate) text: String,
@@ -120,7 +121,8 @@ impl DrawingApp {
         let top = (frame.bottom() + 14.0).min(canvas.bottom() - 64.0).max(canvas.top() + 8.0);
         let half = width / 2.0 + 8.0;
         let x = frame.center().x.min(canvas.right() - half).max(canvas.left() + half);
-        let tallest = (canvas.bottom() - top - 24.0).clamp(20.0, 220.0);
+        // zoomed out it grows less, or it covers the terminal under this one
+        let tallest = (canvas.bottom() - top - 24.0).clamp(20.0, 220.0 * self.zoom.clamp(0.4, 1.0));
         let name = element.terminal.as_ref().map_or("terminal".into(), |t| t.name.clone());
         let (mut send, mut close) = (false, false);
         egui::Area::new(egui::Id::unique("composer")).fixed_pos(Pos2::new(x, top)).pivot(egui::Align2::CENTER_TOP).order(egui::Order::Foreground).show(
@@ -232,6 +234,7 @@ impl DrawingApp {
                 for _ in 0..tries {
                     result = handle.type_prompt(&message);
                     if result.is_ok() {
+                        let _ = tx.send(Returned { id, text: message, why: String::new() });
                         return;
                     }
                     std::thread::sleep(std::time::Duration::from_millis(250));
@@ -248,6 +251,21 @@ impl DrawingApp {
     pub(crate) fn returned_prompts(&mut self, ctx: &Context) {
         let returned: Vec<Returned> = self.returned_prompts.1.try_iter().collect();
         for Returned { id, text, why } in returned {
+            if why.is_empty() {
+                let mut emptied = false;
+                if let Some((on, draft)) = &mut self.composer
+                    && *on == id
+                    && !text.is_empty()
+                    && draft.contains(&text)
+                {
+                    *draft = draft.replace(&text, "").trim().to_string();
+                    emptied = draft.is_empty();
+                }
+                if emptied {
+                    self.composer = None;
+                }
+                continue;
+            }
             let on_screen = self.scene.elements.iter().any(|e| e.id == id);
             match self.composer.as_mut() {
                 Some((on, draft)) if *on == id => {

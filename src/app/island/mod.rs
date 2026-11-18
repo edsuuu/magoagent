@@ -25,6 +25,8 @@ mod integrations;
 mod keymap;
 mod keys;
 mod log;
+#[cfg(target_os = "macos")]
+pub(crate) mod macos;
 mod marquee;
 pub(crate) mod minis;
 pub(crate) mod music;
@@ -40,6 +42,17 @@ mod window;
 #[cfg(target_os = "linux")]
 pub(crate) mod x11;
 pub(crate) use window::*;
+
+/// The camera notch of the screen `at` is on, in screen points (macOS; none elsewhere).
+pub(crate) fn notch_at(at: Pos2) -> Option<Rect> {
+    #[cfg(target_os = "macos")]
+    return macos::notch_at(at);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = at;
+        None
+    }
+}
 
 /// The sizes of the island: the closed one, the open one and their corners.
 // asked: "entre a capa e a Luna, e entre a frequência e os mini mascotes, tem um espaço muito grande": about 15 each
@@ -64,6 +77,16 @@ pub(crate) const CLOSED_W: f32 = 80.0;
 pub(crate) const CLOSED_H: f32 = 24.0;
 const CLOSED_CORNER: f32 = 10.0;
 const COMPACT_CORNER: f32 = 18.0;
+/// Around a camera notch (asked: "ajustar a ilha com a ilha da câmera do Mac para ficar na mesma proporção"), the wing
+/// each side of it: closed, the wizard's face (with a song, its cover beside her and the bars on the other side);
+/// compact, the wizard and the minis (with a song or the voice, the cover and the bars split by the notch too).
+const CLOSED_WING: f32 = 30.0;
+const CLOSED_WING_SONG: f32 = 48.0;
+const COMPACT_WING: f32 = 54.0;
+const COMPACT_WING_WIDE: f32 = 104.0;
+/// Open around a notch, its header is the notch's row (asked: "deixar os botões separando quando estivesse na posição da
+/// câmera"): each wing holds the tabs at the left (seven at most, 35 apart from 14 in) or the buttons at the right.
+const HEADER_WING: f32 = 14.0 + 7.0 * 35.0 + 6.0;
 /// The conversation at least this big, in points.
 const CHAT_MIN: (f32, f32) = (420.0, 300.0);
 const EXPANDED_CORNER: f32 = 22.0;
@@ -227,6 +250,20 @@ pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, settings: bool, tall:
         (_, Tab::Chats | Tab::Claude) => (Vec2::new(EXPANDED_W, if tall { home::EDIT_H } else { HOME_H }), EXPANDED_CORNER),
         (_, Tab::Chat) => (chat, EXPANDED_CORNER),
         (_, Tab::New) => (Vec2::new(EXPANDED_W, HOME_H), EXPANDED_CORNER),
+    }
+}
+
+/// The island of `size` on a screen whose camera notch is `notch` big: it grows out of the notch, which it hides, as
+/// black as it is. Closed and compact it is the notch with a wing each side, as tall as it (asked: "não pegou a proporção
+/// de altura"), wider while a `song` shows or the `voice` talks; open, its header is the notch's row, so it is as tall as
+/// anywhere and at least wide enough for the tabs and the buttons each side of the camera.
+pub(crate) fn around_notch(shape: Shape, size: Vec2, notch: Vec2, song: bool, voice: bool) -> Vec2 {
+    let wings = |wing: f32| notch.x + 2.0 * wing;
+    match shape {
+        Shape::Closed => Vec2::new(wings(if song { CLOSED_WING_SONG } else { CLOSED_WING }), notch.y),
+        Shape::Compact => Vec2::new(wings(if song || voice { COMPACT_WING_WIDE } else { COMPACT_WING }), notch.y),
+        // ponytail: a conversation narrower than this widens around a notch; split the header by its real width if it bothers
+        Shape::Open => Vec2::new(size.x.max(wings(HEADER_WING)), size.y),
     }
 }
 
@@ -401,6 +438,8 @@ pub(crate) struct Island {
     menus: Option<Rect>,
     /// Where the eyes look (window coordinates), the sounds playing, and what the last frame was, to tell what changed.
     pointer: Option<Pos2>,
+    /// Where the eyes looked when the last frame was asked for: a cursor at rest asks for few.
+    looked: Option<Pos2>,
     tones: Vec<(cpal::Stream, f64)>,
     last_shape: Option<Shape>,
     /// How many sounds were asked for (tests: the hover of a pill asks for none).
@@ -439,7 +478,7 @@ pub(crate) struct Island {
     /// The window on its way onto the screen without Windows' border (`plain::reveal`), and the pass it was last shown in.
     plain: u8,
     /// The island's room on the screen, for the thread that reads the cursor (`cursor::watch`).
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     room: Option<std::sync::Arc<std::sync::Mutex<Option<Rect>>>>,
     pass: u64,
     /// When the conversations of the agents at work were last read, and what the card in focus tells (`stage.rs`): the
@@ -461,8 +500,9 @@ pub(crate) struct Island {
     pokes: u32,
     failures: usize,
     tall: bool,
-    /// The edge of its monitor it is on (`window::Dock`).
+    /// The edge of its monitor it is on (`window::Dock`), and the camera notch it hangs around there (its size).
     dock: window::Dock,
+    notch: Option<Vec2>,
     /// A place asked in Ajustes or by the MCP (`window::Place`), taken on the next frame.
     place_ask: Option<window::Place>,
     /// A picture of the conversation on the whole screen (`picture.rs`).
@@ -588,11 +628,11 @@ impl DrawingApp {
             self.island.machine.greeted(time);
         }
         // the monitor's work area bounds the conversation's size
-        let work = if ctx.embed_viewports() {
-            ctx.content_rect()
+        let (work, anchor) = if ctx.embed_viewports() {
+            (ctx.content_rect(), None)
         } else {
             let anchor = self.island_anchor(ctx);
-            crate::app::chat::mini::screen_work(ctx, window::probe(anchor))
+            (crate::app::chat::mini::screen_work(ctx, window::probe(anchor)), Some(anchor))
         };
         // the compact conversation grows with what was said (`chatPromptHeight`); the whole mini chat has its own size
         let chat = if self.island.chat_full {
@@ -608,6 +648,11 @@ impl DrawingApp {
             talk_size(self.island.pulled.or(self.prefs.island_talk).filter(|_| open), said, work)
         };
         self.island.dock = self.island.anchor.map_or(window::Dock::Top, |anchor| window::Dock::of(anchor, work));
+        // on the top edge it hangs from the middle of a notch there (`window::to_notch`)
+        self.island.notch = anchor
+            .filter(|_| self.island.dock == window::Dock::Top)
+            .and_then(|anchor| notch_at(window::probe(anchor)).filter(|notch| (notch.center().x - anchor[0]).abs() < 1.0))
+            .map(|notch| notch.size());
         self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
         // GitHub's alerts, as the reference sounds them: a review asked for and checks that passed (a failure is the error of
         // its red wizard, below); one that waited more than a few seconds (the island was off) is dropped
@@ -625,6 +670,7 @@ impl DrawingApp {
         let music_on = self.spotify_sources() != crate::app::integrations::spotify::Sources::default();
         let github_on = self.prefs.integrations.github;
         let song = self.integrations.spotify.shown(time).is_some();
+        let voice = self.voice.on;
         let island = &mut self.island;
         if (island.tab == Tab::Music && !music_on) || (island.tab == Tab::GitHub && !github_on) {
             island.tab = Tab::Home;
@@ -679,6 +725,9 @@ impl DrawingApp {
         // on a side of the screen the closed and compact ones stand up; open, it is as anywhere
         if island.dock.upright() && shape != Shape::Open {
             aim = upright(shape, aim, song);
+        }
+        if let Some(notch) = island.notch {
+            aim = around_notch(shape, aim, notch, song, voice);
         }
         // it grows on a spring (it overshoots a little and settles) and shrinks along its curve in 340 ms, with no
         // overshoot (`spring.rs`); pulled by an edge it follows the pointer at once
@@ -758,8 +807,11 @@ impl DrawingApp {
         } else if moving {
             ctx.request_repaint_after(std::time::Duration::from_millis(33));
         }
-        if cfg!(windows) && !ctx.embed_viewports() {
-            ctx.request_repaint_after(std::time::Duration::from_millis(if self.island.pointer.is_some() { 33 } else { 250 }));
+        // the window lets the clicks through, so only the frames see the cursor: often while it moves (the eyes follow
+        // it), seldom while it rests (`cursor::watch` wakes it when the cursor comes onto the island)
+        if cfg!(any(windows, target_os = "macos")) && !ctx.embed_viewports() {
+            let moved = std::mem::replace(&mut self.island.looked, self.island.pointer) != self.island.pointer;
+            ctx.request_repaint_after(std::time::Duration::from_millis(if moved { 33 } else { 250 }));
         }
         // the clicks of the buttons; the pointer over a pill makes no sound
         if out.tab.is_some()
@@ -958,5 +1010,26 @@ mod tests {
         assert_eq!(agent_color("claude", "a"), Color32::from_rgb(0xd9, 0x77, 0x57));
         assert_eq!(agent_color("codex", "a"), Color32::from_rgb(0x2d, 0xd4, 0xbf));
         assert_eq!(agent_color("outro", "x"), agent_color("outro", "x"), "the same every time");
+    }
+
+    /// Asked: "ajustar a ilha com a ilha da câmera do Mac para ficar na mesma proporção": around a 179x32 notch, closed
+    /// it is the notch with a wing each side and as tall; compact, wider; open, its panel under the notch's row.
+    #[test]
+    fn around_a_notch_the_island_is_the_notch_grown() {
+        let notch = Vec2::new(179.0, 32.0);
+        let chat = Vec2::new(EXPANDED_W, CHAT_H);
+        let sized =
+            |shape: Shape, tab: Tab, song: bool, voice: bool| around_notch(shape, target(shape, tab, false, false, false, 0.0, chat).0, notch, song, voice);
+        assert_eq!(sized(Shape::Closed, Tab::Home, false, false), Vec2::new(179.0 + 60.0, 32.0), "the notch and the face's wings, as tall");
+        assert_eq!(sized(Shape::Closed, Tab::Home, true, false), Vec2::new(179.0 + 96.0, 32.0), "a song: room for its cover");
+        assert_eq!(sized(Shape::Compact, Tab::Home, false, false), Vec2::new(179.0 + 108.0, 32.0), "compact as tall as the notch too");
+        assert_eq!(sized(Shape::Compact, Tab::Home, false, true), sized(Shape::Compact, Tab::Home, true, false), "the voice and a song: wide");
+        assert_eq!(sized(Shape::Open, Tab::Home, false, false), Vec2::new(EXPANDED_W, FEED_H), "the header on the notch's row: no band over it");
+        // a narrow conversation widens until the tabs and the buttons fit beside the camera
+        let narrow = around_notch(Shape::Open, Vec2::new(CHAT_MIN.0, CHAT_MIN.1), notch, false, false);
+        assert_eq!(narrow, Vec2::new(179.0 + 2.0 * HEADER_WING, CHAT_MIN.1));
+        assert!(narrow.x <= EXPANDED_W, "never wider than the open island is anyway");
+        // the wings hold what goes in them: the face (18) with room, the wizard (30) and the minis' grid (30) 12 from the edges
+        const { assert!(CLOSED_WING >= 18.0 + 12.0 && COMPACT_WING >= 12.0 + 30.0 + 12.0) };
     }
 }

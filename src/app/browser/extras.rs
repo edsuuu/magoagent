@@ -247,9 +247,6 @@ impl DrawingApp {
 
     /// Copiar Captura de Tela: the open page's picture on the clipboard, once the system has it.
     pub(crate) fn portal_copy_shot(&mut self, id: &str) -> Result<String, String> {
-        if cfg!(target_os = "macos") {
-            return Err("a captura da página ainda não existe no macOS".into());
-        }
         let spec = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.as_ref()).ok_or("não é um navegador")?;
         if spec.unloaded {
             return Err("o navegador está descarregado".into());

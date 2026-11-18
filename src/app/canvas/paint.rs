@@ -98,6 +98,8 @@ impl DrawingApp {
         let mut order: Vec<usize> = (0..self.scene.elements.len()).collect();
         order.sort_by_key(|&index| self.scene.elements[index].is_node());
         let lift = self.lift_index();
+        // the part of the world on screen: a drawing outside it costs nothing (its rough strokes, hatching and text)
+        let seen = Rect::from_two_pos(self.to_world(rect.min), self.to_world(rect.max));
         if let Some(lifted) = lift {
             order.retain(|index| *index != lifted);
             order.push(lifted);
@@ -174,6 +176,10 @@ impl DrawingApp {
                 if body {
                     self.note_painted(&shown, end);
                 }
+                continue;
+            }
+            // a note's card goes by its frame (enlarged, it is not where it is in the world), above
+            if !may_show(element, seen, self.zoom) {
                 continue;
             }
             if is_arrow_label(&self.scene.elements, element) && self.editing != Some(index) {

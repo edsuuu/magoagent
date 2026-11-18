@@ -1,4 +1,4 @@
-//! Spotify on the island, as the reference's (MIT) Spotify pill and its Spotify page: what plays (the title, the artist,
+//! Spotify on the island, as the reference's Spotify pill and its Spotify page: what plays (the title, the artist,
 //! the cover, where it comes from, the time, shuffle, repeat, the volume) and its controls. No account and no key: the
 //! Spotify open on this computer is asked, by the system's media controls on Windows (`smtc`), AppleScript on macOS
 //! (`applescript`) and on Linux MPRIS (`mpris`, the app and Spotifast), and Spotify's Soloist there too, by its local

@@ -87,6 +87,9 @@ impl DrawingApp {
                     // the app's skills go to a terminal's claude too (skills.rs); never the real folder in a test
                     let skills = if cfg!(test) { None } else { crate::app::maestro::skills::skills_path() };
                     let command = crate::app::maestro::skills::with_skills(command, skills.as_deref());
+                    // and the app's MCP, the one the chats run (chat/tools.rs); no file written in a test
+                    let mcp = if cfg!(test) { None } else { crate::app::chat::tools::mcp_config(&self.prefs, wsl) };
+                    let command = crate::app::maestro::events::with_mcp(command, mcp.as_deref());
                     let command = if wsl { wsl_quoted_paths(&command) } else { command };
                     let session =
                         TerminalSession::spawn_shell(&shell, &spec.cwd, &command, grid, Some(ctx.clone()), env, None, self.prefs.terminal_history, look);
