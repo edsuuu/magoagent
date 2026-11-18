@@ -70,7 +70,7 @@ pub(crate) enum Icon {
     Layers(bool),
     /// lucide's palette (the note's color button); `Palette` is the bolt.
     PaintPalette,
-    /// The right panel's button: Alterações (Tarefas is `Todo`).
+    /// The right panel's button: Alterações.
     Diff,
 }
 

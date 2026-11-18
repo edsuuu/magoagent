@@ -386,9 +386,9 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "panel",
-            "description": "Os painéis à direita da janela (os botões na barra de título): tasks (Tarefas: criar, filtrar Abertas/Feitas, concluir) e changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff). Um aberto por vez, ao lado do canvas. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto.",
+            "description": "O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto.",
             "inputSchema": { "type": "object", "properties": {
-                "name": { "type": "string", "enum": ["tasks", "changes"] },
+                "name": { "type": "string", "enum": ["changes"] },
                 "open": { "type": "boolean" },
             } },
         }),

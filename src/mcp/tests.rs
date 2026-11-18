@@ -343,19 +343,15 @@ fn every_tool_is_in_the_mcp_docs() {
 fn the_panel_tool_opens_and_closes_the_right_panels() {
     use crate::app::panes::Pane;
     let mut app = DrawingApp { chat_open: true, ..Default::default() };
-    assert_eq!(app.act("panel", &json!({ "name": "tasks" })).unwrap(), "Painel Tarefas aberto.");
-    assert_eq!((app.panes.open, app.chat_open), (Some(Pane::Tasks), false), "it shows beside the canvas");
-    // one at a time: another takes its place
-    app.act("panel", &json!({ "name": "changes", "open": true })).unwrap();
-    assert_eq!(app.panes.open, Some(Pane::Changes));
+    assert_eq!(app.act("panel", &json!({ "name": "changes" })).unwrap(), "Painel Alterações aberto.");
+    assert_eq!((app.panes.open, app.chat_open), (Some(Pane::Changes), false), "it shows beside the canvas");
     assert_eq!(app.act("panel", &json!({ "name": "Alterações" })).unwrap(), "Painel Alterações fechado.", "no `open` toggles");
     assert_eq!(app.panes.open, None);
     app.act("panel", &json!({ "name": "changes", "open": true })).unwrap();
-    // closing another one leaves the open one alone; no name closes it
-    app.act("panel", &json!({ "name": "tasks", "open": false })).unwrap();
-    assert_eq!(app.panes.open, Some(Pane::Changes));
-    assert_eq!(app.act("panel", &json!({ "open": false })).unwrap(), "Painel fechado.");
+    assert_eq!(app.act("panel", &json!({ "open": false })).unwrap(), "Painel fechado.", "no name closes it");
     assert_eq!(app.panes.open, None);
-    assert!(app.act("panel", &json!({ "name": "nada" })).unwrap_err().contains("tasks ou changes"));
+    // the Tarefas panel went ("a aba de tarefas, ali no canvas remove por favor"); the tasks stay in `tasks`
+    assert!(app.act("panel", &json!({ "name": "tasks" })).unwrap_err().contains("Use changes"));
+    assert!(app.act("panel", &json!({ "name": "nada" })).unwrap_err().contains("Use changes"));
     assert!(app.act("panel", &json!({ "open": true })).is_err());
 }
