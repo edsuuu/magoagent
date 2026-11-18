@@ -380,3 +380,23 @@ impl DrawingApp {
         });
     }
 }
+
+impl DrawingApp {
+    /// Remover chat, confirmed (asked: a confirmation before, not an undo after): the conversation is deleted for good
+    /// and an agent running in it stops, so the dialog says so; Remover (or Enter) removes it, Cancelar or Esc keeps it.
+    pub(crate) fn remove_chat_dialog(&mut self, ctx: &Context) {
+        let Some(id) = self.chat_listing.removing.take() else { return };
+        let Some(row) = self.chat_rows().into_iter().find(|row| row.id == id) else { return };
+        let running = if matches!(row.state, AgentState::Working(_)) { " O agente que está rodando nele será parado." } else { "" };
+        let text = format!("\"{}\" e toda a sua conversa serão excluídos permanentemente.{running}", self.chat_title(&row));
+        let colors = self.colors();
+        let (remove, cancel) = dialog_ui(ctx, &colors, "Remover chat", "Remover", |ui| {
+            ui.label(egui::RichText::new(text).size(14.0).color(colors.text));
+        });
+        if remove {
+            self.remove_chat(&id);
+        } else if !cancel {
+            self.chat_listing.removing = Some(id);
+        }
+    }
+}

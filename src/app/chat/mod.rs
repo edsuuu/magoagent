@@ -309,8 +309,9 @@ impl DrawingApp {
             self.start_draft_chat(false);
         }
         if let Some(id) = act.remove.take() {
-            self.remove_chat(&id);
+            self.chat_listing.removing = Some(id);
         }
+        self.remove_chat_dialog(ctx);
         if let Some((maestro, open)) = act.team.take() {
             self.set_team_open(&maestro, open);
         }
