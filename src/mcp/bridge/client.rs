@@ -69,6 +69,8 @@ pub(super) const HELP: &str = "Uso: magoagent <comando>
   portal click <nome> <css>    seu cursor vai até o elemento e clica
   portal fill <nome> <css> <texto>  seu cursor vai até o campo e digita
   recruit [--worktree] [comando]  cria um agente abaixo de você (ou no lugar livre mais perto), ligado a você (padrão: claude); ele ganha um nome;
+                               um chat do app ou um terminal, como manda Ajustes › Agentes › Invocação dos agentes; o modelo e o
+                               esforço vão no comando (claude --model sonnet --effort high \"tarefa\");
                                com --worktree, num git worktree próprio, num ramo dele
   portal create <url> [nome]   abre um navegador à sua direita (ou no lugar livre mais perto), ligado a você
   terminal [comando]           abre um terminal à sua direita (ou no lugar livre mais perto) rodando o comando (testes, uma API), ligado a você;

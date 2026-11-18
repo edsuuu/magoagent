@@ -114,13 +114,18 @@ mod tests {
         };
         // the chat's agent is the Maestro: the app is told which chat builds, and puts its card there
         assert_eq!(ask("Papo", json!({ "cmd": "recruit", "text": "codex" })), Ok("feito".into()));
+        // the model and effort recruit_agent picked go in as the agent's own flags (maestro/tuning.rs)
+        assert_eq!(ask("Papo", json!({ "cmd": "recruit", "text": "claude \"x\"", "model": "sonnet", "effort": "high" })), Ok("feito".into()));
         assert_eq!(ask("Papo", json!({ "cmd": "portal_create", "text": "exemplo.com" })), Ok("feito".into()));
         assert_eq!(ask("Papo", json!({ "cmd": "connect", "name": "Dev" })), Ok("feito".into()));
         // who is on no canvas and is no chat still builds nothing of its own
         assert!(ask("", json!({ "cmd": "recruit" })).unwrap_err().contains("de dentro de um terminal"));
         assert!(ask("", json!({ "cmd": "connect", "name": "Dev" })).unwrap_err().contains("as duas pontas"));
         drop(sender);
-        assert_eq!(ui.join().unwrap(), ["recruit Papo codex", "portal Papo exemplo.com", "connect Papo Dev"]);
+        assert_eq!(
+            ui.join().unwrap(),
+            ["recruit Papo codex", "recruit Papo claude --model sonnet --effort high \"x\"", "portal Papo exemplo.com", "connect Papo Dev"]
+        );
     }
 
     #[test]

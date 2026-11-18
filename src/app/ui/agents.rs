@@ -40,6 +40,14 @@ pub(crate) fn prompt_gate(claude: Option<&crate::transcript::Session>, made_for_
     }
 }
 
+/// Whether an agent in `state` calls the person (asked: "'Agentes precisam de você' — em 90% dos casos não precisa: foram
+/// agentes novos, shells que o Maestro abriu. Ali deve aparecer apenas quando o Maestro me chamar, para ser mais claro"):
+/// an agent stopped on a question or a permission only the person answers (the Maestro's `ask_person` too), or one its
+/// hook holds for them (`held`). A shell, and an agent new, at work, finished or at rest, calls nobody.
+pub(crate) fn calls_person(state: AgentState, agent: bool, held: bool) -> bool {
+    agent && (state == AgentState::Waiting || held)
+}
+
 /// "agora", "há 30s", "há 12 min", "há 2 h".
 // ponytail: relative times; "desde 19h43" would need the local time zone (no date crate here)
 pub(crate) fn ago(seconds: f64) -> String {
@@ -344,13 +352,19 @@ impl DrawingApp {
         }
     }
 
-    /// The agents that need the person, in every workspace: the waiting ones first, then the ones that finished unseen
-    /// (each once).
+    /// The agents that call the person, in every workspace (`calls_you`).
     pub(crate) fn needing_you(&self) -> Vec<String> {
-        let rows = self.agent_rows();
-        let waiting = rows.iter().filter(|r| matches!(r.state, AgentState::Waiting));
-        let unread = rows.iter().filter(|r| self.terminal_unread.contains(&r.id) && !matches!(r.state, AgentState::Waiting));
-        waiting.chain(unread).map(|r| r.id.clone()).collect()
+        self.agent_rows().into_iter().filter(|row| self.calls_you(row)).map(|row| row.id).collect()
+    }
+
+    /// Whether the agent of `row` calls the person (`calls_person`): an agent is a chat, or a terminal running Claude Code
+    /// or Codex (by its command, its session or its title); held, a permission its hook waits on the person for.
+    pub(crate) fn calls_you(&self, row: &AgentRow) -> bool {
+        let title = self.terminals.get(&row.id).and_then(|session| session.as_ref().ok()).and_then(|session| session.title()).unwrap_or_default();
+        let agent =
+            self.is_chat(&row.id) || crate::app::chat::header::program(&row.spec, self.agent_sessions.contains_key(&row.id)).is_some() || claude_title(&title);
+        let held = self.hooks.pending.iter().any(|(event, _)| event.id == row.id);
+        calls_person(row.state, agent, held)
     }
 
     /// ⌘⇧A and the sidebar's "Ir para o próximo": the next one of `needing_you` after the current one, round. Gives

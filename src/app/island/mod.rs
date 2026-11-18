@@ -12,6 +12,7 @@ use crate::prelude::*;
 mod actions;
 mod ask;
 mod cursor;
+mod done;
 mod entry;
 pub(super) mod feed;
 mod forms;
@@ -136,12 +137,6 @@ pub(crate) fn main_state(mood: Mood, celebrating: bool) -> MagoState {
         Mood::Ready if celebrating => MagoState::Done,
         _ => MagoState::Idle,
     }
-}
-
-/// Whether an agent at work last frame (`working`) ended its turn now: done, or waiting on the person. One stopped
-/// (Esc: idle since no answer) or closed did not.
-pub(crate) fn turn_ended(working: &std::collections::HashSet<String>, rows: &[AgentRow]) -> bool {
-    rows.iter().any(|row| working.contains(&row.id) && matches!(row.state, AgentState::Idle(Some(_)) | AgentState::Waiting))
 }
 
 /// What the open island shows.
@@ -389,9 +384,11 @@ pub(crate) struct Island {
     asked: usize,
     /// Something was working or waiting last frame: the end of it is news.
     was_busy: bool,
-    /// The agents and chats at work last frame (`turn_ended`).
+    /// The agents and chats at work last frame (`done.rs`).
     working: std::collections::HashSet<String>,
     celebrate_until: f64,
+    /// An agent finished since the island was last open: Luna wears a check until the person opens it (`done.rs`).
+    finished: bool,
     /// The island as drawn: its size and corner follow the target, easing.
     anim: Vec2,
     radius: f32,
@@ -669,14 +666,17 @@ impl DrawingApp {
         if busy && !island.was_busy {
             island.machine.reveal(time);
         }
+        // the end is celebrated quietly (asked: "Sempre quando termina, eles acionam a ilha e ela abre sem necessidade ou
+        // faz barulho"): no chime
         if island.was_busy && mood == Mood::Ready {
             island.celebrate_until = time + 6.0;
-            tones.push(sounds::FINISH);
         }
         island.was_busy = busy;
-        // asked ("quando ela termina uma ação, ela não abre a ilha"): an agent done or waiting on the person opens it, as
-        // a question does, and it folds after "Fechar sozinho" as usual
-        if turn_ended(&island.working, &rows) {
+        // an agent done marks Luna with a check until the island is opened ("poderia só mudar a Luna com um check, aí eu
+        // clico e vejo"); one that stopped on the person opens it, as a question does, and it folds after "Fechar
+        // sozinho" as usual
+        island.finished |= done::turn_done(&island.working, &rows);
+        if done::turn_waits(&island.working, &rows) {
             island.machine.force_home(time);
         }
         island.working = rows.iter().filter(|row| matches!(row.state, AgentState::Working(_))).map(|row| row.id.clone()).collect();
@@ -699,6 +699,10 @@ impl DrawingApp {
             island.session = None;
         }
         island.open = open;
+        // open, what finished is in sight: the check goes
+        if stage == fsm::Stage::Home {
+            island.finished = false;
+        }
         let shape = match stage {
             fsm::Stage::Hidden => Shape::Closed,
             fsm::Stage::Petit => Shape::Compact,
@@ -916,32 +920,54 @@ mod tests {
         assert_eq!(view.lines[0].mago, MagoState::Done);
     }
 
+    /// Asked: "Sempre quando termina, eles acionam a ilha e ela abre sem necessidade ou faz barulho; poderia só mudar a
+    /// Luna com um check, aí eu clico e vejo". A turn that ends leaves the island as it was and quiet, Luna with a check
+    /// until it is opened; one stopped by Esc gets none; one that stops on a question still opens it.
     #[test]
-    fn the_island_opens_when_a_turn_ends_and_not_when_it_is_stopped() {
+    fn a_turn_that_ends_puts_a_check_on_luna_quietly_until_the_island_is_opened() {
         let frame = |app: &mut DrawingApp, ctx: &Context, time: f64| {
             let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0))), time: Some(time), ..Default::default() };
             ctx.run_ui(raw, |_| app.island_ui(ctx)).textures_delta.clear();
         };
-        for (ended, opens) in [(Some(4.0), true), (None, false)] {
+        let island = || {
             let (ctx, mut app) = (Context::default(), DrawingApp::default());
             app.prefs.island = true;
             app.chats = vec![chat("a")];
             frame(&mut app, &ctx, 1.0);
             assert_eq!(app.island.machine.stage(), fsm::Stage::Hidden);
-            // the chat was at work last frame; now its answer ended (or Esc stopped it)
+            // the chat was at work last frame
             app.island.working.insert("a".into());
+            app.island.was_busy = true;
+            (ctx, app)
+        };
+        for (ended, checked) in [(Some(4.0), true), (None, false)] {
+            let (ctx, mut app) = island();
+            // its answer ended (or Esc stopped it)
             if let Some(at) = ended {
                 app.chat_ended.insert("a".into(), at);
             }
+            let chimes = app.island.chimes();
             frame(&mut app, &ctx, 5.0);
-            assert_eq!(app.island.machine.stage() == fsm::Stage::Home, opens, "ended at {ended:?}");
+            assert_eq!(app.island.machine.stage(), fsm::Stage::Hidden, "it does not open, ended at {ended:?}");
+            assert_eq!(app.island.chimes(), chimes, "nor sound");
+            assert_eq!(app.island.finished, checked, "ended at {ended:?}");
             assert!(app.island.working.is_empty(), "no one at work now");
         }
-        let working: std::collections::HashSet<String> = ["a".to_string()].into();
-        let row = |state| AgentRow { id: "a".into(), spec: Default::default(), state, mission: None, space: String::new() };
-        assert!(turn_ended(&working, &[row(AgentState::Waiting)]), "waiting on the person");
-        assert!(!turn_ended(&working, &[row(AgentState::Working(1.0))]), "still at work");
-        assert!(!turn_ended(&Default::default(), &[row(AgentState::Idle(Some(1.0)))]), "it was not at work");
+        // the check stays until the person opens the island, and goes once it is open
+        let (ctx, mut app) = island();
+        app.chat_ended.insert("a".into(), 4.0);
+        frame(&mut app, &ctx, 5.0);
+        frame(&mut app, &ctx, 90.0);
+        assert!(app.island.finished && app.island.machine.stage() != fsm::Stage::Home);
+        app.island.machine.click(91.0);
+        frame(&mut app, &ctx, 91.0);
+        assert!(!app.island.finished, "seen");
+        // a question opens it, as before
+        let (ctx, mut app) = island();
+        let (reply, _answer) = std::sync::mpsc::channel();
+        app.person_asks.borrow_mut().push(crate::app::chat::decide::PersonAsk::new("a".into(), &json!({ "tool_name": "Bash" }), reply));
+        frame(&mut app, &ctx, 5.0);
+        assert_eq!(app.island.machine.stage(), fsm::Stage::Home);
     }
 
     #[test]
