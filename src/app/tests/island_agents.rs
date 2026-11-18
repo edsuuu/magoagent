@@ -236,3 +236,33 @@ fn an_agents_message_to_a_chat_goes_signed_and_chat_open_shows_one_in_the_island
     app.prefs.island = false;
     assert!(app.act("chat_open", &json!({ "chat": "projeto", "place": "island" })).is_err(), "no island on: said so");
 }
+
+/// Asked ("As opções no chat, quando digito /c, não aparece um select para aparecer as opções que eu tenho"): the island's
+/// own box opens the / menu as it is typed, filtered; Esc closes the menu, not the island, and Enter completes the
+/// picked command instead of sending it.
+#[test]
+fn the_islands_box_opens_the_slash_menu_and_esc_closes_only_the_menu() {
+    let mut island = Island::open(false);
+    let at = Pos2::new(ISLAND_SCREEN.x / 2.0, 100.0);
+    island.ctx.memory_mut(|memory| memory.request_focus(egui::Id::unique("chat_draft")));
+    island.frame(vec![egui::Event::Text("/".into())]);
+    island.frame(vec![egui::Event::Text("c".into())]);
+    let frame = island.rest(at, 0.1);
+    assert!(frame.place_of("/clear").is_some() && frame.place_of("/compact [instruções]").is_some(), "the menu: {:?}", frame.texts);
+    assert!(frame.place_of("/login").is_none(), "only what holds a c");
+    let key = |key: Key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+    island.frame(vec![key(Key::Escape)]);
+    let frame = island.rest(at, 0.3);
+    assert!(frame.place_of("/clear").is_none(), "Esc closed the menu");
+    let still = island.app.island.size().x >= crate::app::island::EXPANDED_W && island.app.island.tab() == Tab::Chat;
+    assert!(still && island.app.chat_draft == "/c", "and only the menu: {:?}", island.app.island.size());
+    // typed again (egui lets go of the box at an Esc), Enter takes the first command into the box, nothing is sent
+    island.ctx.memory_mut(|memory| memory.request_focus(egui::Id::unique("chat_draft")));
+    island.frame(vec![egui::Event::Text("l".into())]);
+    island.rest(at, 0.1);
+    let before = island.app.transcripts[&island.luna].items.len();
+    island.frame(vec![key(Key::Enter)]);
+    island.rest(at, 0.1);
+    assert_eq!(island.app.chat_draft, "/clear ");
+    assert_eq!(island.app.transcripts[&island.luna].items.len(), before, "not sent");
+}

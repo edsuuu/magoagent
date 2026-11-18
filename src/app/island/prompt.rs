@@ -4,7 +4,7 @@
 
 use super::log::said;
 use super::paint::{AMBER, BLACK, CARD, DIM_3, EXPAND, INK, Out, View, aim, font};
-use crate::app::chat::list::{clipped, glyph};
+use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::chat::mini_agents::{KinLook, pressable};
 use crate::app::mascot::mago::MagoState;
 use crate::app::ui::agents::{AgentRow, AgentState};
@@ -107,7 +107,8 @@ pub(super) fn send_field(
 }
 
 impl DrawingApp {
-    pub(super) fn island_prompt(&mut self, ui: &mut egui::Ui, page: Rect, row: &AgentRow, view: &View, time: f64, out: &mut Out) {
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn island_prompt(&mut self, ui: &mut egui::Ui, page: Rect, row: &AgentRow, view: &View, look: &Look, time: f64, out: &mut Out) {
         self.refresh_transcript();
         let painter = ui.painter().with_clip_rect(page);
         painter.rect(page, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
@@ -161,9 +162,20 @@ impl DrawingApp {
         let send_rect = Rect::from_center_size(Pos2::new(bar.right() - 10.0 - 14.0, bar.bottom() - 20.0), Vec2::splat(28.0));
         let field = Rect::from_min_max(Pos2::new(bar.left() + 10.0, bar.top() + 6.0), Pos2::new(send_rect.left() - 8.0, bar.bottom() - 6.0));
         let hint = if messages.is_empty() { "Pergunte qualquer coisa…" } else { "Continuar…" };
+        // the / menu over the box, as the big chat's: its arrows, Tab, Enter and Esc while it is open (Esc closes it, not
+        // the island)
+        let typing = ui.memory(|memory| memory.has_focus(draft_id) || memory.had_focus_last_frame(draft_id));
+        let typed = self.chat_draft.clone();
+        let slash = if typing { self.slash_entries_of(&row.id, &typed) } else { None };
         let mut draft = std::mem::take(&mut self.chat_draft);
+        let swallow = slash.as_ref().is_some_and(|entries| self.slash_keys(ui.ctx(), &mut draft, entries, draft_id));
         let (edit, sent) = send_field(ui, &painter, (field, send_rect), &mut draft, draft_id, hint, "island_prompt_send");
-        if sent {
+        if let Some(entries) = &slash
+            && let Some(name) = self.slash_menu_ui(ui.ctx(), entries, bar.left_top() - Vec2::new(0.0, 6.0), bar.width(), look)
+        {
+            crate::app::chat::commands::complete_into(ui.ctx(), &mut draft, &name, draft_id);
+        }
+        if sent && !swallow {
             self.send_from_box(ui.ctx(), &row.id, std::mem::take(&mut draft).trim().to_string());
             edit.request_focus();
         }

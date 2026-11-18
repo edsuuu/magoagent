@@ -319,3 +319,33 @@ fn a_chat_cards_picture_shows_the_last_answer_in_markdown() {
     assert!(preview.starts_with("Feito.\n• O que aconteceu: o clique na caixa Buscar"), "its lines, a list's bullets: {preview:?}");
     assert!(!preview.contains("**") && !preview.contains('`') && !preview.contains('*'), "{preview:?}");
 }
+
+/// Asked ("As opções no chat, quando digito /c, não aparece um select para aparecer as opções que eu tenho"): the box of a
+/// chat's card on the canvas opens the / menu as the big chat's does, filtered as it is typed, and Tab completes it.
+#[test]
+fn the_cards_box_opens_the_slash_menu_filtered_as_it_is_typed() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    frame(&mut app, &ctx, vec![]);
+    let id = new_chat(&mut app, "claude");
+    resize(&mut app, &id, Vec2::new(430.0, 580.0));
+    cards(&mut app, &ctx);
+    ctx.memory_mut(|memory| memory.request_focus(egui::Id::unique(("chat_card_box", id.as_str()))));
+    let mut typed = |events: Vec<egui::Event>| {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), events, ..Default::default() };
+        let output = ctx.run_ui(raw, |_| app.chat_node_overlay(&ctx));
+        output
+            .shapes
+            .iter()
+            .filter_map(|shape| if let Shape::Text(text) = &shape.shape { Some(text.galley.text().to_string()) } else { None })
+            .collect::<Vec<_>>()
+    };
+    typed(vec![egui::Event::Text("/".into())]);
+    typed(vec![egui::Event::Text("c".into())]);
+    let words = typed(vec![]);
+    assert!(words.iter().any(|w| w == "/clear") && words.iter().any(|w| w == "/compact [instruções]"), "the menu: {words:?}");
+    assert!(!words.iter().any(|w| w == "/login"), "only what holds a c: {words:?}");
+    typed(vec![egui::Event::Key { key: Key::Tab, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }]);
+    let draft = ctx.data(|d| d.get_temp::<String>(egui::Id::unique(("chat_card_draft", id.as_str()))));
+    assert_eq!(draft.as_deref(), Some("/clear "), "Tab completes the first");
+}
