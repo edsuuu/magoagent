@@ -2,7 +2,7 @@
 
 <!-- gerado por docs/mcp.py a partir do tools/list do app: não edite à mão -->
 
-O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.32) e tem **106 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
+O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.32) e tem **107 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
 
 ## Ligar
 
@@ -105,6 +105,14 @@ Grupos do canvas (o quadro tracejado com nome em volta de vários elementos; o m
 | `group` | string |  |
 | `name` | string |  |
 | `color` | string |  |
+
+### `organize_canvas`
+
+Organizar o canvas (o mesmo do menu do canvas): os terminais, chats, notas, árvores, navegadores, grupos e desenhos do canvas, ou só os `elements`, em fileiras com 60 px entre eles e os ligados por corda ou seta lado a lado; formas e traços perto uns dos outros ou ligados por seta seguem juntos, como um desenho. Cordas e setas presas acompanham; os bloqueados ficam onde estão. Um passo de desfazer, e a vista mostra tudo no fim. Use quando o canvas estiver bagunçado, as janelas encostadas ou a pessoa pedir para arrumar.
+
+| Parâmetro | Tipo | O que é |
+|---|---|---|
+| `elements` | array | só estes (ids ou nomes de nós, 2 ou mais); vazio: o canvas todo |
 
 ### `minimap`
 
