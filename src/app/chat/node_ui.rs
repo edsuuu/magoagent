@@ -47,9 +47,23 @@ pub(crate) fn keep_pinned(ctx: &Context, key: egui::Id, laid: Rect) {
 }
 
 /// The conversation's scroll: what is left above the pinned part, never more (egui's own floor would push the
-/// pinned part off the card), stuck to the newest.
-pub(crate) fn card_scroll(salt: (&str, &str), height: f32) -> egui::ScrollArea {
-    egui::ScrollArea::vertical().id_salt(salt).stick_to_bottom(true).auto_shrink(false).min_scrolled_height(0.0).max_height(height)
+/// pinned part off the card), stuck to the newest; but not in the frame after a step of card `id` opened or closed
+/// (`hold_scroll`), so the row clicked stays under the pointer and its card opens below it.
+// ponytail: once a step opened, the card no longer follows what comes until it is scrolled back to its end, as egui does
+pub(crate) fn card_scroll(ctx: &Context, id: &str, salt: (&str, &str), height: f32) -> egui::ScrollArea {
+    let held = ctx.data(|d| d.get_temp::<u64>(held_key(id))).is_some_and(|frame| frame + 1 >= ctx.cumulative_frame_nr());
+    egui::ScrollArea::vertical().id_salt(salt).stick_to_bottom(!held).auto_shrink(false).min_scrolled_height(0.0).max_height(height)
+}
+
+/// A step of card `id` opened or closed this frame: `card_scroll` stays where it is in the next.
+pub(crate) fn hold_scroll(ctx: &Context, id: &str) {
+    // read before: the context is locked inside `data_mut`
+    let frame = ctx.cumulative_frame_nr();
+    ctx.data_mut(|d| d.insert_temp(held_key(id), frame));
+}
+
+fn held_key(id: &str) -> egui::Id {
+    egui::Id::unique(("chat_card_held", id))
 }
 
 /// The part of the card under its header and over its folder strip, on screen.
@@ -164,7 +178,7 @@ impl DrawingApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
                 ui.set_max_width(width);
                 ui.spacing_mut().scroll = crate::app::ui::scroll_style();
-                card_scroll(("chat_card_scroll", id), top.height()).show(ui, |ui| {
+                card_scroll(ui.ctx(), id, ("chat_card_scroll", id), top.height()).show(ui, |ui| {
                     self.conversation(ui, &row, transcript, talks, true, false, &asked, None, width, &look, &c, true, time, &mut conv);
                     // what the agent asks the person ends the conversation: however tall, it scrolls with it
                     if self.person_asked(&row.id) {
@@ -190,6 +204,10 @@ impl DrawingApp {
         // laid out at the card's size, shown at the canvas's
         ctx.set_transform_layer(area.response.layer_id, egui::emath::TSTransform::new(body.min.to_vec2(), z));
         self.chat_draft = draft;
+        // a run or a step opened or closed: the row clicked stays where it is
+        if conv.fold.is_some() {
+            hold_scroll(ctx, id);
+        }
         self.conv_apply(ctx, conv, draft_id);
         if attach {
             self.chat_attach_pick(ctx);
