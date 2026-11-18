@@ -149,9 +149,16 @@ pub(crate) fn process_memory(pid: u32) -> Option<u64> {
     Some(pages * 4096)
 }
 #[cfg(target_os = "macos")]
-pub(crate) fn process_memory(_pid: u32) -> Option<u64> {
-    None
-} // ponytail: add a native resident-size query when needed
+pub(crate) fn process_memory(pid: u32) -> Option<u64> {
+    // ponytail: one `ps` per process, every 2 s; `proc_pidinfo` if the terminals' trees grow
+    let out = crate::editor::command("ps").args(["-o", "rss=", "-p", &pid.to_string()]).output().ok()?;
+    rss_bytes(&String::from_utf8_lossy(&out.stdout))
+}
+/// `ps -o rss=` prints the resident size in KiB.
+#[cfg(target_os = "macos")]
+fn rss_bytes(output: &str) -> Option<u64> {
+    output.trim().parse::<u64>().ok().map(|kib| kib * 1024)
+}
 
 pub(crate) fn format(snapshot: &Snapshot) -> String {
     let total: u64 = snapshot.terminals.iter().map(|terminal| terminal.bytes).sum();
@@ -167,6 +174,13 @@ pub(crate) fn size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn reads_ps_rss_in_kib() {
+        assert_eq!(rss_bytes("  2048\n"), Some(2 * 1024 * 1024));
+        assert_eq!(rss_bytes(""), None);
+        assert!(process_memory(std::process::id()).is_some_and(|bytes| bytes > 0));
+    }
     #[test]
     fn sums_descendants_and_two_terminals_once() {
         let parents = HashMap::from([(2, 1), (3, 2), (5, 4)]);

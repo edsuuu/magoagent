@@ -377,13 +377,13 @@ mod tests {
         let json = serde_json::to_string(&prefs).unwrap();
         let back: Prefs = serde_json::from_str(&json).unwrap();
         assert_eq!(back.shortcuts, prefs.shortcuts);
-        assert_eq!(shown_keys(save, &back.shortcuts), "Ctrl+Alt+F5");
+        assert_eq!(shown_keys(save, &back.shortcuts), keys_label("Cmd+Alt+F5"));
         assert_eq!(shown_keys(redo, &back.shortcuts), "Sem tecla");
         // a prefs.json from before the app's shortcuts could change: its global keys, and the defaults for the rest
         let old: Prefs = serde_json::from_str(r#"{"shortcuts":{"openChat":{"keys":"Ctrl+Alt+K","enabled":true}}}"#).unwrap();
         assert_eq!(shown_keys(chat, &old.shortcuts), "Ctrl+Alt+K");
-        assert_eq!(shown_keys(save, &old.shortcuts), "Ctrl+S");
-        assert_eq!(shown_keys(redo, &old.shortcuts), "Ctrl+Shift+Z ou Ctrl+Y");
+        assert_eq!(shown_keys(save, &old.shortcuts), keys_label("Cmd+S"));
+        assert_eq!(shown_keys(redo, &old.shortcuts), keys_label("Cmd+Shift+Z ou Cmd+Y"));
         let older: Prefs = serde_json::from_str("{}").unwrap();
         assert!(older.shortcuts.is_empty(), "no shortcuts at all: every one on its default");
     }
@@ -417,9 +417,9 @@ mod tests {
         let taken = set(&mut app, "shortcut_save", "Ctrl+Z").unwrap_err();
         assert!(taken.contains("Desfazer") && taken.contains("Nada mudou"), "{taken}");
         assert!(set(&mut app, "shortcut_openChat", "Ctrl+S").unwrap_err().contains("Salvar"), "nor a global one over an app's");
-        assert_eq!(set(&mut app, "shortcut_save", "Ctrl+Alt+F5").unwrap(), "Salvar: Ctrl+Alt+F5.");
+        assert_eq!(set(&mut app, "shortcut_save", "Ctrl+Alt+F5").unwrap(), keys_label("Salvar: Cmd+Alt+F5."));
         assert_eq!(set(&mut app, "shortcut_save", "none").unwrap(), "Salvar: Sem tecla.");
-        assert_eq!(set(&mut app, "shortcut_save", "default").unwrap(), "Salvar: Ctrl+S.");
+        assert_eq!(set(&mut app, "shortcut_save", "default").unwrap(), keys_label("Salvar: Cmd+S."));
         // the tool names every shortcut
         let tools = crate::mcp::app_tools::app_tools();
         let tool = tools.iter().find(|tool| tool["name"] == "set_setting").unwrap();

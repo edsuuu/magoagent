@@ -11,10 +11,12 @@ pub(super) const MOST: usize = 4;
 
 /// The cells of the first `count` agents (four at the most) in the grid `MINIS_SIDE` from the right: one or two on the
 /// middle line, the last at the right edge (asked: "perto da borda"); three or four row by row from the grid's top left,
-/// as a CSS grid fills.
+/// as a CSS grid fills. On an island as short as a camera notch (32) the cells shrink to the reference's 13, keeping 2
+/// above and below.
 pub(crate) fn mini_cells(island: Rect, count: usize) -> Vec<Rect> {
     let count = count.min(MOST);
-    let corner = Pos2::new(island.right() - super::MINIS_SIDE, island.center().y) - Vec2::splat(GRID / 2.0);
+    let body = BODY.min((island.height() - 4.0 - GAP) / 2.0);
+    let corner = Pos2::new(island.right() - super::MINIS_SIDE, island.center().y) - Vec2::splat(body + GAP / 2.0);
     (0..count)
         .map(|index| {
             let (column, row) = match count {
@@ -22,7 +24,7 @@ pub(crate) fn mini_cells(island: Rect, count: usize) -> Vec<Rect> {
                 2 => (index as f32, 0.5),
                 _ => ((index % 2) as f32, (index / 2) as f32),
             };
-            Rect::from_min_size(corner + Vec2::new(column, row) * (BODY + GAP), Vec2::splat(BODY))
+            Rect::from_min_size(corner + Vec2::new(column, row) * (body + GAP), Vec2::splat(body))
         })
         .collect()
 }
@@ -66,6 +68,12 @@ mod tests {
         let two = mini_cells(island, 2);
         assert!(two[1].right() == COMPACT_W - 12.0 && two[0].center().y == two[1].center().y && two[0].right() < two[1].left());
         assert_eq!(mini_cells(island, 6).len(), 4, "four at the most");
+        // as short as a camera notch: 13 each, 2 from the top and the bottom
+        let notched = Rect::from_min_size(Pos2::ZERO, Vec2::new(COMPACT_W, 32.0));
+        let cells = mini_cells(notched, 4);
+        let grid = cells.iter().fold(cells[0], |grid, cell| grid.union(*cell));
+        assert!(cells.iter().all(|cell| cell.size() == Vec2::splat(13.0)));
+        assert_eq!((grid.top(), grid.bottom()), (2.0, 30.0));
     }
 
     #[test]

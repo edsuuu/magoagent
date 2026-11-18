@@ -186,9 +186,12 @@ impl TerminalSession {
                 backgrounds.push(Shape::rect_filled(Rect::from_min_max(at(line, from), at(line + 1, to)), 0.0, bg));
             }
         };
+        // only the rows the clip shows (a card half off the canvas, a lifted one's edge)
+        let clip = painter.clip_rect();
+        let rows = ((clip.top() - origin.y) / ch).floor().max(0.0) as usize..((clip.bottom() - origin.y) / ch).ceil().max(0.0) as usize;
         for cell in content.display_iter {
             let Some(p) = point_to_viewport(content.display_offset, cell.point) else { continue };
-            if cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
+            if !rows.contains(&p.line) || cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
                 continue;
             }
             let (line, col) = (p.line, p.column.0);

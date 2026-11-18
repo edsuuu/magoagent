@@ -248,7 +248,10 @@ mod tests {
         apply(find("undo").unwrap(), Pending::Clear, &mut stored).unwrap();
         assert_eq!(check_of("save", "Ctrl+Z", &stored), Ok(()));
         let words = Problem::Taken("goToAlert").words(find("save").unwrap(), Some(&combo("Ctrl+Alt+A")));
-        assert_eq!(words, "Ctrl+Alt+A já é o atalho global «Ir à pergunta ou permissão pendente»: escolha outra combinação ou limpe a de lá primeiro.");
+        assert_eq!(
+            words,
+            keys_label("Cmd+Alt+A já é o atalho global «Ir à pergunta ou permissão pendente»: escolha outra combinação ou limpe a de lá primeiro.")
+        );
     }
 
     #[test]
@@ -308,19 +311,19 @@ mod tests {
         let mut editing = Editing::new("save");
         editing.press(Recorded::Keys(combo("Ctrl+Alt+F5")), &mut stored);
         assert!(editing.press(Recorded::Save, &mut stored));
-        assert_eq!(shown_keys(find("save").unwrap(), &stored), "Ctrl+Alt+F5");
+        assert_eq!(shown_keys(find("save").unwrap(), &stored), keys_label("Cmd+Alt+F5"));
         // a combination of another one waits with why, and Salvar saves nothing
         let mut editing = Editing::new("save");
         editing.press(Recorded::Keys(combo("Ctrl+Z")), &mut stored);
         assert_eq!(editing.problem, Some(Problem::Taken("undo")));
         assert!(editing.hint().contains("«Desfazer»"), "{}", editing.hint());
         assert!(!editing.save(&mut stored));
-        assert_eq!(shown_keys(find("save").unwrap(), &stored), "Ctrl+Alt+F5", "unchanged");
+        assert_eq!(shown_keys(find("save").unwrap(), &stored), keys_label("Cmd+Alt+F5"), "unchanged");
         // another combination pressed takes its place
         editing.press(Recorded::Keys(combo("Ctrl+Alt+F6")), &mut stored);
         assert_eq!(editing.problem, None);
         assert!(editing.save(&mut stored));
-        assert_eq!(shown_keys(find("save").unwrap(), &stored), "Ctrl+Alt+F6");
+        assert_eq!(shown_keys(find("save").unwrap(), &stored), keys_label("Cmd+Alt+F6"));
     }
 
     #[test]
