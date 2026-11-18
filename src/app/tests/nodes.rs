@@ -272,3 +272,25 @@ fn the_windows_an_agent_opens_go_around_it_not_all_to_one_side() {
     assert_eq!(app.free_spot_near(spot, b), spot);
     assert_eq!(side_of(Rect::from_min_size(Pos2::new(0.0, 500.0), size), b), "abaixo de você");
 }
+
+/// Asked: "precisa ver o espaçamento das coisas no canvas, para não ficar tudo grudado". A spot asked for 20 away from
+/// a window was taken as free and left them touching: a window opens at least 56 from every other, the spot lined up
+/// 60 beside the one that opens it still free.
+#[test]
+fn a_new_window_keeps_room_from_the_others() {
+    let mut app = DrawingApp::default();
+    let size = Vec2::new(400.0, 300.0);
+    let mut first = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: size.x, height: size.y });
+    first.terminal = Some(TerminalSpec { name: "Um".into(), cwd: "/p".into(), ..Default::default() });
+    let b = local_bounds(&first);
+    app.scene.elements.push(first);
+    let close = Rect::from_min_size(Pos2::new(b.max.x + 20.0, b.min.y), size);
+    let spot = app.free_spot_near(close, b);
+    assert_ne!(spot, close, "20 away is no room");
+    assert!(
+        spot.left() - b.right() >= 56.0 || b.left() - spot.right() >= 56.0 || spot.top() - b.bottom() >= 56.0 || b.top() - spot.bottom() >= 56.0,
+        "{spot:?}"
+    );
+    let beside = Rect::from_min_size(Pos2::new(b.max.x + 60.0, b.min.y), size);
+    assert_eq!(app.free_spot_near(beside, b), beside, "60 beside it is free");
+}

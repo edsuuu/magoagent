@@ -125,6 +125,60 @@ fn diagram_with_labels_and_bound_arrow() {
     assert!(add_elements(&mut scene, json!([{ "id": "a", "type": "rectangle" }]).as_array().unwrap()).is_err());
 }
 
+/// Asked: "quando desenhou no canvas ele vinculou apenas um e outro não, mas desenhou corretamente". Each end binds
+/// whichever way the agent names its element (`{id}`, a bare id, `{elementId}`, the file format's binding), an arrow
+/// listed before its shapes still finds them, and an end naming no element is an error, not an end left loose.
+#[test]
+fn every_way_of_naming_an_end_binds_both_ends() {
+    let shapes = || {
+        json!([
+            { "id": "a", "type": "rectangle", "x": 0, "y": 0, "width": 200, "height": 100 },
+            { "id": "b", "type": "rectangle", "x": 400, "y": 0, "width": 200, "height": 100 },
+        ])
+    };
+    let both = |scene: &Scene, id: &str| {
+        let arrow = by_id(scene, id);
+        [&arrow.ends.start, &arrow.ends.end].map(|end| end.as_ref().map(|binding| binding.element_id.clone()))
+    };
+    for (start, end) in [(json!({ "id": "a" }), json!("b")), (json!({ "elementId": "a" }), json!({ "id": "b" })), (json!("a"), json!({ "elementId": "b" }))] {
+        let mut scene = Scene::default();
+        add_elements(&mut scene, shapes().as_array().unwrap()).unwrap();
+        add_elements(&mut scene, &[json!({ "id": "seta", "type": "arrow", "start": start, "end": end })]).unwrap();
+        assert_eq!(both(&scene, "seta"), [Some("a".to_string()), Some("b".to_string())], "{start} → {end}");
+    }
+    // the file format's bindings, one of them a bare id
+    let mut scene = Scene::default();
+    add_elements(&mut scene, shapes().as_array().unwrap()).unwrap();
+    add_elements(&mut scene, &[json!({ "id": "seta", "type": "arrow", "startBinding": { "elementId": "a" }, "endBinding": "b" })]).unwrap();
+    assert_eq!(both(&scene, "seta"), [Some("a".to_string()), Some("b".to_string())]);
+    // the arrow first, its shapes after it in the same call: drawn after them, tied to both
+    let mut scene = Scene::default();
+    let mut items = vec![json!({ "id": "seta", "type": "arrow", "start": { "id": "a" }, "end": { "id": "b" } })];
+    items.extend(shapes().as_array().unwrap().iter().cloned());
+    add_elements(&mut scene, &items).unwrap();
+    assert_eq!(both(&scene, "seta"), [Some("a".to_string()), Some("b".to_string())]);
+    assert_eq!(scene.elements.last().map(|e| e.id.as_str()), Some("seta"), "over the shapes it ties");
+    // an end naming nothing says so
+    let mut scene = Scene::default();
+    add_elements(&mut scene, shapes().as_array().unwrap()).unwrap();
+    for bad in
+        [json!({ "start": { "id": "a" }, "end": { "id": "c" } }), json!({ "start": { "id": "a" }, "endBinding": { "elementId": "c" } }), json!({ "start": 7 })]
+    {
+        let mut arrow = bad.as_object().unwrap().clone();
+        arrow.insert("type".into(), "arrow".into());
+        assert!(add_elements(&mut scene, &[Value::Object(arrow)]).is_err(), "{bad}");
+    }
+}
+
+/// A note made by `add_elements` keeps its `text`, as the `note` tool writes it (its label): it came out empty.
+#[test]
+fn a_note_added_with_text_keeps_it() {
+    let mut scene = Scene::default();
+    add_elements(&mut scene, &[json!({ "id": "n", "type": "stickynote", "x": 0, "y": 0, "text": "Linha 1\nLinha 2" })]).unwrap();
+    let ElementKind::Text { value, .. } = &by_id(&scene, "n-label").kind else { panic!("no label") };
+    assert_eq!(value, "Linha 1\nLinha 2");
+}
+
 #[test]
 fn update_changes_text_and_style_and_rebinds() {
     let mut scene = Scene::default();

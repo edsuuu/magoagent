@@ -75,7 +75,7 @@ impl TerminalSession {
         };
         let shell = program.map(|(p, args)| tty::Shell::new(p.into(), args.iter().map(|a| a.to_string()).collect())).or(login);
         let mut vars: std::collections::HashMap<String, String> =
-            [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", APP_TITLE)].map(|(k, v)| (k.to_string(), v.to_string())).into();
+            [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", "MagoAgent")].map(|(k, v)| (k.to_string(), v.to_string())).into();
         vars.extend(env);
         let cwd = cwd.filter(|dir| dir.is_dir());
         let options = tty::Options { shell, working_directory: cwd.clone(), env: vars, ..Default::default() };

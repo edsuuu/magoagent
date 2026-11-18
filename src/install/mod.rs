@@ -40,7 +40,7 @@ pub(crate) fn version_key(version: &str) -> (u32, u32, u32) {
 
 pub(crate) fn run(args: &[String]) -> eframe::Result {
     let viewport = egui::ViewportBuilder::default()
-        .with_title(format!("Instalar o MagoAgent {VERSION}"))
+        .with_title(format!("Instalar o {} {VERSION}", crate::model::APP_TITLE))
         .with_inner_size([640.0, 600.0])
         .with_resizable(false)
         .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../../assets/icon.png")).expect("assets/icon.png is a png"));
@@ -123,7 +123,7 @@ impl eframe::App for Installer {
         };
         egui::Frame::new().inner_margin(28).show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("MagoAgent").size(26.0).strong());
+                ui.label(egui::RichText::new(crate::model::APP_TITLE).size(26.0).strong());
                 ui.label(egui::RichText::new(VERSION).size(15.0).color(Color32::GRAY));
             });
             ui.add_space(6.0);
@@ -427,7 +427,12 @@ fn shortcut(program: &Path, say: &dyn Fn(String)) {
         let _ = fs::create_dir_all(file.parent().unwrap_or(&file));
         let icon = program.with_file_name("magoagent.png");
         let _ = fs::write(&icon, include_bytes!("../../assets/icon.png"));
-        let entry = format!("[Desktop Entry]\nType=Application\nName=MagoAgent\nExec={}\nIcon={}\nTerminal=false\n", program.display(), icon.display());
+        let entry = format!(
+            "[Desktop Entry]\nType=Application\nName={}\nExec={}\nIcon={}\nTerminal=false\n",
+            crate::model::APP_TITLE,
+            program.display(),
+            icon.display()
+        );
         if fs::write(&file, entry).is_ok() {
             say("Atalho no menu de aplicativos.".into());
         }

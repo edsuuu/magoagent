@@ -30,7 +30,7 @@ fn a_text_file_opens_in_a_note_sized_to_read_beside_its_chats_card() {
     let note = notes(&app)[0];
     let bounds = local_bounds(&app.scene.elements[note]);
     // beside the chat's card, wide enough to read and as tall as most of the view (600 here)
-    assert_eq!(bounds.min, Pos2::new(card.right() + 40.0, card.top()));
+    assert_eq!(bounds.min, Pos2::new(card.right() + 60.0, card.top()));
     assert_eq!(bounds.size(), Vec2::new(560.0, 480.0));
     assert_eq!(app.note_text(note), long_text(200));
     assert!(!app.scene.elements[note].note.raw, "markdown is formatted");

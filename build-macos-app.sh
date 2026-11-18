@@ -19,7 +19,7 @@ cat > MagoAgent.app/Contents/Info.plist <<PLIST
   <key>CFBundleExecutable</key><string>magoagent</string>
   <key>CFBundleIdentifier</key><string>com.edsuuu.magoagent</string>
   <key>CFBundleName</key><string>MagoAgent</string>
-  <key>CFBundleDisplayName</key><string>MagoAgent</string>
+  <key>CFBundleDisplayName</key><string>MagoAgent AlphaVersion</string>
   <key>CFBundleIconFile</key><string>icon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
