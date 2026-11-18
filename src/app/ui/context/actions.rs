@@ -66,6 +66,9 @@ impl DrawingApp {
             "dup" => self.duplicate(),
             "select_all" => self.select_all(),
             "tidy" => self.tidy_selection(),
+            "arrange" => {
+                self.arrange_canvas(None);
+            }
             "front" => self.reorder(Layer::Front),
             "back" => self.reorder(Layer::Back),
             "chrome" => {

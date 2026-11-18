@@ -193,6 +193,13 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["action"] },
         }),
         json!({
+            "name": "organize_canvas",
+            "description": "Organizar o canvas (o mesmo do menu do canvas): os terminais, chats, notas, árvores, navegadores, grupos e desenhos do canvas, ou só os `elements`, em fileiras com 60 px entre eles e os ligados por corda ou seta lado a lado; formas e traços perto uns dos outros ou ligados por seta seguem juntos, como um desenho. Cordas e setas presas acompanham; os bloqueados ficam onde estão. Um passo de desfazer, e a vista mostra tudo no fim. Use quando o canvas estiver bagunçado, as janelas encostadas ou a pessoa pedir para arrumar.",
+            "inputSchema": { "type": "object", "properties": {
+                "elements": { "type": "array", "items": { "type": "string" }, "description": "só estes (ids ou nomes de nós, 2 ou mais); vazio: o canvas todo" },
+            } },
+        }),
+        json!({
             "name": "portal_tab",
             "description": "As abas de um navegador: new abre uma aba com `url`, close fecha a aba `index` (vazio: a aberta), select mostra a aba `index` (a partir de 0).",
             "inputSchema": { "type": "object", "properties": {

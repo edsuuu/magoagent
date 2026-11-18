@@ -82,6 +82,7 @@ impl DrawingApp {
                     Entry::Sep,
                     item("paste", "Colar"),
                     item("select_all", "Selecionar Tudo"),
+                    item("arrange", "Organizar o canvas"),
                 ]
             }
             Target::Element(id) => self.element_entries(id),
