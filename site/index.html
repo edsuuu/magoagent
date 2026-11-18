@@ -4,170 +4,206 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MagoAgent — um quadro para orquestrar agentes de IA</title>
-<meta name="description" content="Um quadro infinito e nativo onde agentes de IA trabalham em terminais de verdade, ligados por cordas. Windows, Linux e macOS.">
-<meta name="theme-color" content="#f7f6f2" media="(prefers-color-scheme: light)">
+<meta name="description" content="Um quadro infinito e nativo, em Rust, onde agentes de IA trabalham em terminais e chats ligados por cordas. Windows, Linux e macOS.">
+<meta name="theme-color" content="#f7f7f8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1e1e1e" media="(prefers-color-scheme: dark)">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 120'%3E%3Cpath fill='%2338bdf8' d='M50 4C62 26 88 44 88 74c0 24-18 42-38 42S12 98 12 74c0-18 12-30 20-40 2 14 8 20 14 22-4-16-2-36 4-52z'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Cpath%20fill%3D%22%2338bdf8%22%20d%3D%22M50%206C60%2024%2080%2038%2080%2062C80%2080%2067%2093%2050%2093C33%2093%2020%2080%2020%2062C20%2046%2031%2036%2038%2024C41%2033%2045%2038%2050%2040C49%2029%2047%2017%2050%206Z%22/%3E%3Cg%20fill%3D%22%2317142b%22%3E%3Crect%20x%3D%2233%22%20y%3D%2262%22%20width%3D%2212%22%20height%3D%2214%22%20rx%3D%226%22/%3E%3Crect%20x%3D%2255%22%20y%3D%2262%22%20width%3D%2212%22%20height%3D%2214%22%20rx%3D%226%22/%3E%3C/g%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="estilo.css">
 </head>
 <body>
-<!-- A Luna, desenhada uma vez e reusada com <use> -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <linearGradient id="chama" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#bae6fd"/><stop offset=".45" stop-color="#38bdf8"/><stop offset="1" stop-color="#0284c7"/>
-    </linearGradient>
-    <symbol id="luna" viewBox="0 0 100 120">
-      <g class="corpo">
-        <path fill="url(#chama)" d="M50 4C62 26 88 44 88 74c0 24-18 42-38 42S12 98 12 74c0-18 12-30 20-40 2 14 8 20 14 22-4-16-2-36 4-52z"/>
-        <path fill="#e0f2fe" opacity=".45" d="M50 58c8 10 18 16 18 32 0 12-8 20-18 20s-18-8-18-20c0-10 8-16 10-24 2 6 6 9 8 9-1-6-1-12 0-17z"/>
-        <g class="olhos" fill="#2f2f38">
-          <ellipse cx="39" cy="80" rx="5.5" ry="8"/><ellipse cx="61" cy="80" rx="5.5" ry="8"/>
-          <circle cx="41" cy="77" r="1.8" fill="#fff"/><circle cx="63" cy="77" r="1.8" fill="#fff"/>
-        </g>
-      </g>
-    </symbol>
-  </defs>
+<!-- Os símbolos do design system: a chama da Luna (ondula sozinha) e os ícones -->
+<svg class="oculto" aria-hidden="true" focusable="false">
+  <symbol id="luna-chama" viewBox="0 0 100 100">
+    <path fill="currentColor" d="M50 6C60 24 80 38 80 62C80 80 67 93 50 93C33 93 20 80 20 62C20 46 31 36 38 24C41 33 45 38 50 40C49 29 47 17 50 6Z">
+      <animate attributeName="d" dur="1.7s" repeatCount="indefinite" values="M50 6C60 24 80 38 80 62C80 80 67 93 50 93C33 93 20 80 20 62C20 46 31 36 38 24C41 33 45 38 50 40C49 29 47 17 50 6Z;M52 4C61 24 81 38 81 62C81 80 67 93 50 93C33 93 19 80 19 62C19 46 30 36 37 22C40 32 45 38 50 40C50 28 49 16 52 4Z;M50 6C60 24 80 38 80 62C80 80 67 93 50 93C33 93 20 80 20 62C20 46 31 36 38 24C41 33 45 38 50 40C49 29 47 17 50 6Z;M48.4 7C59 24 79 38 79 62C79 80 67 93 50 93C33 93 21 80 21 62C21 46 32 36 39 25.5C42 34 45.5 38 50 40C48.5 29.5 46.5 17.5 48.4 7Z;M51 5C60.5 24 80.5 38 80.5 62C80.5 80 67 93 50 93C33 93 20.5 80 20.5 62C20.5 46 31 36 38.6 23C41.5 33 45 38 50 40C49.5 28.5 48 16.5 51 5Z;M50 6C60 24 80 38 80 62C80 80 67 93 50 93C33 93 20 80 20 62C20 46 31 36 38 24C41 33 45 38 50 40C49 29 47 17 50 6Z"/>
+    </path>
+  </symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3M13 15h4"/></g></symbol>
+  <symbol id="i-corda" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7c6 0 6 10 16 10"/><circle cx="4" cy="7" r="2"/><circle cx="20" cy="17" r="2"/></g></symbol>
+  <symbol id="i-lapis" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c4-1 12-9 14-13l-3-3C11 6 3 14 4 20z"/><path d="m13 6 5 5"/></g></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></g></symbol>
+  <symbol id="i-globo" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></g></symbol>
+  <symbol id="i-pasta" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h6l2 2h10v11H3z"/><path d="M8 13h8"/></g></symbol>
+  <symbol id="i-casa" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z"/></g></symbol>
+  <symbol id="i-lista" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></g></symbol>
+  <symbol id="i-claude" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/></g></symbol>
+  <symbol id="i-pull" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v7M18 15.5V9a3 3 0 0 0-3-3h-4m2-2-2 2 2 2"/></g></symbol>
+  <symbol id="i-nota" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></g></symbol>
+  <symbol id="i-mais" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-mensagem" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11.5a8 8 0 0 1-11.8 7L4 20l1.5-4A8 8 0 1 1 20 11.5z"/></g></symbol>
+  <symbol id="i-cajado" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21 16 8"/><path d="M15 3l1.2 2.8L19 7l-2.8 1.2L15 11l-1.2-2.8L11 7l2.8-1.2z"/></g></symbol>
+  <symbol id="i-chip" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></g></symbol>
+  <symbol id="i-sol" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g></symbol>
+  <symbol id="i-baixar" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></g></symbol>
 </svg>
-
 <header class="topo">
   <div class="largura">
-    <a class="marca" href="./"><svg class="luna" aria-hidden="true"><use href="#luna"/></svg>MagoAgent</a>
-    <nav aria-label="Seções">
-      <a class="some" href="#recursos">Recursos</a>
-      <a class="some" href="#ilha">Ilha</a>
-      <a class="some" href="#maestro">Maestro</a>
-      <a href="#instalar">Instalar</a>
-      <a href="changelog.html">Changelog</a>
-      <a href="https://github.com/edsuuu/magoagent">GitHub</a>
-    </nav>
+    <a class="marca" href="./"><svg class="luna" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="34.95" y="64.35" width="8.5" height="9.7" rx="4.25"/><rect x="56.55" y="64.35" width="8.5" height="9.7" rx="4.25"/></g></g></g></svg>MagoAgent</a>
+    <a class="botao pequeno" href="#instalar"><svg width="16" height="16" aria-hidden="true"><use href="#i-baixar"/></svg>Baixar</a>
   </div>
 </header>
 
 <main>
-  <div class="largura heroi">
+  <div class="largura dupla secao brilho">
     <div>
       <span class="selo">Nativo · Windows, Linux e macOS</span>
-      <h1>Seus agentes de IA num <span class="sublinha">quadro só<svg viewBox="0 0 200 20" preserveAspectRatio="none" aria-hidden="true"><path d="M3 13c40-8 90-10 194-4" fill="none" stroke="#0a84ff" stroke-width="5" stroke-linecap="round"/></svg></span>.</h1>
-      <p class="lead">Um quadro infinito onde Claude Code, Codex e qualquer CLI trabalham em terminais de verdade, ligados por cordas às notas, páginas e projetos de que precisam.</p>
+      <h1 class="titulo">Seus agentes de IA num <span class="sublinha">quadro só<svg viewBox="0 0 200 20" preserveAspectRatio="none" aria-hidden="true"><path d="M3 13c40-8 90-10 194-4" fill="none" stroke="#0a84ff" stroke-width="5" stroke-linecap="round"/></svg></span>.</h1>
+      <p class="lead">Um quadro infinito onde Claude Code, Codex e qualquer CLI trabalham em terminais e chats de verdade, ligados por cordas às notas, páginas e projetos de que precisam.</p>
       <div class="botoes">
-        <a class="botao" href="#instalar">Instalar</a>
+        <a class="botao" href="#instalar">Baixar o MagoAgent</a>
         <a class="botao sec" href="changelog.html">O que há de novo</a>
       </div>
     </div>
-    <div class="palco" aria-label="A Luna, a chama azul que mora no MagoAgent">
-      <span class="bilhete um">oi, eu sou a Luna!</span>
-      <svg class="luna" viewBox="0 0 100 120" role="img" aria-label="Luna"><use href="#luna"/></svg>
-      <span class="bilhete dois">recruto o time pra você</span>
+    <div class="palco">
+      <span class="bilhete palco-nota um">oi, eu sou a Luna!</span>
+      <button class="luna-palco palco-luna" type="button" aria-label="A Luna, a chama azul do MagoAgent"><svg class="luna" viewBox="0 0 100 100" aria-hidden="true"><ellipse class="luna-sombra" cx="50" cy="95" rx="22" ry="2.6"/><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="34.95" y="64.35" width="8.5" height="9.7" rx="4.25"/><rect x="56.55" y="64.35" width="8.5" height="9.7" rx="4.25"/></g><g class="luna-espirais"><path d="M39.2 69.2a1.4 1.4 0 0 1 2.4.6 2.8 2.8 0 0 1-3.6 2.6 4.2 4.2 0 0 1-2-6.4 5.4 5.4 0 0 1 7.8.6"/><path d="M60.8 69.2a1.4 1.4 0 0 1 2.4.6 2.8 2.8 0 0 1-3.6 2.6 4.2 4.2 0 0 1-2-6.4 5.4 5.4 0 0 1 7.8.6"/></g></g></g></svg></button>
+      <span class="bilhete palco-nota dois">recruto o time pra você</span>
     </div>
   </div>
 
-  <svg class="corda" viewBox="0 0 120 46" aria-hidden="true"><path d="M60 2c-30 14 30 28 0 42" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="6 6"/></svg>
+  <section id="quadro" class="largura secao">
+    <figure class="print vidro surge"><img src="img/canvas.png" width="1440" height="816" alt="O canvas do MagoAgent no escuro: uma nota com o plano da sprint ligada por cordas a um terminal Maestro, a um chat com o Codex, a um terminal do front e à árvore de arquivos do projeto; à esquerda, a lista dos agentes deste espaço."><figcaption>O Maestro lê o plano ligado a ele, recruta um terminal e um chat e liga cada um ao que ele precisa.</figcaption></figure>
+  </section>
 
-  <section id="recursos" class="largura">
-    <h2>O que dá para fazer</h2>
-    <p class="intro">Você desenha o plano, liga as peças com uma corda e os agentes enxergam o que está ligado: conversam entre si, recrutam ajudantes e avisam quando precisam de você.</p>
+  <svg class="corda" viewBox="0 0 120 46" aria-hidden="true"><path d="M60 2c-30 14 30 28 0 42" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+
+  <section id="recursos" class="largura secao">
+    <h2 class="surge">O que dá para fazer</h2>
+    <p class="intro surge">Você desenha o plano, liga as peças com uma corda e os agentes enxergam o que está ligado: conversam entre si, recrutam ajudantes e avisam quando precisam de você.</p>
     <div class="grade">
-      <article class="cartao">
-        <div class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3M13 15h4"/></svg></div>
-        <h3>Terminais de verdade</h3>
-        <p>zsh, bash ou PowerShell com cores e acentos, e um agente rodando dentro. Cada terminal tem nome, cor e pasta.</p>
-      </article>
-      <article class="cartao">
-        <div class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7c6 0 6 10 16 10"/><circle cx="4" cy="7" r="2"/><circle cx="20" cy="17" r="2"/></svg></div>
-        <h3>Cordas que conectam</h3>
-        <p>Uma corda entre duas coisas diz quem fala com quem. Pelo terminal, <code>magoagent ask</code> manda um pedido a outro agente.</p>
-      </article>
-      <article class="cartao">
-        <div class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c4-1 12-9 14-13l-3-3C11 6 3 14 4 20z"/><path d="m13 6 5 5"/></svg></div>
-        <h3>Desenho à mão</h3>
-        <p>Formas com traço à mão, setas presas, texto, imagens e minimapa. A IA desenha no quadro, traço a traço.</p>
-      </article>
-      <article class="cartao">
-        <div class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v12H4zM4 10h16"/><path d="M8 14h3"/></svg></div>
-        <h3>Chats com agentes</h3>
-        <p>Converse com Claude Code ou Codex num cartão de chat, sem terminal, com as ferramentas do app já ligadas.</p>
-      </article>
-      <article class="cartao">
-        <div class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg></div>
-        <h3>Navegador no quadro</h3>
-        <p>Páginas abertas sobre o canvas. O agente circula trechos, lê o console e recebe os seus comentários.</p>
-      </article>
-      <article class="cartao">
-        <div class="icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h6l2 2h10v11H3z"/><path d="M8 13h8"/></svg></div>
-        <h3>Árvore de arquivos</h3>
-        <p>A pasta do projeto vira um cartão com git (ramos, diff, autor), editor com realce e Localizar.</p>
-      </article>
-    </div>
-    <div class="prints">
-      <figure class="cartao print largo"><img src="img/canvas.png" width="1600" height="1000" loading="lazy" alt="O canvas: um terminal que rege o time, ligado ao plano da sprint e a dois agentes, e a árvore do projeto"><figcaption>Um agente rege o time, ligado ao plano da sprint e a dois ajudantes.</figcaption></figure>
-      <figure class="cartao print"><img src="img/agentes.png" width="1600" height="1000" loading="lazy" alt="Vários agentes trabalhando no quadro"><figcaption>Vários agentes, cada um no seu terminal.</figcaption></figure>
-      <figure class="cartao print"><img src="img/arvore.png" width="1600" height="1000" loading="lazy" alt="A árvore de arquivos com git e o editor de código"><figcaption>A árvore de arquivos, com git e editor.</figcaption></figure>
+      <article class="cartao flutua surge"><div class="icone"><svg aria-hidden="true"><use href="#i-terminal"/></svg></div><h3>Terminais de verdade</h3><p>zsh, bash ou PowerShell com cores e acentos, e um agente rodando dentro. Cada terminal tem nome, cor e pasta.</p></article>
+      <article class="cartao flutua surge"><div class="icone"><svg aria-hidden="true"><use href="#i-chat"/></svg></div><h3>Chats com agentes</h3><p>Converse com Claude Code ou Codex num cartão de chat, sem terminal, com as ferramentas do app já ligadas.</p></article>
+      <article class="cartao flutua surge"><div class="icone"><svg aria-hidden="true"><use href="#i-corda"/></svg></div><h3>Cordas que conectam</h3><p>Uma corda entre duas coisas diz quem fala com quem. Pelo terminal, <code>magoagent ask</code> manda um pedido a outro agente.</p></article>
+      <article class="cartao flutua surge"><div class="icone"><svg aria-hidden="true"><use href="#i-pasta"/></svg></div><h3>Árvore de arquivos</h3><p>A pasta do projeto vira um cartão com git (ramos, diff, autor), editor com realce e Localizar.</p></article>
+      <article class="cartao flutua surge"><div class="icone"><svg aria-hidden="true"><use href="#i-globo"/></svg></div><h3>Navegador no quadro</h3><p>Páginas abertas sobre o canvas. O agente circula trechos, lê o console e recebe os seus comentários.</p></article>
+      <article class="cartao flutua surge"><div class="icone"><svg aria-hidden="true"><use href="#i-lapis"/></svg></div><h3>Desenho à mão</h3><p>Formas com traço à mão, setas presas, notas, imagens e minimapa. A IA desenha no quadro, traço a traço.</p></article>
     </div>
   </section>
 
-  <svg class="corda" viewBox="0 0 120 46" aria-hidden="true"><path d="M60 2c30 14-30 28 0 42" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="6 6"/></svg>
-
-  <section id="ilha" class="largura">
-    <h2>A ilha, no topo da tela</h2>
-    <p class="intro">Uma pílula fixa por cima de todas as janelas, onde a Luna mora. Fechada, mostra uma chaminha por agente com o estado de cada um. Os olhos dela seguem o cursor e, com música tocando, ela dança.</p>
-    <div class="ilha" role="img" aria-label="A ilha fechada: a Luna e três chaminhas de agentes">
-      <svg class="luna" viewBox="0 0 100 120"><use href="#luna"/></svg>
-      <span class="chamas"><span style="background:#30d158"></span><span style="background:#ffd60a"></span><span style="background:#8e8e93"></span></span>
-      <span class="estado">2 trabalhando · 1 espera você</span>
-    </div>
-    <ul class="lista">
-      <li class="cartao"><b>Início</b><span>O resumo dos agentes e as perguntas pendentes para responder.</span></li>
-      <li class="cartao"><b>Chats e conversas</b><span>O chat em uso, os agentes do app e as sessões do Claude Code de fora.</span></li>
-      <li class="cartao"><b>GitHub</b><span>Pull requests com filtros, a descrição e um comentário.</span></li>
-      <li class="cartao"><b>Música</b><span>O player com capa e controles; a Luna dança junto.</span></li>
-    </ul>
-  </section>
-
-  <svg class="corda" viewBox="0 0 120 46" aria-hidden="true"><path d="M60 2c-30 14 30 28 0 42" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="6 6"/></svg>
-
-  <section id="maestro" class="largura">
-    <h2>O Maestro e o MCP</h2>
+  <section id="conversa" class="largura secao">
     <div class="dupla">
-      <div>
-        <p class="intro">Fale com a Luna pelo chat ou numa chamada de voz ("Ok Mago, …"). Ela rege o time pelas mesmas ferramentas que você usa no app.</p>
+      <div class="surge">
+        <h2>Uma conversa por cartão</h2>
+        <p class="intro">Cada chat mostra o que o agente leu, escreveu e rodou, recolhido numa linha que abre com um clique. Ao lado, a árvore abre o arquivo no editor, com o autor de cada trecho e quem usa cada função.</p>
+        <ul class="chips"><li class="chip">Auto ou Bypass</li><li class="chip">modelo e esforço</li><li class="chip">ditado por voz</li><li class="chip">pasta do projeto</li></ul>
+      </div>
+      <figure class="print vidro surge"><img src="img/conversa.png" width="1440" height="900" loading="lazy" alt="Um chat com o Codex que criou a rota /api/contas, com as quatro ferramentas que usou, e ao lado a árvore de arquivos com o editor aberto em Formulario.tsx."><figcaption>O chat com o Codex e a árvore com o editor, lado a lado.</figcaption></figure>
+    </div>
+  </section>
+
+  <svg class="corda" viewBox="0 0 120 46" aria-hidden="true"><path d="M60 2c30 14-30 28 0 42" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+
+  <section id="ilha" class="largura secao">
+    <h2 class="surge">A ilha, no topo da tela</h2>
+    <p class="intro surge">Uma pílula preta por cima de todas as janelas, onde a Luna mora. Fechada, mostra um mini de cada agente na cor dele; com o mouse em cima ou uma pergunta esperando, ela abre num painel. Os olhos da Luna seguem o cursor e, com música tocando, ela dança.</p>
+    <div class="palco-ilha surge">
+      <div class="ilha-vaga"><div class="ilha" data-ciclo role="button" tabindex="0" aria-expanded="false" aria-label="A ilha: clique para abrir ou fechar"><div class="ilha-compacta"><svg class="luna" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="34.95" y="64.35" width="8.5" height="9.7" rx="4.25"/><rect x="56.55" y="64.35" width="8.5" height="9.7" rx="4.25"/></g></g></g></svg><div class="minis"><svg class="mini cor-claude" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><svg class="mini cor-codex" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><svg class="mini cor-amarelo" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><svg class="mini cor-rosa" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg></div></div><div class="ilha-painel"><div class="ilha-abas"><span title="Início"><svg aria-hidden="true"><use href="#i-casa"/></svg></span><span title="Chat atual"><svg aria-hidden="true"><use href="#i-chat"/></svg></span><span title="Conversas"><svg aria-hidden="true"><use href="#i-lista"/></svg></span><span title="Claude Code"><svg aria-hidden="true"><use href="#i-claude"/></svg></span><span title="GitHub"><svg aria-hidden="true"><use href="#i-pull"/></svg></span><span title="Spotify"><svg aria-hidden="true"><use href="#i-nota"/></svg></span><span title="Chat novo"><svg aria-hidden="true"><use href="#i-mais"/></svg></span><svg class="luna" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="34.95" y="64.35" width="8.5" height="9.7" rx="4.25"/><rect x="56.55" y="64.35" width="8.5" height="9.7" rx="4.25"/></g></g></g></svg></div><div class="ilha-corpo"><div class="ilha-foco"><header><svg class="mini cor-claude" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><div><b>Maestro</b><small>Claude Code · trabalhando</small></div></header><p>Recrutei o front e o Codex. A rota /api/contas está quase pronta.</p><div class="botoes"><span class="ilha-botao principal">Conversar</span><span class="ilha-botao">Abrir</span></div></div><div class="ilha-pilulas"><span class="ilha-pilula em-foco cor-claude"><svg class="mini cor-claude" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><span>Maestro</span></span><span class="ilha-pilula cor-amarelo"><svg class="mini cor-amarelo" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><span>front</span><i class="badge feito">✓</i></span><span class="ilha-pilula cor-codex"><svg class="mini cor-codex" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><span>Codex · api</span><i class="badge pergunta">!</i></span><span class="ilha-pilula cor-rosa"><svg class="mini cor-rosa" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><span>revisor</span></span><span class="ilha-pilula cor-github"><svg class="mini cor-github" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><span>GitHub</span></span><span class="ilha-pilula cor-spotify"><svg class="mini cor-spotify" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><span>Spotify</span></span></div></div></div></div></div>
+      <p class="legenda">Passe o mouse (ou toque) na ilha para abrir.</p>
+      <div class="ilha fixa" aria-label="A ilha com música tocando: a Luna dança, a capa e as barras do som no meio e os mini agentes à direita">
+        <div class="ilha-compacta"><svg class="luna danca" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="34.95" y="64.35" width="8.5" height="9.7" rx="4.25"/><rect x="56.55" y="64.35" width="8.5" height="9.7" rx="4.25"/></g></g></g></svg><div class="ilha-musica"><span class="capa"></span><span class="barras" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div><div class="minis"><svg class="mini cor-claude" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><svg class="mini cor-codex" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg></div></div>
+      </div>
+      <p class="legenda">Com o Spotify tocando: a capa e as barras do som entram no meio.</p>
+    </div>
+    <div class="grade">
+      <article class="cartao flutua surge"><div class="icone"><svg aria-hidden="true"><use href="#i-casa"/></svg></div><h3>Início</h3><p>O agente em foco e a grade de todos, com as perguntas e pedidos de permissão para responder dali.</p></article>
+      <article class="cartao flutua surge"><div class="icone"><svg aria-hidden="true"><use href="#i-chat"/></svg></div><h3>Chat atual e conversas</h3><p>O chat em uso, os agentes do app e as sessões do Claude Code de fora, no canvas ou em outro terminal.</p></article>
+      <article class="cartao flutua surge"><div class="icone"><svg aria-hidden="true"><use href="#i-mais"/></svg></div><h3>Chat novo</h3><p>Um chat num espaço de trabalho novo, sem abrir a janela do app. Por voz também.</p></article>
+    </div>
+  </section>
+
+  <section id="integracoes" class="largura secao">
+    <h2 class="surge">Integrações</h2>
+    <p class="intro surge">Em Ajustes › Integrações, cada serviço tem a sua chave e fica desligado até você ligar; desligado, não fala com a rede. Senhas e tokens ficam no cofre do sistema, nunca nas preferências.</p>
+    <div class="grade">
+      <article class="cartao integracao flutua surge cor-github">
+        <header><div class="icone"><svg aria-hidden="true"><use href="#i-pull"/></svg></div><h3>GitHub</h3></header>
+        <ul><li>Os seus pull requests com o estado do CI: passou, falhou ou rodando.</li><li>As revisões pedidas a você e o CI da branch principal.</li><li>Na aba GitHub: filtros, a descrição do PR e um comentário.</li></ul>
+        <div class="na-ilha">Na ilha<span class="ilha-pilula cor-github"><svg class="mini cor-github" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><span>GitHub</span><i class="badge erro">✕</i></span></div>
+      </article>
+      <article class="cartao integracao flutua surge cor-spotify">
+        <header><div class="icone"><svg aria-hidden="true"><use href="#i-nota"/></svg></div><h3>Spotify</h3></header>
+        <ul><li>A música que toca, com a capa e as barras do som na pílula.</li><li>Tocar, pausar e pular, sem conta: fala com o Spotify aberto no computador.</li><li>Com a conta ligada: fila, playlists, curtidas e busca. A Luna dança na batida.</li></ul>
+        <div class="na-ilha">Na ilha<span class="ilha-pilula cor-spotify"><svg class="mini cor-spotify" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><span>Spotify</span></span></div>
+      </article>
+      <article class="cartao integracao flutua surge cor-whatsapp">
+        <header><div class="icone"><svg aria-hidden="true"><use href="#i-mensagem"/></svg></div><h3>WhatsApp</h3></header>
+        <ul><li>Liga a um gateway GOWA que você já roda no seu computador (só 127.0.0.1 ou localhost).</li><li>Mostra se está conectado, se precisa parear ou se está fora do ar.</li><li>Um botão abre o gateway ou a configuração.</li></ul>
+        <div class="na-ilha">Na ilha<span class="ilha-pilula cor-whatsapp"><svg class="mini cor-whatsapp" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><span>WhatsApp</span></span></div>
+      </article>
+      <article class="cartao integracao flutua surge cor-claude">
+        <header><div class="icone"><svg aria-hidden="true"><use href="#i-terminal"/></svg></div><h3>Sessões de fora</h3></header>
+        <ul><li>Hooks do Claude Code e do Codex, instalados com backup e removíveis.</li><li>As sessões de outro terminal, do VS Code ou do Claude Desktop aparecem na ilha.</li><li>Perguntas e permissões delas, respondidas pela ilha.</li></ul>
+        <div class="na-ilha">Na ilha<span class="ilha-pilula cor-claude"><svg class="mini cor-claude" viewBox="0 0 100 100" aria-hidden="true"><g class="luna-corpo"><use href="#luna-chama"/><g class="luna-olhar"><g class="luna-olhos"><rect x="28.2" y="60.5" width="15.4" height="17.4" rx="7.7"/><rect x="56.4" y="60.5" width="15.4" height="17.4" rx="7.7"/></g></g></g></svg><span>Claude Code</span><i class="badge pergunta">!</i></span></div>
+      </article>
+      <article class="cartao integracao flutua surge cor-apagado">
+        <header><div class="icone"><svg aria-hidden="true"><use href="#i-cajado"/></svg></div><h3>Hermes Agent</h3></header>
+        <ul><li>Um plugin do MagoAgent leva as sessões do Hermes Agent para a ilha, como uma pílula “Hermes”.</li><li>Instala e remove só o que é dele, com backup da configuração.</li><li>Ainda desligado nesta versão: chega numa próxima.</li></ul>
+        <div class="na-ilha"><span class="etiqueta">Em breve</span></div>
+      </article>
+      <figure class="print vidro surge"><a href="img/integracoes.png"><img src="img/integracoes.png" width="878" height="718" loading="lazy" alt="Ajustes, aba Integrações: os hooks do Claude Code e do Codex fora do app e as chaves de GitHub, Spotify e WhatsApp, todas desligadas."></a><figcaption>Ajustes › Integrações.</figcaption></figure>
+    </div>
+  </section>
+
+  <svg class="corda" viewBox="0 0 120 46" aria-hidden="true"><path d="M60 2c-30 14 30 28 0 42" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+
+  <section id="memoria" class="largura secao">
+    <h2 class="surge">Leve na memória</h2>
+    <p class="intro surge">Apps de canvas feitos em Electron levam um navegador inteiro junto: um Chromium com processo principal, processo de GPU e um processo de página por janela, antes do primeiro cartão. O MagoAgent é um executável só, em Rust, que desenha direto pela placa de vídeo.</p>
+    <div class="grade">
+      <div class="cartao surge"><span class="numero">~115 <small>MB</small></span><h3>Quadro vazio</h3><p>O app aberto, com a ilha, sem nenhum cartão.</p></div>
+      <div class="cartao surge"><span class="numero">~135 <small>MB</small></span><h3>Com cinco cartões</h3><p>Dois terminais, um chat, a árvore de arquivos e uma nota, como no print lá em cima.</p></div>
+      <div class="cartao surge"><div class="icone"><svg aria-hidden="true"><use href="#i-chip"/></svg></div><h3>Como medimos</h3><p>Windows 11, memória privada do processo pelo <code>Get-Process</code>, mediana de quatro aberturas de cada cena. Os shells dos terminais são processos do sistema, à parte.</p></div>
+    </div>
+  </section>
+
+  <section id="maestro" class="largura secao">
+    <h2 class="surge">O Maestro e o MCP</h2>
+    <div class="dupla">
+      <div class="surge">
+        <p class="intro">Fale com a Luna pelo chat ou numa chamada de voz (“Ok Mago, …”). Ela rege o time pelas mesmas ferramentas que você usa no app.</p>
         <ol class="passos">
-          <li><b>Você pede.</b> <span class="suave">"Monta um time para a tela de cadastro."</span></li>
+          <li><b>Você pede.</b> <span class="suave">“Monta um time para a tela de cadastro.”</span></li>
           <li><b>Ela recruta.</b> <span class="suave">Agentes em terminais ou chats, cada um no seu git worktree, se quiser.</span></li>
           <li><b>Liga as cordas.</b> <span class="suave">O plano, a pasta do projeto e as páginas certas chegam a cada um.</span></li>
           <li><b>Avisa você.</b> <span class="suave">Quem terminou, quem travou, quem precisa de aprovação.</span></li>
         </ol>
-        <p class="suave">O app traz um servidor MCP embutido: qualquer IA lê e desenha no quadro, fala com agentes, usa o navegador e monta equipes.</p>
-        <div class="comando"><pre><code>claude mcp add magoagent -- /caminho/para/magoagent mcp</code></pre><button class="copiar" type="button">Copiar</button></div>
-        <ul class="ferramentas" aria-label="Algumas ferramentas do MCP">
-          <li>get_scene</li><li>add_elements</li><li>ask_agent</li><li>read_terminal</li><li>recruit_agent</li><li>connect</li><li>portal_navigate</li>
-        </ul>
       </div>
-      <figure class="cartao print"><img src="img/arquitetura.png" width="1850" height="2000" loading="lazy" alt="Arquitetura do MagoAgent: o app, a ponte, os terminais e o servidor MCP"><figcaption>Como as peças conversam.</figcaption></figure>
+      <div class="cartao surge">
+        <h3>O MCP em outros agentes</h3>
+        <p>O app traz um servidor MCP embutido: qualquer IA lê e desenha no quadro, fala com agentes, usa o navegador e monta equipes. Os chats do app já vêm com ele. Para um Claude Code de fora, registre uma vez:</p>
+        <div class="abas" role="tablist" aria-label="Sistema do comando do MCP">
+          <button role="tab" id="mcp-aba-windows" data-sistema="windows" aria-controls="mcp-windows" aria-selected="true">Windows</button>
+          <button role="tab" id="mcp-aba-linux" data-sistema="linux" aria-controls="mcp-linux" aria-selected="false" tabindex="-1">Linux</button>
+          <button role="tab" id="mcp-aba-macos" data-sistema="macos" aria-controls="mcp-macos" aria-selected="false" tabindex="-1">macOS</button>
+        </div>
+        <div class="painel" id="mcp-windows" role="tabpanel" aria-labelledby="mcp-aba-windows"><div class="comando"><pre><code>claude mcp add magoagent -- "C:\Program Files\MagoAgent\magoagent.exe" mcp</code></pre><button class="copiar" type="button">Copiar</button></div></div>
+        <div class="painel" id="mcp-linux" role="tabpanel" aria-labelledby="mcp-aba-linux" hidden><div class="comando"><pre><code>claude mcp add magoagent -- /usr/bin/magoagent mcp</code></pre><button class="copiar" type="button">Copiar</button></div><p class="suave">Pelo .deb ou pelo apt. Com o .tar.gz, use o caminho onde você extraiu o <code>magoagent</code>.</p></div>
+        <div class="painel" id="mcp-macos" role="tabpanel" aria-labelledby="mcp-aba-macos" hidden><div class="comando"><pre><code>claude mcp add magoagent -- /Applications/MagoAgent.app/Contents/MacOS/magoagent mcp</code></pre><button class="copiar" type="button">Copiar</button></div></div>
+        <p>Ou pelo próprio app: Ajustes › Agentes › “MCP em outros agentes”, com os botões <b>Registrar no Claude Code</b> e <b>Registrar no Codex</b>.</p>
+        <ul class="chips mt" aria-label="Algumas ferramentas do MCP"><li class="chip">get_scene</li><li class="chip">add_elements</li><li class="chip">ask_agent</li><li class="chip">read_terminal</li><li class="chip">recruit_agent</li><li class="chip">connect</li><li class="chip">portal_navigate</li></ul>
+      </div>
     </div>
   </section>
 
-  <svg class="corda" viewBox="0 0 120 46" aria-hidden="true"><path d="M60 2c30 14-30 28 0 42" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="6 6"/></svg>
+  <svg class="corda" viewBox="0 0 120 46" aria-hidden="true"><path d="M60 2c30 14-30 28 0 42" fill="none" stroke="currentColor" stroke-width="2"/></svg>
 
-  <section id="instalar" class="largura">
-    <h2>Instalar</h2>
-    <p class="intro" id="versao">Escolha o seu sistema.</p>
-    <div class="cartao instalar">
+  <section id="instalar" class="largura secao">
+    <h2 class="surge">Instalar</h2>
+    <p class="intro surge" id="versao">Escolha o seu sistema.</p>
+    <div class="cartao surge">
       <div class="abas" role="tablist" aria-label="Sistema">
-        <button role="tab" id="aba-windows" aria-controls="painel-windows" aria-selected="true">Windows</button>
-        <button role="tab" id="aba-linux" aria-controls="painel-linux" aria-selected="false" tabindex="-1">Linux</button>
-        <button role="tab" id="aba-macos" aria-controls="painel-macos" aria-selected="false" tabindex="-1">macOS</button>
+        <button role="tab" id="aba-windows" data-sistema="windows" aria-controls="painel-windows" aria-selected="true">Windows</button>
+        <button role="tab" id="aba-linux" data-sistema="linux" aria-controls="painel-linux" aria-selected="false" tabindex="-1">Linux</button>
+        <button role="tab" id="aba-macos" data-sistema="macos" aria-controls="painel-macos" aria-selected="false" tabindex="-1">macOS</button>
       </div>
-
       <div class="painel" id="painel-windows" role="tabpanel" aria-labelledby="aba-windows">
         <h3>Instalador (.msi)</h3>
         <p class="suave">Instala em <code>C:\Program Files\MagoAgent</code>. Ajustes › Sobre › Atualizar baixa o MSI novo.</p>
         <div class="botoes" id="win"></div>
       </div>
-
       <div class="painel" id="painel-linux" role="tabpanel" aria-labelledby="aba-linux" hidden>
         <h3>apt (Debian, Ubuntu e derivados)</h3>
         <p class="suave">Adicione o repositório uma vez e instale; as atualizações vêm pelo apt.</p>
@@ -180,25 +216,19 @@ sudo apt update &amp;&amp; sudo apt install magoagent</code></pre><button class=
         <p class="suave">Para as outras distribuições: extraia e rode o <code>magoagent</code>.</p>
         <div class="botoes" id="tar"></div>
       </div>
-
       <div class="painel" id="painel-macos" role="tabpanel" aria-labelledby="aba-macos" hidden>
         <h3>macOS</h3>
-        <p class="suave" style="margin:0">Em breve.</p>
+        <p class="suave">Em breve.</p>
       </div>
     </div>
   </section>
 </main>
 
-<footer>
-  <div class="largura">
-    <span class="mao">MagoAgent</span>
-    <a href="changelog.html">Changelog</a>
-    <a href="https://github.com/edsuuu/magoagent">Código no GitHub</a>
-    <a href="https://github.com/edsuuu/magoagent/releases">Releases</a>
-  </div>
-</footer>
+<footer class="rodape"><div class="largura"><span class="mao">MagoAgent</span><a href="changelog.html">Changelog</a><a href="design-system.html">Design system</a><a href="https://github.com/edsuuu/magoagent">Código no GitHub</a><a href="https://github.com/edsuuu/magoagent/releases">Releases</a></div></footer>
 
+<script src="mago.js"></script>
 <script>
+// Os arquivos da última versão, pela API de releases do GitHub
 var paginaReleases = "https://github.com/edsuuu/magoagent/releases";
 function botao(rotulo, url, secundario) {
   var link = document.createElement("a");
@@ -210,51 +240,6 @@ function botao(rotulo, url, secundario) {
 function semVersao(destino) {
   destino.appendChild(botao("Ver as releases no GitHub", paginaReleases, true));
 }
-
-// Botões de cópia: copiam o texto do <pre> ao lado
-function ligaCopiar(raiz) {
-  raiz.querySelectorAll(".copiar").forEach(function (copiar) {
-    copiar.onclick = function () {
-      var bloco = copiar.previousElementSibling;
-      function avisa(texto) {
-        copiar.textContent = texto;
-        setTimeout(function () { copiar.textContent = "Copiar"; }, 2000);
-      }
-      // Sem permissão para a área de transferência, deixa o texto selecionado para o Ctrl+C
-      navigator.clipboard.writeText(bloco.textContent).then(function () { avisa("Copiado"); }, function () {
-        getSelection().selectAllChildren(bloco);
-        avisa("Ctrl+C");
-      });
-    };
-  });
-}
-ligaCopiar(document);
-
-// Abas do Instalar, com setas do teclado; abre na aba do sistema de quem visita
-var abas = Array.prototype.slice.call(document.querySelectorAll("[role=tab]"));
-function escolhe(aba) {
-  abas.forEach(function (outra) {
-    var ativa = outra === aba;
-    outra.setAttribute("aria-selected", ativa);
-    outra.tabIndex = ativa ? 0 : -1;
-    document.getElementById(outra.getAttribute("aria-controls")).hidden = !ativa;
-  });
-}
-abas.forEach(function (aba, indice) {
-  aba.onclick = function () { escolhe(aba); };
-  aba.onkeydown = function (evento) {
-    var passo = evento.key === "ArrowRight" ? 1 : evento.key === "ArrowLeft" ? -1 : 0;
-    if (!passo) return;
-    var proxima = abas[(indice + passo + abas.length) % abas.length];
-    escolhe(proxima);
-    proxima.focus();
-  };
-});
-var plataforma = navigator.userAgent;
-if (/Mac/.test(plataforma) && !/iPhone|iPad/.test(plataforma)) escolhe(abas[2]);
-else if (/Linux|X11/.test(plataforma) && !/Android/.test(plataforma)) escolhe(abas[1]);
-
-// Os arquivos da última versão
 var win = document.getElementById("win"), deb = document.getElementById("deb"), tar = document.getElementById("tar");
 fetch("https://api.github.com/repos/edsuuu/magoagent/releases/latest")
   .then(function (resposta) { if (!resposta.ok) throw 0; return resposta.json(); })
@@ -269,8 +254,7 @@ fetch("https://api.github.com/repos/edsuuu/magoagent/releases/latest")
     if (pacote) {
       deb.appendChild(botao("Baixar " + pacote.name, pacote.browser_download_url, true));
       var bloco = document.createElement("div");
-      bloco.className = "comando";
-      bloco.style.marginTop = "12px";
+      bloco.className = "comando mt";
       var comando = document.createElement("pre");
       comando.textContent = "sudo apt install ./" + pacote.name;
       var copiar = document.createElement("button");
