@@ -158,34 +158,37 @@ impl DrawingApp {
             .agent_rows()
             .into_iter()
             .filter(|row| self.is_chat(&row.id) || open == Some(row.id.as_str()) || (row.state != AgentState::Ended && self.runs_agent(row)))
-            .map(|row| {
-                let space = self.row_space(&row);
-                let program = row.spec.command.split_whitespace().next().unwrap_or_default().to_lowercase();
-                Entry {
-                    id: row.id.clone(),
-                    name: self.chat_title(&row),
-                    state: row.state,
-                    last: self.last_line(&row),
-                    ago: self.row_ago(&row),
-                    color: crate::app::island::agent_color(&program, &row.id),
-                    space,
-                    row: Some(row),
-                    asleep: false,
-                }
+            .map(|row| Entry {
+                id: row.id.clone(),
+                name: self.chat_title(&row),
+                state: row.state,
+                last: self.last_line(&row),
+                ago: self.row_ago(&row),
+                color: self.agent_color(&row.id),
+                space: self.row_space(&row),
+                row: Some(row),
+                asleep: false,
             })
             .collect();
         let now = now_ms();
-        entries.extend(self.outside_pills().into_iter().map(|pill| Entry {
-            last: self.waiting_line(&pill.id).unwrap_or(if pill.activity.is_empty() { "Sem atividade ainda".to_string() } else { pill.activity }),
-            ago: (pill.at > 0).then(|| (now - pill.at).max(0) as f64 / 1000.0),
-            id: pill.id,
-            name: pill.name,
-            state: pill.state,
-            color: pill.color,
-            space: OUTSIDE.into(),
-            row: None,
-            asleep: pill.asleep,
+        entries.extend(self.outside_pills().into_iter().map(|pill| {
+            let last = self.waiting_line(&pill.id).unwrap_or(if pill.activity.is_empty() { "Sem atividade ainda".to_string() } else { pill.activity });
+            Entry {
+                // the name is the folder's (asked: "fica sempre com o prefixo claude code"); a program other than Claude
+                // Code, the group's usual one, says itself before what it does
+                last: if pill.kind == "Claude Code" || pill.kind == pill.name { last } else { format!("{} · {last}", pill.kind) },
+                ago: (pill.at > 0).then(|| (now - pill.at).max(0) as f64 / 1000.0),
+                id: pill.id,
+                name: pill.name,
+                state: pill.state,
+                color: pill.color,
+                space: OUTSIDE.into(),
+                row: None,
+                asleep: pill.asleep,
+            }
         }));
+        // no two by the same name: the first keeps it, the next take a number
+        crate::app::mascot::identity::make_distinct(&mut entries, |entry| &mut entry.name);
         entries
     }
 

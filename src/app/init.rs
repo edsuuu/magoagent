@@ -174,6 +174,7 @@ impl Default for DrawingApp {
             chat_queue: Vec::new(),
             person_asks: Default::default(),
             outside: Default::default(),
+            agent_colors: Default::default(),
             terminal_dialog: None,
             connecting: None,
             composer: None,

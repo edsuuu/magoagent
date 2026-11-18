@@ -283,7 +283,9 @@ impl DrawingApp {
         }
         // room left for the mini chat's button (chat/node_ui.rs) before the dot, and a recruit's fold
         let buttons = if recruit { 50.0 } else { 30.0 };
-        let name = clipped(&painter, spec.name.clone(), FontId::proportional(9.75 * zoom), muted, (header.right() - pad - buttons * zoom - x).max(0.0));
+        // as the lists say it: no other chat's name
+        let shown = self.chat_card_name(&element.id).unwrap_or_else(|| spec.name.clone());
+        let name = clipped(&painter, shown, FontId::proportional(9.75 * zoom), muted, (header.right() - pad - buttons * zoom - x).max(0.0));
         painter.galley(Pos2::new(x, header.center().y - name.size().y / 2.0), name, muted);
         if recruit {
             // no folder strip: its work goes to the bottom (chat/recruit_card.rs), or its task when small or folded
@@ -307,7 +309,7 @@ impl DrawingApp {
         let painter = painter.with_clip_rect(body.intersect(painter.clip_rect()));
         if figure < MIN_FIGURE {
         } else if crate::app::mascot::claude(&as_terminal) {
-            paint_mago_for(&painter, &format!("{}-card", element.id), at, figure, MagoState::from_agent(state, time), time);
+            paint_agent_mago(&painter, &format!("{}-card", element.id), self.agent_color(&element.id), at, figure, MagoState::from_agent(state, time), time);
         } else {
             crate::editor::icons::paint_tint(&painter, crate::editor::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(figure * 0.55)), light);
         }

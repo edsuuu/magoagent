@@ -376,20 +376,6 @@ pub(super) struct Line {
     pub(super) asleep: bool,
 }
 
-/// The colour of an agent's mini wizard, from a catalogue of agents and its fallbacks.
-pub(crate) fn agent_color(program: &str, id: &str) -> Color32 {
-    match program {
-        "claude" => rgb_hex(0xd97757),
-        "codex" => rgb_hex(0x2dd4bf),
-        "gemini" => rgb_hex(0x8ab4f8),
-        "cursor" => rgb_hex(0xc0c4cc),
-        _ => {
-            let hash = id.bytes().fold(0i32, |hash, byte| hash.wrapping_mul(31).wrapping_add(byte as i32));
-            [rgb_hex(0x22c55e), rgb_hex(0xeab308), rgb_hex(0x60a5fa), rgb_hex(0xe879f9)][hash.unsigned_abs() as usize % 4]
-        }
-    }
-}
-
 #[derive(Default)]
 pub(crate) struct Island {
     /// The island's clock-driven hidden/compact/open/greeting lifecycle.
@@ -463,8 +449,12 @@ pub(crate) struct Island {
     /// X11: the window is the island's size since a drag began (the size it was), until the island grows once it is let
     /// go. In its room the system stops the window at the top bar with the island still below it.
     slim: Option<Vec2>,
-    /// The system's drag asked for, sent once the window has its drag size (`slim`): the next frame.
+    /// The system's drag asked for, sent once the window has its drag size (`slim`) and is where it was put
+    /// (`window::drag_ready`), and since when it waits.
     drag_next: bool,
+    drag_since: Option<f64>,
+    /// Where the system had the window last frame (screen points).
+    placed: Option<Rect>,
     /// Início's lines hidden by their ×, with what they were at (`feed::signature`): back once that changes.
     // ponytail: only while the app runs, the list starts whole again; keep it in the prefs if the person misses it
     hidden: std::collections::HashMap<String, u64>,
@@ -856,6 +846,33 @@ mod tests {
         assert_eq!(main_state(Mood::Ready, false), MagoState::Idle);
     }
 
+    /// Asked: "aqui como fica, fica sempre com o prefixo claude code": the pills and the cards show the session's folder,
+    /// its program beside it (the card's kind); the app's agents in colours of their own, the same as in the lists.
+    #[test]
+    fn the_pills_show_each_agent_by_its_own_name_and_colour() {
+        let mut app = DrawingApp::default();
+        app.chats = vec![chat("a"), chat("b")];
+        for (session, origin) in [("s1", ""), ("s2", "claude-desktop")] {
+            let payload = json!({ "hook_event_name": "UserPromptSubmit", "session_id": session, "cwd": "/w/loja", "mago_origin": origin });
+            app.take_hook(&format!("ext:{session}"), &payload, None);
+        }
+        let rows = app.agent_rows();
+        let view = app.island_view(rows, vec![], Mood::Ready, 1.0);
+        let line = |id: &str| view.lines.iter().find(|line| line.id == id).unwrap();
+        // the two chats are both "Claude Code · loja", and both sessions are of a folder "loja": four names, no program
+        // before any, none twice
+        let names: std::collections::HashSet<&str> = view.lines.iter().map(|line| line.name.as_str()).collect();
+        assert!(names.iter().all(|name| name.starts_with("loja")), "{names:?}");
+        assert_eq!((names.len(), view.lines.len()), (4, 4), "{names:?}");
+        assert_eq!(line("a").name, "loja", "the first keeps its own");
+        // and colours: the chats' their own, the same as everywhere else
+        assert_ne!(line("a").color, line("b").color);
+        assert_eq!(line("a").color, app.agent_color("a"));
+        // the program goes to the card's kind
+        let (code, desktop) = (line("pill:code:/w/loja"), line("pill:desktop:/w/loja"));
+        assert_eq!((code.kind.as_str(), desktop.kind.as_str()), ("Claude Code · fora do app", "Claude Desktop · fora do app"));
+    }
+
     fn chat(id: &str) -> crate::app::chat::direct::Chat {
         crate::app::chat::direct::Chat {
             id: id.into(),
@@ -1003,13 +1020,6 @@ mod tests {
         assert_eq!(chat_size(Some([100.0, 100.0]), false, work), Vec2::new(420.0, 300.0), "not smaller than the least");
         assert_eq!(chat_size(Some([9000.0, 9000.0]), false, work), Vec2::new(1824.0, 988.0), "nor bigger than the monitor");
         assert_eq!(chat_size(Some([800.0, 500.0]), true, work), Vec2::new(1344.0, 728.0), "big: 70% of the work area");
-    }
-
-    #[test]
-    fn each_agent_has_its_colour() {
-        assert_eq!(agent_color("claude", "a"), Color32::from_rgb(0xd9, 0x77, 0x57));
-        assert_eq!(agent_color("codex", "a"), Color32::from_rgb(0x2d, 0xd4, 0xbf));
-        assert_eq!(agent_color("outro", "x"), agent_color("outro", "x"), "the same every time");
     }
 
     /// Asked: "ajustar a ilha com a ilha da câmera do Mac para ficar na mesma proporção": around a 179x32 notch, closed

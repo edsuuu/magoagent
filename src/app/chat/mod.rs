@@ -3,6 +3,7 @@
 //! (chat/list/, chat/header.rs), and the box to write to it (chat/composer.rs). Over the box, what the agent runs now or, when it
 //! waits on its terminal, that terminal's last lines (chat/steps.rs).
 
+pub(crate) mod accordion;
 pub(crate) mod ask;
 pub(crate) mod bubble;
 pub(crate) mod cli_models;
@@ -16,6 +17,7 @@ pub(crate) mod conversation;
 pub(crate) mod decide;
 pub(crate) mod direct;
 pub(crate) mod email;
+pub(crate) mod follow;
 pub(crate) mod footer;
 pub(crate) mod header;
 pub(crate) mod images;
@@ -37,6 +39,7 @@ pub(crate) mod tools;
 pub(crate) mod viewer;
 
 use crate::app::chat::composer::Hints;
+use crate::app::chat::follow::{follow_scroll, talk_mark};
 use crate::app::chat::list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, message_menu};
 use crate::app::chat::mini::ConvOut;
 use crate::app::chat::steps::CardClick;
@@ -200,7 +203,9 @@ impl DrawingApp {
                 {
                     let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(strip));
                     ui.spacing_mut().scroll = crate::app::ui::scroll_style();
-                    egui::ScrollArea::vertical().stick_to_bottom(true).auto_shrink(false).max_height(height).show(ui, |ui| {
+                    // following the newest, held still while a run or a step clicked eases (chat/follow.rs)
+                    let scroll = egui::ScrollArea::vertical().auto_shrink(false).max_height(height);
+                    follow_scroll(ui, scroll, &row.id, "chat_screen", talk_mark(transcript), |ui| {
                         let left = ui.max_rect().left() + ((ui.available_width() - width) / 2.0).max(0.0);
                         let inner = Rect::from_min_max(Pos2::new(left, ui.cursor().top()), Pos2::new(left + width, ui.max_rect().bottom()));
                         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
@@ -439,9 +444,11 @@ impl DrawingApp {
             // the mascot's bad day at its left (the plug pulled when it is the login)
             // (a terminal's conversation is Claude Code's; a direct chat says its agent)
             ChatItem::Error(text) if !self.chats.iter().any(|ch| Some(&ch.id) == self.chat_agent.as_ref() && !ch.agent.trim_start().starts_with("claude")) => {
+                // in the colour of the agent whose conversation it is
+                let color = self.chat_agent.as_deref().map_or(crate::app::mascot::mago::LUME, |id| self.agent_color(id));
                 ui.horizontal_top(|ui| {
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 42.0), Sense::hover());
-                    paint_mago_for(ui.painter(), "chat-error", rect.center(), 46.0, MagoState::Error, ui.input(|i| i.time));
+                    paint_agent_mago(ui.painter(), "chat-error", color, rect.center(), 46.0, MagoState::Error, ui.input(|i| i.time));
                     ui.vertical(|ui| {
                         ui.label(egui::RichText::new(text).size(13.0).color(c.danger));
                         if let Some(hint) = error_hint(text) {

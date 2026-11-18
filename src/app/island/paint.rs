@@ -5,13 +5,14 @@
 use super::marquee::marquee;
 use super::minis::mini_cells;
 use super::stage::{self, Activity};
-use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, main_state};
+use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, icons, main_state};
 use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::chat::mini_agents::pressable;
 use crate::app::integrations::spotify::Now;
 use crate::app::integrations::spotify::groove::{Dance, Groove};
 use crate::app::island::forms;
 use crate::app::maestro::outside::Badge;
+use crate::app::mascot::identity::make_distinct;
 use crate::app::mascot::mago::{LUME, MagoState, mago_poke, mago_pokes, paint_mago_dancing, paint_mago_toward, paint_mini};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
@@ -205,7 +206,7 @@ impl DrawingApp {
                     detail,
                     state: row.state,
                     mago,
-                    color: agent_color(&program, &row.id),
+                    color: self.agent_color(&row.id),
                     chat: self.is_chat(&row.id),
                     canvas: self.scene.elements.iter().any(|element| element.id == row.id) || self.away.contains_key(&row.id),
                     badge: None,
@@ -216,9 +217,10 @@ impl DrawingApp {
                 }
             })
             .collect();
-        // the sessions outside the app, one pill per origin and folder: the name says which ("Claude Desktop · loja"), the kind where
+        // the sessions outside the app, one pill per origin and folder: the name says which folder ("loja"), the kind
+        // which program and where ("Claude Desktop · fora do app")
         lines.extend(self.outside_pills().into_iter().map(|pill| Line {
-            kind: if pill.name == "Hermes" { "Hermes Agent" } else { "fora do app" }.into(),
+            kind: if pill.kind == "Hermes" { "Hermes Agent".into() } else { format!("{} · fora do app", pill.kind) },
             mago: if pill.asleep { MagoState::Sleeping } else { MagoState::from_agent(pill.state, self.now) },
             at: pill.at,
             asleep: pill.asleep,
@@ -232,6 +234,8 @@ impl DrawingApp {
             canvas: false,
             badge: pill.badge,
         }));
+        // no two agents by the same name on the pills and the cards
+        make_distinct(&mut lines, |line| &mut line.name);
         lines.extend(self.integration_lines());
         // who needs the person first, then who works
         lines.sort_by_key(|line| match line.state {

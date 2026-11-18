@@ -101,7 +101,7 @@ const PILL_MARGIN: f32 = 20.0;
 
 /// The pill drawn at the cursor: the agent's mascot and a small ×; "Precisa de você" beside it while it waits on
 /// the person (its name and state are the panel's). Its response (click, drag) and whether the × was clicked.
-fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: bool, tip: Option<&str>) -> (egui::Response, bool) {
+fn pill_body(ui: &mut egui::Ui, row: &AgentRow, color: Color32, look: &Look, time: f64, unread: bool, tip: Option<&str>) -> (egui::Response, bool) {
     let p = ui.painter().clone();
     let needs = row.state == AgentState::Waiting;
     let note = needs.then(|| p.layout_no_wrap("Precisa de você".into(), FontId::proportional(13.0), AMBER));
@@ -125,7 +125,7 @@ fn pill_body(ui: &mut egui::Ui, row: &AgentRow, look: &Look, time: f64, unread: 
             _ if unread => MagoState::Done,
             _ => MagoState::Idle,
         };
-        paint_mago_for(ui.painter(), &format!("{}-pill", row.id), icon, 40.0, state, time);
+        paint_agent_mago(ui.painter(), &format!("{}-pill", row.id), color, icon, 40.0, state, time);
     } else if matches!(row.state, AgentState::Working(_)) {
         crate::app::chat::thinking::spinner(ui.painter(), icon, 18.0, crate::app::chat::thinking::CLAUDE, time);
     } else {
@@ -245,10 +245,14 @@ impl DrawingApp {
             quote_into(&mut self.chat_draft, &text);
             ctx.memory_mut(|m| m.request_focus(draft_id));
         }
-        if let Some(key) = out.fold
-            && !self.chat_unfolded.remove(&key)
-        {
-            self.chat_unfolded.insert(key);
+        // a run or a step opened or shut: the row clicked stays where it is while it eases (chat/follow.rs)
+        if let Some(key) = out.fold {
+            if let Some(id) = &self.chat_agent {
+                crate::app::chat::follow::hold_scroll(ctx, id);
+            }
+            if !self.chat_unfolded.remove(&key) {
+                self.chat_unfolded.insert(key);
+            }
         }
         // one more page of this conversation
         if out.earlier
@@ -362,9 +366,10 @@ impl DrawingApp {
             .with_position(at)
             .with_inner_size(size);
         let id = egui::ViewportId::from_hash_of("mini_pill_window");
+        let color = self.agent_color(&row.id);
         let (open, dismiss, pill_size, placed) = ctx.show_viewport_immediate(id, builder, |ui, _| {
             let inner = ui.max_rect().shrink(PILL_MARGIN);
-            let (response, dismiss) = ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| pill_body(ui, row, look, time, unread, None)).inner;
+            let (response, dismiss) = ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| pill_body(ui, row, color, look, time, unread, None)).inner;
             // the system moves the window: out of the app's, anywhere on the screen
             if response.drag_started() {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
@@ -402,10 +407,12 @@ impl DrawingApp {
         let saved = self.prefs.mini_pill_at.map(|[x, y]| area.min + Vec2::new(x, y) + self.mini.pill_drag);
         let pill = self.mini.pill_size.unwrap_or(Vec2::new(220.0, 44.0));
         let anchor = pill_place(area, saved.unwrap_or(Pos2::new(area.right() - 12.0, area.top() + 56.0) + self.mini.pill_drag), pill);
+        let color = self.agent_color(&row.id);
         egui::Area::new(egui::Id::unique("mini_pill")).order(egui::Order::Foreground).pivot(egui::Align2::RIGHT_TOP).fixed_pos(anchor).show(ctx, |ui| {
             let (response, hit) = pill_body(
                 ui,
                 row,
+                color,
                 look,
                 time,
                 unread,
@@ -545,12 +552,11 @@ impl DrawingApp {
                 ui.set_max_width(width);
                 let footer_height = if self.mini.footer > 0.0 { self.mini.footer } else { 70.0 };
                 ui.spacing_mut().scroll = crate::app::ui::scroll_style();
-                egui::ScrollArea::vertical()
-                    .id_salt("mini_scroll")
-                    .stick_to_bottom(true)
-                    .auto_shrink(false)
-                    .max_height(ui.available_height() - footer_height)
-                    .show(ui, |ui| self.conversation(ui, row, transcript, talks, only_chat, waiting, &asked, None, width, look, c, true, time, &mut conv));
+                let scroll = egui::ScrollArea::vertical().id_salt("mini_scroll").auto_shrink(false).max_height(ui.available_height() - footer_height);
+                let mark = crate::app::chat::follow::talk_mark(transcript);
+                crate::app::chat::follow::follow_scroll(ui, scroll, &row.id, "mini", mark, |ui| {
+                    self.conversation(ui, row, transcript, talks, only_chat, waiting, &asked, None, width, look, c, true, time, &mut conv)
+                });
                 let top = ui.cursor().top();
                 ui.add_space(6.0);
                 if working_now(row) {

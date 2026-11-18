@@ -29,6 +29,7 @@ mod island_open;
 mod layout;
 mod links;
 mod locks;
+mod mascots;
 mod menu;
 mod mini;
 mod minimap;

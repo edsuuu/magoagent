@@ -247,24 +247,52 @@ fn a_recruits_card_draws_its_markdown_its_errors_whole_and_opens_a_step_on_a_cli
         assert!(!texts.iter().any(|(text, ..)| packed(text).contains(&packed(COMMAND))), "no tip with the whole command");
     }
     assert!(!ctx.memory(|memory| memory.areas().visible_layer_ids().iter().any(|layer| layer.order == egui::Order::Tooltip)), "no tip at all");
-    // a click opens it under its row: the whole command, wrapped inside the card; the mini chat stays shut
+    // a click opens it under its row, easing open: the whole command, wrapped inside the card; the mini chat stays shut.
+    // Its row stays under the pointer all along (the card, taller than its room now, doesn't run to its end)
+    let row_at = |texts: &[(String, bool, Rect)]| {
+        texts.iter().find(|(text, ..)| text.starts_with("php ~/.claude") && text.ends_with('…')).map(|(.., rect)| rect.center()).unwrap()
+    };
     shown(&mut app, &ctx, time, vec![button(at, true)]);
     shown(&mut app, &ctx, time + 0.05, vec![button(at, false)]);
-    shown(&mut app, &ctx, time + 0.1, vec![]);
-    let texts = shown(&mut app, &ctx, time + 0.15, vec![]);
+    let mut texts = Vec::new();
+    for later in [0.06, 0.1, 0.15, 0.2, 0.3, 0.5, 1.0] {
+        texts = shown(&mut app, &ctx, time + later, vec![]);
+        let still = row_at(&texts);
+        assert!((still - at).length() < 1.0, "{later} s after: the row moved from {at:?} to {still:?}");
+    }
     assert!(app.chat_unfolded.contains("card:longo") && !app.mini.open && !app.island.chat_asked);
     let whole = texts.iter().find(|(text, ..)| packed(text) == packed(COMMAND)).unwrap_or_else(|| panic!("{texts:?}"));
     let inner = app.terminal_frame(&app.scene.elements[app.chat_node(&id).unwrap()]).0.shrink(10.0);
     assert!(!whole.1 && whole.2.height() > 30.0 && whole.2.right() <= inner.right(), "wrapped inside the card: {whole:?} {inner:?}");
-    // its row stayed under the pointer (the card, taller than its room now, didn't run to its end), and a click on it
-    // again closes it
-    let still = texts.iter().find(|(text, ..)| text.starts_with("php ~/.claude") && text.ends_with('…')).map(|(.., rect)| rect.center()).unwrap();
-    assert!((still - at).length() < 1.0, "the row moved from {at:?} to {still:?}");
-    time += 1.0;
+    // a click on it again eases it shut
+    time += 2.0;
     shown(&mut app, &ctx, time, vec![button(at, true)]);
     shown(&mut app, &ctx, time + 0.05, vec![button(at, false)]);
-    let texts = shown(&mut app, &ctx, time + 0.1, vec![]);
+    shown(&mut app, &ctx, time + 0.1, vec![]);
+    let texts = shown(&mut app, &ctx, time + 1.0, vec![]);
     assert!(!app.chat_unfolded.contains("card:longo") && !texts.iter().any(|(text, ..)| packed(text) == packed(COMMAND)));
+    assert!((row_at(&texts) - at).length() < 1.0, "shut, the row still where it was");
+    // opened again at the end of the conversation: the view holds still, past the easing too...
+    time += 2.0;
+    shown(&mut app, &ctx, time, vec![button(at, true)]);
+    shown(&mut app, &ctx, time + 0.05, vec![button(at, false)]);
+    for later in [0.1, 0.3, 0.6, 1.0, 1.5] {
+        let still = row_at(&shown(&mut app, &ctx, time + later, vec![]));
+        assert!((still - at).length() < 1.0, "{later} s after: the row moved from {at:?} to {still:?}");
+    }
+    // ...until something new comes in the conversation: then it follows the newest again, down to its end
+    const NEWS: &str = "Rodei de novo: 14 passaram.";
+    app.transcripts.get_mut(&id).unwrap().items.push(ChatItem::Agent(NEWS.into()));
+    time += 2.0;
+    let mut texts = Vec::new();
+    for later in [0.0, 0.05, 0.1] {
+        texts = shown(&mut app, &ctx, time + later, vec![]);
+    }
+    let news = texts.iter().find(|(text, ..)| text.starts_with("Rodei de novo")).map(|(.., rect)| *rect).unwrap_or_else(|| panic!("{texts:?}"));
+    // the line pinned under the conversation ("Pronto"): the newest just over it, in sight
+    let pinned = texts.iter().filter(|(text, ..)| text == "Pronto").map(|(.., rect)| *rect).max_by(|a, b| a.top().total_cmp(&b.top())).unwrap();
+    assert!(news.bottom() <= pinned.top() && pinned.top() - news.bottom() < 30.0, "at the end: {news:?} over {pinned:?}");
+    assert!(row_at(&texts).y < at.y - 1.0, "the view went down to it");
 }
 
 #[test]
