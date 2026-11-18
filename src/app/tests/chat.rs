@@ -2,7 +2,12 @@ use super::*;
 
 /// One frame of the chat screen alone, `size` wide and tall: the texts it painted, where.
 fn chat_frame(app: &mut DrawingApp, ctx: &Context, size: Vec2, events: Vec<egui::Event>) -> Vec<(String, Rect)> {
-    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), events, ..Default::default() };
+    chat_frame_at(app, ctx, size, None, events)
+}
+
+/// `chat_frame` at `time` (`None`: a 60th of a second after the last), for what eases over time.
+fn chat_frame_at(app: &mut DrawingApp, ctx: &Context, size: Vec2, time: Option<f64>, events: Vec<egui::Event>) -> Vec<(String, Rect)> {
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), time, events, ..Default::default() };
     let mut output = ctx.run_ui(raw, |_| app.chat_screen(ctx));
     output.textures_delta.clear();
     output
@@ -21,6 +26,13 @@ fn click(app: &mut DrawingApp, ctx: &Context, size: Vec2, at: Pos2) -> Vec<(Stri
     chat_frame(app, ctx, size, vec![egui::Event::PointerMoved(at), button(at, true)]);
     chat_frame(app, ctx, size, vec![button(at, false)]);
     chat_frame(app, ctx, size, vec![])
+}
+
+/// `click` on an accordion's row, and a frame a second later: what it holds has eased all the way open or shut.
+fn click_eased(app: &mut DrawingApp, ctx: &Context, size: Vec2, at: Pos2) -> Vec<(String, Rect)> {
+    click(app, ctx, size, at);
+    let later = ctx.input(|input| input.time) + 1.0;
+    chat_frame_at(app, ctx, size, Some(later), vec![])
 }
 
 #[test]
@@ -50,11 +62,73 @@ fn a_run_of_tools_folds_into_one_line_that_opens_and_the_latest_stays_open() {
     let line = painted(&texts, "2 ferramentas · Read ×2 · 12 s").unwrap_or_else(|| panic!("the run before the answer folds: {texts:?}"));
     assert!(painted(&texts, "a.rs").is_none(), "its steps hidden");
     assert!(painted(&texts, "c.rs").is_some() && painted(&texts, "cargo test").is_some(), "the latest run stays open");
-    let texts = click(&mut app, &ctx, size, line.center());
+    let texts = click_eased(&mut app, &ctx, size, line.center());
     assert!(app.chat_unfolded.contains("a"));
     assert!(painted(&texts, "a.rs").is_some() && painted(&texts, "b.rs").is_some(), "opened: its steps show under the line");
-    click(&mut app, &ctx, size, line.center());
+    let texts = click_eased(&mut app, &ctx, size, line.center());
     assert!(app.chat_unfolded.is_empty(), "and it folds back");
+    assert!(painted(&texts, "a.rs").is_none(), "shut: its steps not laid out");
+}
+
+#[test]
+fn a_run_of_tools_eases_open_and_shut_under_its_line() {
+    use crate::transcript::{ChatItem, Step, Transcript};
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id.clone());
+    let step = |id: &str, name: &str, what: &str| {
+        ChatItem::Tool(Step { id: id.into(), name: name.into(), what: what.into(), started: Some(10.0), ended: Some(13.0), ..Default::default() })
+    };
+    // the run the user pointed at: "3 ferramentas · ToolSearch, create_portal, focus_canvas · 3 s"
+    let mut t = Transcript::new(PathBuf::new());
+    t.items = vec![
+        ChatItem::User("abra o google".into()),
+        step("a", "ToolSearch", "select:mcp__magoagent__create_portal"),
+        step("b", "mcp__magoagent__create_portal", "https://www.google.com"),
+        step("c", "mcp__magoagent__focus_canvas", "www.google.com"),
+        ChatItem::Agent("Abri o Google no canvas.".into()),
+    ];
+    app.transcripts.insert(id, t);
+    let size = Vec2::new(1200.0, 800.0);
+    let at = |app: &mut DrawingApp, time: f64, events: Vec<egui::Event>| chat_frame_at(app, &ctx, size, Some(time), events);
+    const LINE: &str = "3 ferramentas · ToolSearch, create_portal, focus_canvas · 3 s";
+    // how far under the run's line the answer is (in the conversation, not the list's preview at the left): the line,
+    // and the room its steps take, with the gap over them
+    let room = |texts: &[(String, Rect)]| {
+        let line = painted(texts, LINE).unwrap_or_else(|| panic!("{texts:?}"));
+        let answer = texts.iter().find(|(text, rect)| text.starts_with("Abri o Google") && rect.left() > line.left() - 40.0);
+        (line.top(), answer.unwrap_or_else(|| panic!("{texts:?}")).1.top() - line.top())
+    };
+    at(&mut app, 0.0, vec![]);
+    let texts = at(&mut app, 0.1, vec![]);
+    let (line, shut) = room(&texts);
+    assert!(painted(&texts, "https://www.google.com").is_none(), "shut: its steps not laid out");
+    let middle = painted(&texts, LINE).unwrap().center();
+    // a click: its steps ease open under the line, which stays where it is
+    at(&mut app, 0.2, vec![egui::Event::PointerMoved(middle), button(middle, true)]);
+    at(&mut app, 0.25, vec![button(middle, false)]);
+    assert!(app.chat_unfolded.contains("a"));
+    at(&mut app, 0.26, vec![]);
+    let (still, opening) = room(&at(&mut app, 0.3, vec![]));
+    let texts = at(&mut app, 1.0, vec![]);
+    let (_, open) = room(&texts);
+    assert!(painted(&texts, "https://www.google.com").is_some(), "open: its steps under the line");
+    assert!(shut < opening && opening < open, "halfway, between shut and open: {shut} < {opening} < {open}");
+    assert_eq!(still, line, "the line stays under the pointer");
+    assert_eq!(room(&at(&mut app, 1.1, vec![])).1, open, "and stays open");
+    // another: they ease shut, and shut nothing of them is laid out
+    at(&mut app, 1.2, vec![button(middle, true)]);
+    at(&mut app, 1.25, vec![button(middle, false)]);
+    assert!(app.chat_unfolded.is_empty());
+    at(&mut app, 1.26, vec![]);
+    let (still, closing) = room(&at(&mut app, 1.3, vec![]));
+    assert!(shut < closing && closing < open, "halfway back: {shut} < {closing} < {open}");
+    assert_eq!(still, line);
+    let texts = at(&mut app, 2.0, vec![]);
+    assert!((room(&texts).1 - shut).abs() < 0.5, "back to shut: {} vs {shut}", room(&texts).1);
+    assert!(painted(&texts, "https://www.google.com").is_none(), "shut: its steps not laid out");
 }
 
 #[test]
@@ -85,12 +159,13 @@ fn a_click_on_a_step_opens_its_card_with_the_whole_command() {
     let says = |texts: &[(String, Rect)], what: &str| texts.iter().any(|(t, _)| t.contains(what));
     assert!(!says(&texts, "npm test --silent"), "closed: one line, as before");
     let row = painted(&texts, "cd web").expect("its row");
-    let texts = click(&mut app, &ctx, size, row.center());
+    let texts = click_eased(&mut app, &ctx, size, row.center());
     assert!(app.chat_unfolded.contains("card:s"));
     assert!(says(&texts, "npm test --silent") && says(&texts, "3 testes ok"), "the whole command and its output: {texts:?}");
     assert!(says(&texts, "Bash · terminou em 4 s") && says(&texts, "Pasta: /p") && painted(&texts, "Copiar").is_some());
-    click(&mut app, &ctx, size, row.center());
+    let texts = click_eased(&mut app, &ctx, size, row.center());
     assert!(app.chat_unfolded.is_empty(), "and it closes");
+    assert!(!says(&texts, "npm test --silent"), "shut: its card not laid out");
 }
 
 #[test]
