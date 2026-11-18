@@ -486,3 +486,27 @@ fn the_ui_goes_on_when_a_bridge_thread_died_holding_the_shared_state() {
     assert!(shared.is_poisoned());
     app.log_agent_events();
 }
+
+#[test]
+fn a_permission_of_another_tool_reads_as_text_and_opens_whole_on_a_click() {
+    let ctx = Context::default();
+    let mut app = island_app();
+    let (reply, _output) = mpsc::channel();
+    let input = json!({ "title": "Vídeo do app", "remaining_plan": "Gravar a cena de teste.\nMontar o vídeo." });
+    app.take_hook("ext:s1", &hook("PermissionRequest", "mcp__ccd_session__hand_off_to_session", input), Some(reply));
+    app.person_asks.borrow_mut()[0].shown = Some(0.0);
+    let drawn = settle(&mut app, &ctx);
+    let texts: Vec<&str> = drawn.iter().map(|(text, _)| text.as_str()).collect();
+    assert!(texts.contains(&"Vídeo do app"), "the title, not the JSON: {texts:?}");
+    assert!(texts.iter().any(|text| text.contains("hand off to session")), "the tool, readable: {texts:?}");
+    assert!(!texts.iter().any(|text| text.contains('{')), "no raw JSON: {texts:?}");
+    let at = drawn.iter().find(|(text, _)| text == "ver tudo").map(|(_, rect)| rect.center()).expect("ver tudo");
+    let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    for (step, events) in [vec![egui::Event::PointerMoved(at)], vec![press(true)], vec![press(false)]].into_iter().enumerate() {
+        frame(&mut app, &ctx, 3.0 + step as f64 * 0.05, events);
+    }
+    assert!(app.person_asks.borrow()[0].open, "the click opened it");
+    let drawn = settle(&mut app, &ctx);
+    assert!(drawn.iter().any(|(text, _)| text.contains("Montar o vídeo.")), "the whole request shows");
+    assert!(drawn.iter().any(|(text, _)| text == "recolher"));
+}

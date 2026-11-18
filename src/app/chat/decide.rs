@@ -53,6 +53,8 @@ pub(crate) struct PersonAsk {
     pub(crate) source: Option<Source>,
     /// When the card was first drawn: its buttons wait `CLICK_GUARD` after that.
     pub(crate) shown: Option<f64>,
+    /// The island's card shows the whole request (`details`), opened by a click on its line.
+    pub(crate) open: bool,
 }
 
 /// Clicks in the first moments of a new card are ignored: it appears under a pointer busy in another window (600 ms).
@@ -74,6 +76,7 @@ impl PersonAsk {
             step: 0,
             source: None,
             shown: None,
+            open: false,
         }
     }
 
@@ -185,13 +188,37 @@ impl PersonAsk {
         let _ = self.reply.send(Ok(String::new()));
     }
 
-    /// What a permission is about, in one line: the command, the file or the address.
+    /// What a permission is about, in one line: the command, the file or the address; for another tool (an MCP's) its
+    /// title, description or first text, never the raw JSON.
     pub(crate) fn summary(&self) -> String {
-        let field = |key: &str| self.input[key].as_str().map(str::to_string);
-        field("command").or_else(|| field("file_path")).or_else(|| field("url")).or_else(|| field("path")).unwrap_or_else(|| {
-            let text = self.input.to_string();
-            text.chars().take(200).collect()
-        })
+        const SAYS: [&str; 10] = ["command", "file_path", "url", "path", "title", "description", "prompt", "query", "message", "text"];
+        let field = SAYS.iter().find_map(|key| self.input[*key].as_str().filter(|text| !text.trim().is_empty()));
+        let first = || self.input.as_object().and_then(|object| object.values().find_map(Value::as_str));
+        let text = field.or_else(first).map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "));
+        text.unwrap_or_else(|| self.tool_label())
+    }
+
+    /// The tool asked for, readable: `mcp__ccd_session__start_session` is "start session · ccd session".
+    pub(crate) fn tool_label(&self) -> String {
+        let words = |name: &str| name.replace('_', " ").trim().to_string();
+        match self.tool.strip_prefix("mcp__").and_then(|rest| rest.split_once("__")) {
+            Some((server, tool)) => format!("{} · {}", words(tool), words(server)),
+            None => words(&self.tool),
+        }
+    }
+
+    /// The whole request, to read before deciding: one field a line (a text in full, with its lines), anything else
+    /// as indented JSON.
+    pub(crate) fn details(&self) -> String {
+        let Some(object) = self.input.as_object() else { return serde_json::to_string_pretty(&self.input).unwrap_or_default() };
+        let fields = object.iter().map(|(key, value)| {
+            let shown = match value {
+                Value::String(text) => text.clone(),
+                other => serde_json::to_string_pretty(other).unwrap_or_default(),
+            };
+            if shown.contains('\n') { format!("{key}:\n{shown}") } else { format!("{key}: {shown}") }
+        });
+        fields.collect::<Vec<_>>().join("\n\n")
     }
 }
 
@@ -464,8 +491,25 @@ mod tests {
         let ask = PersonAsk::new("chat".into(), &json!({ "tool_name": "Bash", "input": { "command": "rm -rf build" } }), reply);
         assert!(ask.questions.is_empty());
         assert_eq!(ask.summary(), "rm -rf build");
+        assert_eq!(ask.tool_label(), "Bash");
         assert_eq!(serde_json::from_str::<Value>(&ask.decision(true)).unwrap(), json!({ "behavior": "allow", "updatedInput": { "command": "rm -rf build" } }));
         ask.send(false);
         assert_eq!(serde_json::from_str::<Value>(&answers.recv().unwrap().unwrap()).unwrap()["behavior"], "deny");
+    }
+
+    #[test]
+    fn another_tools_permission_reads_as_text_not_json() {
+        let (reply, _answers) = std::sync::mpsc::channel();
+        let request = json!({
+            "tool_name": "mcp__ccd_session__hand_off_to_session",
+            "input": { "title": "Vídeo do app", "remaining_plan": "Gravar a cena.\nMontar o vídeo.", "tags": ["a", "b"] }
+        });
+        let ask = PersonAsk::new("chat".into(), &request, reply);
+        assert_eq!(ask.summary(), "Vídeo do app");
+        assert_eq!(ask.tool_label(), "hand off to session · ccd session");
+        assert_eq!(ask.details(), "title: Vídeo do app\n\nremaining_plan:\nGravar a cena.\nMontar o vídeo.\n\ntags:\n[\n  \"a\",\n  \"b\"\n]");
+        let (reply, _answers) = std::sync::mpsc::channel();
+        let bare = PersonAsk::new("chat".into(), &json!({ "tool_name": "mcp__app__ping", "input": { "times": 3 } }), reply);
+        assert_eq!(bare.summary(), "ping · app", "no text: the tool's name, not the JSON");
     }
 }
