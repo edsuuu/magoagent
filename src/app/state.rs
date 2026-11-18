@@ -300,6 +300,9 @@ pub(crate) struct DrawingApp {
     pub(crate) person_asks: std::cell::RefCell<Vec<crate::app::chat::decide::PersonAsk>>,
     /// The Claude Code sessions outside the app: their pills on the island (maestro/outside.rs).
     pub(crate) outside: crate::app::maestro::outside::Outside,
+    /// Each agent's mascot colour while it lives, by its id (mascot/identity.rs); in a cell, as the lists that paint
+    /// them only read the app.
+    pub(crate) agent_colors: std::cell::RefCell<crate::app::mascot::identity::AgentColors>,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
     pub(crate) portal_extras: browser::extras::PortalExtras,

@@ -185,6 +185,12 @@ fn the_mcp_sends_by_the_sessions_name() {
     );
     assert_eq!(locked(&app.bridge.as_ref().unwrap().shared).outbox["s1"], ["roda os testes"]);
     assert!(app.act("outside_message", &json!({ "session": "API", "text": "oi" })).unwrap().starts_with("Claude Code · loja-api:"));
+    // a worktree's folder, cut on its pill ("agent-a47cc47"), is found by its whole name too
+    let mut worktree = hook("UserPromptSubmit", "", Value::Null, false);
+    (worktree["session_id"], worktree["cwd"]) = ("s3".into(), "/w/.claude/worktrees/agent-a47cc47699b17a639".into());
+    app.take_hook("ext:s3", &worktree, None);
+    let found = app.act("outside_message", &json!({ "session": "agent-a47cc47699b17a639", "text": "oi" }));
+    assert!(found.as_deref().is_ok_and(|said| said.starts_with("Claude Code · agent-a47cc47:")), "{found:?}");
     assert!(app.act("outside_message", &json!({ "text": "oi" })).unwrap_err().contains("Mais de uma sessão"));
     assert!(app.act("outside_message", &json!({ "session": "blog", "text": "oi" })).unwrap_err().contains("\"Claude Code · loja\""));
     assert!(app.act("outside_message", &json!({ "session": "loja" })).unwrap_err().contains("Escreva"));
@@ -243,7 +249,7 @@ fn the_islands_box_sends_and_says_how_it_went() {
     let texts = painted(&mut app, &ctx, &mut time, vec![egui::Event::PointerMoved(field)]);
     let (notice, go) = (at(&texts, "Na fila: entra quando o Claude terminar esta vez."), at(&texts, "Ir ao terminal"));
     assert!(notice.right() < go.left() && (notice.center().y - go.center().y).abs() < 4.0, "{notice:?} {go:?}");
-    let name = texts.iter().find(|(text, _)| text.starts_with("Claude Code · loja")).map(|(_, rect)| *rect).unwrap();
+    let name = texts.iter().find(|(text, _)| text.starts_with("loja · ")).map(|(_, rect)| *rect).unwrap();
     let queued = at(&texts, "1 na fila");
     assert!(queued.right() < name.left() && (queued.center().y - name.center().y).abs() < 4.0 && queued.bottom() < notice.top(), "{queued:?} {name:?}");
     assert!(island_rect(&app).contains_rect(queued) && island_rect(&app).contains_rect(notice));

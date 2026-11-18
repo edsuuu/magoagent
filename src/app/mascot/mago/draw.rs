@@ -211,7 +211,7 @@ impl Pen<'_> {
     }
 }
 
-pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMotion, time: f64) {
+pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, color: Color32, motion: &MagoMotion, time: f64) {
     let breath = motion.breath;
     let squash = Vec2::new(motion.squash_x.value * (1.0 - breath * 0.6), motion.squash_y.value * (1.0 + breath));
     let (sin, cos) = motion.tilt.value.sin_cos();
@@ -228,7 +228,7 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, motion: &MagoMot
 
     let tint = |color: Color32| color.lerp_to_gamma(motion.tint_color, motion.tint_amount.value);
     let lively = motion.lively();
-    pen.flame(&flame(time as f32, lively, motion.sway), tint(LUME));
+    pen.flame(&flame(time as f32, lively, motion.sway), tint(color));
 
     let (grow, spread) = small_eyes(size);
     paint_eyes(&pen, motion, grow, spread, INK);

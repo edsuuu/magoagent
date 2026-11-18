@@ -8,6 +8,7 @@
 use super::message::Reach;
 use crate::app::chat::decide::PersonAsk;
 use crate::app::chat::direct::folder_label;
+use crate::app::mascot::identity::{make_distinct, short_name};
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
 use std::sync::mpsc::Sender;
@@ -56,8 +57,12 @@ pub(crate) struct Source {
 
 pub(crate) struct Pill {
     pub(super) key: String,
+    /// Its folder's name ("loja"; the program's with no folder) and the program ("Claude Code", "Claude Desktop").
     name: String,
-    color: Color32,
+    kind: String,
+    /// A program's own colour (Claude Desktop's, Cursor's, Hermes'); none: Claude Code's, an agent's of the palette
+    /// (`agent_color`).
+    brand: Option<Color32>,
     pub(super) working: bool,
     pub(super) asking: bool,
     /// O limite de uso do plano bateu (uma Notification de "rate limit"): fica até a sessão voltar a trabalhar.
@@ -109,7 +114,10 @@ impl Outside {
 /// A pill as the island draws it.
 pub(crate) struct PillView {
     pub(crate) id: String,
+    /// Its folder's name, no other pill's ("loja", "loja 2"): the lists show it whole, its program goes apart (`kind`).
     pub(crate) name: String,
+    /// The program: "Claude Code", "Claude Desktop", "Cursor", "Hermes".
+    pub(crate) kind: String,
     pub(crate) color: Color32,
     pub(crate) state: AgentState,
     pub(crate) badge: Option<Badge>,
@@ -161,35 +169,40 @@ fn rate_limited(message: &str) -> bool {
     ["rate limit", "usage limit", "limite de"].iter().any(|mark| message.contains(mark))
 }
 
-/// The pill of a session: (key, name, colour), one per program and folder. Claude Desktop is told by the hook (relay.rs
-/// `origin`); only Claude Code's pills ("code:") take messages from the app (message.rs).
-fn origin(payload: &Value) -> (String, String, Color32) {
+/// Where a session comes from (`origin`).
+struct Origin {
+    key: String,
+    name: String,
+    kind: String,
+    brand: Option<Color32>,
+}
+
+/// A session's pill, one per program and folder: its key, its name (the folder's, short: `short_name`), its program and
+/// that program's own colour. Claude Desktop is told by the hook (relay.rs `origin`); only Claude Code's pills ("code:")
+/// take messages from the app (message.rs).
+fn origin(payload: &Value) -> Origin {
     let cwd = payload["cwd"].as_str().unwrap_or_default();
-    let (prefix, program, color) = match payload["mago_origin"].as_str().unwrap_or_default() {
-        "hermes" => return ("hermes".into(), "Hermes".into(), rgb_hex(0xc084fc)),
-        "claude-desktop" => ("desktop", "Claude Desktop", rgb_hex(0xd97757)),
-        "cursor" => ("cursor", "Cursor", rgb_hex(0xc0c4cc)),
-        _ => ("code", "Claude Code", rgb_hex(PILL_PALETTE[palette_index(cwd)])),
+    let (prefix, program, brand) = match payload["mago_origin"].as_str().unwrap_or_default() {
+        "hermes" => return Origin { key: "hermes".into(), name: "Hermes".into(), kind: "Hermes".into(), brand: Some(rgb_hex(0xc084fc)) },
+        "claude-desktop" => ("desktop", "Claude Desktop", Some(rgb_hex(0xd97757))),
+        "cursor" => ("cursor", "Cursor", Some(rgb_hex(0xc0c4cc))),
+        _ => ("code", "Claude Code", None),
     };
-    let name = if cwd.is_empty() { program.to_string() } else { format!("{program} · {}", folder_label(cwd)) };
-    (format!("{prefix}:{cwd}"), name, color)
+    // asked ("fica sempre com o prefixo claude code"): the program no longer eats the room of the folder's name
+    let name = if cwd.is_empty() { program.to_string() } else { short_name(&folder_label(cwd)) };
+    Origin { key: format!("{prefix}:{cwd}"), name, kind: program.into(), brand }
 }
 
-/// The colours a mini can have: every one readable on the
-/// island's black with the mini's dark eyes. Claude Code's own is the first, the white.
-pub(crate) const PILL_PALETTE: [u32; 10] = [0xf5f6f8, 0xf4505e, 0xf29b38, 0xfacc15, 0x4ade80, 0x2dd4bf, 0x38bdf8, 0x818cf8, 0xc084fc, 0xe879f9];
-
-/// Where in the palette a project's pill starts: a project keeps its colour from one run to the next.
-fn palette_index(cwd: &str) -> usize {
-    (fnv1a(cwd) % PILL_PALETTE.len() as u64) as usize
+/// "Claude Code · loja": a pill's program and name, as a card, a toast and the Maestro say it; the name alone when it is
+/// the program's (Hermes).
+pub(crate) fn pill_label(kind: &str, name: &str) -> String {
+    if name.starts_with(kind) { name.to_string() } else { format!("{kind} · {name}") }
 }
 
-/// A Claude Code project's colour among the pills there are (`taken`): its own, or the palette's next one no other pill
-/// has, so two projects side by side never look alike (each project of Claude Code
-/// has its pill). All taken, its own.
-fn free_color(own: Color32, taken: &[Color32]) -> Color32 {
-    let start = PILL_PALETTE.iter().position(|value| rgb_hex(*value) == own).unwrap_or(0);
-    (0..PILL_PALETTE.len()).map(|step| rgb_hex(PILL_PALETTE[(start + step) % PILL_PALETTE.len()])).find(|color| !taken.contains(color)).unwrap_or(own)
+impl PillView {
+    pub(crate) fn label(&self) -> String {
+        pill_label(&self.kind, &self.name)
+    }
 }
 
 /// The file of a session's conversation as its hook says (`transcript_path`), or where Claude Code keeps it by the
@@ -218,7 +231,7 @@ impl DrawingApp {
         let now = now_ms();
         let text = |key: &str| payload[key].as_str().unwrap_or_default().to_string();
         let (event, tool, session) = (hook_name(payload).to_string(), text("tool_name"), text("session_id"));
-        let (key, name, color) = origin(payload);
+        let Origin { key, name, kind, brand } = origin(payload);
         // o relay que esperava desligou (a ponte avisa): responderam em outro lugar, e o cartão sai na hora
         if event == HOOK_GONE {
             let request = text("mago_request");
@@ -245,12 +258,11 @@ impl DrawingApp {
             self.outside.pills.retain(|pill| pill.key != key);
         } else if !event.is_empty() {
             let index = self.outside.pills.iter().position(|pill| pill.key == key).unwrap_or_else(|| {
-                let color =
-                    if key.starts_with("code:") { free_color(color, &self.outside.pills.iter().map(|pill| pill.color).collect::<Vec<_>>()) } else { color };
                 let pill = Pill {
                     key: key.clone(),
                     name: name.clone(),
-                    color,
+                    kind: kind.clone(),
+                    brand,
                     working: false,
                     asking: false,
                     limited: false,
@@ -300,7 +312,7 @@ impl DrawingApp {
         }
         let waits = event == "PermissionRequest" || (event == "PreToolUse" && tool == "AskUserQuestion");
         if let Some(reply) = reply.filter(|_| waits) {
-            self.outside_ask(payload, (key, name), session, event, reply);
+            self.outside_ask(payload, (key, pill_label(&kind, &name)), session, event, reply);
         }
     }
 
@@ -364,10 +376,12 @@ impl DrawingApp {
         }
     }
 
-    /// The pills of the sessions outside, for the island: waiting when an ask of theirs waits.
+    /// The pills of the sessions outside, for the island: waiting when an ask of theirs waits; two of one folder (Claude
+    /// Code's and Claude Desktop's) told apart by a number after the second's name.
     pub(crate) fn outside_pills(&self) -> Vec<PillView> {
         let waiting: Vec<String> = self.person_asks.borrow().iter().filter_map(|ask| ask.source.as_ref().map(|source| source.pill.clone())).collect();
-        self.outside
+        let mut pills: Vec<PillView> = self
+            .outside
             .pills
             .iter()
             .map(|pill| {
@@ -378,10 +392,12 @@ impl DrawingApp {
                     _ => AgentState::Idle(None),
                 };
                 let badge = if asked { Some(Badge::Approval) } else { pill.badge };
+                let id = format!("{PILL_PREFIX}{}", pill.key);
                 PillView {
-                    id: format!("{PILL_PREFIX}{}", pill.key),
+                    color: pill.brand.unwrap_or_else(|| self.agent_color(&id)),
+                    id,
                     name: pill.name.clone(),
-                    color: pill.color,
+                    kind: pill.kind.clone(),
                     state,
                     badge,
                     activity: pill.activity.clone(),
@@ -391,7 +407,19 @@ impl DrawingApp {
                     at: pill.seen,
                 }
             })
-            .collect()
+            .collect();
+        make_distinct(&mut pills, |pill| &mut pill.name);
+        pills
+    }
+
+    /// The pills that take an agent's colour (`agent_color`): Claude Code's, by their ids.
+    pub(crate) fn outside_agent_ids(&self) -> Vec<String> {
+        self.outside.pills.iter().filter(|pill| pill.brand.is_none()).map(|pill| format!("{PILL_PREFIX}{}", pill.key)).collect()
+    }
+
+    /// The colours the other pills have of their program, which no agent takes.
+    pub(crate) fn outside_brands(&self) -> Vec<Color32> {
+        self.outside.pills.iter().filter_map(|pill| pill.brand).collect()
     }
 
     /// As sessões de fora do app para o `demands` do MCP (o Maestro lê em voz alta): uma linha por pílula, com o estado
@@ -401,7 +429,7 @@ impl DrawingApp {
         for pill in self.outside_pills() {
             let state = if pill.limited { "limite de uso do plano" } else { pill.state.label() };
             let activity = if pill.activity.is_empty() { String::new() } else { format!(" — {}", pill.activity) };
-            report += &format!("\n- {} — {state}{activity}", pill.name);
+            report += &format!("\n- {} — {state}{activity}", pill.label());
         }
         if report.is_empty() { report } else { format!("\n\nSessões fora do app:{report}") }
     }
@@ -455,15 +483,15 @@ mod palette_tests {
     use super::*;
 
     #[test]
-    fn a_project_keeps_its_colour_and_two_projects_never_share_one() {
-        assert_eq!(palette_index("/var/www/projects/magoagent"), palette_index("/var/www/projects/magoagent"), "the same from one run to the next");
-        let own = rgb_hex(PILL_PALETTE[palette_index("/home/edsu")]);
-        assert_eq!(free_color(own, &[]), own, "nobody has it: its own");
-        let next = free_color(own, &[own]);
-        assert_ne!(next, own, "taken: the palette's next");
-        assert!(PILL_PALETTE.iter().any(|value| rgb_hex(*value) == next));
-        let all: Vec<Color32> = PILL_PALETTE.iter().map(|value| rgb_hex(*value)).collect();
-        assert_eq!(free_color(own, &all), own, "all taken: its own");
+    fn a_session_is_named_by_its_folder_and_its_program_goes_apart() {
+        let code = origin(&json!({ "cwd": "/var/www/projects/magoagent/.claude/worktrees/agent-a47cc47699b17a639" }));
+        assert_eq!((code.name.as_str(), code.kind.as_str(), code.brand), ("agent-a47cc47", "Claude Code", None));
+        assert!(!code.name.starts_with("Claude Code"), "no program before the name");
+        let desktop = origin(&json!({ "cwd": "C:/Users/eu/loja", "mago_origin": "claude-desktop" }));
+        assert_eq!((desktop.name.as_str(), pill_label(&desktop.kind, &desktop.name).as_str()), ("loja", "Claude Desktop · loja"));
+        let hermes = origin(&json!({ "mago_origin": "hermes" }));
+        assert_eq!(pill_label(&hermes.kind, &hermes.name), "Hermes");
+        assert_eq!(origin(&json!({})).name, "Claude Code", "no folder: the program's");
     }
 
     #[test]
