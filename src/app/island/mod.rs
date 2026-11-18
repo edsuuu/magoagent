@@ -26,6 +26,7 @@ mod integrations;
 mod keymap;
 mod keys;
 mod log;
+mod luna;
 #[cfg(target_os = "macos")]
 pub(crate) mod macos;
 mod marquee;
@@ -35,6 +36,7 @@ pub(crate) mod paint;
 pub(crate) mod picture;
 pub(crate) mod pill;
 mod prompt;
+pub(crate) mod replay;
 mod session;
 mod sounds;
 mod spring;
@@ -217,6 +219,22 @@ impl Shape {
     }
 }
 
+/// When the app's next frame comes for the island `shape`. While the person is on the compact or open one (`touched`),
+/// at the rate asked in Ajustes (the window has no vsync to hold it back: a bare `request_repaint` ran at 230 a second,
+/// 55% of a core). Left alone, what it shows asks for its own frames (the wizard 15 a second at rest, the springs every
+/// frame, the rest `update::AMBIENT`), and while it `moves` the app comes at the ambient rate; each of these frames paints
+/// the whole app. Drawing itself (`replaying`, `replay.rs`), what moves asks for the island's window alone: the app comes
+/// for what changes, and when the stage gives way by the clock (`due`, in seconds from now).
+fn next_frame(shape: Shape, touched: bool, moving: bool, replaying: bool, due: Option<f64>) -> Option<std::time::Duration> {
+    if shape.animates_every_frame() && touched {
+        Some(crate::app::update::frame_spacing())
+    } else if replaying {
+        due.map(|due| std::time::Duration::from_secs_f64(due.max(0.0)))
+    } else {
+        moving.then_some(crate::app::update::AMBIENT)
+    }
+}
+
 /// The closed or compact island's `size` standing up on a side of the screen: the notch turned, the compact one
 /// `COMPACT_TALL` tall (`COMPACT_TALL_SONG` while a `song` shows).
 pub(crate) fn upright(shape: Shape, size: Vec2, song: bool) -> Vec2 {
@@ -351,6 +369,7 @@ pub(crate) fn talk_size(saved: Option<[f32; 2]>, said: usize, work: Rect) -> Vec
 }
 
 /// One agent or chat of the grid.
+#[derive(Clone)]
 pub(super) struct Line {
     pub(super) id: String,
     pub(super) name: String,
@@ -494,6 +513,13 @@ pub(crate) struct Island {
     place_ask: Option<window::Place>,
     /// A picture of the conversation on the whole screen (`picture.rs`).
     picture: Option<picture::Shown>,
+    /// Nothing moves it but what it shows (`at_rest`): the frame the app draws is taken down (`replay.rs`), the window
+    /// draws it again by itself until the app draws again (`replaying`, as last drawn).
+    at_rest: bool,
+    replay: std::sync::Arc<std::sync::Mutex<replay::Replay>>,
+    replaying: bool,
+    /// The screen's scale and the window's place, for the eyes of what the window draws again by itself.
+    eyes: Option<(f32, Pos2)>,
 }
 
 /// The form of a new chat.
@@ -555,6 +581,29 @@ impl Island {
     #[cfg(test)]
     pub(crate) fn focus(&self) -> Option<&str> {
         self.focus.as_deref()
+    }
+
+    /// Hangs it from `anchor` (screen points): on a side of the screen it stands up.
+    #[cfg(test)]
+    pub(crate) fn hang_from(&mut self, anchor: [f32; 2]) {
+        self.anchor = Some(anchor);
+    }
+
+    /// Its window draws it again by itself between the app's frames (`replay.rs`): that window is cleared see-through.
+    pub(crate) fn draws_itself(&self) -> bool {
+        self.replaying
+    }
+
+    /// Nothing moves it but what it shows, as last drawn (`replay.rs`).
+    #[cfg(test)]
+    pub(crate) fn at_rest(&self) -> bool {
+        self.at_rest
+    }
+
+    /// The island at rest as the app last drew it, which its window draws again by itself.
+    #[cfg(test)]
+    pub(crate) fn taken(&self) -> std::sync::MutexGuard<'_, replay::Replay> {
+        self.replay.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -746,6 +795,22 @@ impl DrawingApp {
         if view.pokes > std::mem::replace(&mut island.pokes, view.pokes) {
             tones.push(if view.dizzy { sounds::DIZZY } else { sounds::POKE });
         }
+        // nothing moves it but what it shows (Luna, the song's bars, the minis): the person is not on it, it does not
+        // spring, fade or play the end, and nothing else is drawn with it (a menu, the call's bars, a cover fading in)
+        let fading = crate::app::integrations::spotify::CoverFade::read(ctx).fading(time);
+        island.at_rest = shape != Shape::Open
+            && !island.geometry.moving()
+            && !island.layers.moving(time)
+            && island.bot.iter().all(spring::Spring::settled)
+            && !(island.hovered || island.holding || island.typing || island.resizing || island.drag_next)
+            && island.moved.is_none()
+            && island.slim.is_none()
+            && island.menus.is_none()
+            && island.picture.is_none()
+            && time >= island.celebrate_until
+            && !voice
+            && !fading
+            && (!cfg!(windows) || island.plain >= 3);
         let colors = self.colors();
         let look = crate::app::chat::list::Look::new(true, &colors);
         let mut form = self.island.form.take();
@@ -794,18 +859,13 @@ impl DrawingApp {
         // open or compact (and while the entrance plays) every frame, as the reference's requestAnimationFrame; closed, the
         // wizards move while they work or wait, and the fold after the pointer left comes by the clock
         let moving = busy || time < island.celebrate_until || island.hovered;
-        if shape.animates_every_frame() && (island.hovered || island.typing || island.holding) {
-            // at the rate asked in Ajustes while the person is on it (the window has no vsync to hold it back: a bare
-            // `request_repaint` ran at 230 a second, 55% of a core). Left alone, what it shows asks for its own frames
-            // (the wizard 15 a second at rest, the springs every frame, the rest `update::AMBIENT`): every frame of it
-            // paints the whole app
-            ctx.request_repaint_after(crate::app::update::frame_spacing());
-        } else if moving {
-            ctx.request_repaint_after(crate::app::update::AMBIENT);
+        let touched = island.hovered || island.typing || island.holding;
+        if let Some(delay) = next_frame(shape, touched, moving, island.replaying, island.machine.due().map(|due| due - time)) {
+            ctx.request_repaint_after(delay);
         }
         // the window lets the clicks through, so only the frames see the cursor: often while it moves (the eyes follow
         // it), seldom while it rests (`cursor::watch` wakes it when the cursor comes onto the island)
-        if cfg!(any(windows, target_os = "macos")) && !ctx.embed_viewports() {
+        if cfg!(any(windows, target_os = "macos")) && !ctx.embed_viewports() && !self.island.replaying {
             let moved = std::mem::replace(&mut self.island.looked, self.island.pointer) != self.island.pointer;
             ctx.request_repaint_after(std::time::Duration::from_millis(if moved { 33 } else { 250 }));
         }
@@ -835,6 +895,19 @@ impl DrawingApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Asked: "a ilha ainda tem uns problemas, meio travada ou algo assim, em notebook que não tem placa de vídeo
+    /// dedicada". Drawing itself (`replay.rs`), the island at rest no longer brings the app's frames at the ambient rate,
+    /// each of which painted the whole app: only when its stage gives way by the clock; the person on it brings them.
+    #[test]
+    fn drawing_itself_the_island_brings_the_apps_frames_only_by_the_clock() {
+        let ambient = Some(crate::app::update::AMBIENT);
+        assert_eq!(next_frame(Shape::Compact, false, true, false, Some(5.0)), ambient, "the app draws it: the ambient rate");
+        assert_eq!(next_frame(Shape::Compact, false, true, true, Some(5.0)), Some(std::time::Duration::from_secs(5)), "drawing itself: when it folds");
+        assert_eq!(next_frame(Shape::Closed, false, true, true, None), None, "drawing itself, nothing due: none");
+        assert_eq!(next_frame(Shape::Compact, true, true, true, None), Some(crate::app::update::frame_spacing()), "on it: the rate in Ajustes");
+        assert_eq!(next_frame(Shape::Closed, false, false, false, None), None, "nothing moves: none");
+    }
 
     #[test]
     fn the_island_says_what_the_agents_are_doing_and_the_wizard_follows() {

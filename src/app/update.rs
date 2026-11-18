@@ -11,9 +11,10 @@ pub(crate) fn frame_spacing() -> std::time::Duration {
 
 /// The time between two frames of what moves by itself while nobody touches it: the wizards at work, the minis, the
 /// chat's pulses while an agent works, Luna's dance and the song's bars. Every frame paints the whole app (the island's
-/// window is drawn in the app's own pass): the island's wizard at the screen's rate kept an empty canvas at 34% of a
-/// core (asked: "o App consome mais processador está entre 34 e às vezes 100, precisa rever isso"). All of them ask for
-/// this same spacing, so their frames fall together; the pointer, the keys and the springs ask for theirs.
+/// window is drawn in the app's own pass, but at rest, when it draws itself: `island/replay.rs`): the island's wizard at
+/// the screen's rate kept an empty canvas at 34% of a core (asked: "o App consome mais processador está entre 34 e às
+/// vezes 100, precisa rever isso"). All of them ask for this same spacing, so their frames fall together; the pointer,
+/// the keys and the springs ask for theirs.
 pub(crate) const AMBIENT: std::time::Duration = std::time::Duration::from_millis(33);
 
 /// The time between two frames at `rate` a second (kept between 15 and 480).
@@ -77,7 +78,12 @@ impl eframe::App for DrawingApp {
     /// window paints its whole background anyway (canvas and chat).
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
         // the windows with see-through corners (the avatar's, the call's, the mini chat's) need it; the app's paints all of itself
-        if self.avatar.shown || self.voice.on || self.mini.on { [0.0; 4] } else { visuals.window_fill().to_normalized_gamma_f32() }
+        // and the island's while it draws itself (`island/replay.rs`): eframe clears that window with this colour then
+        if self.avatar.shown || self.voice.on || self.mini.on || self.island.draws_itself() {
+            [0.0; 4]
+        } else {
+            visuals.window_fill().to_normalized_gamma_f32()
+        }
     }
 
     /// Minimized (Windows) or covered (macOS), eframe stops calling `ui`, where the bridge and the
@@ -110,6 +116,10 @@ impl eframe::App for DrawingApp {
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        // the island's window drawing itself (`island/replay.rs`): its input is its own, and the script's steps the app's
+        if raw.viewport_id != egui::ViewportId::ROOT {
+            return;
+        }
         if let Some(script) = &mut self.script {
             script.feed(ctx, raw);
         }
