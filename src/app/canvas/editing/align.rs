@@ -25,6 +25,29 @@ pub(crate) fn tidy_deltas(boxes: &[Rect], layout: usize) -> Option<Vec<Vec2>> {
     Some(deltas)
 }
 
+/// Organizar o canvas's move for each box: taken in `order`, left to right in rows from the
+/// boxes' top left corner, `gap` apart, each row as tall as its tallest box and as wide as a 16:10
+/// view of them all (the widest box at least), so the whole fits a screen.
+pub(crate) fn arrange_deltas(boxes: &[Rect], order: &[usize], gap: f32) -> Vec<Vec2> {
+    let Some(union) = boxes.iter().copied().reduce(|first, second| first.union(second)) else { return Vec::new() };
+    let area: f32 = boxes.iter().map(|bounds| (bounds.width() + gap) * (bounds.height() + gap)).sum();
+    let widest = boxes.iter().map(Rect::width).fold(0.0, f32::max);
+    let row_width = (area * 1.6).sqrt().max(widest);
+    let mut deltas = vec![Vec2::ZERO; boxes.len()];
+    let (mut at, mut row_height) = (union.min, 0.0_f32);
+    for &index in order {
+        let size = boxes[index].size();
+        if at.x > union.min.x && at.x + size.x > union.min.x + row_width {
+            at = Pos2::new(union.min.x, at.y + row_height + gap);
+            row_height = 0.0;
+        }
+        deltas[index] = at - boxes[index].min;
+        at.x += size.x + gap;
+        row_height = row_height.max(size.y);
+    }
+    deltas
+}
+
 /// Alinhar's move for each box: to the boxes' common edge or center (0 left, 1 center, 2 right,
 /// 3 top, 4 middle, 5 bottom) or spread with even gaps (6 across, 7 down). None under two boxes.
 pub(crate) fn align_deltas(boxes: &[Rect], how: usize) -> Option<Vec<Vec2>> {

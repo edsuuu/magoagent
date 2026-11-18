@@ -209,7 +209,7 @@ pub(crate) fn menu_icon(id: &str, label: &str) -> Option<MenuIcon> {
         "delete" | "clear_chat" => MenuIcon::Trash,
         "find" => MenuIcon::Search,
         "processes" => MenuIcon::Server,
-        "tidy" => MenuIcon::Grid,
+        "tidy" | "arrange" => MenuIcon::Grid,
         "group" => MenuIcon::Group,
         "ungroup" => MenuIcon::Ungroup,
         "add_note" => MenuIcon::Tool(Tool::Sticky),

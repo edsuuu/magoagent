@@ -1,5 +1,6 @@
 use super::*;
 
+mod arrange;
 mod arrows;
 mod changelog;
 mod changes_pane;

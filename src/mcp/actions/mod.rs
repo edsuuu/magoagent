@@ -99,6 +99,16 @@ impl DrawingApp {
                 self.act_note_stack(&text("action"), &names)
             }
             "canvas_group" => self.act_canvas_group(args),
+            "organize_canvas" => {
+                let names = args["elements"].as_array().into_iter().flatten().filter_map(Value::as_str);
+                let only: Vec<usize> = names
+                    .map(|name| self.scene.elements.iter().position(|element| element.id == name.trim()).map_or_else(|| self.node_named(name), Ok))
+                    .collect::<Result<_, _>>()?;
+                match self.arrange_canvas((!only.is_empty()).then_some(only.as_slice())) {
+                    0 => Err("Nada para organizar: são precisos 2 ou mais elementos soltos (os bloqueados ficam onde estão).".into()),
+                    moved => Ok(format!("{moved} itens organizados em fileiras, com 60 px entre eles.")),
+                }
+            }
             "portal_tab" => self.act_portal_tab(&text("portal"), &text("action"), &text("url"), args["index"].as_u64().map(|i| i as usize)),
             "portal_settings" => self.act_portal_settings(args),
             "portal_copy_screenshot" => {
