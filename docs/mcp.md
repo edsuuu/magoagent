@@ -18,7 +18,7 @@ Um terminal comum (que não é o da Luna) só mexe nas árvores ligadas a ele po
 
 ### `add_elements`
 
-Adiciona elementos (objetos JSON com type, x, y, width, height, cores, text, points). Extras: `label: {text, fontSize?}` em formas e setas; `start: {id}` / `end: {id}` em setas para ligá-las a formas (os pontos são calculados sozinhos). Um terminal, navegador ou árvore de arquivos que você abre aqui (type terminal, portal, filetree) já nasce ligado a você por uma corda (ao seu terminal ou ao seu cartão de chat): list_agents o mostra e read_terminal lê a tela do terminal. Para rodar testes ou uma API e acompanhar, prefira create_terminal. Devolve os ids criados (e em `linked` os ligados a você).
+Adiciona elementos (objetos JSON com type, x, y, width, height, cores, text, points). Extras: `label: {text, fontSize?}` em formas e setas; `start: {id}` / `end: {id}` em setas para ligá-las a formas (os pontos são calculados sozinhos). Um terminal, navegador ou árvore de arquivos que você abre aqui (type terminal, portal, filetree) já nasce ligado a você por uma corda (ao seu terminal ou ao seu cartão de chat): list_agents o mostra e read_terminal lê a tela do terminal; posto em cima de outra janela ou nota, ele vai para o lugar livre mais perto de você. Para rodar testes ou uma API e acompanhar, prefira create_terminal. Devolve os ids criados (e em `linked` os ligados a você).
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -124,11 +124,11 @@ A lateral dos espaços, como a pessoa a usa: `next` vai ao próximo agente que p
 
 ### `panel`
 
-Os painéis à direita da janela (os botões na barra de título): tasks (Tarefas: criar, filtrar Abertas/Feitas, concluir) e changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff). Um aberto por vez, ao lado do canvas. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto.
+O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `name` | string: `tasks`, `changes` |  |
+| `name` | string: `changes` |  |
 | `open` | boolean |  |
 
 ### `history`
@@ -249,7 +249,7 @@ Manda um prompt a um agente conectado (outro terminal do canvas, ou um chat), es
 
 ### `recruit_agent`
 
-Cria um agente novo (um terminal) abaixo do seu, na mesma pasta, já ligado a você; ele ganha um nome (a resposta diz qual) e você fala com ele com ask_agent. Só de dentro de um terminal do MagoAgent. Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).
+Cria um agente novo (um terminal) abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você; ele ganha um nome (a resposta diz qual) e você fala com ele com ask_agent. Só de dentro de um terminal do MagoAgent. Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -259,7 +259,7 @@ Cria um agente novo (um terminal) abaixo do seu, na mesma pasta, já ligado a vo
 
 ### `create_terminal`
 
-Abre um terminal no canvas à sua direita, já ligado a você por uma corda (ao seu terminal ou ao seu cartão de chat), rodando `command` como se fosse digitado (ex.: cargo test, npm run dev): use para rodar testes, uma API ou um servidor que você vai acompanhar. A resposta diz o nome dele. Ligado a você, ele aparece em list_agents com o estado (trabalhando, parado, encerrado), read_terminal lê a tela, ask_agent com raw manda teclas (\x03 para parar) e terminal_processes mostra o que roda nele. Sem corda não há terminal: só de dentro de um terminal da Luna ou de um chat do MagoAgent.
+Abre um terminal no canvas à sua direita (com o lugar tomado, no lugar livre mais perto de você; a resposta diz onde), já ligado a você por uma corda (ao seu terminal ou ao seu cartão de chat), rodando `command` como se fosse digitado (ex.: cargo test, npm run dev): use para rodar testes, uma API ou um servidor que você vai acompanhar. A resposta diz o nome dele. Ligado a você, ele aparece em list_agents com o estado (trabalhando, parado, encerrado), read_terminal lê a tela, ask_agent com raw manda teclas (\x03 para parar) e terminal_processes mostra o que roda nele. Sem corda não há terminal: só de dentro de um terminal da Luna ou de um chat do MagoAgent.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -701,7 +701,7 @@ Muda a pasta de trabalho da conversa atual para `path` (uma conversa que já tem
 
 ### `create_portal`
 
-Abre um navegador (página web) à direita do seu terminal, já ligado a você. Só de dentro de um terminal do MagoAgent.
+Abre um navegador (página web) à direita do seu terminal (com o lugar tomado, no lugar livre mais perto de você), já ligado a você. Só de dentro de um terminal do MagoAgent.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|

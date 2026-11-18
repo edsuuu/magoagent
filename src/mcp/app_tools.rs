@@ -110,7 +110,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "create_terminal",
-            "description": "Abre um terminal no canvas à sua direita, já ligado a você por uma corda (ao seu terminal ou ao seu cartão de chat), rodando `command` como se fosse digitado (ex.: cargo test, npm run dev): use para rodar testes, uma API ou um servidor que você vai acompanhar. A resposta diz o nome dele. Ligado a você, ele aparece em list_agents com o estado (trabalhando, parado, encerrado), read_terminal lê a tela, ask_agent com raw manda teclas (\\x03 para parar) e terminal_processes mostra o que roda nele. Sem corda não há terminal: só de dentro de um terminal da Luna ou de um chat do MagoAgent.",
+            "description": "Abre um terminal no canvas à sua direita (com o lugar tomado, no lugar livre mais perto de você; a resposta diz onde), já ligado a você por uma corda (ao seu terminal ou ao seu cartão de chat), rodando `command` como se fosse digitado (ex.: cargo test, npm run dev): use para rodar testes, uma API ou um servidor que você vai acompanhar. A resposta diz o nome dele. Ligado a você, ele aparece em list_agents com o estado (trabalhando, parado, encerrado), read_terminal lê a tela, ask_agent com raw manda teclas (\\x03 para parar) e terminal_processes mostra o que roda nele. Sem corda não há terminal: só de dentro de um terminal da Luna ou de um chat do MagoAgent.",
             "inputSchema": { "type": "object", "properties": {
                 "command": { "type": "string", "description": "o que roda nele; vazio: só o shell" },
                 "name": { "type": "string", "description": "opcional; padrão o programa do comando (cargo, npm…)" },

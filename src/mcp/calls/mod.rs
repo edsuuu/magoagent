@@ -12,6 +12,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
             let caller = caller_id();
             may_build(scene, caller.as_deref(), items)?;
             let added = add_elements(scene, items)?;
+            make_room(scene, caller.as_deref(), &added);
             // the windows it opened hang from it, by a rope in the same write
             let linked = tie_to_caller(scene, caller.as_deref(), &added)?;
             let mut reply = json!({ "created": added });

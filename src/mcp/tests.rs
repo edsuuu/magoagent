@@ -403,3 +403,27 @@ fn the_caller_is_the_terminal_else_the_chat() {
     assert_eq!(caller_from(env(&[("MAGOAGENT_CHAT_ID", " ")])), None);
     assert_eq!(caller_from(env(&[])), None);
 }
+
+/// Asked: "a posição dos terminais, às vezes ele junta tudo na direita". Windows an agent stacks on the same spot (it
+/// reads the canvas from a list) go to the free places around it, each with its label; a shape stays where it was put.
+#[test]
+fn windows_an_agent_stacks_go_around_it() {
+    let mut scene = Scene::default();
+    let luna = json!({ "type": "terminal", "id": "luna", "x": 0, "y": 0, "width": 600, "height": 400, "name": "Luna" });
+    add_elements(&mut scene, &[luna]).unwrap();
+    let items = json!([
+        { "type": "terminal", "id": "um", "x": 2000, "y": 0, "width": 600, "height": 400, "name": "Um" },
+        { "type": "terminal", "id": "dois", "x": 2000, "y": 0, "width": 600, "height": 400, "name": "Dois" },
+        { "type": "terminal", "id": "tres", "x": 100, "y": 100, "width": 600, "height": 400, "name": "Três", "label": { "text": "API" } },
+        { "type": "rectangle", "id": "caixa", "x": 10, "y": 10 },
+    ]);
+    let added = add_elements(&mut scene, items.as_array().unwrap()).unwrap();
+    make_room(&mut scene, Some("luna"), &added);
+    let at = |id: &str| element_bounds(scene.elements.iter().find(|e| e.id == id).unwrap()).min;
+    // the first is free where it was put; the second, over it, goes around the Luna (below it first); the third, over
+    // the Luna, the next place around it, its label along
+    assert_eq!((at("um"), at("dois"), at("tres")), (Pos2::new(2000.0, 0.0), Pos2::new(0.0, 460.0), Pos2::new(660.0, 0.0)));
+    let label = element_bounds(scene.elements.iter().find(|e| e.id == "tres-label").unwrap()).center();
+    assert!(element_bounds(scene.elements.iter().find(|e| e.id == "tres").unwrap()).contains(label), "the label went along");
+    assert_eq!(at("caixa"), Pos2::new(10.0, 10.0), "a shape is no window");
+}

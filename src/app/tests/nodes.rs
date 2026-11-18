@@ -56,18 +56,21 @@ fn maestro_recruits_opens_portals_and_connects() {
     assert!(r.min.y > b.max.y && r.size() == b.size(), "below, the same size: {r:?}");
     assert_eq!((first.terminal.as_ref().unwrap().cwd.as_str(), first.terminal.as_ref().unwrap().command.as_str()), ("/tmp/projeto", "codex"));
     assert!(app.links()[&boss_id].contains(&first.id));
-    // the next one gets a name of its own and a free spot beside it, not further down off the screen
+    // the next one gets a name of its own and the free spot nearest the caller, lined up with it: beside it, not further
+    // down or off to one side (asked: "a posição dos terminais, às vezes ele junta tudo na direita")
     app.recruit(&boss_id, "claude", tx.clone());
-    assert!(rx.recv().unwrap().is_ok());
+    assert!(rx.recv().unwrap().unwrap().contains("criado à sua direita"));
     let second = newest(&app);
     assert_ne!(second.terminal.as_ref().unwrap().name, name);
     let s = local_bounds(&second);
-    assert!(!s.intersects(r) && s.min.y == r.min.y && s.min.x > r.max.x, "beside the first: {s:?}");
-    // a portal to the caller's right, named by its site
+    assert_eq!(s.min, Pos2::new(b.max.x + 60.0, b.min.y), "beside the caller: {s:?}");
+    // a portal to the caller's right, named by its site; the right taken, the nearest free place, which the answer says
     app.create_portal(&boss_id, "exemplo.com/docs", "", tx.clone());
-    assert!(rx.recv().unwrap().unwrap().contains("\"exemplo.com\""));
+    let said = rx.recv().unwrap().unwrap();
     let portal = app.scene.elements.iter().find(|e| e.portal.is_some()).cloned().unwrap();
-    assert!(local_bounds(&portal).min.x > b.max.x && app.links()[&boss_id].contains(&portal.id));
+    let p = local_bounds(&portal);
+    assert!(said.contains("\"exemplo.com\"") && said.contains(side_of(p, b)), "{said}");
+    assert!(![b, r, s].iter().any(|other| other.intersects(p)) && app.links()[&boss_id].contains(&portal.id), "{p:?}");
     assert_eq!(portal.portal.as_ref().unwrap().url, "https://exemplo.com/docs");
     // two recruits roped together, once
     app.connect_for_agent(&first.id, &second.id, tx.clone());
@@ -236,4 +239,36 @@ fn a_window_a_chats_agent_draws_is_roped_to_its_card() {
     other.scene.elements.push(shape);
     other.tie_to_terminal("c", &[shape_id]);
     assert!(other.chat_node("c").is_none());
+}
+
+/// Asked: "a posição dos terminais, precisa corrigir pois às vezes ele junta tudo na direita". What an agent opens goes
+/// around it, the nearest free place first, and none overlaps another.
+#[test]
+fn the_windows_an_agent_opens_go_around_it_not_all_to_one_side() {
+    let mut app = DrawingApp::default();
+    app.canvas_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+    let size = app.new_terminal_size();
+    let mut luna = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: size.x, height: size.y });
+    luna.terminal = Some(TerminalSpec { name: "Luna".into(), cwd: "/p".into(), maestro: true, ..Default::default() });
+    let (luna_id, b) = (luna.id.clone(), local_bounds(&luna));
+    app.scene.elements.push(luna);
+    let mut sides = vec![];
+    for command in ["cargo test", "npm run dev", "php artisan serve", "vite"] {
+        let said = app.act("create_terminal", &json!({ "command": command, "asker": luna_id })).unwrap();
+        sides.push(["à sua direita", "abaixo de você", "à sua esquerda", "acima de você"].into_iter().find(|side| said.contains(side)).unwrap_or("?"));
+    }
+    assert_eq!(sides, ["à sua direita", "abaixo de você", "à sua esquerda", "acima de você"], "around it, nearest first");
+    // lined up with its edges, 60 away
+    let at = |index: usize| local_bounds(app.scene.elements.iter().filter(|e| e.terminal.is_some()).nth(index + 1).unwrap()).min;
+    assert_eq!((at(0), at(1)), (Pos2::new(b.max.x + 60.0, b.min.y), Pos2::new(b.min.x, b.max.y + 60.0)));
+    let windows: Vec<Rect> = app.scene.elements.iter().filter(|e| e.terminal.is_some()).map(local_bounds).collect();
+    for (index, window) in windows.iter().enumerate() {
+        assert!(windows.iter().skip(index + 1).all(|other| !other.intersects(*window)), "{windows:?}");
+        let away = window.center() - b.center();
+        assert!(away.x.abs() <= size.x + b.width() && away.y.abs() <= size.y + b.height(), "next to it: {window:?}");
+    }
+    // a free canvas: where it asks, as before
+    let spot = Rect::from_min_size(Pos2::new(5000.0, 0.0), size);
+    assert_eq!(app.free_spot_near(spot, b), spot);
+    assert_eq!(side_of(Rect::from_min_size(Pos2::new(0.0, 500.0), size), b), "abaixo de você");
 }

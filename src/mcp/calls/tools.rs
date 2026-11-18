@@ -16,7 +16,8 @@ pub(crate) fn tools() -> Value {
             "description": "Adiciona elementos (objetos JSON com type, x, y, width, height, cores, text, points). Extras: `label: {text, fontSize?}` em formas e setas; \
                 `start: {id}` / `end: {id}` em setas para ligá-las a formas (os pontos são calculados sozinhos). \
                 Um terminal, navegador ou árvore de arquivos que você abre aqui (type terminal, portal, filetree) já nasce ligado a você \
-                por uma corda (ao seu terminal ou ao seu cartão de chat): list_agents o mostra e read_terminal lê a tela do terminal. \
+                por uma corda (ao seu terminal ou ao seu cartão de chat): list_agents o mostra e read_terminal lê a tela do terminal; \
+                posto em cima de outra janela ou nota, ele vai para o lugar livre mais perto de você. \
                 Para rodar testes ou uma API e acompanhar, prefira create_terminal. Devolve os ids criados (e em `linked` os ligados a você).",
             "inputSchema": { "type": "object", "properties": { "elements": elements }, "required": ["elements"] },
         },
@@ -220,7 +221,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "recruit_agent",
-            "description": "Cria um agente novo (um terminal) abaixo do seu, na mesma pasta, já ligado a você; ele ganha \
+            "description": "Cria um agente novo (um terminal) abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você; ele ganha \
                 um nome (a resposta diz qual) e você fala com ele com ask_agent. Só de dentro de um terminal do MagoAgent. \
                 Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para \
                 dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).",
@@ -232,7 +233,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "create_portal",
-            "description": "Abre um navegador (página web) à direita do seu terminal, já ligado a você. Só de dentro de um terminal do MagoAgent.",
+            "description": "Abre um navegador (página web) à direita do seu terminal (com o lugar tomado, no lugar livre mais perto de você), já ligado a você. Só de dentro de um terminal do MagoAgent.",
             "inputSchema": { "type": "object", "properties": {
                 "url": { "type": "string" },
                 "name": { "type": "string", "description": "opcional; padrão o domínio" },
