@@ -1,0 +1,104 @@
+name: Bug
+description: Algo no MagoAgent não funciona como deveria
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por ajudar a melhorar o MagoAgent!
+
+        > [!TIP]
+        > A versão fica em **Ajustes › Sobre**.
+
+        > [!CAUTION]
+        > **Nunca** cole tokens nem chaves de API (OpenAI, VoiceStudio, GitHub, Spotify…), senhas ou conteúdo privado dos
+        > seus desenhos e conversas. Confira registros e capturas antes de enviar.
+
+  - type: textarea
+    id: aconteceu
+    attributes:
+      label: O que aconteceu
+      description: O problema, de forma clara e curta.
+    validations:
+      required: true
+
+  - type: textarea
+    id: passos
+    attributes:
+      label: Como reproduzir
+      placeholder: |
+        1. Abra um terminal no canvas
+        2. Clique em '...'
+        3. Veja o erro
+    validations:
+      required: true
+
+  - type: textarea
+    id: esperado
+    attributes:
+      label: O que era esperado
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sistema
+    attributes:
+      label: Sistema
+      options:
+        - Windows
+        - Windows com WSL
+        - Linux (X11)
+        - Linux (Wayland)
+        - macOS
+    validations:
+      required: true
+
+  - type: input
+    id: versao
+    attributes:
+      label: Versão do MagoAgent
+      description: Ajustes › Sobre (ou o commit, num build do repositório).
+      placeholder: "0.0.33"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: parte
+    attributes:
+      label: Onde acontece
+      multiple: true
+      options:
+        - Canvas e desenho
+        - Terminal
+        - Chat (Claude Code)
+        - Chat (Codex)
+        - Maestro / Luna (voz)
+        - Ilha
+        - Árvore de arquivos
+        - Navegador
+        - MCP (agente de fora)
+        - Atualização / instalador
+        - Outro
+
+  - type: textarea
+    id: capturas
+    attributes:
+      label: Capturas ou vídeo
+      description: Arraste os arquivos aqui. Se possível, de uma cena de teste, não do seu desenho real.
+
+  - type: textarea
+    id: registros
+    attributes:
+      label: Registros
+      description: Mensagens de erro, o fim do crash.log (ver o modelo "Travamento") ou a saída do app aberto pelo terminal.
+      render: text
+
+  - type: checkboxes
+    id: conferencia
+    attributes:
+      label: Antes de enviar
+      options:
+        - label: Procurei nas issues abertas e não achei uma igual.
+          required: true
+        - label: Tirei tokens, chaves e conteúdo privado do texto, dos registros e das capturas.
+          required: true

@@ -1,13 +1,15 @@
 # Compila, verifica qualidade e testa no Windows e no Linux: a cada push na main, em cada pull request para a main e
 # dentro do release (release.yml). Os PRs para a dev (o trabalho dos agentes, juntado e testado lá) não rodam o CI: ele
 # roda no PR da dev para a main. Uma vez por commit: o push de uma branch com PR e a tag do release rodavam outro igual ao mesmo
-# tempo, disputando as máquinas.
+# tempo, disputando as máquinas. PR em rascunho não roda: o CI começa quando ele fica pronto para revisão.
+# O Rust é o do rust-toolchain.toml; a versão das actions dtolnay/rust-toolchain abaixo sobe junto com ele.
 name: CI
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_call:
 # um push novo no mesmo PR cancela o CI do anterior, que já não vale
 concurrency:
@@ -17,13 +19,18 @@ concurrency:
 permissions:
   contents: read
   actions: write
+# O cache do Rust não é gravado nas tags: cada release gravava 2,7 GB que nenhuma execução reaproveita (o cache de uma
+# tag só serve a ela) e que empurravam os outros para fora do limite de 10 GB do repositório.
 jobs:
   fmt:
     name: Formatação
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2
-      - uses: dtolnay/rust-toolchain@stable
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.100.0
         with:
           components: rustfmt
       - run: rustfmt --edition 2024 --check $(find src -name "*.rs")
@@ -35,15 +42,20 @@ jobs:
 
   clippy:
     name: Clippy
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     # no Windows: lá todo o código compila (o que só o Windows usa daria "nunca usado" no Linux)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4.2.2
-      - uses: dtolnay/rust-toolchain@stable
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.100.0
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2.8.1
-      - run: cargo clippy --all-targets --release -- -D warnings
+        with:
+          save-if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      - run: cargo clippy --all-targets --release --locked -- -D warnings
       - name: Parar o resto do CI
         if: failure()
         run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
@@ -52,11 +64,16 @@ jobs:
 
   auditoria:
     name: Auditoria de dependências
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2
-      - uses: dtolnay/rust-toolchain@stable
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.100.0
       - uses: Swatinem/rust-cache@v2.8.1
+        with:
+          save-if: ${{ !startsWith(github.ref, 'refs/tags/') }}
       - run: cargo install cargo-deny --locked
       - run: cargo deny check
       - name: Parar o resto do CI
@@ -67,6 +84,7 @@ jobs:
 
   test:
     name: Testes
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     strategy:
       fail-fast: true
       matrix:
@@ -74,15 +92,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4.2.2
-      - uses: dtolnay/rust-toolchain@stable
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.100.0
       - uses: Swatinem/rust-cache@v2.8.1
+        with:
+          save-if: ${{ !startsWith(github.ref, 'refs/tags/') }}
       - name: Dependências do Linux
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev libasound2-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libssl-dev libwebkit2gtk-4.1-dev
       - name: Identidade do git para os testes que fazem commits
         run: git config --global user.name ci && git config --global user.email ci@example.com
       # sem `cargo check` antes: não há examples nem benches, e o `cargo test` já compila tudo o que ele compilaria
-      - run: cargo test --release
+      - run: cargo test --release --locked
       - name: Parar o resto do CI
         if: failure()
         run: gh run cancel ${{ github.run_id }} --repo ${{ github.repository }}
@@ -91,16 +113,21 @@ jobs:
 
   e2e:
     name: Teste de ponta a ponta
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4.2.2
-      - uses: dtolnay/rust-toolchain@stable
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.100.0
       - uses: Swatinem/rust-cache@v2.8.1
+        with:
+          save-if: ${{ !startsWith(github.ref, 'refs/tags/') }}
       - run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev libxdo-dev libayatana-appindicator3-dev libasound2-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libssl-dev libwebkit2gtk-4.1-dev xvfb libxkbcommon-x11-0 libgl1-mesa-dri libegl1 libxcursor1 libxrandr2 libxi6
       - name: Criar cena de teste
         run: printf '%s\n' '{"version":1,"elements":[],"background":[255,255,255,255]}' > "$RUNNER_TEMP/teste.mago"
       - name: Compilar
-        run: cargo build --release
+        run: cargo build --release --locked
       - name: Rodar o app e capturar a tela
         run: xvfb-run -a target/release/magoagent
         env:

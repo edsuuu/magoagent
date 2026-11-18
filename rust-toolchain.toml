@@ -1,0 +1,8 @@
+# A versão do Rust do projeto, a mesma na CI e nas máquinas: uma versão nova (e os lints novos do clippy dela) só entra
+# por um commit que muda este arquivo e o `dtolnay/rust-toolchain@<versão>` dos workflows (.github/workflows), junto.
+# Os outros alvos da compilação cruzada (AGENTS.md › Qualidade) se instalam uma vez por versão:
+#   rustup target add x86_64-pc-windows-msvc aarch64-apple-darwin x86_64-unknown-linux-gnu
+[toolchain]
+channel = "1.100.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
