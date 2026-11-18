@@ -7,6 +7,7 @@ use super::minis::mini_cells;
 use super::stage::{self, Activity};
 use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, agent_color, icons, main_state};
 use crate::app::chat::list::{Look, clipped, glyph};
+use crate::app::chat::mini_agents::pressable;
 use crate::app::integrations::spotify::Now;
 use crate::app::integrations::spotify::groove::{Dance, Groove};
 use crate::app::island::forms;
@@ -549,7 +550,9 @@ impl DrawingApp {
     }
 
     /// The tabs at the left (Início, the conversation, Chats, Claude Code, GitHub and Spotify when they are on, the new
-    /// chat); the voice, the settings and the close at the right.
+    /// chat); the voice, the settings and the close at the right. Each takes its own press with the hand over it (the
+    /// island under them is dragged by the press: asked "o cursor fica em modo visual como move e não com cursor
+    /// pointer"); their names go to the system's accessibility, not to a tip over the page under them.
     fn island_header(&self, ui: &mut egui::Ui, rect: Rect, view: &View, out: &mut Out, time: f64) {
         let center_y = rect.top() + 8.0 + 17.0;
         let pinned = !view.asks.is_empty();
@@ -557,7 +560,7 @@ impl DrawingApp {
         let count = tabs.len();
         for (index, (tab, icon, size, tip)) in tabs.into_iter().enumerate() {
             let area = Rect::from_center_size(Pos2::new(rect.left() + 14.0 + 15.0 + index as f32 * 35.0, center_y), Vec2::new(30.0, 28.0));
-            let response = ui.interact(area, ui.scope_id().with(("island_tab", index)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
+            let response = pressable(ui, area, ui.scope_id().with(("island_tab", index)), tip);
             let on = view.tab == tab && !pinned && !view.settings;
             // a round mark under the icon, not a capsule (asked: "a aba ativa tá meia oval")
             if on {
@@ -588,7 +591,7 @@ impl DrawingApp {
         let mut button = |ui: &mut egui::Ui, name: &str, tip: &str, on: bool| {
             let area = Rect::from_center_size(Pos2::new(x, center_y), Vec2::splat(24.0));
             x -= 32.0;
-            let response = ui.interact(area, ui.scope_id().with(name), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
+            let response = pressable(ui, area, ui.scope_id().with(name), tip);
             let ink = if on { INK } else { DIM };
             (response, area.center(), ink)
         };

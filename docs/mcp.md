@@ -2,7 +2,7 @@
 
 <!-- gerado por docs/mcp.py a partir do tools/list do app: não edite à mão -->
 
-O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.29) e tem **106 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
+O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.30) e tem **106 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
 
 ## Ligar
 
@@ -534,11 +534,12 @@ Abre um chat novo e o mostra: `agent` claude ou codex (vazio: o de Ajustes), na 
 
 ### `chat_open`
 
-Mostra um chat à pessoa.
+Mostra um chat à pessoa: na tela de chat do app (place app, o padrão) ou na conversa da ilha (place island), como escolher um agente da Luna no botão Agentes da conversa da ilha (ou Voltar à Luna), sem abrir janela flutuante.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
 | `chat` (obrigatório) | string | o nome do chat (ou parte dele), como chat_list mostra; vazio: o chat aberto |
+| `place` | string: `app`, `island` | onde mostrar: app (o padrão) ou island (a conversa da ilha) |
 
 ### `chats_view`
 

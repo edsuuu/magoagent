@@ -81,7 +81,7 @@ impl DrawingApp {
         let origin = view.origin.get();
         let height = page.bottom() + 10.0 - origin.y;
         aim(view, Pos2::new(origin.x + 52.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 44.0, MagoState::from_agent(state, time));
-        let (log, chip_row, bar) = chat_body(page, bar_height(ui, session_draft_id(&session.id)));
+        let (log, chip_row, bar) = chat_body(page, bar_height(ui, session_draft_id(&session.id)), 0.0);
         match &session.transcript {
             Some(transcript) => {
                 let messages: Vec<&ChatItem> = said(&transcript.items).collect();
