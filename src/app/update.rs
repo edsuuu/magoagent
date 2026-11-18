@@ -57,6 +57,12 @@ impl eframe::App for DrawingApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.save_on_exit();
         crate::mcp::bridge::remove_hook_endpoint();
+        // Linux: the pages' X11 windows live inside the app's; they go first, so GTK never draws in a window that is gone
+        #[cfg(target_os = "linux")]
+        if !self.portals.is_empty() {
+            self.portals.clear();
+            crate::app::system::gtk::call(std::time::Duration::from_secs(1), || ());
+        }
     }
 
     /// eframe clears every viewport with this one color: the avatar's and the call popup's windows
@@ -284,11 +290,10 @@ impl eframe::App for DrawingApp {
         if !self.caption_hooked {
             self.caption_hooked = crate::app::ui::titlebar::native_caption::install(&*frame);
         }
-        #[cfg(not(target_os = "linux"))]
         self.sync_portals(&*frame, &ctx);
         #[cfg(not(target_os = "linux"))]
         self.sync_voice_page(&*frame, &ctx);
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         if let Some(path) = self.script.as_mut().and_then(Script::take_pages) {
             self.save_page_shots(&path);
         }

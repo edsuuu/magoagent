@@ -22,7 +22,6 @@ fn a_double_click_on_a_chat_terminals_title_enlarges_it_and_a_click_on_its_body_
     assert!(app.chat_open);
 }
 
-#[cfg(not(target_os = "linux"))]
 #[test]
 fn a_lifted_portal_hides_the_pages_of_the_other_portals() {
     let ctx = Context::default();

@@ -188,11 +188,9 @@ impl Default for DrawingApp {
             dock_drag: None,
             hop: None,
             ropes: Default::default(),
-            #[cfg(not(target_os = "linux"))]
             portals: Default::default(),
             #[cfg(not(target_os = "linux"))]
             voice_page: None,
-            #[cfg(not(target_os = "linux"))]
             portal_events: std::sync::mpsc::channel(),
             portal_url_edit: None,
             design: None,

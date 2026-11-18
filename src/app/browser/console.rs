@@ -9,7 +9,6 @@ const LONGEST: usize = 2000;
 
 /// Runs before the page's own scripts (console.js): keeps the last `KEPT` console calls, script errors and
 /// unhandled rejections in `window.__magoConsole`. It never breaks the page and installing it twice does nothing.
-#[cfg_attr(target_os = "linux", allow(dead_code))] // the page itself only exists off Linux
 pub(crate) fn initialization_script() -> String {
     include_str!("console.js").replace("LONGEST", &LONGEST.to_string()).replace("KEPT", &KEPT.to_string())
 }

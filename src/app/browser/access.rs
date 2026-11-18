@@ -24,7 +24,22 @@ impl DrawingApp {
         }
     }
 
-    #[cfg(not(target_os = "linux"))]
+    /// The same on Linux: each open page as WebKitGTK shows it, beside the window's picture.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn save_page_shots(&self, path: &str) {
+        for element in self.scene.elements.iter().filter(|e| e.portal.is_some()) {
+            let Some(rect) = self.portal_page_rect(element) else { continue };
+            let Some(tab) = self.open_tab_view(&element.id) else { continue };
+            eprintln!("pagina {}: no canvas {:?}, endereço {}", element.id, rect, tab.webview.url().unwrap_or_default());
+            let file = format!("{path}-{}.png", element.id);
+            tab.webview.picture(move |picture| {
+                if let Some(png) = picture.and_then(|(width, height, rgba, _)| crate::app::browser::shot::png(width, height, rgba).ok()) {
+                    let _ = std::fs::write(file, png);
+                }
+            });
+        }
+    }
+
     pub(crate) fn open_tab_view_mut(&mut self, id: &str) -> Option<&mut TabView> {
         let active = self.scene.elements.iter().find(|e| e.id == id)?.portal.as_ref()?.active_tab();
         self.portals.get_mut(id)?.tabs.get_mut(active)
@@ -32,7 +47,6 @@ impl DrawingApp {
 
     /// Runs `script` in a portal's open tab; the reply comes back JSON-encoded.
     pub(crate) fn portal_eval(&mut self, id: &str, script: &str, reply: std::sync::mpsc::Sender<Result<String, String>>) {
-        #[cfg(not(target_os = "linux"))]
         if let Some(tab) = self.open_tab_view(id) {
             let answer = reply.clone();
             let result = tab.webview.evaluate_script_with_callback(script, move |json| {
@@ -43,11 +57,14 @@ impl DrawingApp {
             }
             return;
         }
-        let _ = (id, script);
-        let _ = reply.send(Err(if cfg!(target_os = "linux") { "navegadores ainda não abrem no Linux" } else { "esse navegador não está aberto" }.into()));
+        #[cfg(target_os = "linux")]
+        if !pages_open() {
+            let _ = reply.send(Err(PAGES_UNAVAILABLE.into()));
+            return;
+        }
+        let _ = reply.send(Err("esse navegador não está aberto".into()));
     }
 
-    #[cfg(not(target_os = "linux"))]
     pub(crate) fn open_tab_view(&self, id: &str) -> Option<&TabView> {
         let active = self.scene.elements.iter().find(|e| e.id == id)?.portal.as_ref()?.active_tab();
         self.portals.get(id)?.tabs.get(active)
@@ -61,23 +78,18 @@ impl DrawingApp {
         {
             return;
         }
-        #[cfg(not(target_os = "linux"))]
         if let Some(tab) = self.open_tab_view(id) {
             let _ = tab.webview.reload();
         }
-        let _ = id;
     }
 
     pub(crate) fn portal_script(&self, id: &str, script: &str) {
-        #[cfg(not(target_os = "linux"))]
         if let Some(tab) = self.open_tab_view(id) {
             let _ = tab.webview.evaluate_script(script);
         }
-        let _ = (id, script);
     }
 
     /// Whether `nonce` is the secret the Design overlay of a tab was armed with.
-    #[cfg(not(target_os = "linux"))]
     pub(crate) fn secret_armed(&self, id: &str, tab: u64, nonce: Option<&str>) -> bool {
         let armed = self.portals.get(id).and_then(|v| v.tabs.iter().find(|t| t.uid == tab)).and_then(|t| t.secret.as_deref());
         armed.is_some() && armed == nonce

@@ -66,7 +66,12 @@ Anote a distro, o ambiente (GNOME/KDE…, X11 ou Wayland), a GPU e o tempo de bu
 - LSP: se houver servidor instalado (rust-analyzer…), avisos aparecem.
 
 ### 6. Navegador (portal)
-- O README diz que portais **ainda não abrem no Linux**: confirme o comportamento (mensagem clara, sem travar).
+- No X11 (ou no XWayland, o padrão numa sessão Wayland) a página abre dentro do cartão (WebKitGTK, pacote
+  `libwebkit2gtk-4.1-0`): segue o canvas ao arrastar, ampliar e mover o cartão, some fora da tela e deixa ver os menus
+  do app por cima. Endereço, voltar/avançar/recarregar e abas; clicar na página dá o teclado a ela, clicar no app o
+  devolve. Pelo MCP: `portal_console`, `portal_fill`, `portal_screenshot` e Copiar Captura de Tela.
+- Com `MAGOAGENT_WAYLAND=1` o cartão mostra só o endereço e o aviso "No Linux o navegador abre só no X11", sem travar.
+- Página preta numa placa NVIDIA: o app já liga `WEBKIT_DISABLE_DMABUF_RENDERER=1`; confira que não foi desligado.
 
 ### 7. Ilha (pílula no topo da tela)
 Ligue em Ajustes (`Prefs.island`). É uma janela própria por cima de tudo; no Wayland a posição pode ser do compositor.
