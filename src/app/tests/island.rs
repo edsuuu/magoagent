@@ -638,3 +638,21 @@ fn a_click_elsewhere_folds_the_open_island_but_not_one_with_a_question() {
     }
     assert!(!app.person_asks.borrow().is_empty() && app.island.size().x > COMPACT_W + 20.0, "the question keeps it open: {}", app.island.size().x);
 }
+
+/// Asked: "o App consome mais processador, está entre 34 e às vezes 100, precisa rever isso". Every frame of the island
+/// paints the whole app: with the pointer on it, it asks for them at the rate in Ajustes; left alone and settled, only
+/// for what moves in it, never sooner than the ambient rate.
+#[test]
+fn the_island_left_alone_asks_for_few_frames() {
+    let (mut app, ctx, mut time) = opened();
+    let on_it = island_rect(&app).center();
+    rest(&mut app, &ctx, &mut time, on_it, 1.0);
+    let touched = frame_delay(&mut app, &ctx, time);
+    assert!(touched <= crate::app::update::frame_spacing(), "the pointer on it: the rate in Ajustes ({touched:?})");
+    app.island.over = Some(false);
+    frame_at(&mut app, &ctx, time, vec![egui::Event::PointerGone]);
+    run(&mut app, &ctx, time + 0.05, time + 2.0, vec![]);
+    assert_eq!(app.island.size().x, EXPANDED_W, "still open");
+    let alone = frame_delay(&mut app, &ctx, time + 2.05);
+    assert!(alone >= crate::app::update::AMBIENT, "left alone: no frame sooner than the ambient rate ({alone:?})");
+}

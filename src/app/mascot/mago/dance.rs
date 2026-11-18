@@ -292,6 +292,7 @@ pub(crate) fn paint_mago_dancing(painter: &Painter, id: &str, center: Pos2, size
         motion.advance(state, time, None);
         draw::paint_dancer(painter, center, size, color, motion, &pose, time);
     });
-    let frame = if groove.dance == Dance::Nap { std::time::Duration::from_millis(66) } else { crate::app::update::frame_spacing() };
-    painter.ctx().request_repaint_after(frame.max(std::time::Duration::from_millis(16)));
+    // dancing, at the ambient rate: the screen's kept the whole app painting all song long
+    let frame = if groove.dance == Dance::Nap { std::time::Duration::from_millis(66) } else { crate::app::update::AMBIENT };
+    painter.ctx().request_repaint_after(frame);
 }

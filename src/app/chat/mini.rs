@@ -317,7 +317,7 @@ impl DrawingApp {
         let time = ctx.input(|i| i.time);
         let working = matches!(row.state, AgentState::Working(_));
         if (working || row.state == AgentState::Waiting) && ctx.input(|i| i.viewport().visible()) != Some(false) {
-            ctx.request_repaint_after(std::time::Duration::from_millis(33));
+            ctx.request_repaint_after(crate::app::update::AMBIENT);
         }
         let unread = !self.mini.open && !working && self.talk_len(&id) > self.mini.seen;
         let area = self.mini_area(ctx);
