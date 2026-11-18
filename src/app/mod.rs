@@ -126,6 +126,7 @@ impl DrawingApp {
             legacy_ide: None,
             filetree: None,
             chat: None,
+            link: None,
             note: NoteSpec::default(),
             rope: false,
             style,

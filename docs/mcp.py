@@ -41,7 +41,7 @@ GROUPS = [
                                       "avatar_follow", "flow", "usage", "usage_refresh", "memory")),
     ("Chats", ("chat_new", "chat_open", "chats_view", "chat_send", "chat_queue", "chat_list", "chat_search", "chat_rename", "chat_provider", "chat_command", "chat_context",
                "chat_decide", "chat_node", "mini_chat")),
-    ("Árvore de Arquivos e editor", ("file_tree", "ide_open", "ide_search", "ide_folder", "open_path", "open_default", "set_folder")),
+    ("Árvore de Arquivos e editor", ("file_tree", "ide_open", "ide_search", "ide_folder", "open_path", "file_link", "open_default", "set_folder")),
     ("Navegador (portais)", ("create_portal", "portal_navigate", "portal_read", "portal_click", "portal_fill", "portal_eval", "portal_scroll",
                              "portal_wait", "portal_screenshot", "portal_copy_screenshot", "portal_console", "portal_history", "portal_tab",
                              "portal_settings", "vault_list", "vault_accounts", "vault_fill")),

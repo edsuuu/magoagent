@@ -247,7 +247,7 @@ pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value
 
 /// Compact element JSON: only the fields an AI needs to reason about the drawing.
 pub(crate) fn describe(scene: &Scene) -> String {
-    const KEEP: [&str; 20] = [
+    const KEEP: [&str; 21] = [
         "id",
         "type",
         "x",
@@ -268,6 +268,7 @@ pub(crate) fn describe(scene: &Scene) -> String {
         "startArrowhead",
         "endArrowhead",
         "groupIds",
+        "link",
     ];
     let elements: Vec<Value> = interop_elements(&scene.elements)
         .into_iter()

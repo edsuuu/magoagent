@@ -32,6 +32,10 @@ textos que cruzam linhas ganham contorno na cor do fundo automaticamente; \
 para contêineres/cards use type \"frame\" (name opcional, vazio esconde o título): mover o quadro \
 leva tudo o que está dentro dele; setas com `start: {id}` e \
 `end: {id}` se prendem às formas e as acompanham quando elas se movem. Dê `id` aos elementos para referenciá-los. \
+Formas, textos e notas aceitam `link` (um arquivo, \"src/app/x.rs\" ou \"src/app/x.rs:120\", ou um endereço): o desenho ganha \
+uma marca de link no canto que, clicada, abre o arquivo numa Árvore de Arquivos do canvas na linha, com um botão Voltar; ao \
+desenhar sobre o código que a pessoa pediu para abrir ou ver na IDE do canvas, ponha em cada caixa o `link` do arquivo (e da \
+linha) de que ela fala, com o caminho absoluto. file_link abre um desses links (ou volta) como o clique da pessoa. \
 Fluxo sugerido: planeje o layout (ex.: caixas de 180x80 com 80px de espaço), crie tudo com add_elements, chame \
 view para ver a imagem e corrija com update_elements. \
 Agentes: o canvas também tem terminais (type \"terminal\" com name, command e cwd) e uma seta presa a dois deles os conecta; \

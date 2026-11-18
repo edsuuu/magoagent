@@ -27,7 +27,9 @@ impl DrawingApp {
         let result = self.act_on(action, args);
         // a chat shown in the island is over every window already
         let in_island = args["place"] == "island";
-        if result.is_ok() && !in_island && matches!(action, "ide_folder" | "open_path" | "open_as_note" | "chat_new" | "chat_open" | "chat_node" | "chats_view")
+        if result.is_ok()
+            && !in_island
+            && matches!(action, "ide_folder" | "open_path" | "file_link" | "open_as_note" | "chat_new" | "chat_open" | "chat_node" | "chats_view")
         {
             self.bring_to_front();
         }
@@ -67,6 +69,8 @@ impl DrawingApp {
                 self.drop_on_canvas(&paths, at)
             }
             "open_path" => self.act_open_path(&text("path"), args["line"].as_u64().map(|l| l as usize), &text("asker")),
+            "file_link" if text("action") == "back" => self.link_go_back(),
+            "file_link" => self.act_file_link(&text("path"), args["line"].as_u64().map(|line| line as usize), &text("asker")),
             "open_as_note" => {
                 let path = folder(&text("path")).filter(|_| !text("path").is_empty()).ok_or("diga `path`: o arquivo a abrir na nota")?;
                 let chat = match text("chat").as_str() {
@@ -163,6 +167,14 @@ impl DrawingApp {
                 }
                 // another agent's words go signed with its name: in the chat they are not taken for the person's
                 let asker = text("asker");
+                // the boss to its recruit: a question in the recruit's line, whose answer comes back to the boss's chat
+                // when it is done (ask.rs), as a recruit's first task does
+                if self.is_chat(&asker) && self.boss_of(&id).as_deref() == Some(asker.as_str()) {
+                    let (reply, _) = std::sync::mpsc::channel();
+                    let name = self.speaker(&asker);
+                    self.ask_chat(&id, &asker, &name, &text("text"), reply);
+                    return Ok("Mensagem enviada ao agente do seu time; a resposta dele chega neste chat quando ele terminar.".into());
+                }
                 let words = if asker.is_empty() || asker == id { text("text") } else { crate::app::maestro::signed(&self.speaker(&asker), &text("text")) };
                 self.chat_outbox.push((id, words));
                 Ok("Mensagem enviada ao chat.".into())

@@ -249,6 +249,15 @@ pub(crate) struct UiColors {
     // agent states: error, waiting for you; as text on the panels too
     pub(crate) danger: Color32,
     pub(crate) warning: Color32,
+    /// Code and file names in a chat's words, and the links to files: blue-purple letters on no ground (asked: "quando é
+    /// código ou arquivo, ele fica com o background gray; ao invés disso muda a cor, deixa tipo um azul/purple igual o
+    /// Claude Code faz"), the lavender of Claude Code's dark theme and its deeper blue on a light one.
+    pub(crate) code: Color32,
+}
+
+/// `UiColors::code` on a ground whose letters are `ink`: the light one under light letters (a dark ground).
+pub(crate) fn code_ink(ink: Color32) -> Color32 {
+    if egui::Rgba::from(ink).intensity() > 0.35 { Color32::from_rgb(177, 185, 249) } else { Color32::from_rgb(87, 105, 247) }
 }
 
 impl UiColors {
@@ -265,6 +274,7 @@ impl UiColors {
                 muted: Color32::from_rgb(0x7a, 0x7a, 0x7a),
                 danger: Color32::from_rgb(0xf8, 0x51, 0x49),
                 warning: Color32::from_rgb(0xf0, 0xa0, 0x20),
+                code: code_ink(Color32::WHITE),
             }
         } else {
             Self {
@@ -276,6 +286,7 @@ impl UiColors {
                 muted: Color32::from_rgb(0x99, 0x99, 0x99),
                 danger: Color32::from_rgb(0xc9, 0x2a, 0x2a),
                 warning: Color32::from_rgb(0x90, 0x64, 0x20),
+                code: code_ink(Color32::BLACK),
             }
         }
     }

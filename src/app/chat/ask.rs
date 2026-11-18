@@ -20,21 +20,41 @@ pub(crate) struct ChatAsk {
     running: bool,
     /// What that run said last (its answer), or how it failed.
     answer: Option<Result<String, String>>,
+    /// A recruit's task from its boss: sent as written, already running.
+    task: bool,
 }
 
 /// Between the asker's name and the question, in the message the chat gets.
 const RETURNS: &str = "\" (a sua resposta volta para quem perguntou):\n\n";
 
+/// Between an agent's name and what it answered, in the message the chat that asked gets when it no longer waits.
+const ANSWERED: &str = "\" (o que você pediu, terminado agora):\n\n";
+
 impl ChatAsk {
-    /// The message as the chat gets it: whose question it is, then the question.
+    /// The message as the chat gets it: whose question it is, then the question; a task its boss gave as it was written.
     pub(crate) fn prompt(&self) -> String {
+        if self.task {
+            return self.text.clone();
+        }
         format!("Pergunta de \"{}{RETURNS}{}", self.asker, self.text)
     }
 }
 
-/// `prompt` read back: who asked and the question; None for a message of the person's.
+/// `prompt` read back, or an answer `answer_message` brought: who asked (or answered) and the words; None for a message
+/// of the person's.
 pub(crate) fn asked_by(message: &str) -> Option<(&str, &str)> {
-    message.strip_prefix("Pergunta de \"")?.split_once(RETURNS)
+    let question = message.strip_prefix("Pergunta de \"").and_then(|rest| rest.split_once(RETURNS));
+    question.or_else(|| message.strip_prefix("Resposta de \"")?.split_once(ANSWERED))
+}
+
+/// Whether `message` is an agent's answer brought to the chat that asked (`answer_message`), not a question.
+pub(crate) fn is_answer(message: &str) -> bool {
+    message.strip_prefix("Resposta de \"").is_some_and(|rest| rest.contains(ANSWERED))
+}
+
+/// What `who` answered, as the chat that asked it gets it once it no longer waits for it.
+pub(crate) fn answer_message(who: &str, words: &str) -> String {
+    format!("Resposta de \"{who}{ANSWERED}{words}")
 }
 
 impl DrawingApp {
@@ -44,7 +64,7 @@ impl DrawingApp {
             let _ = reply.send(Err("não existe mais".into()));
             return;
         }
-        let ask = ChatAsk { chat: id.into(), from: from.into(), asker: asker.into(), text: text.into(), reply, running: false, answer: None };
+        let ask = ChatAsk { chat: id.into(), from: from.into(), asker: asker.into(), text: text.into(), reply, running: false, answer: None, task: false };
         self.chat_asks.push(ask);
     }
 
@@ -58,8 +78,14 @@ impl DrawingApp {
             if ask.running {
                 // its turn ended (or was stopped) once the chat runs nothing
                 if !self.chat_runs.contains_key(&id) {
-                    let ask = self.chat_asks.remove(i);
-                    let _ = ask.reply.send(ask.answer.unwrap_or_else(|| Err("parou sem responder".into())));
+                    let mut ask = self.chat_asks.remove(i);
+                    let answer = ask.answer.take().unwrap_or_else(|| Err("parou sem responder".into()));
+                    // nobody waits for it any more (a recruit's task, a question past the asker's wait): it goes to the
+                    // chat that asked, as it is said (asked: "não aparece na hora, nem a linha de vínculo diz que o
+                    // agente terminou e está mandando mensagem para o Maestro")
+                    if let Err(lost) = ask.reply.send(answer) {
+                        self.bring_answer(ctx, &ask, lost.0);
+                    }
                     continue;
                 }
             } else if !self.is_chat(&id) {
@@ -81,7 +107,7 @@ impl DrawingApp {
 
     /// Question `i` went to its chat: its answer is what that run says. Kept as the asker's, so the
     /// chat shows it as that agent's and not the person's, and an event says who asked whom.
-    fn ask_sent(&mut self, i: usize) {
+    pub(crate) fn ask_sent(&mut self, i: usize) {
         let ask = &mut self.chat_asks[i];
         ask.running = true;
         if let Some(bridge) = &self.bridge {
@@ -91,6 +117,70 @@ impl DrawingApp {
             shared.asked.drain(..extra);
             shared.events.push((ask.from.clone(), ask.chat.clone(), tool_summary("pergunta", &json!({ "prompt": ask.text }))));
         }
+    }
+
+    /// A recruit chat's first message just went: its boss (the chat whose rope holds it, `boss_of`) gets what it says
+    /// at the end of that turn, and the rope runs from the boss to it now.
+    pub(crate) fn task_sent(&mut self, id: &str, text: &str) {
+        let Some(boss) = self.boss_of(id) else { return };
+        let (reply, _) = std::sync::mpsc::channel();
+        let asker = self.speaker(&boss);
+        if let Some(bridge) = &self.bridge {
+            locked(&bridge.shared).asked.push((id.into(), text.into(), asker.clone()));
+        }
+        let ask = ChatAsk { chat: id.into(), from: boss.clone(), asker, text: text.into(), reply, running: true, answer: None, task: true };
+        self.chat_asks.push(ask);
+        self.message_event(&boss, id, tool_summary("tarefa", &json!({ "prompt": text })));
+    }
+
+    /// The chat that recruited chat `id`: the start of a rope that ends on it (`rope_between` ties the recruiter first).
+    pub(crate) fn boss_of(&self, id: &str) -> Option<String> {
+        fn end(binding: &Option<Binding>) -> Option<&str> {
+            binding.as_ref().map(|binding| binding.element_id.as_str())
+        }
+        self.scene
+            .elements
+            .iter()
+            .filter(|element| element.rope && end(&element.ends.end) == Some(id))
+            .filter_map(|element| end(&element.ends.start))
+            .find(|start| self.is_chat(start))
+            .map(str::to_string)
+    }
+
+    /// The question or task pairs a chat's agent runs on for another now: (who asked, who answers). Their rope stays lit.
+    pub(crate) fn asks_running(&self) -> Vec<(String, String)> {
+        self.chat_asks.iter().filter(|ask| ask.running && !ask.from.is_empty()).map(|ask| (ask.from.clone(), ask.chat.clone())).collect()
+    }
+
+    /// An answer nobody waits for goes to the chat that asked: as the answering agent's (whose it is over its bubble),
+    /// in line if that chat is answering now, and a dot runs along their rope.
+    fn bring_answer(&mut self, ctx: &Context, ask: &ChatAsk, answer: Result<String, String>) {
+        if !self.is_chat(&ask.from) {
+            return;
+        }
+        let who = self.speaker(&ask.chat);
+        let words = match answer {
+            Ok(words) if !words.trim().is_empty() => words.trim().to_string(),
+            Ok(_) => "Terminei, sem nada a dizer.".into(),
+            Err(why) => format!("Não terminei: {why}"),
+        };
+        let message = answer_message(&who, &words);
+        if let Some(bridge) = &self.bridge {
+            let mut shared = locked(&bridge.shared);
+            shared.asked.push((ask.from.clone(), message.clone(), who.clone()));
+            let extra = shared.asked.len().saturating_sub(50);
+            shared.asked.drain(..extra);
+        }
+        self.message_event(&ask.chat, &ask.from, tool_summary("resposta", &json!({ "prompt": words })));
+        self.chat_send(ctx, &ask.from, &message);
+    }
+
+    /// A message from `from` to `to` in the log: its dot runs along their rope.
+    fn message_event(&mut self, from: &str, to: &str, what: String) {
+        let name = self.agent_label(from);
+        let mut event = AgentEvent::new(from, &name, EventKind::Message, what);
+        event.to = to.into();
+        self.record(event);
     }
 
     /// What the chat's agent printed (`poll_chats`): while it answers a question, its last words so

@@ -566,7 +566,7 @@ impl DrawingApp {
             }
             Tab::Chat => match &view.chat_row {
                 Some(row) if !view.chat_full => {
-                    self.island_prompt(ui, page, row, view, time, out);
+                    self.island_prompt(ui, page, row, view, look, time, out);
                     self.island_edges(ui, rect, out);
                 }
                 Some(row) => {

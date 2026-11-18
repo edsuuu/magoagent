@@ -13,6 +13,7 @@ pub(crate) mod diff;
 pub(crate) mod editor;
 pub(crate) mod find;
 pub(crate) mod input;
+pub(crate) mod link;
 pub(crate) mod menu;
 pub(crate) mod ops;
 pub(crate) mod pane;
@@ -155,6 +156,8 @@ pub(crate) struct FileTrees {
     pub(crate) ctx: Option<Context>,
     /// The "Conflitos" window and the merge window (editor/mergeview.rs) of the tree that asked for them.
     pub(crate) conflicts: crate::editor::Conflicts,
+    /// Where a link to a file (link.rs) took the person from, while its "Voltar" button shows.
+    pub(crate) link_back: Option<link::LinkReturn>,
 }
 
 impl DrawingApp {
