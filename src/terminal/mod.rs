@@ -15,17 +15,21 @@ use std::sync::{Arc, Mutex};
 
 mod select;
 mod theme;
-pub(crate) use select::{Found, Pick, cell_at};
+pub(crate) use select::{Found, GridCell, Pick, cell_at};
 pub(crate) use theme::{FONT_SIZES, GridView, Look, TermLook, TermPrefs, cell, font_size, grid_size_at, theme_choices};
 use theme::{MATCH, MATCH_CURRENT};
 mod glyphs;
 mod handle;
 mod keys;
 mod session;
+#[cfg(target_os = "macos")]
+mod snapshot;
 pub(crate) use glyphs::*;
 pub(crate) use handle::*;
 pub(crate) use keys::*;
 pub(crate) use session::*;
+#[cfg(target_os = "macos")]
+pub(crate) use snapshot::GridSnapshot;
 
 pub(crate) const TERMINAL_FONT: f32 = 14.0;
 /// One grid cell in world units: Hack advances 1233/2048 em.

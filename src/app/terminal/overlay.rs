@@ -90,6 +90,9 @@ impl DrawingApp {
     /// while typing, so the app's shortcuts stay off and Tab, arrows and Esc reach the shell,
     /// and takes the wheel for the scrollback. The canvas title strip stays draggable.
     pub(crate) fn terminal_overlay(&mut self, ctx: &Context) {
+        if swift_ui() {
+            return;
+        }
         let find = |id: &Option<String>| id.as_ref().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id && e.terminal.is_some())).cloned();
         if self.elevate_animating() {
             ctx.request_repaint();

@@ -17,6 +17,9 @@ const VEIL_BUTTON: f32 = 44.0;
 
 impl DrawingApp {
     pub(crate) fn paint_terminal(&self, painter: &Painter, element: &Element, rect: Rect, zoom: f32) {
+        if swift_ui() {
+            return;
+        }
         let focused = self.terminal_focus.as_ref() == Some(&element.id);
         // being typed into shows as the still dashed outline around it (paint.rs), not here
         let radius = (8.0 * zoom).min(255.0) as u8;
@@ -102,6 +105,9 @@ impl DrawingApp {
     /// action queued.
     pub(crate) fn terminal_extras(&mut self, ctx: &Context) {
         self.flush_copy_out(ctx);
+        if swift_ui() {
+            return;
+        }
         let card = |app: &Self, id: &str| {
             let e = app.scene.elements.iter().find(|e| e.id == id && e.terminal.is_some())?;
             let (rect, zoom) = app.terminal_frame(e);

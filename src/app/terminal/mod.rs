@@ -6,6 +6,8 @@ pub(crate) mod card;
 mod dialog;
 pub(crate) mod find;
 pub(crate) mod menu;
+#[cfg(target_os = "macos")]
+pub(crate) mod native;
 pub(crate) mod prefs;
 pub(crate) mod procs;
 
@@ -17,6 +19,36 @@ mod focus;
 mod overlay;
 mod ropes;
 mod sync;
+
+/// The terminal is drawn by the SwiftUI view (macOS, `MAGOAGENT_SWIFTUI`): egui steps aside.
+pub(crate) fn swift_ui() -> bool {
+    #[cfg(target_os = "macos")]
+    return crate::app::native::enabled("terminal");
+    #[cfg(not(target_os = "macos"))]
+    false
+}
+
+/// The SwiftUI view shows terminal `id`.
+pub(crate) fn swift_shows(id: &str) -> bool {
+    #[cfg(target_os = "macos")]
+    return native::shows(id);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = id;
+        false
+    }
+}
+
+/// The grid the SwiftUI view fits in terminal `id`, once it said.
+pub(crate) fn swift_grid(id: &str) -> Option<(usize, usize)> {
+    #[cfg(target_os = "macos")]
+    return native::grid_of(id);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = id;
+        None
+    }
+}
 
 /// The new / edit terminal dialog.
 #[derive(Clone, Debug)]
