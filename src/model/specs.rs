@@ -61,19 +61,21 @@ impl TerminalSpec {
         if self.name.is_empty() { "Terminal" } else { &self.name }
     }
 
-    /// What it types once its shell starts: plain `claude` resumes the conversation it remembers
-    /// while that file is still in `claude` (Claude Code's folder) and the option is on.
+    /// What it types once its shell starts: `claude`, with whatever options it has (a recruit's `--model`),
+    /// resumes the conversation it remembers while that file is still in `claude` (Claude Code's folder)
+    /// and the option is on, unless the command already picks a session.
     // ponytail: the file is looked up where the conversation was filed; a terminal moved to another
     // folder still resumes it, and Claude Code may not find it from there
     pub(crate) fn launch_command(&self, claude: Option<&std::path::Path>) -> String {
         let id = &self.claude_session;
         // typed into a shell: a UUID's characters only, whatever the file says
         let safe = !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+        let mut words = self.command.split_whitespace();
+        let picks = |word: &str| ["-r", "-c", "--resume", "--continue", "--session-id", "-p", "--print"].contains(&word.split('=').next().unwrap_or(word));
+        let fresh = words.next() == Some("claude") && !words.any(picks);
         match claude {
-            Some(dir)
-                if self.resume && safe && self.command.trim() == "claude" && crate::transcript::transcript_path(dir, &self.claude_folder, id).is_file() =>
-            {
-                format!("claude --resume {id}")
+            Some(dir) if self.resume && safe && fresh && crate::transcript::transcript_path(dir, &self.claude_folder, id).is_file() => {
+                format!("{} --resume {id}", self.command.trim())
             }
             _ => self.command.clone(),
         }

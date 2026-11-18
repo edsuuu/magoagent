@@ -3,6 +3,7 @@
 use crate::prelude::*;
 
 /// BGRA pixels as GDI gives them (its alpha left at zero) into opaque RGBA.
+#[cfg(windows)]
 fn opaque_rgba(mut pixels: Vec<u8>) -> Vec<u8> {
     for p in pixels.as_chunks_mut::<4>().0 {
         p.swap(0, 2);
@@ -12,6 +13,7 @@ fn opaque_rgba(mut pixels: Vec<u8>) -> Vec<u8> {
 }
 
 /// The picture as a PNG in base64, as the MCP sends images.
+#[cfg(not(target_os = "macos"))]
 fn png_base64(width: u32, height: u32, rgba: Vec<u8>) -> Result<String, String> {
     let image = image::RgbaImage::from_raw(width, height, rgba).ok_or("imagem vazia")?;
     let mut png = Vec::new();
@@ -103,15 +105,55 @@ pub(crate) fn webview_rgba(webview: &wry::WebView) -> Option<(u32, u32, Vec<u8>)
     Some((width, height, opaque_rgba(pixels)))
 }
 
+/// The page's picture as a PNG, from WebKit: it answers later, on the main thread, so `done` runs then (None if it failed).
+#[cfg(target_os = "macos")]
+fn page_png(webview: &wry::WebView, done: impl FnOnce(Option<Vec<u8>>) + 'static) {
+    use wry::WebViewExtMacOS;
+    let view = webview.webview();
+    // the snapshot takes the rect in the page's CSS px and multiplies by the page zoom: the whole view, in points, over the zoom
+    let (frame, zoom) = (view.frame(), unsafe { view.pageZoom() }.max(0.01));
+    super::design::snapshot(webview, [0.0, 0.0, frame.size.width / zoom, frame.size.height / zoom], done);
+}
+
+/// A PNG's pixels as RGBA, whatever its size (WebKit may hand a Retina screen twice the points).
+#[cfg(target_os = "macos")]
+pub(crate) fn png_rgba(png: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+    let image = image::load_from_memory_with_format(png, image::ImageFormat::Png).ok()?.into_rgba8();
+    Some((image.width(), image.height(), image.into_raw()))
+}
+
 impl DrawingApp {
-    /// The agents' `portal_screenshot`: the open tab of portal `id` as a PNG in base64.
-    pub(crate) fn portal_shot(&self, id: &str) -> Result<String, String> {
-        let (width, height, rgba) = self.page_rgba(id)?;
-        png_base64(width, height, rgba)
+    /// The agents' `portal_shot`: the open tab of portal `id` as a PNG in base64, sent to `reply`
+    /// (on the Mac WebKit answers later, never blocking the main thread).
+    pub(crate) fn portal_shot(&self, id: &str, reply: std::sync::mpsc::Sender<Result<String, String>>) {
+        #[cfg(target_os = "macos")]
+        match self.open_tab_view(id) {
+            Some(tab) => page_png(&tab.webview, move |png| {
+                let _ = reply
+                    .send(png.map(|png| crate::render::base64(&png)).ok_or_else(|| "não foi possível capturar a página: ela precisa estar na tela".into()));
+            }),
+            None => drop(reply.send(Err("a página desse navegador não está aberta".into()))),
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = reply.send(self.page_rgba(id).and_then(|(width, height, rgba)| png_base64(width, height, rgba)));
+    }
+
+    /// Copiar Captura de Tela, Mac: the page's picture, decoded into `portal_extras.ready` when WebKit has it.
+    #[cfg(target_os = "macos")]
+    pub(crate) fn page_to_clipboard(&self, id: &str, ctx: &Context) -> Result<(), String> {
+        let tab = self.open_tab_view(id).ok_or("a página desse navegador não está aberta")?;
+        let (ready, ctx) = (self.portal_extras.ready.clone(), ctx.clone());
+        page_png(&tab.webview, move |png| {
+            let picture = png.as_deref().and_then(png_rgba).ok_or("não foi possível capturar a página: ela precisa estar na tela".to_string());
+            ready.lock().unwrap_or_else(|e| e.into_inner()).push(picture);
+            ctx.request_repaint();
+        });
+        Ok(())
     }
 
     /// The open tab's picture as opaque RGBA (also what Copiar Captura de Tela puts on the clipboard).
-    // ponytail: Windows only (the Mac has `browser::design::snapshot`, which answers later; wire it when the Mac's turn comes)
+    // ponytail: no synchronous capture off Windows (the Mac answers later, see `portal_shot`); Linux has none yet
+    #[cfg(not(target_os = "macos"))]
     pub(crate) fn page_rgba(&self, id: &str) -> Result<(u32, u32, Vec<u8>), String> {
         #[cfg(windows)]
         {
@@ -121,7 +163,7 @@ impl DrawingApp {
         #[cfg(not(windows))]
         {
             let _ = id;
-            Err("a captura da página só existe no Windows por enquanto; use portal_read ou o screenshot do app".into())
+            Err("a captura da página só existe no Windows e no macOS por enquanto; use portal_read ou o screenshot do app".into())
         }
     }
 }
@@ -130,6 +172,7 @@ impl DrawingApp {
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
     #[test]
     fn the_systems_pixels_become_an_opaque_png() {
         // blue, green, red, alpha as GDI leaves them: two pixels
@@ -139,5 +182,15 @@ mod tests {
         // "iVBORw0KGgo" is a PNG's signature in base64
         assert!(png.starts_with("iVBORw0KGgo"), "{png}");
         assert!(png_base64(2, 2, vec![0; 4]).is_err(), "pixels that don't fill the size");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_png_comes_back_as_rgba_at_its_own_size() {
+        let mut png = Vec::new();
+        let picture = image::RgbaImage::from_raw(2, 1, vec![1, 2, 3, 255, 4, 5, 6, 255]).unwrap();
+        picture.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        assert_eq!(png_rgba(&png), Some((2, 1, vec![1, 2, 3, 255, 4, 5, 6, 255])));
+        assert_eq!(png_rgba(b"not a png"), None);
     }
 }

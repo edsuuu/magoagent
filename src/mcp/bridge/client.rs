@@ -4,22 +4,45 @@ use super::*;
 /// otherwise through `bridge.json`.
 pub(crate) fn request(request: Value, wait: Duration) -> Result<String, String> {
     let env = |key: &str| std::env::var(key).ok().filter(|v| !v.is_empty());
-    let (address, token, from) = match (env("MAGOAGENT_BRIDGE"), env("MAGOAGENT_TOKEN")) {
-        // a chat's agent speaks as its chat (app/chat/node.rs `chat_env`)
-        (Some(address), Some(token)) => (address, token, env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID")).unwrap_or_default()),
-        _ => {
-            let saved = endpoint_path().and_then(|p| read_json::<Value>(&p));
-            let saved = saved.ok_or("O MagoAgent não está aberto.")?;
-            (saved["address"].as_str().unwrap_or_default().into(), saved["token"].as_str().unwrap_or_default().into(), String::new())
-        }
+    let saved = || {
+        let saved = endpoint_path().and_then(|p| read_json::<Value>(&p)).ok_or("O MagoAgent não está aberto.")?;
+        Ok::<(String, String), String>((saved["address"].as_str().unwrap_or_default().into(), saved["token"].as_str().unwrap_or_default().into()))
     };
-    request_to(&address, &token, &from, request, wait)
+    // a chat's agent speaks as its chat (app/chat/node.rs `chat_env`)
+    if let (Some(address), Some(token)) = (env("MAGOAGENT_BRIDGE"), env("MAGOAGENT_TOKEN")) {
+        let from = env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID")).unwrap_or_default();
+        match request_to(&address, &token, &from, request.clone(), wait) {
+            Err(error) if error == NOT_RUNNING => {}
+            done => return done,
+        }
+        // ponytail: the app restarted and the address in the environment is stale; reconnect through bridge.json,
+        // speaking as the app (the chat's identity died with the old run). Per-chat tokens that survive a restart if needed.
+    }
+    let (address, token) = retry_saved(saved)?;
+    request_to(&address, &token, "", request, wait)
+}
+
+const NOT_RUNNING: &str = "O MagoAgent não está aberto (a ponte de agentes não respondeu).";
+
+/// The app may be starting: tries `bridge.json` for a few seconds until its address answers.
+fn retry_saved(saved: impl Fn() -> Result<(String, String), String>) -> Result<(String, String), String> {
+    let mut last = Err(NOT_RUNNING.to_string());
+    for _ in 0..10 {
+        last = saved();
+        if let Ok((address, _)) = &last
+            && TcpStream::connect(address).is_ok()
+        {
+            return last;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    last
 }
 
 pub(crate) fn request_to(address: &str, token: &str, from: &str, mut request: Value, wait: Duration) -> Result<String, String> {
     request["token"] = token.into();
     request["from"] = from.into();
-    let mut stream = TcpStream::connect(address).map_err(|_| "O MagoAgent não está aberto (a ponte de agentes não respondeu).")?;
+    let mut stream = TcpStream::connect(address).map_err(|_| NOT_RUNNING.to_string())?;
     stream.set_read_timeout(Some(wait + Duration::from_secs(30))).map_err(|e| e.to_string())?;
     writeln!(stream, "{request}").map_err(|e| e.to_string())?;
     let mut line = String::new();

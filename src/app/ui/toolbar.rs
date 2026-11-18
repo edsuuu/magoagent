@@ -60,7 +60,9 @@ impl DrawingApp {
         // they live in the drawn title bar
         if TITLE_BAR == 0.0 {
             let first = self.top_button(0);
-            egui::Area::new(egui::Id::unique("top_buttons")).fixed_pos(first.min).show(ctx, |ui| {
+            // over the chat, which covers the canvas's layer (its list runs under the window buttons)
+            let order = if self.chat_open { egui::Order::Foreground } else { egui::Order::Middle };
+            egui::Area::new(egui::Id::unique("top_buttons")).fixed_pos(first.min).order(order).show(ctx, |ui| {
                 let end = self.top_buttons(ui);
                 ui.allocate_rect(Rect::from_min_max(first.min, Pos2::new(end, first.bottom())), Sense::hover());
             });

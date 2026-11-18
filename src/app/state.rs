@@ -148,7 +148,7 @@ pub(crate) struct DrawingApp {
     pub(crate) raising: Option<f64>,
     pub(crate) quitting: bool,
     /// The window's caption is the system's (ui/titlebar.rs::native_caption), once hooked.
-    #[cfg_attr(target_os = "linux", allow(dead_code))]
+    #[cfg(windows)]
     pub(crate) caption_hooked: bool,
     /// The chat in a window of its own (the call popup's pencil).
     pub(crate) chat_popup: bool,

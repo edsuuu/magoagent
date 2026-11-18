@@ -191,6 +191,9 @@ pub(crate) struct PortalExtras {
     pub(crate) copy: Vec<String>,
     /// Portals whose pages run the mute script on the next frame.
     pub(crate) mute: Vec<String>,
+    /// Pictures WebKit has handed back for the clipboard (macOS), taken on the next frame.
+    #[cfg(target_os = "macos")]
+    pub(crate) ready: std::sync::Arc<std::sync::Mutex<Vec<Result<(u32, u32, Vec<u8>), String>>>>,
 }
 
 impl DrawingApp {
@@ -238,8 +241,18 @@ impl DrawingApp {
         for id in std::mem::take(&mut self.portal_extras.mute) {
             self.portal_apply_mute(&id);
         }
+        #[cfg(target_os = "macos")]
         for id in std::mem::take(&mut self.portal_extras.copy) {
-            match self.page_rgba(&id) {
+            if let Err(error) = self.page_to_clipboard(&id, ctx) {
+                self.toast(error);
+            }
+        }
+        #[cfg(target_os = "macos")]
+        let pictures: Vec<_> = std::mem::take(&mut *self.portal_extras.ready.lock().unwrap_or_else(|e| e.into_inner()));
+        #[cfg(not(target_os = "macos"))]
+        let pictures: Vec<_> = std::mem::take(&mut self.portal_extras.copy).iter().map(|id| self.page_rgba(id)).collect();
+        for picture in pictures {
+            match picture {
                 Ok((w, h, rgba)) => {
                     ctx.copy_image(egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba));
                     self.toast("Captura de tela copiada.");
@@ -251,8 +264,8 @@ impl DrawingApp {
 
     /// Copiar Captura de Tela: the open page's picture on the clipboard, a frame later.
     pub(crate) fn portal_copy_shot(&mut self, id: &str) -> Result<String, String> {
-        if !cfg!(windows) {
-            return Err("a captura da página só existe no Windows por enquanto".into());
+        if !cfg!(any(windows, target_os = "macos")) {
+            return Err("a captura da página só existe no Windows e no macOS por enquanto".into());
         }
         let spec = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.as_ref()).ok_or("não é um navegador")?;
         if spec.unloaded {

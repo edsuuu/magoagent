@@ -88,6 +88,7 @@ impl Default for DrawingApp {
             raise_window: false,
             raising: None,
             quitting: false,
+            #[cfg(windows)]
             caption_hooked: false,
             chat_popup: false,
             caption_press: None,

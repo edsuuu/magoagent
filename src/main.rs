@@ -45,6 +45,9 @@ mod prelude {
 use prelude::*;
 
 fn main() -> eframe::Result {
+    // opened from the Finder the app has launchd's PATH: the login shell's joins it, before any thread
+    #[cfg(target_os = "macos")]
+    app::system::login_path::fix();
     // a Claude Code session that started the app (show_app, a shell inside one) leaves its markers:
     // the `claude` in our terminals would run as its child session (no transcript, its ids).
     // Without CLAUDECODE the CLAUDE_CODE_* are the person's own settings, and stay
@@ -117,8 +120,9 @@ fn main() -> eframe::Result {
         }
     }
     if cfg!(target_os = "macos") {
-        // the canvas runs under the title bar; the toolbar sits beside the window buttons
-        viewport = viewport.with_fullsize_content_view(true).with_title_shown(false).with_titlebar_shown(false);
+        // the canvas runs under the title bar; the toolbar sits beside the window buttons. Transparent so OpenGL picks a
+        // pixel format with alpha, the one every window gets: without it the island's room around it was black
+        viewport = viewport.with_fullsize_content_view(true).with_title_shown(false).with_titlebar_shown(false).with_transparent(true);
     } else {
         // the app draws its own title bar, with the main menu in it (ui/titlebar.rs); transparent so
         // OpenGL picks a pixel format with alpha, the one every window gets: the call popup's and the

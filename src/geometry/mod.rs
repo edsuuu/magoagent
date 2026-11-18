@@ -120,6 +120,29 @@ pub(crate) fn element_bounds(e: &Element) -> Rect {
         .fold(Rect::NOTHING, |r, p| r.union(Rect::from_min_max(p, p)))
 }
 
+/// Whether what `paint_element` draws of `e` can reach `view` (world) at `zoom`: its box grown by what is painted past
+/// it (the stroke and its hand jitter, arrowheads, an ellipse's wobble, a curve's swing between its points, a frame's
+/// name above it, a text's halo).
+pub(crate) fn may_show(e: &Element, view: Rect, zoom: f32) -> bool {
+    let mut area = local_bounds(e);
+    let curved = matches!(&e.kind, ElementKind::Line { points, .. } if e.style.round && points.len() > 2);
+    // ponytail: a curve swings out of its points' box by less than a third of its size; its own path would be exact but costs its samples
+    let swing = if curved { 0.3 * area.size().max_elem() } else { 0.05 * area.size().max_elem() };
+    area = area.expand(40.0 + 2.0 * e.style.stroke_width + swing);
+    if let (Some(name), ElementKind::Rectangle { x, y, .. }) = (&e.frame, &e.kind)
+        && !name.is_empty()
+    {
+        // 13 points at the screen's scale (never below half), each letter at most one em
+        let size = 13.0 * zoom.max(0.5) / zoom.max(f32::EPSILON);
+        area = area.union(Rect::from_min_size(Pos2::new(*x, y - 4.0 - size * 1.5), Vec2::new(name.chars().count() as f32 * size, size * 1.5)));
+    }
+    if e.angle != 0.0 {
+        area = Rect::from_center_size(area.center(), Vec2::splat(area.size().length()));
+    }
+    // the halo and the antialiasing: a few screen pixels
+    area.expand(8.0 / zoom.max(f32::EPSILON)).intersects(view)
+}
+
 /// Smooth curve through a line's points when it is curved (arrow type "curved").
 pub(crate) fn line_path(e: &Element) -> Vec<[f32; 2]> {
     match &e.kind {

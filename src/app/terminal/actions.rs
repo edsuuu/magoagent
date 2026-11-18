@@ -75,6 +75,13 @@ impl DrawingApp {
                 }
                 return Ok(format!("Monitorar atividade {} em {name}.", if on { "ligado" } else { "desligado" }));
             }
+            "message_box" => {
+                let open = |app: &Self| app.composer.as_ref().is_some_and(|(on, _)| *on == id);
+                if switch(args).unwrap_or(!open(self)) != open(self) {
+                    self.toggle_composer(id.clone());
+                }
+                return Ok(format!("Caixa de mensagem de {name} {}.", if open(self) { "aberta" } else { "fechada" }));
+            }
             "blur" => {
                 let on = switch(args).unwrap_or(true);
                 self.set_blurred(i, on);
@@ -310,6 +317,10 @@ mod tests {
         assert!(menu(&mut app, "copy", json!({})).is_err());
         assert!(menu(&mut app, "paste", json!({})).is_err(), "a paste needs its text");
         menu(&mut app, "paste", json!({ "text": "x" })).unwrap();
+        menu(&mut app, "message_box", json!({})).unwrap();
+        assert!(app.composer.is_some(), "opened");
+        assert!(menu(&mut app, "message_box", json!({ "value": "off" })).unwrap().contains("fechada"));
+        assert!(app.composer.is_none());
         menu(&mut app, "blur", json!({})).unwrap();
         assert!(app.scene.elements[0].terminal.as_ref().unwrap().look.blurred);
         menu(&mut app, "blur", json!({ "value": "off" })).unwrap();

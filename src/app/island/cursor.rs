@@ -21,9 +21,9 @@ pub(crate) fn captures(cursor: Option<Pos2>, island: Rect, holding: bool) -> boo
 }
 
 /// `captures` for the cursor `read` gives now (on the screen, in pixels), `scale` and `origin` taking it to the window's
-/// points. Off Windows the window never passes the click through (`MousePassthrough` is the egui way there).
+/// points. Off Windows and macOS the window never passes the click through (`MousePassthrough` is the egui way there).
 pub(crate) fn takes_click(read: impl Fn() -> Option<Pos2>, scale: f32, origin: Pos2, island: Rect, holding: bool) -> bool {
-    !cfg!(windows) || captures(read().map(|at| Pos2::new(at.x / scale - origin.x, at.y / scale - origin.y)), island, holding)
+    !cfg!(any(windows, target_os = "macos")) || captures(read().map(|at| Pos2::new(at.x / scale - origin.x, at.y / scale - origin.y)), island, holding)
 }
 
 /// "x,y" as a place on the screen, in pixels.
@@ -32,7 +32,7 @@ pub(crate) fn parse_cursor(text: &str) -> Option<Pos2> {
     Some(Pos2::new(x.trim().parse().ok()?, y.trim().parse().ok()?))
 }
 
-/// The cursor on the screen, in pixels (Windows; elsewhere the egui pointer is all there is). In a test scene
+/// The cursor on the screen, in pixels (Windows and macOS; elsewhere the egui pointer is all there is). In a test scene
 /// (`MAGOAGENT_SCENE`), `MAGOAGENT_FAKE_CURSOR=x,y` stands in for it: the eyes and the hover are seen without the mouse.
 pub(crate) fn screen_cursor() -> Option<Pos2> {
     screen_cursor_fake().or_else(system_cursor)
@@ -66,16 +66,32 @@ fn system_cursor() -> Option<Pos2> {
     (unsafe { GetCursorPos(&mut point) } != 0).then(|| Pos2::new(point[0] as f32, point[1] as f32))
 }
 
-#[cfg(not(windows))]
+/// The island window's scale, as `f32` bits: macOS gives the cursor in points, and its pixels are the island's.
+#[cfg(target_os = "macos")]
+static SCALE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f80_0000);
+
+/// macOS: the island's scale, which the cursor in points is turned to pixels with (they cancel out wherever it is read).
+#[cfg(target_os = "macos")]
+pub(crate) fn set_scale(scale: f32) {
+    SCALE.store(scale.to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(target_os = "macos")]
+fn system_cursor() -> Option<Pos2> {
+    let scale = f32::from_bits(SCALE.load(std::sync::atomic::Ordering::Relaxed));
+    super::macos::cursor().map(|at| at * scale)
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 fn system_cursor() -> Option<Pos2> {
     None
 }
 
-/// Windows: a thread that reads the cursor every 16 ms, as the reference's poll (src-tauri `island.rs`), and does
+/// Windows and macOS: a thread that reads the cursor every 16 ms, as the reference's poll (src-tauri `island.rs`), and does
 /// nothing else until the cursor crosses the island's room on the screen (pixels, `room`): then the window takes the
 /// click at once and the island is drawn again. The frames alone come at 250 ms while the cursor is away, and a press
 /// that came sooner went through the island to the window under it.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 pub(crate) fn watch(ctx: &Context) -> std::sync::Arc<std::sync::Mutex<Option<Rect>>> {
     let room: std::sync::Arc<std::sync::Mutex<Option<Rect>>> = Default::default();
     let (shared, ctx) = (room.clone(), ctx.clone());
@@ -87,6 +103,8 @@ pub(crate) fn watch(ctx: &Context) -> std::sync::Arc<std::sync::Mutex<Option<Rec
             let now = system_cursor().is_some_and(|at| room.contains(at));
             if now != inside {
                 inside = now;
+                // macOS takes the click-through off on the main thread, the frame this wakes
+                #[cfg(windows)]
                 if now {
                     crate::app::voice::popup::plain::click_through(super::window::TITLE, false);
                 }
@@ -111,7 +129,7 @@ mod tests {
         assert!(captures(Some(Pos2::new(300.0, 300.0)), island, true), "a press held on it is kept, wherever the cursor goes");
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     #[test]
     fn the_click_is_asked_again_at_the_end_of_the_frame_for_the_cursor_that_came_in_meanwhile() {
         let island = Rect::from_min_size(Pos2::new(180.0, 1.0), Vec2::new(288.0, 32.0));

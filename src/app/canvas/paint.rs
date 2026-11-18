@@ -98,6 +98,8 @@ impl DrawingApp {
         let mut order: Vec<usize> = (0..self.scene.elements.len()).collect();
         order.sort_by_key(|&index| self.scene.elements[index].is_node());
         let lift = self.lift_index();
+        // the part of the world on screen: a drawing outside it costs nothing (its rough strokes, hatching and text)
+        let seen = Rect::from_two_pos(self.to_world(rect.min), self.to_world(rect.max));
         if let Some(lifted) = lift {
             order.retain(|index| *index != lifted);
             order.push(lifted);
@@ -169,6 +171,10 @@ impl DrawingApp {
                 // its text, or the placeholder of a note without one (left empty, its text was dropped)
                 let body = label.is_none_or(|label_index| self.editing != Some(label_index));
                 paint_note(painter, &self.shown_note(element), text.unwrap_or(""), body, &view, faded);
+                continue;
+            }
+            // a note's card goes by its frame (enlarged, it is not where it is in the world), above
+            if !may_show(element, seen, self.zoom) {
                 continue;
             }
             if is_arrow_label(&self.scene.elements, element) && self.editing != Some(index) {

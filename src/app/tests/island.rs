@@ -65,24 +65,24 @@ fn the_cover_and_the_bars_sit_in_the_middle_or_at_the_right() {
     use crate::app::island::pill::spread;
     let pill = Rect::from_min_size(Pos2::ZERO, Vec2::new(288.0, 40.0));
     // the bars take 42 (ten of 1.5 with 3 between); no agents: the pair ends 12 from the right, the minis' room
-    let (cover, bars) = spread(pill, None);
+    let (cover, bars) = spread(pill, None, 0.0);
     assert!(bars > cover + 22.0, "the bars after the cover");
     assert!((bars + 42.0 - (288.0 - 12.0)).abs() < 1.0, "at the right: the bars end at {}", bars + 42.0);
     // with agents: the pair's middle halfway between the wizard (42) and the minis' grid
     let grid = mini_cells(pill, 2).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
-    let (cover, bars) = spread(pill, Some(grid));
+    let (cover, bars) = spread(pill, Some(grid), 0.0);
     let middle = (cover + bars + 42.0) / 2.0;
     assert!((middle - (42.0 + grid.left()) / 2.0).abs() < 1.0, "in the middle: {middle} between 42 and {}", grid.left());
     assert!(bars + 42.0 < grid.left(), "clear of the minis");
     // the compact island as it is: Luna (her right at 42) and the minis by the sides, the song in the middle between them
     let pill = Rect::from_min_size(Pos2::ZERO, Vec2::new(crate::app::island::COMPACT_W, crate::app::island::COMPACT_H));
     let grid = mini_cells(pill, 1).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
-    let (cover, bars) = spread(pill, Some(grid));
+    let (cover, bars) = spread(pill, Some(grid), 0.0);
     let (before, after) = (cover - 42.0, grid.left() - (bars + 42.0));
     assert!((before - after).abs() < 1.0 && before > 10.0, "the gaps: {before} and {after}");
     // two minis side by side: still some room, not the wide gaps (asked: "diminuir mais um pouco esse espaço")
     let grid = mini_cells(pill, 2).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
-    let (cover, bars) = spread(pill, Some(grid));
+    let (cover, bars) = spread(pill, Some(grid), 0.0);
     let (before, after) = (cover - 42.0, grid.left() - (bars + 42.0));
     assert!((10.0..=20.0).contains(&before) && (before - after).abs() < 1.0, "the gaps: {before} and {after}");
 }

@@ -504,3 +504,28 @@ fn the_chat_screen_makes_a_chat_only_with_its_first_message() {
     assert!(!app.chats.iter().any(|chat| chat.id == draft) && app.chats.len() == 1);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_recent_folder_picked_in_the_folder_chips_menu_becomes_the_chats_folder() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = push_chat(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id.clone());
+    let recent = std::env::temp_dir().join(format!("mago-recente-{}", std::process::id()));
+    fs::create_dir_all(&recent).unwrap();
+    let recent = recent.display().to_string();
+    app.prefs.folders.remember(&recent);
+    let size = Vec2::new(1200.0, 800.0);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    // the footer's folder chip (the header says the folder too, higher up)
+    let chip = texts.iter().filter(|(text, _)| *text == "~").map(|(_, rect)| *rect).max_by(|a, b| a.top().total_cmp(&b.top()));
+    let chip = chip.unwrap_or_else(|| panic!("the folder chip: {texts:?}"));
+    let texts = click(&mut app, &ctx, size, chip.center());
+    let name = crate::app::chat::direct::folder_label(&recent);
+    let line = texts.iter().filter(|(text, _)| *text == name).map(|(_, rect)| *rect).next().unwrap_or_else(|| panic!("listed under Recente: {texts:?}"));
+    click(&mut app, &ctx, size, line.center());
+    assert_eq!(app.chats.iter().find(|chat| chat.id == id).map(|chat| chat.cwd.as_str()), Some(recent.as_str()), "picked");
+    let _ = fs::remove_dir_all(&recent);
+}

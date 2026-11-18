@@ -264,7 +264,7 @@ fn the_chat_reads_claude_code_files() {
 }
 
 #[test]
-fn plain_claude_resumes_the_conversation_its_terminal_remembers_while_the_file_is_there() {
+fn claude_resumes_the_conversation_its_terminal_remembers_while_the_file_is_there() {
     let dir = std::env::temp_dir().join(format!("mago-retomar-{}", uuid::Uuid::new_v4().simple()));
     let spec = TerminalSpec { command: "claude".into(), claude_session: "0b6c-41".into(), claude_folder: "-p".into(), ..Default::default() };
     assert_eq!(spec.launch_command(Some(&dir)), "claude", "its file is gone: a new conversation");
@@ -273,7 +273,12 @@ fn plain_claude_resumes_the_conversation_its_terminal_remembers_while_the_file_i
     std::fs::write(&file, "{}\n").unwrap();
     assert_eq!(spec.launch_command(Some(&dir)), "claude --resume 0b6c-41");
     assert_eq!(TerminalSpec { resume: false, ..spec.clone() }.launch_command(Some(&dir)), "claude", "Retomar off");
-    assert_eq!(TerminalSpec { command: "claude --model opus".into(), ..spec.clone() }.launch_command(Some(&dir)), "claude --model opus", "only plain claude");
+    // a recruit's options stay (the app restarted under the agents: they come back where they were)
+    let recruit = TerminalSpec { command: "claude --model sonnet".into(), ..spec.clone() };
+    assert_eq!(recruit.launch_command(Some(&dir)), "claude --model sonnet --resume 0b6c-41");
+    for picked in ["claude --resume x", "claude -c", "claude --session-id=y", "codex", "claudex"] {
+        assert_eq!(TerminalSpec { command: picked.into(), ..spec.clone() }.launch_command(Some(&dir)), picked, "{picked} stays");
+    }
     assert_eq!(spec.launch_command(None), "claude");
     // typed into a shell: an id that isn't one stays out
     let odd = "x;rm";

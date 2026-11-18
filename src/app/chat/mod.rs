@@ -160,7 +160,10 @@ impl DrawingApp {
             let transcript = self.transcripts.get(&row.id);
             // with no conversation the screen shows already, in its place
             let talks = transcript.is_some_and(|t| !t.items.is_empty());
-            let head = self.chat_header(ui, main, row, &look, narrow, talks, time, &mut act, &mut search);
+            // on the Mac Ajustes and Voltar ao canvas sit on the top row, past the window buttons: with the list folded the
+            // header starts after them
+            let header = if TITLE_BAR == 0.0 { main.with_min_x(main.left().max(self.top_button(1).right() + pad)) } else { main };
+            let head = self.chat_header(ui, header, row, &look, narrow, talks, time, &mut act, &mut search);
             let query = search.as_deref().map(|q| q.trim().to_lowercase()).filter(|q| !q.is_empty());
             // the conversation takes the screen, a gutter of 32 at each side, up to 1100 wide
             let width = (main.width() - 64.0).clamp(main.width().min(360.0), 1100.0);

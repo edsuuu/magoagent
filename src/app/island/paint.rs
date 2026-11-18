@@ -79,6 +79,8 @@ pub(super) struct View {
     /// The edge of the screen it is on: square on it (on none, a pill with four round corners); on a side, the closed
     /// and compact ones stand up.
     pub(super) dock: super::window::Dock,
+    /// The camera notch it grows out of (its size), on the top edge of a screen that has one.
+    pub(super) notch: Option<Vec2>,
     /// What the island is, and how much shows of its face, compact content, panel and page, and the page's size.
     pub(super) shape: Shape,
     pub(super) layers: [f32; 4],
@@ -276,6 +278,7 @@ impl DrawingApp {
             pokes,
             dizzy,
             dock: island.dock,
+            notch: island.notch,
             entrance: island.greeting.map(|start| (time - start) as f32).filter(|_| island.machine.stage() == super::fsm::Stage::Greeting),
             shape: island.last_shape.unwrap_or(Shape::Closed),
             layers: island.layers.values(time),
@@ -305,6 +308,9 @@ impl DrawingApp {
         let rect = Rect::from_min_size(at, anim);
         let round = radius.round() as u8;
         ui.painter().rect_filled(rect, corners(round, view.dock), view.color);
+        if view.notch.is_some() {
+            ears(ui.painter(), rect, view.color);
+        }
         out.hovered = ui.input(|input| input.pointer.hover_pos()).is_some_and(|pointer| rect.contains(pointer));
         // the whole island moves by the press; the closed and compact ones open by the click
         let grip = ui.interact(rect, ui.scope_id().with("island_grip"), Sense::click_and_drag());
@@ -335,7 +341,9 @@ impl DrawingApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
                 ui.set_opacity(open);
                 ui.set_clip_rect(rect.intersect(ui.clip_rect()));
-                self.island_open(ui, rect, view, form, look, colors, time, &mut out);
+                // around a notch the panel starts under its row
+                let panel = view.notch.map_or(rect, |notch| rect.with_min_y(rect.top() + notch.y));
+                self.island_open(ui, panel, view, form, look, colors, time, &mut out);
             });
             if view.shape == Shape::Open {
                 wanted = view.aim.take();
@@ -393,8 +401,15 @@ impl DrawingApp {
         let now = self.integrations.spotify.shown(time).filter(|_| compact || !upright);
         // the bars hear the song whether or not Luna dances to it (`Dancer::groove` asks for the listening)
         let groove = now.filter(|now| now.playing).map(|now| self.integrations.spotify.dancer.groove(now.playing));
+        // around a notch (`super::around_notch`) the middle is under it: the wizard and the song go on the wings
+        let notch = view.notch.map_or(0.0, |notch| notch.x);
         if !compact {
-            let center = rect.center();
+            let center = match view.notch {
+                // the face in the left wing's middle; with a song, after its cover
+                Some(_) if now.is_some() => Pos2::new(rect.left() + NOTCH_LUNA_SONG, rect.center().y),
+                Some(_) => Pos2::new(rect.left() + (rect.width() - notch) / 4.0, rect.center().y),
+                None => rect.center(),
+            };
             // while the music plays and no agent wants the person, she dances to it (asked: "a luna dançando")
             let calm = dances_through(state);
             // the notch is 24 tall: she keeps 3 above and below (asked: "a Luna está quase colada, diminui um pouco")
@@ -404,7 +419,7 @@ impl DrawingApp {
                 None => paint_mago_toward(ui.painter(), "island-main", center, LUNA, state, time, view.pointer),
             }
             if let Some(now) = now {
-                self.island_playing(ui, rect, now, None, false, groove.as_ref(), time, out);
+                self.island_playing(ui, rect, now, None, false, notch, groove.as_ref(), time, out);
             }
             return;
         }
@@ -434,10 +449,12 @@ impl DrawingApp {
         }
         if view.voice_on {
             let bars = crate::app::voice::call_bars(view.voice_state, view.mic, time);
-            crate::app::voice::paint_bars(ui.painter(), Pos2::new(rect.center().x, rect.center().y), bars, INK);
+            // around a notch, in the left wing after the wizard
+            let x = if notch > 0.0 { rect.left() + super::COMPACT_SIDE + 15.0 + 10.0 + 10.5 } else { rect.center().x };
+            crate::app::voice::paint_bars(ui.painter(), Pos2::new(x, rect.center().y), bars, INK);
         }
         if let Some(now) = now {
-            self.island_playing(ui, rect, now, Some(grid), upright, groove.as_ref(), time, out);
+            self.island_playing(ui, rect, now, Some(grid), upright, notch, groove.as_ref(), time, out);
         }
     }
 
@@ -449,12 +466,14 @@ impl DrawingApp {
         now: &Now,
         compact: Option<Option<Rect>>,
         upright: bool,
+        notch: f32,
         groove: Option<&Groove>,
         time: f64,
         out: &mut Out,
     ) {
         let cover = self.integrations.spotify.cover.as_ref().map(egui::TextureHandle::id);
-        if super::pill::spotify(ui, rect, cover, self.integrations.spotify.tint, &now.track.title, now.playing, compact, upright, groove, time) {
+        let (tint, title) = (self.integrations.spotify.tint, &now.track.title);
+        if super::pill::spotify(ui, rect, cover, tint, title, now.playing, compact, upright, notch, groove, time) {
             (out.tab, out.wake, out.picked) = (Some(Tab::Music), true, true);
         }
     }
@@ -950,6 +969,37 @@ pub(super) fn pulled_to(rect: Rect, dock: super::window::Dock, pointer: Pos2, wi
         Dock::Top | Dock::Free => pointer.y - rect.top(),
     };
     Vec2::new(if width { wide } else { rect.width() }, if height { high } else { rect.height() })
+}
+
+/// Where the wizard's face is on the closed island around a notch while a song shows: after the cover
+/// (`pill::COVER_LEFT_SMALL` and 16 wide), 4 from it.
+const NOTCH_LUNA_SONG: f32 = 4.0 + 16.0 + 4.0 + 9.0;
+/// The curve of the island's top corners around a notch: the screen's own corners beside the notch have it, so the
+/// island flows out of the bezel as the notch does (about 8 points in photos of a 13" Air).
+const EAR: f32 = 8.0;
+
+/// The island's top corners turned out (`EAR`): from its top edge it curves out into the bar beside it, as the notch
+/// it grows out of does. Each ear is filled from its corner on the island's side, which sees all of its curve; it goes
+/// a point into the island so no seam of their two soft edges shows.
+pub(super) fn ears(painter: &Painter, rect: Rect, color: Color32) {
+    let steps = 12;
+    for side in [-1.0f32, 1.0] {
+        let edge = if side < 0.0 { rect.left() } else { rect.right() };
+        // the circle's centre, out beside the island
+        let centre = Pos2::new(edge + side * EAR, rect.top() + EAR);
+        let corner = Pos2::new(edge - side, rect.top());
+        let arc = (0..=steps).map(|step| {
+            let turn = std::f32::consts::FRAC_PI_2 * step as f32 / steps as f32;
+            // from the island's side, at the circle's height, up to the top edge
+            centre + EAR * Vec2::new(-side * turn.cos(), -turn.sin())
+        });
+        let mut points: Vec<Pos2> = std::iter::once(corner).chain(std::iter::once(Pos2::new(edge - side, rect.top() + EAR))).chain(arc).collect();
+        // clockwise on the screen, as the fill wants it (else it turns the points round and starts elsewhere)
+        if side > 0.0 {
+            points[1..].reverse();
+        }
+        painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
+    }
 }
 
 /// The island's corners: square on the edge of the screen it is on.

@@ -122,7 +122,9 @@ impl DrawingApp {
             );
             let bar = Rect::from_min_max(Pos2::new(rect.left() + 8.0, rect.top() + 21.0), Pos2::new(rect.right() - 8.0, rect.top() + 25.0));
             paint_bar(painter, bar, session, t.active, accent);
-            clicked |= response.tip("Uso dos agentes").clicked();
+            // the card open over it already says so: the tip would fall on the next line
+            let response = if self.usage_ui.open { response } else { response.tip("Uso dos agentes") };
+            clicked |= response.clicked();
         }
         if clicked {
             self.usage_ui.open = !self.usage_ui.open;

@@ -173,7 +173,7 @@ mod tests {
         app.prefs.shortcuts.insert("save".into(), super::super::Binding { keys: "Ctrl+Shift+F5".into(), enabled: true });
         assert!(app.app_keys(&[key(Key::S, command)]).is_empty(), "Ctrl+S is free now");
         assert_eq!(app.app_keys(&[key(Key::F5, command | Modifiers::SHIFT)]), [AppAction::Save]);
-        assert_eq!(app.app_keys_text(AppAction::Save), "Ctrl+Shift+F5");
+        assert_eq!(app.app_keys_text(AppAction::Save), keys_label("Cmd+Shift+F5"));
         app.prefs.shortcuts.insert("save".into(), super::super::Binding { keys: String::new(), enabled: true });
         assert!(app.app_keys(&[key(Key::F5, command | Modifiers::SHIFT)]).is_empty());
         assert_eq!(app.app_keys_text(AppAction::Save), "");

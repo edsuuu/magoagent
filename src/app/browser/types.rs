@@ -260,5 +260,5 @@ pub(super) enum Chrome {
 #[cfg(windows)]
 pub(super) const PAGE_SETTLE: f64 = 0.15;
 /// WebView2's smallest page zoom (25%).
-#[cfg_attr(target_os = "linux", allow(dead_code))]
+#[cfg(windows)]
 pub(super) const MIN_PAGE_ZOOM: f32 = 0.25;

@@ -49,11 +49,19 @@ fn a_prompt_that_never_reached_its_terminal_comes_back_to_its_box() {
     // its box already open: added below what is there
     app.returned_prompts.0.send(back(&id, "e o cadastro")).unwrap();
     app.returned_prompts(&Context::default());
-    assert_eq!(app.composer, Some((id, "revise o login\n\ne o cadastro".into())));
+    assert_eq!(app.composer, Some((id.clone(), "revise o login\n\ne o cadastro".into())));
     // a terminal no longer drawn: the clipboard, the box stays as it was
     app.returned_prompts.0.send(back("sumiu", "x")).unwrap();
     app.returned_prompts(&Context::default());
     assert!(app.composer.as_ref().is_some_and(|(_, text)| !text.contains('x')));
+    // typed after all (sent again): its words leave the box, which closes once empty
+    let typed = |text: &str| Returned { id: id.clone(), text: text.into(), why: String::new() };
+    app.returned_prompts.0.send(typed("revise o login")).unwrap();
+    app.returned_prompts(&Context::default());
+    assert_eq!(app.composer, Some((id.clone(), "e o cadastro".into())));
+    app.returned_prompts.0.send(typed("e o cadastro")).unwrap();
+    app.returned_prompts(&Context::default());
+    assert_eq!(app.composer, None);
 }
 
 #[test]

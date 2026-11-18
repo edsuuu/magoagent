@@ -645,13 +645,18 @@ pub(crate) fn panel_place(pill: Rect, size: Vec2, work: Rect) -> Rect {
     Rect::from_min_size(Pos2::new(left, top), size)
 }
 
-/// The usable part of the screen around `at` (points): the monitor's work area on Windows, the desktop's less its
+/// The usable part of the screen around `at` (points): the monitor's work area on Windows, the screen less its Dock on
+/// macOS (`island::macos::work_at`), the desktop's less its
 /// panels on X11 (on the monitor), else the monitor's size from the origin; unknown, anywhere.
 pub(crate) fn screen_work(ctx: &Context, at: Pos2) -> Rect {
     let scale = ctx.input(|i| i.viewport().native_pixels_per_point).unwrap_or(1.0);
     #[cfg(windows)]
     if let Some([l, t, r, b]) = crate::app::voice::popup::plain::work_area((at.x * scale) as i32, (at.y * scale) as i32) {
         return Rect::from_min_max(Pos2::new(l as f32, t as f32) / scale, Pos2::new(r as f32, b as f32) / scale);
+    }
+    #[cfg(target_os = "macos")]
+    if let Some(work) = crate::app::island::macos::work_at(at) {
+        return work;
     }
     // X11: the monitor it is on (GNOME's top bar and dock only on theirs), not the first one's from the corner
     #[cfg(target_os = "linux")]
@@ -670,8 +675,8 @@ pub(crate) fn screen_work(ctx: &Context, at: Pos2) -> Rect {
 }
 
 /// Of the monitors' work areas (`works`), the one `at` is on, else the nearest: a place saved on a monitor that is gone,
-/// or off them all, comes back onto one. Only X11 lists the monitors' work areas (and the tests).
-#[cfg(any(target_os = "linux", test))]
+/// or off them all, comes back onto one. Only X11 and macOS list the monitors' work areas (and the tests).
+#[cfg(any(target_os = "linux", target_os = "macos", test))]
 pub(crate) fn work_at(works: &[Rect], at: Pos2) -> Option<Rect> {
     works.iter().copied().filter(|work| work.is_positive()).min_by(|a, b| a.distance_sq_to_pos(at).total_cmp(&b.distance_sq_to_pos(at)))
 }

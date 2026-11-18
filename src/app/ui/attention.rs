@@ -3,7 +3,7 @@
 
 use crate::app::hotkeys::local::AppAction;
 use crate::app::island::agent_color;
-use crate::app::mascot::mago::{MagoState, paint_mini};
+use crate::app::mascot::mago::{MagoState, paint_mini, paint_mini_still};
 use crate::app::ui::agents::{AMBER, AgentRow, AgentState};
 use crate::app::ui::sidebar::Tones;
 use crate::prelude::*;
@@ -175,7 +175,13 @@ impl DrawingApp {
         }
         let program = row.spec.command.split_whitespace().next().unwrap_or_default().to_lowercase();
         let mini = Pos2::new(rect.left() + 19.0, rect.center().y);
-        paint_mini(&painter, &format!("sidebar-{}", row.id), mini, 20.0, agent_color(&program, &row.id), MagoState::from_agent(row.state, self.now), self.now);
+        // at rest it is drawn still, and one scrolled out of the list not at all: a sidebar at rest asks for no frames
+        let (id, color, state) = (format!("sidebar-{}", row.id), agent_color(&program, &row.id), MagoState::from_agent(row.state, self.now));
+        if ui.is_rect_visible(rect) && matches!(state, MagoState::Idle | MagoState::Sleeping) {
+            paint_mini_still(&painter, &id, mini, 20.0, color, state);
+        } else if ui.is_rect_visible(rect) {
+            paint_mini(&painter, &id, mini, 20.0, color, state, self.now);
+        }
         let text = Rect::from_min_max(Pos2::new(rect.left() + 36.0, rect.top()), Pos2::new(rect.right() - 6.0, rect.bottom()));
         let clipped = painter.with_clip_rect(text);
         clipped.text(Pos2::new(text.left(), rect.top() + 12.0), egui::Align2::LEFT_CENTER, row.spec.label(), FontId::proportional(14.0), t.text);
