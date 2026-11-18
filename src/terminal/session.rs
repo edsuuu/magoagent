@@ -133,6 +133,11 @@ impl TerminalSession {
         }
     }
 
+    /// Whether it has the keys: only then may a program (OSC 52) replace the clipboard (`paint` says it too).
+    pub(crate) fn set_focused(&self, focused: bool) {
+        self.focused.store(focused, Ordering::Relaxed);
+    }
+
     pub(crate) fn resize(&mut self, size: (usize, usize)) {
         if size != self.size {
             self.size = size;

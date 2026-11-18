@@ -72,7 +72,7 @@ impl DrawingApp {
             .collect();
         for (id, spec, size) in &live {
             let (theme, font, shell) = self.prefs.terminal.resolve(&spec.look);
-            let (look, shell, grid) = (Look::of(theme, self.dark()), shell.to_string(), grid_size_at(*size, font));
+            let (look, shell, grid) = (Look::of(theme, self.dark()), shell.to_string(), swift_grid(id).unwrap_or_else(|| grid_size_at(*size, font)));
             match self.terminals.get_mut(id) {
                 Some(Ok(session)) => {
                     session.resize(grid);
@@ -101,7 +101,7 @@ impl DrawingApp {
         let window = ctx.input(|i| i.viewport().visible()) != Some(false);
         for (id, session) in &self.terminals {
             if let Ok(session) = session {
-                session.set_visible(window && seen.contains(id));
+                session.set_visible(window && if swift_ui() { swift_shows(id) } else { seen.contains(id) });
             }
         }
         if self.leaving.as_ref().is_some_and(|(_, since)| self.now - since > 0.2) {

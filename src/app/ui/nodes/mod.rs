@@ -99,6 +99,10 @@ impl DrawingApp {
     /// Enter sends it as a pasted prompt plus Enter (like `magoagent ask`, without waiting),
     /// Shift+Enter breaks the line, Esc closes.
     pub(crate) fn composer_ui(&mut self, ctx: &Context) {
+        // the SwiftUI terminal draws its own message box
+        if crate::app::terminal::swift_ui() {
+            return;
+        }
         let Some((id, mut text)) = self.composer.clone() else { return };
         let Some(element) = self.scene.elements.iter().find(|e| e.id == id).cloned() else {
             self.composer = None;

@@ -148,6 +148,9 @@ impl DrawingApp {
         if enabled("island") {
             self.native_island();
         }
+        if enabled("terminal") {
+            self.native_terminal();
+        }
         if enabled("shell") {
             self.native_shell();
         }
@@ -196,6 +199,7 @@ impl DrawingApp {
             Some(("island", verb)) => self.native_island_act(verb, args),
             Some(("shell", verb)) => self.native_shell_act(verb, args),
             Some(("filetree", verb)) => self.native_filetree_act(verb, args),
+            Some(("terminal", verb)) => self.native_terminal_act(verb, args),
             _ => Err(format!("ação de interface desconhecida: ui.{name}")),
         }
     }
