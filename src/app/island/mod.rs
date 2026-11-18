@@ -449,8 +449,12 @@ pub(crate) struct Island {
     /// X11: the window is the island's size since a drag began (the size it was), until the island grows once it is let
     /// go. In its room the system stops the window at the top bar with the island still below it.
     slim: Option<Vec2>,
-    /// The system's drag asked for, sent once the window has its drag size (`slim`): the next frame.
+    /// The system's drag asked for, sent once the window has its drag size (`slim`) and is where it was put
+    /// (`window::drag_ready`), and since when it waits.
     drag_next: bool,
+    drag_since: Option<f64>,
+    /// Where the system had the window last frame (screen points).
+    placed: Option<Rect>,
     /// Início's lines hidden by their ×, with what they were at (`feed::signature`): back once that changes.
     // ponytail: only while the app runs, the list starts whole again; keep it in the prefs if the person misses it
     hidden: std::collections::HashMap<String, u64>,
