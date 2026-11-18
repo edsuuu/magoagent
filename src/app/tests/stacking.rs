@@ -163,3 +163,22 @@ fn a_click_on_a_note_in_front_of_the_terminal_with_the_keyboard_takes_the_keys()
     assert!(matches!(&label.kind, ElementKind::Text { value, .. } if value == "oi"), "{:?}", label.kind);
     assert_eq!(app.terminal_focus, None);
 }
+
+/// A card brought to the front from its live parts (a tree's rows, a portal's bar, a terminal's grid) while an arrow's
+/// points are edited or a line is drawn point by point: they stay on that arrow and that line.
+#[test]
+fn a_card_brought_to_the_front_keeps_the_arrow_and_line_worked_on() {
+    let mut app = DrawingApp::default();
+    let mut portal = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+    portal.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
+    let mut terminal = app.new_element(ElementKind::Rectangle { x: 200.0, y: 100.0, width: 400.0, height: 300.0 });
+    terminal.terminal = Some(TerminalSpec { name: "Shell".into(), ..Default::default() });
+    let arrow = app.new_element(ElementKind::Line { points: vec![[0.0, 500.0], [300.0, 500.0]], arrow: true });
+    let line = app.new_element(ElementKind::Line { points: vec![[0.0, 600.0], [300.0, 600.0]], arrow: false });
+    let (arrow_id, line_id) = (arrow.id.clone(), line.id.clone());
+    app.scene.elements = vec![portal, terminal, arrow, line];
+    (app.line_editor, app.multi) = (Some(2), Some(3));
+    assert_eq!(app.raise_card(0), 3, "the portal over the terminal");
+    assert_eq!(app.line_editor.map(|index| app.scene.elements[index].id.clone()), Some(arrow_id));
+    assert_eq!(app.multi.map(|index| app.scene.elements[index].id.clone()), Some(line_id));
+}
