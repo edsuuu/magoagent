@@ -464,6 +464,35 @@ fn the_github_tab_opens_a_main_branchs_actions() {
     assert_eq!(app.integrations.pressed.borrow().as_slice(), ["open https://github.com/ana-dev/loja/actions"]);
 }
 
+/// The last week's squares under the list open Atividade: the calendar, the day under the pointer in words, the profile.
+#[test]
+fn the_github_tab_shows_the_contribution_calendar() {
+    use crate::app::integrations::github::Activity;
+    let (mut app, ctx, mut time) = github_tab();
+    let recorded: Value = serde_json::from_str(include_str!("../integrations/fixtures/github_activity.json")).unwrap();
+    app.integrations.github.activity = Activity::parse(&recorded);
+    // the seven squares end the footer's line, at the left card's right
+    let footer = painted(&mut app, &ctx, time, "loja falhou");
+    let left_right = island_rect(&app).left() + 10.0 + ((island_rect(&app).width() - 20.0 - 10.0) * 1.22 / 2.22).round();
+    let spark = Pos2::new(left_right - 12.0 - 8.0 - 30.0, footer.center().y);
+    click(&mut app, &ctx, &mut time, spark);
+    let summary = painted(&mut app, &ctx, time, "1.412 contribuições no último ano · 12 repositórios · ★ 1,3 mil");
+    assert!(summary.left() > left_right, "at the right, instead of the pull request");
+    painted(&mut app, &ctx, time, "Menos");
+    // 16 de nov.: the second line of the last week, the calendar's last column
+    let grid_left = summary.left();
+    let grid_top = summary.top() + 42.0 - 2.0;
+    let at = Pos2::new(grid_left + 13.0 + 5.0, grid_top + 13.0 + 5.0);
+    rest(&mut app, &ctx, &mut time, at, 0.2);
+    painted(&mut app, &ctx, time, "16 de nov. · 22 contribuições");
+    let profile = painted(&mut app, &ctx, time, "Abrir o perfil").center();
+    click(&mut app, &ctx, &mut time, profile);
+    assert_eq!(app.integrations.pressed.borrow().last().map(String::as_str), Some("open https://github.com/ana-dev"));
+    let back = painted(&mut app, &ctx, time, "Voltar").center();
+    click(&mut app, &ctx, &mut time, back);
+    painted(&mut app, &ctx, time, "Abrir no navegador");
+}
+
 /// The Spotify tab: its height, aleatório pressed, and a song of the queue played at once, not skipped to.
 #[test]
 fn the_spotify_tab_plays_what_is_pressed() {

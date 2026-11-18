@@ -11,6 +11,8 @@ use crate::app::chat::list::clipped;
 use crate::app::integrations::github::{CiState, PrFilter, PrState, PullRequest, Pulse};
 use crate::prelude::*;
 
+mod activity;
+
 /// The island's height on this tab: the list and the description need the room.
 pub(super) const HEIGHT: f32 = 404.0;
 const ROW_H: f32 = 38.0;
@@ -39,6 +41,8 @@ pub(crate) struct Page {
     note: String,
     /// Why the last press did nothing (a long description is not saved).
     refused: String,
+    /// Atividade shows at the right instead of the pull request.
+    activity: bool,
 }
 
 /// The icon of a pull request's state, in its colour: open green, a draft grey, merged purple, closed red.
@@ -132,7 +136,9 @@ impl DrawingApp {
         let list = pulse.listed(state.filter);
         self.github_list(ui, left, &pulse, &list, &mut state);
         let picked = shown(&list, state.picked.as_deref()).cloned();
-        if let Some(request) = picked {
+        if state.activity {
+            self.github_activity(ui, right, &pulse.login, &mut state);
+        } else if let Some(request) = picked {
             self.github_side(ui, right, &request, colors, &mut state);
         } else {
             let words = if state.filter == PrFilter::NeedsYou { "Nada precisa de você agora" } else { "Nenhum pull request aqui" };
@@ -171,7 +177,7 @@ impl DrawingApp {
         if list.is_empty() {
             ui.painter().text(rows.center(), egui::Align2::CENTER_CENTER, "Nenhum pull request neste filtro", font(12.0), DIM_3);
         }
-        let shown_id = shown(list, state.picked.as_deref()).map(|request| request.id.clone());
+        let shown_id = shown(list, state.picked.as_deref()).map(|request| request.id.clone()).filter(|_| !state.activity);
         let now = now_ms();
         ui.scope_builder(egui::UiBuilder::new().max_rect(rows), |ui| {
             ui.spacing_mut().item_spacing = Vec2::new(0.0, 2.0);
@@ -206,12 +212,13 @@ impl DrawingApp {
                     let meta = clipped(ui.painter(), request.subtitle(now), font(11.0), DIM_3, width);
                     ui.painter().galley(Pos2::new(text_x, rect.top() + 21.0), meta, DIM_3);
                     if response.clicked() {
-                        state.picked = Some(request.id.clone());
+                        (state.picked, state.activity) = (Some(request.id.clone()), false);
                     }
                 }
             });
         });
-        // the main branch of each repository
+        // the last week at the end, and before it the main branch of each repository
+        self.github_spark(ui, inner.right() - 8.0, foot_y, state);
         if pulse.main.is_empty() {
             return;
         }
@@ -219,12 +226,13 @@ impl DrawingApp {
         let said = ui.painter().text(Pos2::new(x, foot_y), egui::Align2::LEFT_CENTER, "Branch principal:", font(11.0), DIM_3);
         x = said.right() + 14.0;
         for branch in &pulse.main {
-            if x > inner.right() - 60.0 {
+            if x > inner.right() - 60.0 - activity::SPARK_W {
                 break;
             }
             let color = ci_mark(branch.ci).map_or(DIM_3, |(_, color)| color);
             let name = branch.repo.rsplit('/').next().unwrap_or(&branch.repo);
-            let words = clipped(ui.painter(), format!("{name} {}", ci_words(branch.ci)), font(11.0), DIM, inner.right() - x - 12.0);
+            let room = inner.right() - x - 12.0 - activity::SPARK_W - 16.0;
+            let words = clipped(ui.painter(), format!("{name} {}", ci_words(branch.ci)), font(11.0), DIM, room);
             let width = words.size().x;
             // a click opens its Actions, where a red branch is explained
             let rect = Rect::from_min_size(Pos2::new(x - 3.0, foot_y - 9.0), Vec2::new(12.0 + width + 6.0, 18.0));

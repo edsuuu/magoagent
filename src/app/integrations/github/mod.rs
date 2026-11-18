@@ -380,6 +380,9 @@ impl GitHub {
         if fake::pulse().is_some() {
             self.token.get_or_insert_with(|| "cena-de-teste".into());
             self.pulse.get_or_insert_with(|| fake::pulse().cloned().unwrap_or_default());
+            if self.activity.is_none() {
+                self.activity = fake::activity();
+            }
             return;
         }
         if self.token.is_none() {
@@ -407,7 +410,7 @@ impl GitHub {
                 .map(|branch| format!("- {} ({}): {}", branch.repo, branch.branch, branch.ci.label().1)),
         );
         if let Some(activity) = &self.activity {
-            lines.push(format!("{} contribuições no último ano, {} hoje.", activity.total, activity.today));
+            lines.push(format!("{}; {} hoje.", activity.summary(), activity.today));
         }
         match (self.writing, &self.last_write) {
             (true, _) => lines.push("Uma escrita está a caminho do GitHub.".into()),
