@@ -266,10 +266,12 @@ fn the_outside_hooks_are_in_integracoes() {
     assert!(window.texts.iter().any(|(text, _)| text.contains("Os hooks das sessões de fora")), "the page's line says so");
 }
 
+/// Asked: "oculta no menu de configurações a opção Ok Mago" and "oculta também o modo voz". Off the menu, their code kept
+/// and the others in their places.
 #[test]
-fn the_voice_tab_is_back_with_the_call_and_the_others_keep_their_places() {
+fn voz_and_ok_mago_are_off_the_menu_and_the_others_keep_their_places() {
     let window = Window::at(0);
-    assert!(window.has("Voz"), "{:?}", window.texts);
+    assert!(!window.has("Voz") && !window.has("Ok Mago"), "{:?}", window.texts);
     assert_eq!(SETTINGS_TABS[4], "Voz");
     let (atalhos, sobre) = (Window::at(tab_of("Atalhos")), Window::at(tab_of("Sobre")));
     assert!(atalhos.has("Atalhos") && sobre.has("Sobre"));
@@ -684,7 +686,7 @@ fn chat_has_its_own_tab_with_the_new_chat_defaults() {
 #[test]
 fn every_page_is_in_the_sidebar_at_once() {
     let window = Window::at(SETTINGS_TABS.len() - 1);
-    for name in SETTINGS_TABS {
+    for name in SETTINGS_TABS.into_iter().filter(|name| !super::HIDDEN_TABS.contains(name)) {
         assert!(window.has(name), "{name}: {:?}", window.texts);
     }
 }
