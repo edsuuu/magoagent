@@ -128,7 +128,12 @@ impl DrawingApp {
                 .filter(|r| r.width() >= 1.0 && r.height() >= 1.0)
                 .collect()
         });
-        holes.extend(fronts.iter().map(|front| front.intersect(page)).filter(|r| r.width() >= 1.0 && r.height() >= 1.0));
+        // ponytail: on macOS a hole hides the whole page (sync.rs), with no still picture to stand in for it: a card in
+        // front of a page leaves it whole, over the card, as before. Upgrade: a mask on the NSView's layer, or a picture
+        // of the page standing still there too
+        if !cfg!(target_os = "macos") {
+            holes.extend(fronts.iter().map(|front| front.intersect(page)).filter(|r| r.width() >= 1.0 && r.height() >= 1.0));
+        }
         holes.sort_by(|a, b| [a.min.x, a.min.y, a.max.x, a.max.y].partial_cmp(&[b.min.x, b.min.y, b.max.x, b.max.y]).unwrap_or(std::cmp::Ordering::Equal));
         holes.dedup();
         holes

@@ -36,7 +36,9 @@ fn a_card_in_front_of_a_portal_is_cut_out_of_its_page_and_over_the_drawings() {
     assert_eq!(fronts, vec![frame_of(&terminal), frame_of(&note)]);
     let page = app.portal_page_rect(&app.scene.elements[0]).expect("on the canvas");
     let holes = DrawingApp::page_holes(&ctx, page, &[], &fronts);
-    assert!(holes.contains(&frame_of(&terminal).intersect(page)) && holes.contains(&frame_of(&note).intersect(page)), "{holes:?}");
+    let cut = |front: Rect| holes.contains(&front.intersect(page));
+    // on macOS a hole hides the whole page, which has no picture to stand in for it there: it stays whole, over them
+    assert_eq!([cut(frame_of(&terminal)), cut(frame_of(&note))], [!cfg!(target_os = "macos"); 2], "{holes:?}");
     // nothing in front of the note
     assert!(app.cards_in_front(index_of(&app, &note)).is_empty());
     // a click finds what is drawn on top: the note over the portal, and over the box drawn after it
