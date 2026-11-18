@@ -16,7 +16,7 @@ pub(crate) mod maestro;
 pub(crate) mod mascot;
 #[cfg(target_os = "macos")]
 pub(crate) mod native;
-pub(crate) use mascot::mago::{MagoState, paint_mago_for};
+pub(crate) use mascot::mago::{MagoState, paint_agent_mago};
 pub(crate) mod notes;
 pub(crate) mod panes;
 mod state;
@@ -128,6 +128,7 @@ impl DrawingApp {
             legacy_ide: None,
             filetree: None,
             chat: None,
+            link: None,
             note: NoteSpec::default(),
             rope: false,
             style,

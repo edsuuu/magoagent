@@ -236,7 +236,6 @@ impl DrawingApp {
         for id in std::mem::take(&mut self.portal_extras.mute) {
             self.portal_apply_mute(&id);
         }
-        #[cfg(target_os = "macos")]
         for id in std::mem::take(&mut self.portal_extras.copy) {
             let (events, ctx) = (self.portal_events.0.clone(), ctx.clone());
             self.page_picture(&id, move |picture| {

@@ -25,7 +25,7 @@ fn the_chat_reads_claude_code_files() {
             .all(|i| !matches!(i, ChatItem::Image { .. }))
     );
     // in the order of their blocks
-    let both = json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone()]}, {"type": "tool_result", "is_error": true, "content": "falhou"}]}});
+    let both = json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone()]}, {"type": "tool_result", "is_error": true, "content": "Permission to use Bash denied by plugin x"}]}});
     assert!(matches!(line(both).as_slice(), [ChatItem::Image { .. }, ChatItem::Error(_)]), "the image first, as it came");
     // MagoAgent's own print of the canvas stays out: the canvas is behind the chat
     let note = format!("3 elemento(s); área x=0 y=0 largura=10 altura=10 ({}, escala 1.00)", crate::transcript::VIEW_MARK);
@@ -44,8 +44,15 @@ fn the_chat_reads_claude_code_files() {
     // what failed: the API, a tool
     let api = |n: u64| json!({"type": "system", "subtype": "api_error", "error": {"formatted": "529 Overloaded\nmais"}, "retryAttempt": n, "maxRetries": 10});
     assert_eq!(line(api(2)), vec![ChatItem::Error("Erro da API (tentativa 2 de 10): 529 Overloaded".into())]);
+    // a tool that failed: on its step, no line of its own; a permission it did not get is said
     let failed = json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": "<tool_use_error>File has not been read yet.</tool_use_error>"}]}});
-    assert_eq!(line(failed), vec![ChatItem::Error("Ferramenta falhou: File has not been read yet.".into())]);
+    assert!(line(failed).is_empty());
+    let denied = "Permission for this action was denied by the Claude Code auto mode classifier. Reason: deletes files";
+    let denied = json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": denied}]}});
+    assert_eq!(
+        line(denied),
+        vec![ChatItem::Error("Permissão negada: Permission for this action was denied by the Claude Code auto mode classifier. Reason: deletes files".into())]
+    );
     let last = json!({"type": "assistant", "isApiErrorMessage": true, "message": {"model": "<synthetic>", "content": [{"type": "text", "text": "API Error: 529 Overloaded"}]}});
     assert_eq!(line(last.clone()), vec![ChatItem::Error("Erro da API: 529 Overloaded".into())]);
     // the person's refusal and interruption are no failure
@@ -348,4 +355,30 @@ fn a_chat_resuming_a_session_is_named_by_that_session() {
     assert_eq!(resumed_in(&projects, "veja essa sessao"), None, "no resume, no session");
     assert_eq!(resumed_in(&projects, "claude --resume 00000000-0000"), None, "a session not here");
     let _ = fs::remove_dir_all(&projects);
+}
+
+#[test]
+fn a_tool_that_fails_says_why_on_its_step_and_in_json_by_its_message_whole_after_its_action() {
+    use crate::transcript::{Step, chat_items, failure_note};
+    let failed = |content: &str| {
+        let mut step = Step::default();
+        step.finish(&Value::Null, true, content, Some(1.0));
+        assert!(chat_items(&json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": content}]}})).is_empty());
+        (step.note.unwrap_or_default(), step.error.unwrap_or_default())
+    };
+    let why = "X11 input verification failed after typing; text may have been sent. Inspect the target before submitting or retrying, \
+               or press Escape to clear the field and type it again with a slower delay between the keys.";
+    let answer = json!({"action": "type_text", "implemented": true, "message": why, "details": {"display": ":0"}}).to_string();
+    let (note, error) = failed(&answer);
+    assert_eq!(error, format!("type_text: {why}"), "its card: the message whole, no JSON");
+    assert!(note.starts_with("type_text: X11 input") && note.chars().count() <= 121, "{note}");
+    // `error` when there is no `message`, as a string or an object; JSON with nothing that says why, as it came
+    assert_eq!(failed(r#"{"error": "sem permissão"}"#).1, "sem permissão");
+    assert_eq!(failed(r#"{"ok": false, "error": {"message": "porta ocupada"}}"#).1, "porta ocupada");
+    assert_eq!(failed(r#"{"ok": false}"#).1, r#"{"ok": false}"#);
+    // a command's exit code in words, the whole output in its card; a call cancelled for another's failure says so
+    assert_eq!(failed("Exit code 1\nerro: x"), ("saiu com o código 1".to_string(), "Exit code 1\nerro: x".to_string()));
+    assert_eq!(failure_note("\n Exit code 2\nmais"), "saiu com o código 2");
+    assert_eq!(failed("<tool_use_error>Cancelled: parallel tool call Bash(ls) errored</tool_use_error>").0, "cancelada: outra ferramenta chamada junto falhou");
+    assert_eq!(failed("<tool_use_error>String to replace not found in file.</tool_use_error>").0, "String to replace not found in file.");
 }

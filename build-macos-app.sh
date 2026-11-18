@@ -11,7 +11,6 @@ cp target/release/magoagent MagoAgent.app/Contents/MacOS/magoagent
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 mkdir -p MagoAgent.app/Contents/Resources
 cp assets/icon.icns MagoAgent.app/Contents/Resources/icon.icns
-cp assets/Hack-Regular.ttf MagoAgent.app/Contents/Resources/
 cat > MagoAgent.app/Contents/Info.plist <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -20,7 +19,7 @@ cat > MagoAgent.app/Contents/Info.plist <<PLIST
   <key>CFBundleExecutable</key><string>magoagent</string>
   <key>CFBundleIdentifier</key><string>com.edsuuu.magoagent</string>
   <key>CFBundleName</key><string>MagoAgent</string>
-  <key>CFBundleDisplayName</key><string>MagoAgent</string>
+  <key>CFBundleDisplayName</key><string>MagoAgent AlphaVersion</string>
   <key>CFBundleIconFile</key><string>icon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>

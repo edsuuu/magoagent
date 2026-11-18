@@ -24,7 +24,7 @@ pub(crate) use types::*;
 #[cfg(target_os = "linux")]
 pub(crate) use webkit::{PAGES_UNAVAILABLE, pages_open};
 #[cfg(target_os = "linux")]
-use webkit::{cut_page, new_tab_view, release_keys};
+use webkit::{cut_page, new_tab_view, release_keys, veil};
 
 impl DrawingApp {}
 

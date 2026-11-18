@@ -157,7 +157,7 @@ fn it_paints_at_every_size_without_panicking() {
         ] {
             for size in [24.0, 60.0, 160.0] {
                 time += 0.1;
-                paint_mago(ui.painter(), Pos2::new(100.0, 100.0), size, state, &mut motion, time, Some(Pos2::new(500.0, 20.0)));
+                paint_mago(ui.painter(), Pos2::new(100.0, 100.0), size, LUME, state, &mut motion, time, Some(Pos2::new(500.0, 20.0)));
             }
         }
     });

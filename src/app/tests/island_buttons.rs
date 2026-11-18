@@ -118,14 +118,14 @@ fn the_conversation_grows_and_comes_back_by_its_size_button() {
     // the spring that opens the conversation takes a little over a second to settle
     rest(&mut app, &ctx, &mut time, at, 1.0);
     let small = app.island.size();
-    let at = right_button(&app, 4);
+    let at = right_button(&app, BIG_BUTTON);
     click(&mut app, &ctx, &mut time, at);
     rest(&mut app, &ctx, &mut time, at, 1.0);
     assert!(app.island.chat_big(), "big");
     let big = app.island.size();
     assert!(big.x > small.x && big.y > small.y, "{small:?} → {big:?}");
     // the same button, where it is now on the big island
-    let at = right_button(&app, 4);
+    let at = right_button(&app, BIG_BUTTON);
     click(&mut app, &ctx, &mut time, at);
     rest(&mut app, &ctx, &mut time, at, 1.0);
     assert!(!app.island.chat_big(), "back");
@@ -243,7 +243,7 @@ fn the_window_holds_the_big_conversation_while_it_opens() {
     app.island.chat_full = true;
     let at = tab_button(&app, 1);
     click(&mut app, &ctx, &mut time, at);
-    let at = right_button(&app, 4);
+    let at = right_button(&app, BIG_BUTTON);
     let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
     for events in [vec![egui::Event::PointerMoved(at)], vec![press(true)], vec![press(false)]] {
         step(&mut app, &ctx, time, events);
@@ -580,4 +580,85 @@ fn turning_spotify_off_takes_its_tab_away() {
     assert_eq!(app.island.tab(), Tab::Home, "the page of a music that is off");
     let lines: Vec<_> = app.integration_items().into_iter().map(|item| item.id).collect();
     assert!(!lines.iter().any(|id| id.ends_with("spotify")), "no pill, so no tab: {lines:?}");
+}
+
+/// Asked: "quando eu clico em trocar o modelo no chat completo, ele fica bugado". In the island's window (here the
+/// screen is as big as it), the model chip's menu opens over the chip inside the island; Mais modelos opens its list
+/// in it (egui's menu closed at that click), the menu still in the island, and a model picked is the chat's.
+#[test]
+fn the_model_menu_stays_in_the_island_and_opens_more_models() {
+    let (mut app, ctx, mut time) = opened();
+    app.island.chat_full = true;
+    app.chat_agent = Some("a".into());
+    let at = tab_button(&app, 1);
+    click(&mut app, &ctx, &mut time, at);
+    rest(&mut app, &ctx, &mut time, at, 1.5);
+    let screen = app.island.window();
+    let at = at - Vec2::new(ISLAND_SCREEN.x / 2.0 - screen.x / 2.0, 0.0);
+    let mut frame = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, screen)), time: Some(time), events, ..Default::default() };
+        time += 0.05;
+        let mut output = ctx.run_ui(raw, |_| app.island_ui(&ctx));
+        output.textures_delta.clear();
+        let texts: Vec<(String, Rect)> = output
+            .shapes
+            .iter()
+            .filter_map(|s| if let egui::Shape::Text(t) = &s.shape { Some((t.galley.text().to_string(), t.visual_bounding_rect())) } else { None })
+            .collect();
+        texts
+    };
+    let press = |at: Pos2, pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+    let mut tap = |app: &mut DrawingApp, at: Pos2| {
+        for events in [vec![egui::Event::PointerMoved(at)], vec![egui::Event::PointerMoved(at)], vec![press(at, true)], vec![press(at, false)], vec![], vec![]]
+        {
+            frame(app, events);
+        }
+        frame(app, vec![egui::Event::PointerMoved(at)])
+    };
+    let texts = tap(&mut app, at);
+    let chip = texts.iter().find(|(text, _)| text.contains("Opus 5.5 ·")).map(|(_, rect)| rect.center()).expect("the model chip");
+    let texts = tap(&mut app, chip);
+    let more = texts.iter().find(|(text, _)| text == "Mais modelos").map(|(_, rect)| rect.center()).expect("the model menu, open");
+    let island = Rect::from_min_size(Pos2::new((screen.x - app.island.size().x) / 2.0, 0.0), app.island.size());
+    let menu = || {
+        ctx.memory(|memory| {
+            memory
+                .areas()
+                .visible_layer_ids()
+                .into_iter()
+                .filter_map(|layer| memory.area_rect(layer.id))
+                .filter(|rect| rect.width() > 100.0 && rect.width() < 300.0)
+                .collect::<Vec<_>>()
+        })
+    };
+    let texts = tap(&mut app, more);
+    assert!(texts.iter().any(|(text, _)| text == "Opus 4.8"), "Mais modelos opened its list: {texts:?}");
+    let shown = menu();
+    assert!(
+        !shown.is_empty() && shown.iter().all(|rect| island.contains_rect(*rect) && rect.bottom() < chip.y),
+        "over the chip, in the island: {shown:?} {island:?}"
+    );
+    let sonnet = texts.iter().find(|(text, _)| text == "Sonnet 5.5").map(|(_, rect)| rect.center()).unwrap();
+    tap(&mut app, sonnet);
+    assert_eq!(app.chats[0].model, "claude-sonnet-5-5");
+    assert!(menu().is_empty() && app.island.chat_full, "the pick closed the menu, the island stays");
+}
+
+/// Asked: "do modo chat oculta o modo voz e ditado por favor, e da ilha também". With the call and Ditar on hold
+/// (`voice::CALL_ON`, `voice::DICTATION_ON`) the island's header has no Chat por voz, and neither the island nor the
+/// MCP starts them.
+#[test]
+fn the_island_and_the_chat_have_no_voice_nor_dictation_while_they_are_on_hold() {
+    if crate::app::voice::CALL_ON || crate::app::voice::DICTATION_ON {
+        return;
+    }
+    let (mut app, ctx, mut time) = opened();
+    // where Chat por voz was, left of Ajustes
+    let voice = right_button(&app, 3);
+    click(&mut app, &ctx, &mut time, voice);
+    assert!(!app.voice.on, "no call from where its button was");
+    app.dictate_toggle();
+    assert!(app.dictation.is_none(), "Ditar starts nothing");
+    assert_eq!(app.act("voice_call", &json!({ "state": "dictate_on" })), Err("O ditado está desligado por enquanto.".into()));
+    assert_eq!(app.act("voice_call", &json!({ "state": "on" })), Err("O chat por voz está desligado por enquanto.".into()));
 }

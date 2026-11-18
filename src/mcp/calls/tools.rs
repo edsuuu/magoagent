@@ -5,16 +5,25 @@ pub(crate) fn tools() -> Value {
     let ids = json!({ "type": "array", "items": { "type": "string" } });
     let agent_name = json!({ "type": "string", "description": "o nome do agente, como list_agents mostra" });
     let tree_name = json!({ "type": "string", "description": "o nome da Árvore de Arquivos, como list_agents mostra; opcional com uma só ligada a você" });
+    // its own value: the list is past what one `json!` expands
+    let recruit = json!({
+        "command": { "type": "string", "description": "o agente e a tarefa; padrão claude (ex.: codex, ou claude \"revise o diff\")" },
+        "model": { "type": "string", "description": "o modelo que você escolhe para a tarefa: haiku (simples e rápido), sonnet (o dia a dia) ou opus (o difícil e longo); no Codex, um modelo da lista dele (ex.: gpt-5-codex); sem isto vale o de Ajustes" },
+        "effort": { "type": "string", "enum": ["low", "medium", "high", "xhigh", "max"], "description": "o esforço que você escolhe para a tarefa: low, medium, high, xhigh ou max" },
+        "worktree": { "type": "boolean", "description": "true: num git worktree próprio, num ramo dele" },
+        "mode": { "type": "string", "enum": ["terminal", "chat"], "description": "só quando a pessoa pedir com essas palavras (\"em terminal\", \"em chat\"); sem isto vale o ajuste Invocação dos agentes, o que ela escolheu: não passe por conta própria. terminal: Claude Code completo num terminal; chat: conversa leve num chat do app" },
+    });
     json!([
         {
             "name": "get_scene",
-            "description": "Lista os elementos do desenho atual (id, tipo, posição, tamanho, cores, texto, vínculos de setas) e a área ocupada.",
+            "description": "Lista os elementos do desenho atual (id, tipo, posição, tamanho, cores, texto, vínculos de setas, link para arquivo) e a área ocupada.",
             "inputSchema": { "type": "object", "properties": {} },
         },
         {
             "name": "add_elements",
             "description": "Adiciona elementos (objetos JSON com type, x, y, width, height, cores, text, points). Extras: `label: {text, fontSize?}` em formas e setas; \
-                `start: {id}` / `end: {id}` em setas para ligá-las a formas (os pontos são calculados sozinhos). \
+                `start: {id}` / `end: {id}` em setas para ligá-las a formas (os pontos são calculados sozinhos); `link` em formas, textos e notas \
+                (um arquivo, com a linha: \"/projeto/src/x.rs:120\") põe no desenho uma marca que abre o arquivo na Árvore de Arquivos. \
                 Um terminal, navegador ou árvore de arquivos que você abre aqui (type terminal, portal, filetree) já nasce ligado a você \
                 por uma corda (ao seu terminal ou ao seu cartão de chat): list_agents o mostra e read_terminal lê a tela do terminal; \
                 posto em cima de outra janela ou nota, ele vai para o lugar livre mais perto de você. \
@@ -24,7 +33,7 @@ pub(crate) fn tools() -> Value {
         {
             "name": "update_elements",
             "description": "Altera elementos existentes: cada item tem `id` mais os campos a trocar (x, y, width, height, text, \
-                strokeColor, backgroundColor, angle, start/end...). Setas ligadas acompanham as formas movidas. Também move \
+                strokeColor, backgroundColor, angle, start/end, link (null tira)...). Setas ligadas acompanham as formas movidas. Também move \
                 e redimensiona janelas (terminais, navegadores e árvores de arquivos) por x, y, width e height, sem mexer no que rodam.",
             "inputSchema": { "type": "object", "properties": { "elements": elements }, "required": ["elements"] },
         },
@@ -73,7 +82,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "focus_canvas",
-            "description": "Mostra o canvas à pessoa centralizado no que ela quer ver: `at` são ids ou nomes (de terminais, navegadores, árvores de arquivos ou textos), separados por vírgula; vazio é o desenho todo. O zoom se ajusta para caber, ou use `zoom` (1 = 100%, 0.1 a 4).",
+            "description": "Mostra o canvas à pessoa centralizado no que ela quer ver: `at` são ids ou nomes (de terminais, navegadores, árvores de arquivos ou textos), separados por vírgula; vazio é o desenho todo. O zoom se ajusta para caber, ou use `zoom` (1 = 100%, 0.1 a 4). Com uma Árvore de Arquivos ampliada, `at` com o nome ou id dela e `zoom` mudam o zoom dela (0.5 a 3), como Ctrl + roda sobre ela.",
             "inputSchema": { "type": "object", "properties": {
                 "at": { "type": "string" },
                 "zoom": { "type": "number" },
@@ -221,15 +230,13 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "recruit_agent",
-            "description": "Cria um agente novo (um terminal) abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você; ele ganha \
-                um nome (a resposta diz qual) e você fala com ele com ask_agent. Só de dentro de um terminal do MagoAgent. \
+            "description": "Cria um agente novo abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você: \
+                um chat do app ou um terminal com o Claude Code, como a pessoa escolheu em Ajustes › Agentes › Invocação dos agentes. Ele ganha \
+                um nome (a resposta diz qual, o modelo e o esforço) e você fala com ele com ask_agent. Só de dentro de um terminal ou chat do MagoAgent. \
+                Escolha sempre model e effort à altura da tarefa e diga à pessoa o que escolheu. \
                 Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para \
                 dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).",
-            "inputSchema": { "type": "object", "properties": {
-                "command": { "type": "string", "description": "o que roda nele; padrão claude (ex.: codex)" },
-                "worktree": { "type": "boolean", "description": "true: num git worktree próprio, num ramo dele" },
-                "mode": { "type": "string", "enum": ["terminal", "chat"], "description": "terminal: Claude Code completo num terminal; chat: conversa leve num chat do app (usa o login do CLI, gasta bem menos memória); sem isto vale o ajuste Invocação dos agentes" },
-            } },
+            "inputSchema": { "type": "object", "properties": recruit },
         },
         {
             "name": "create_portal",

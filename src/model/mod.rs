@@ -10,7 +10,10 @@ pub(crate) use scene::*;
 pub(crate) use specs::*;
 pub(crate) use style::*;
 
-pub(crate) const APP_TITLE: &str = "MagoAgent";
+/// The name the person sees: the window, Sobre, the tray, the installers and the releases (asked: "as builds do
+/// MagoAgent deixa como MagoAgent AlphaVersion"). Files, folders and package ids keep `magoagent`/`MagoAgent`: the
+/// updater finds the packages and the installs by them.
+pub(crate) const APP_TITLE: &str = "MagoAgent AlphaVersion";
 pub(crate) const PRIMARY: Color32 = Color32::from_rgb(0x0a, 0x84, 0xff);
 pub(crate) const BLACK: [u8; 4] = [0x1e, 0x1e, 0x1e, 255];
 pub(crate) const WHITE: [u8; 4] = [255, 255, 255, 255];

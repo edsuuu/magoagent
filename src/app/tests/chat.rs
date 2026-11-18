@@ -2,7 +2,12 @@ use super::*;
 
 /// One frame of the chat screen alone, `size` wide and tall: the texts it painted, where.
 fn chat_frame(app: &mut DrawingApp, ctx: &Context, size: Vec2, events: Vec<egui::Event>) -> Vec<(String, Rect)> {
-    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), events, ..Default::default() };
+    chat_frame_at(app, ctx, size, None, events)
+}
+
+/// `chat_frame` at `time` (`None`: a 60th of a second after the last), for what eases over time.
+fn chat_frame_at(app: &mut DrawingApp, ctx: &Context, size: Vec2, time: Option<f64>, events: Vec<egui::Event>) -> Vec<(String, Rect)> {
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), time, events, ..Default::default() };
     let mut output = ctx.run_ui(raw, |_| app.chat_screen(ctx));
     output.textures_delta.clear();
     output
@@ -21,6 +26,13 @@ fn click(app: &mut DrawingApp, ctx: &Context, size: Vec2, at: Pos2) -> Vec<(Stri
     chat_frame(app, ctx, size, vec![egui::Event::PointerMoved(at), button(at, true)]);
     chat_frame(app, ctx, size, vec![button(at, false)]);
     chat_frame(app, ctx, size, vec![])
+}
+
+/// `click` on an accordion's row, and a frame a second later: what it holds has eased all the way open or shut.
+fn click_eased(app: &mut DrawingApp, ctx: &Context, size: Vec2, at: Pos2) -> Vec<(String, Rect)> {
+    click(app, ctx, size, at);
+    let later = ctx.input(|input| input.time) + 1.0;
+    chat_frame_at(app, ctx, size, Some(later), vec![])
 }
 
 #[test]
@@ -50,11 +62,73 @@ fn a_run_of_tools_folds_into_one_line_that_opens_and_the_latest_stays_open() {
     let line = painted(&texts, "2 ferramentas · Read ×2 · 12 s").unwrap_or_else(|| panic!("the run before the answer folds: {texts:?}"));
     assert!(painted(&texts, "a.rs").is_none(), "its steps hidden");
     assert!(painted(&texts, "c.rs").is_some() && painted(&texts, "cargo test").is_some(), "the latest run stays open");
-    let texts = click(&mut app, &ctx, size, line.center());
+    let texts = click_eased(&mut app, &ctx, size, line.center());
     assert!(app.chat_unfolded.contains("a"));
     assert!(painted(&texts, "a.rs").is_some() && painted(&texts, "b.rs").is_some(), "opened: its steps show under the line");
-    click(&mut app, &ctx, size, line.center());
+    let texts = click_eased(&mut app, &ctx, size, line.center());
     assert!(app.chat_unfolded.is_empty(), "and it folds back");
+    assert!(painted(&texts, "a.rs").is_none(), "shut: its steps not laid out");
+}
+
+#[test]
+fn a_run_of_tools_eases_open_and_shut_under_its_line() {
+    use crate::transcript::{ChatItem, Step, Transcript};
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id.clone());
+    let step = |id: &str, name: &str, what: &str| {
+        ChatItem::Tool(Step { id: id.into(), name: name.into(), what: what.into(), started: Some(10.0), ended: Some(13.0), ..Default::default() })
+    };
+    // the run the user pointed at: "3 ferramentas · ToolSearch, create_portal, focus_canvas · 3 s"
+    let mut t = Transcript::new(PathBuf::new());
+    t.items = vec![
+        ChatItem::User("abra o google".into()),
+        step("a", "ToolSearch", "select:mcp__magoagent__create_portal"),
+        step("b", "mcp__magoagent__create_portal", "https://www.google.com"),
+        step("c", "mcp__magoagent__focus_canvas", "www.google.com"),
+        ChatItem::Agent("Abri o Google no canvas.".into()),
+    ];
+    app.transcripts.insert(id, t);
+    let size = Vec2::new(1200.0, 800.0);
+    let at = |app: &mut DrawingApp, time: f64, events: Vec<egui::Event>| chat_frame_at(app, &ctx, size, Some(time), events);
+    const LINE: &str = "3 ferramentas · ToolSearch, create_portal, focus_canvas · 3 s";
+    // how far under the run's line the answer is (in the conversation, not the list's preview at the left): the line,
+    // and the room its steps take, with the gap over them
+    let room = |texts: &[(String, Rect)]| {
+        let line = painted(texts, LINE).unwrap_or_else(|| panic!("{texts:?}"));
+        let answer = texts.iter().find(|(text, rect)| text.starts_with("Abri o Google") && rect.left() > line.left() - 40.0);
+        (line.top(), answer.unwrap_or_else(|| panic!("{texts:?}")).1.top() - line.top())
+    };
+    at(&mut app, 0.0, vec![]);
+    let texts = at(&mut app, 0.1, vec![]);
+    let (line, shut) = room(&texts);
+    assert!(painted(&texts, "https://www.google.com").is_none(), "shut: its steps not laid out");
+    let middle = painted(&texts, LINE).unwrap().center();
+    // a click: its steps ease open under the line, which stays where it is
+    at(&mut app, 0.2, vec![egui::Event::PointerMoved(middle), button(middle, true)]);
+    at(&mut app, 0.25, vec![button(middle, false)]);
+    assert!(app.chat_unfolded.contains("a"));
+    at(&mut app, 0.26, vec![]);
+    let (still, opening) = room(&at(&mut app, 0.3, vec![]));
+    let texts = at(&mut app, 1.0, vec![]);
+    let (_, open) = room(&texts);
+    assert!(painted(&texts, "https://www.google.com").is_some(), "open: its steps under the line");
+    assert!(shut < opening && opening < open, "halfway, between shut and open: {shut} < {opening} < {open}");
+    assert_eq!(still, line, "the line stays under the pointer");
+    assert_eq!(room(&at(&mut app, 1.1, vec![])).1, open, "and stays open");
+    // another: they ease shut, and shut nothing of them is laid out
+    at(&mut app, 1.2, vec![button(middle, true)]);
+    at(&mut app, 1.25, vec![button(middle, false)]);
+    assert!(app.chat_unfolded.is_empty());
+    at(&mut app, 1.26, vec![]);
+    let (still, closing) = room(&at(&mut app, 1.3, vec![]));
+    assert!(shut < closing && closing < open, "halfway back: {shut} < {closing} < {open}");
+    assert_eq!(still, line);
+    let texts = at(&mut app, 2.0, vec![]);
+    assert!((room(&texts).1 - shut).abs() < 0.5, "back to shut: {} vs {shut}", room(&texts).1);
+    assert!(painted(&texts, "https://www.google.com").is_none(), "shut: its steps not laid out");
 }
 
 #[test]
@@ -85,12 +159,13 @@ fn a_click_on_a_step_opens_its_card_with_the_whole_command() {
     let says = |texts: &[(String, Rect)], what: &str| texts.iter().any(|(t, _)| t.contains(what));
     assert!(!says(&texts, "npm test --silent"), "closed: one line, as before");
     let row = painted(&texts, "cd web").expect("its row");
-    let texts = click(&mut app, &ctx, size, row.center());
+    let texts = click_eased(&mut app, &ctx, size, row.center());
     assert!(app.chat_unfolded.contains("card:s"));
     assert!(says(&texts, "npm test --silent") && says(&texts, "3 testes ok"), "the whole command and its output: {texts:?}");
     assert!(says(&texts, "Bash · terminou em 4 s") && says(&texts, "Pasta: /p") && painted(&texts, "Copiar").is_some());
-    click(&mut app, &ctx, size, row.center());
+    let texts = click_eased(&mut app, &ctx, size, row.center());
     assert!(app.chat_unfolded.is_empty(), "and it closes");
+    assert!(!says(&texts, "npm test --silent"), "shut: its card not laid out");
 }
 
 #[test]
@@ -432,8 +507,10 @@ fn the_card_has_the_words_on_top_and_its_buttons_under_them() {
     assert_eq!(keys, Rect::NOTHING, "no keys' hint under it");
 }
 
+/// Asked: "do chat abrir em um pop, remove 'Abrir em miniatura', deixa apenas na ilha". The header's last button is no
+/// longer Abrir em miniatura: a click at the header's right end opens no panel over the canvas.
 #[test]
-fn abrir_em_miniatura_leaves_the_chat_for_its_panel_over_the_canvas() {
+fn the_header_has_no_abrir_em_miniatura() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     let id = push_chat(&mut app, "Claude");
@@ -446,8 +523,10 @@ fn abrir_em_miniatura_leaves_the_chat_for_its_panel_over_the_canvas() {
     chat_frame(&mut app, &ctx, size, vec![]);
     // the header's last button, at its right end
     let at = Pos2::new(size.x - 16.0 - 16.0, TOP_ROW.max(TITLE_BAR) + 27.0);
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    assert!(painted(&texts, "Ver no canvas").is_some_and(|rect| rect.right() > size.x - 60.0), "Ver no canvas is the last button");
     click(&mut app, &ctx, size, at);
-    assert!(!app.chat_open && app.mini.open && app.mini.on, "the chat closed and its panel, not the pill, is open");
+    assert!(!app.mini.open, "no panel over the canvas");
 }
 
 #[test]
@@ -528,4 +607,106 @@ fn a_recent_folder_picked_in_the_folder_chips_menu_becomes_the_chats_folder() {
     click(&mut app, &ctx, size, line.center());
     assert_eq!(app.chats.iter().find(|chat| chat.id == id).map(|chat| chat.cwd.as_str()), Some(recent.as_str()), "picked");
     let _ = fs::remove_dir_all(&recent);
+}
+
+#[test]
+fn a_table_in_the_chat_takes_the_columns_width_with_nothing_cut() {
+    use crate::transcript::{ChatItem, Transcript};
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = agent(&mut app, "Revisor");
+    app.chat_open = true;
+    app.chat_agent = Some(id.clone());
+    // the user's table, its headers as the agent wrote them in full; and a narrow one
+    let headers = ["Contrato 5 (A3VTQ8K2-9X, financiamento do apartamento)", "Contrato 76 (7CJ4M1PZ-2B, consórcio do carro)"];
+    let wide = format!(
+        "Os dois contratos:\n\n|  | {} | {} |\n|---|---|---|\n| Parcelas: total / pagas / a pagar | 48 / 12 / 36 | 60 / 30 / 30 |\n\
+         | Próxima | 10/12/2026 — R$ 1.234,56 | 15/12/2026 — R$ 987,65 |\n| Última | 10/11/2029 | 15/11/2028 |\n| Dia do vencimento | 10 | 15 |",
+        headers[0], headers[1]
+    );
+    let narrow = "| a | b |\n|---|---|\n| 1 | 2 |";
+    let mut t = Transcript::new(PathBuf::new());
+    t.items = vec![ChatItem::User("compare".into()), ChatItem::Agent(wide), ChatItem::Agent(narrow.into())];
+    app.transcripts.insert(id, t);
+    // what each text shows (its rows' letters, without the spaces it breaks at), in how many rows, cut or not, where;
+    // after a few frames of a window `wide` wide
+    let packed = |text: &str| text.chars().filter(|letter| !letter.is_whitespace()).collect::<String>();
+    let shown = |app: &mut DrawingApp, wide: f32| {
+        let mut texts: Vec<(String, usize, bool, Rect)> = Vec::new();
+        for _ in 0..4 {
+            let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(wide, 800.0))), ..Default::default() };
+            let output = ctx.run_ui(raw, |_| app.chat_screen(&ctx));
+            texts = output
+                .shapes
+                .into_iter()
+                .filter_map(|clipped| match clipped.shape {
+                    Shape::Text(text) => Some((
+                        packed(&text.galley.rows.iter().flat_map(|row| row.glyphs.iter().map(|glyph| glyph.chr)).collect::<String>()),
+                        text.galley.rows.len(),
+                        text.galley.elided,
+                        text.visual_bounding_rect(),
+                    )),
+                    _ => None,
+                })
+                .collect();
+        }
+        texts
+    };
+    let find = |texts: &[(String, usize, bool, Rect)], words: &str| {
+        texts.iter().find(|(text, ..)| *text == packed(words)).cloned().unwrap_or_else(|| panic!("{words}: {texts:?}"))
+    };
+    // a wide window: each header whole and on one line, the table wider than a bubble's 720 (what a squeezed table
+    // had) and inside the column (1100 at most)
+    let texts = shown(&mut app, 1700.0);
+    for header in headers {
+        let (_, rows, cut, _) = find(&texts, header);
+        assert!(rows == 1 && !cut, "{header}: {rows} rows, cut {cut}");
+    }
+    // in the conversation (the list at the left cuts its previews)
+    let words = find(&texts, "Os dois contratos:").3.left_top();
+    let cut: Vec<_> = texts.iter().filter(|(_, _, cut, rect)| *cut && rect.left() >= words.x - 1.0 && rect.top() >= words.y).collect();
+    assert!(cut.is_empty(), "nothing cut with …: {cut:?}");
+    let (left, right) = (find(&texts, "Parcelas: total / pagas / a pagar").3.left(), find(&texts, headers[1]).3.right());
+    assert!(right - left > 720.0 && right - left < 1100.0, "{left} → {right}");
+    // the narrow one at its own width: not stretched to the column
+    let cell = |words_: &str| texts.iter().find(|(text, .., rect)| text == words_ && rect.left() >= words.x - 1.0 && rect.top() >= words.y).unwrap().3;
+    let (one, two) = (cell("1"), cell("2"));
+    assert!(two.right() - one.left() < 120.0, "{one:?} {two:?}");
+    // a window narrower than the table: its wide cells wrap, whole, inside the conversation's column
+    let texts = shown(&mut app, 1000.0);
+    // the conversation's right edge: the person's bubble at it, its words 12 in
+    let column = find(&texts, "compare").3.right() + 12.0;
+    for header in headers {
+        let (_, rows, cut, rect) = find(&texts, header);
+        assert!(rows > 1 && !cut && rect.right() <= column + 1.0, "{header}: {rows} rows, cut {cut}, {rect:?} past {column}");
+    }
+}
+
+/// Asked (D-010 of the egui review, the owner chose a confirmation): Remover chat asks first, saying the conversation goes
+/// for good; Esc keeps the chat, Enter (Remover) removes it.
+#[test]
+fn remover_chat_asks_first_and_only_remover_deletes_it() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.chats = vec![chat("a", "claude", "Claude Code · loja")];
+    app.chat_open = true;
+    let size = Vec2::new(1200.0, 800.0);
+    // the row's ⋯ › Remover chat
+    app.chat_listing.removing = Some("a".into());
+    // a new area takes its size in its first frame
+    chat_frame(&mut app, &ctx, size, vec![]);
+    let shown = chat_frame(&mut app, &ctx, size, vec![]);
+    assert!(painted(&shown, "Remover chat").is_some(), "the dialog asks");
+    assert!(shown.iter().any(|(text, _)| text.contains("excluídos permanentemente")), "and says it is for good");
+    chat_frame(&mut app, &ctx, size, vec![key_press(Key::Escape)]);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    assert_eq!((app.chats.len(), app.chat_listing.removing.as_deref()), (1, None), "Esc keeps it");
+    // the box keeps what is written: the Enter is the dialog's
+    app.chat_listing.removing = Some("a".into());
+    app.chat_draft = "não envia".into();
+    ctx.memory_mut(|memory| memory.request_focus(egui::Id::unique("chat_draft")));
+    chat_frame(&mut app, &ctx, size, vec![]);
+    chat_frame(&mut app, &ctx, size, vec![key_press(Key::Enter)]);
+    assert!(app.chats.iter().all(|chat| chat.id != "a"), "Remover removes it");
+    assert_eq!(app.chat_draft, "não envia");
 }

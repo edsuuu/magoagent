@@ -131,6 +131,8 @@ enum IslandSprite {
     /// The song's cover is a view; these are the sound's bars from `x` (`count` of them, `bar` wide, `gap` apart).
     case bars(x: CGFloat, y: CGFloat, count: Int, bar: CGFloat, gap: CGFloat, tall: CGFloat, upright: Bool, tint: Color)
     case voice(center: CGPoint)
+    /// The check Luna wears while an agent finished and the island was not opened yet (`done::paint_check`).
+    case check(luna: CGPoint, size: CGFloat)
 }
 
 /// One canvas redrawn every display frame (120 Hz on ProMotion) with Luna, the minis and the bars.
@@ -180,6 +182,19 @@ struct IslandCanvas: View {
                 let rect = upright ? CGRect(x: y - height / 2, y: along, width: height, height: bar) : CGRect(x: along, y: y - height / 2, width: bar, height: height)
                 context.fill(Path(roundedRect: rect, cornerRadius: bar / 2), with: .color(tint))
             }
+        case let .check(luna, size):
+            let radius = max(size * 0.2, 4)
+            let at = CGPoint(x: luna.x + size * 0.34, y: luna.y - size * 0.3)
+            context.fill(Path(ellipseIn: CGRect(x: at.x - radius - 1.5, y: at.y - radius - 1.5, width: (radius + 1.5) * 2, height: (radius + 1.5) * 2)), with: .color(IslandInk.black))
+            context.fill(Path(ellipseIn: CGRect(x: at.x - radius, y: at.y - radius, width: radius * 2, height: radius * 2)), with: .color(IslandInk.mint))
+            // the chat lists' check (24 across), as wide as the seal
+            let scale = radius * 1.5 / 24
+            var mark = Path()
+            for (index, point) in [(5.0, 12.5), (9.5, 17.0), (19.0, 7.5)].enumerated() {
+                let to = CGPoint(x: at.x + (point.0 - 12) * scale, y: at.y + (point.1 - 12) * scale)
+                if index == 0 { mark.move(to: to) } else { mark.addLine(to: to) }
+            }
+            context.stroke(mark, with: .color(IslandInk.black), style: StrokeStyle(lineWidth: max(radius * 0.3, 1.2), lineCap: .round, lineJoin: .round))
         case let .voice(center):
             let level = live.mic
             for index in 0..<3 {
@@ -257,6 +272,7 @@ struct IslandSmall: View {
             let center = model.notch.map { _ in CGPoint(x: song != nil ? 33 : (size.width - notch) / 4, y: size.height / 2) }
                 ?? CGPoint(x: size.width / 2, y: size.height / 2)
             sprites.append(.luna(center: center, size: 18, state: state, motion: "island-small"))
+            if snapshot.finished { sprites.append(.check(luna: center, size: 18)) }
             if song != nil {
                 let total = 5 * 1.5 + 4 * 1.5
                 cover = CGRect(x: 4, y: size.height / 2 - 8, width: 16, height: 16)
@@ -264,7 +280,9 @@ struct IslandSmall: View {
             }
         } else {
             let wizard = upright ? CGPoint(x: size.width / 2, y: 24) : CGPoint(x: IslandSize.compactSide, y: size.height / 2 + 1)
-            sprites.append(.luna(center: wizard, size: model.notch.map { min(30, $0.height - 6) } ?? 30, state: state, motion: "island-small"))
+            let lunaSize = model.notch.map { min(30, $0.height - 6) } ?? 30
+            sprites.append(.luna(center: wizard, size: lunaSize, state: state, motion: "island-small"))
+            if snapshot.finished { sprites.append(.check(luna: wizard, size: lunaSize)) }
             let lines = snapshot.lines.filter { song == nil || $0.id != "integration:spotify" }
             let places = upright ? islandUprightCells(rect, count: lines.count) : islandMiniCells(rect, count: lines.count)
             cells = Array(zip(lines, places))

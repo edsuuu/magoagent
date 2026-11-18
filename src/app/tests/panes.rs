@@ -150,10 +150,11 @@ fn on_the_welcome_the_panel_buttons_hide_and_the_top_moves_the_window() {
     assert_eq!(raw.events.len(), 1, "the press in the middle of the top moves the window");
 }
 
-/// Asked: "a aba de tarefas, ali no canvas remove por favor". Only Alterações has a button; the tasks still reach the agents.
+/// Asked: "a aba de tarefas, ali no canvas remove por favor". Only Alterações and Nota rápida have a button; the tasks
+/// still reach the agents.
 #[test]
 fn the_tasks_panel_is_gone_and_the_tasks_stay() {
-    assert_eq!(PANES.map(|pane| pane.2), ["Alterações"]);
+    assert_eq!(PANES.map(|pane| pane.2), ["Alterações", "Nota rápida"]);
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     settle(&mut app, &ctx);
@@ -216,4 +217,45 @@ fn a_narrow_window_keeps_the_toolbar_clear_of_the_panel_buttons() {
     let buttons = app.pane_button(narrow.x, 0);
     assert!(tools.right() < buttons.left(), "{tools:?} runs into {buttons:?}");
     assert!(tools.left() > app.sidebar_width(), "still over the canvas: {tools:?}");
+}
+
+/// Asked: "uma nota rápida de fácil acesso, ali no botão de alteração … um botão a gente leva essa nota para dentro do
+/// canvas … não quero que esteja em markdown". Its button opens it ready to type; what is typed stays as typed (the
+/// canvas's letter keys don't take it); Levar para o canvas makes it a note shown as typed, selected, and empties it.
+#[test]
+fn nota_rapida_keeps_plain_text_and_goes_to_the_canvas_as_a_note() {
+    let (ctx, mut app, shown) = opened(Pane::QuickNote);
+    assert!(texts(&shown).iter().any(|text| text == "Vazia"));
+    let tool = app.tool;
+    pane_frame(&mut app, &ctx, vec![egui::Event::Text("# lista h".into())]);
+    pane_frame(&mut app, &ctx, vec![key_press(Key::Enter), egui::Event::Text("- **leite**".into())]);
+    assert_eq!(app.prefs.quick_note, "# lista h\n- **leite**");
+    assert_eq!(app.tool, tool, "the canvas's keys stay out of it");
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+    assert!(texts(&shown).iter().any(|text| text == "2 linhas"));
+    let take = find(&shown, Role::Button, "Levar para o canvas").expect("Levar para o canvas");
+    pane_click(&mut app, &ctx, take.center());
+    let note = app.scene.elements.iter().position(|element| element.note.raw).expect("a note shown as typed");
+    let label = &app.scene.elements[note + 1];
+    assert!(matches!(&label.kind, ElementKind::Text { value, .. } if value == "# lista h\n- **leite**"));
+    assert_eq!((app.selected.as_slice(), app.prefs.quick_note.as_str()), ([note].as_slice(), ""));
+    // empty, there is nothing to take
+    assert!(app.quick_note_to_canvas().unwrap_err().contains("vazia"));
+}
+
+/// The MCP's `quick_note`, as the person uses it.
+#[test]
+fn the_mcp_reads_writes_and_takes_the_nota_rapida() {
+    let mut app = DrawingApp::default();
+    let act = |app: &mut DrawingApp, args: Value| app.act("quick_note", &args);
+    assert_eq!(act(&mut app, json!({ "action": "get" })), Ok("A nota rápida está vazia.".into()));
+    act(&mut app, json!({ "action": "set", "text": "comprar pão" })).unwrap();
+    act(&mut app, json!({ "action": "append", "text": "ligar para a Bia" })).unwrap();
+    assert_eq!(act(&mut app, json!({ "action": "get" })), Ok("comprar pão\nligar para a Bia".into()));
+    act(&mut app, json!({ "action": "show" })).unwrap();
+    assert_eq!(app.panes.open, Some(Pane::QuickNote));
+    assert_eq!(app.act("panel", &json!({ "name": "note", "open": false })), Ok("Painel Nota rápida fechado.".into()));
+    act(&mut app, json!({ "action": "to_canvas" })).unwrap();
+    assert!(app.scene.elements.iter().any(|element| matches!(&element.kind, ElementKind::Text { value, .. } if value == "comprar pão\nligar para a Bia")));
+    assert!(act(&mut app, json!({ "action": "apagar" })).unwrap_err().contains("show, get, set, append ou to_canvas"));
 }

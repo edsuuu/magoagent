@@ -4,10 +4,14 @@ use serde_json::Map;
 
 use super::*;
 
-/// Turns element JSON (plus the label/start/end shortcuts) into elements.
+/// Turns element JSON (plus the label/start/end shortcuts) into elements. The shapes come first and the arrows and
+/// lines after them, whatever the order they were listed in: an arrow listed before the shape it ties to found no
+/// shape there yet.
 pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Value>, String> {
     let mut created = Vec::new();
-    for item in items {
+    let is_line = |item: &&Value| matches!(item["type"].as_str(), Some("arrow" | "line"));
+    let ordered: Vec<&Value> = items.iter().filter(|item| !is_line(item)).chain(items.iter().filter(is_line)).collect();
+    for item in ordered {
         let mut v = item.as_object().cloned().ok_or("cada elemento precisa ser um objeto")?;
         let kind = v.get("type").and_then(Value::as_str).ok_or("elemento sem `type`")?.to_string();
         let id = v.get("id").and_then(Value::as_str).map(String::from).unwrap_or_else(new_id);
@@ -15,7 +19,7 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
             return Err(format!("já existe um elemento com id `{id}`"));
         }
         v.insert("id".into(), id.clone().into());
-        let label = v.remove("label");
+        let mut label = v.remove("label");
         match kind.as_str() {
             "rectangle" | "diamond" | "ellipse" => {
                 v.entry("width").or_insert(json!(160.0));
@@ -26,6 +30,10 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
                 }
             }
             "stickynote" => {
+                // its `text` is its label, as the `note` tool writes it: the file format has no text on the note itself
+                if let Some(text) = v.remove("text").filter(|text| label.is_none() && text.is_string()) {
+                    label = Some(json!({ "text": text, "fontSize": 20 }));
+                }
                 v.entry("width").or_insert(json!(NOTE_SIZE.x));
                 v.entry("height").or_insert(json!(NOTE_SIZE.y));
                 v.entry("created").or_insert(json!(now_ms()));
@@ -122,14 +130,31 @@ pub(crate) fn center_of(scene: &Scene, id: &str) -> Result<Pos2, String> {
     scene.elements.iter().find(|e| e.id == id).map(|e| element_bounds(e).center()).ok_or_else(|| format!("elemento `{id}` não existe"))
 }
 
-/// `start: {id}` / `end: {id}` become orbit bindings; missing points are aimed center to center.
+/// The element an arrow's end names: `{id}`, a bare id, or the file format's `{elementId}`.
+fn end_target(value: &Value) -> Option<String> {
+    value.as_str().or(value["id"].as_str()).or(value["elementId"].as_str()).map(String::from)
+}
+
+/// `start: {id}` / `end: {id}` become orbit bindings; missing points are aimed center to center. An end that names
+/// an element in any of the ways an agent writes it (`end: "b"`, `end: {elementId}`, `endBinding: "b"`) binds, and one
+/// naming no element is an error: dropped without a word, the arrow was drawn right and only one end was tied (asked:
+/// "quando desenhou no canvas ele vinculou apenas um e outro não, mas desenhou corretamente").
 pub(crate) fn prepare_line(scene: &Scene, v: &mut Map<String, Value>) -> Result<(), String> {
     let mut ends = [None, None];
     for (k, key) in ["start", "end"].into_iter().enumerate() {
-        if let Some(target) = v.remove(key).and_then(|t| t["id"].as_str().map(String::from)) {
+        let binding = format!("{key}Binding");
+        let named = match v.remove(key) {
+            None | Some(Value::Null) => None,
+            Some(value) => Some(end_target(&value).ok_or_else(|| format!("`{key}` precisa do id de um elemento: {{\"id\": \"…\"}}"))?),
+        };
+        let named = named.or_else(|| v.get(&binding).filter(|value| value.is_string()).and_then(end_target));
+        if let Some(target) = named {
             let center = center_of(scene, &target)?;
-            v.insert(format!("{key}Binding"), json!({ "elementId": target, "fixedPoint": [0.5, 0.5], "mode": "orbit" }));
+            v.insert(binding, json!({ "elementId": target, "fixedPoint": [0.5, 0.5], "mode": "orbit" }));
             ends[k] = Some(center);
+        } else if let Some(target) = v.get(&binding).and_then(|value| value["elementId"].as_str()) {
+            // the file format's own binding, which goes in as it is: its element has to be there
+            ends[k] = Some(center_of(scene, target).map_err(|_| format!("`{binding}` aponta para `{target}`, que não existe"))?);
         }
     }
     if v.get("points").is_none() {

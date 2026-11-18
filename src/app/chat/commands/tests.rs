@@ -105,7 +105,9 @@ fn clear_starts_a_new_session_and_the_commands_change_the_chat() {
     assert_eq!((app.chats[0].model.as_str(), app.chats[0].effort.as_str()), ("claude-sonnet-5-5", high));
     assert!(app.chat_submit(&ctx, &id, "/clear", "/clear"));
     assert_eq!(app.chats[0].session, None);
-    assert!(matches!(&app.transcripts[&id].items[..], [ChatItem::System(note)] if note.starts_with("Conversa nova")));
+    // headed by the new session's line, the conversation before it in the list (chat/direct/archive.rs)
+    let new_session = crate::app::chat::direct::is_new_session_mark;
+    assert!(matches!(&app.transcripts[&id].items[..], [ChatItem::System(mark), ChatItem::System(note)] if new_session(mark) && note.contains("Conversas")));
     assert!(app.chat_submit(&ctx, &id, "/help", "/help"));
     assert!(matches!(app.transcripts[&id].items.last(), Some(ChatItem::System(h)) if h.contains("/login") && h.contains("/clear")));
     // the menu opens on a slash with no space after it

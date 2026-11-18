@@ -15,6 +15,22 @@ fn late_frame_goes_behind_its_contents() {
 }
 
 #[test]
+fn a_drawing_takes_a_link_to_a_file_get_scene_shows_it_and_null_takes_it_off() {
+    let mut scene = Scene::default();
+    let box_ = json!({ "type": "rectangle", "id": "b", "x": 0, "y": 0, "link": "/p/src/fila.rs:42", "label": { "text": "Fila" } });
+    let note = json!({ "type": "stickynote", "id": "n", "x": 300, "y": 0, "text": "O webhook", "link": "/p/src/webhook.rs" });
+    add_elements(&mut scene, &[box_, note]).unwrap();
+    assert_eq!(by_id(&scene, "b").link.as_deref(), Some("/p/src/fila.rs:42"));
+    assert_eq!(by_id(&scene, "n").link.as_deref(), Some("/p/src/webhook.rs"));
+    assert_eq!(by_id(&scene, "b-label").link, None, "the shape's, not its label's");
+    let described: Value = serde_json::from_str(&crate::mcp::calls::describe(&scene)).unwrap();
+    let links: Vec<&str> = described["elements"].as_array().unwrap().iter().filter_map(|element| element["link"].as_str()).collect();
+    assert_eq!(links, ["/p/src/fila.rs:42", "/p/src/webhook.rs"]);
+    update_elements(&mut scene, &[json!({ "id": "b", "link": "/p/src/fila.rs:7" }), json!({ "id": "n", "link": null })]).unwrap();
+    assert_eq!((by_id(&scene, "b").link.as_deref(), by_id(&scene, "n").link.as_deref()), (Some("/p/src/fila.rs:7"), None));
+}
+
+#[test]
 fn an_ide_from_mcp_is_a_file_tree_on_its_folder() {
     let mut scene = Scene::default();
     add_elements(&mut scene, &[json!({ "type": "ide", "id": "i", "x": 0, "y": 0, "root": "/tmp/loja", "name": "loja" })]).unwrap();
@@ -125,6 +141,60 @@ fn diagram_with_labels_and_bound_arrow() {
     assert!(add_elements(&mut scene, json!([{ "id": "a", "type": "rectangle" }]).as_array().unwrap()).is_err());
 }
 
+/// Asked: "quando desenhou no canvas ele vinculou apenas um e outro não, mas desenhou corretamente". Each end binds
+/// whichever way the agent names its element (`{id}`, a bare id, `{elementId}`, the file format's binding), an arrow
+/// listed before its shapes still finds them, and an end naming no element is an error, not an end left loose.
+#[test]
+fn every_way_of_naming_an_end_binds_both_ends() {
+    let shapes = || {
+        json!([
+            { "id": "a", "type": "rectangle", "x": 0, "y": 0, "width": 200, "height": 100 },
+            { "id": "b", "type": "rectangle", "x": 400, "y": 0, "width": 200, "height": 100 },
+        ])
+    };
+    let both = |scene: &Scene, id: &str| {
+        let arrow = by_id(scene, id);
+        [&arrow.ends.start, &arrow.ends.end].map(|end| end.as_ref().map(|binding| binding.element_id.clone()))
+    };
+    for (start, end) in [(json!({ "id": "a" }), json!("b")), (json!({ "elementId": "a" }), json!({ "id": "b" })), (json!("a"), json!({ "elementId": "b" }))] {
+        let mut scene = Scene::default();
+        add_elements(&mut scene, shapes().as_array().unwrap()).unwrap();
+        add_elements(&mut scene, &[json!({ "id": "seta", "type": "arrow", "start": start, "end": end })]).unwrap();
+        assert_eq!(both(&scene, "seta"), [Some("a".to_string()), Some("b".to_string())], "{start} → {end}");
+    }
+    // the file format's bindings, one of them a bare id
+    let mut scene = Scene::default();
+    add_elements(&mut scene, shapes().as_array().unwrap()).unwrap();
+    add_elements(&mut scene, &[json!({ "id": "seta", "type": "arrow", "startBinding": { "elementId": "a" }, "endBinding": "b" })]).unwrap();
+    assert_eq!(both(&scene, "seta"), [Some("a".to_string()), Some("b".to_string())]);
+    // the arrow first, its shapes after it in the same call: drawn after them, tied to both
+    let mut scene = Scene::default();
+    let mut items = vec![json!({ "id": "seta", "type": "arrow", "start": { "id": "a" }, "end": { "id": "b" } })];
+    items.extend(shapes().as_array().unwrap().iter().cloned());
+    add_elements(&mut scene, &items).unwrap();
+    assert_eq!(both(&scene, "seta"), [Some("a".to_string()), Some("b".to_string())]);
+    assert_eq!(scene.elements.last().map(|e| e.id.as_str()), Some("seta"), "over the shapes it ties");
+    // an end naming nothing says so
+    let mut scene = Scene::default();
+    add_elements(&mut scene, shapes().as_array().unwrap()).unwrap();
+    for bad in
+        [json!({ "start": { "id": "a" }, "end": { "id": "c" } }), json!({ "start": { "id": "a" }, "endBinding": { "elementId": "c" } }), json!({ "start": 7 })]
+    {
+        let mut arrow = bad.as_object().unwrap().clone();
+        arrow.insert("type".into(), "arrow".into());
+        assert!(add_elements(&mut scene, &[Value::Object(arrow)]).is_err(), "{bad}");
+    }
+}
+
+/// A note made by `add_elements` keeps its `text`, as the `note` tool writes it (its label): it came out empty.
+#[test]
+fn a_note_added_with_text_keeps_it() {
+    let mut scene = Scene::default();
+    add_elements(&mut scene, &[json!({ "id": "n", "type": "stickynote", "x": 0, "y": 0, "text": "Linha 1\nLinha 2" })]).unwrap();
+    let ElementKind::Text { value, .. } = &by_id(&scene, "n-label").kind else { panic!("no label") };
+    assert_eq!(value, "Linha 1\nLinha 2");
+}
+
 #[test]
 fn update_changes_text_and_style_and_rebinds() {
     let mut scene = Scene::default();
@@ -196,6 +266,7 @@ fn every_app_action_is_a_tool_once() {
         "voice_call",
         "portal_tab",
         "canvas_group",
+        "organize_canvas",
         "history",
         "demands",
         "outside_message",
@@ -429,4 +500,16 @@ fn windows_an_agent_stacks_go_around_it() {
     let label = element_bounds(scene.elements.iter().find(|e| e.id == "tres-label").unwrap()).center();
     assert!(element_bounds(scene.elements.iter().find(|e| e.id == "tres").unwrap()).contains(label), "the label went along");
     assert_eq!(at("caixa"), Pos2::new(10.0, 10.0), "a shape is no window");
+}
+
+/// The memory is read when the MCP asks, on the action's own thread (no monitor scanning the processes every 2 s the
+/// whole session, from the interface's frame).
+#[test]
+fn memory_is_measured_when_asked_off_the_interface_thread() {
+    let mut app = crate::app::DrawingApp::default();
+    let job = app.act_later("memory", &json!({})).expect("the memory goes by a job, not the frame");
+    let report = std::thread::spawn(job).join().unwrap().unwrap();
+    assert!(report.starts_with("MagoAgent: ") && report.ends_with("Agentes: 0,0 MiB em 0 terminais"), "{report}");
+    // the app's own memory, read from the system
+    assert!(!report.contains("indisponível"), "{report}");
 }

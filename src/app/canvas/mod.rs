@@ -14,3 +14,4 @@ pub(crate) mod pointer;
 mod selection;
 pub(crate) mod shortcuts;
 pub(crate) mod tool;
+pub(crate) mod wheel;

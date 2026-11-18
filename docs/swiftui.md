@@ -9,7 +9,7 @@ o egui continua desenhando ela. Windows e Linux não mudam: tudo daqui fica atr�
 | Onde | O quê |
 |---|---|
 | `macos/MagoUI/` | pacote SwiftPM (swift-tools 6.0, macOS 14+), produto estático `MagoUI` |
-| `macos/MagoUI/Sources/MagoBridgeC/include/mago_ui.h` | o contrato C (a struct `MagoCallbacks` e as três funções) |
+| `macos/MagoUI/Sources/MagoBridgeC/include/mago_ui.h` | o contrato C (a struct `MagoCallbacks` e as funções) |
 | `macos/MagoUI/Sources/MagoUI/Bridge/` | `Exports.swift` (o `@_cdecl`), `MagoStore`, `MagoWindow`, `Areas.swift` (a ordem das áreas e `MagoViews`) |
 | `macos/MagoUI/Sources/MagoUI/<Área>/` | uma pasta por área: `Island/`, `Chat/`, `Canvas/`, `Terminal/`, `Shell/`, `Settings/`, `FileTree/` |
 | `src/app/native/mod.rs` | o lado Rust: a chave, a fila de ações, `publish`, as ações `ui.*` |
@@ -25,6 +25,7 @@ typedef struct MagoCallbacks {
 void mago_ui_start(const MagoCallbacks *callbacks);        // Rust → Swift, uma vez, na criação do app
 void mago_ui_publish(const char *topic, const char *json); // Rust → Swift, a cada tópico que mudou
 void mago_ui_stop(void);                                   // Rust → Swift, ao fechar
+void mago_ui_font(const unsigned char *bytes, unsigned long length); // Rust → Swift, as fontes do app no começo
 ```
 
 - Textos em UTF-8 terminados em zero, válidos só durante a chamada (quem recebe copia).
@@ -112,6 +113,10 @@ a põe na frente sem ativar o app nem roubar o foco. `borderless: true` é um `N
 não some quando ele perde o foco e aceita o teclado; `false` é uma janela comum com barra. As janelas feitas por ele
 fecham no `mago_ui_stop`.
 
+As fontes do app (Assistant da interface, Excalifont do traço à mão, Hack do terminal) vêm do Rust no começo
+(`mago_ui_font`) e ficam registradas para o processo: a interface usa `Font.app(tamanho)` (a Assistant, só regular, como o
+egui; o seminegrito do egui é o do sistema, `.system(size:weight: .semibold)`) e o terminal pede a "Hack" pelo nome. Nada de fonte do sistema onde o egui usa a do app.
+
 `MagoViews` guarda as vistas que uma área oferece a outra sem dependência ao compilar: `canvas`, `chats`, `settings`
 (`() -> AnyView`) e `chat`, `terminal`, `filetree` (`(id) -> AnyView`). A área registra no `start()`; quem embute lê e
 mostra outra coisa enquanto é nil.
@@ -144,5 +149,11 @@ MAGOAGENT_DEV=1 MAGOAGENT_SCENE=/tmp/swiftui-probe.mago MAGOAGENT_SWIFTUI=probe 
 ```
 
 Abre uma janela "Sonda SwiftUI" com a versão e o número de agentes (tópico `app`) e manda um `ui.ping` sozinho ao abrir
-(e no botão Ping); `pong` na tela prova a ida e a volta. O `shot` do roteiro só pega o que o egui desenha: a janela
-SwiftUI não sai na captura.
+(e no botão Ping); `pong` na tela prova a ida e a volta.
+
+## Ver sem atrapalhar
+
+Com `MAGOAGENT_SCRIPT` as janelas (a do egui e as SwiftUI) ficam invisíveis e deixam o clique passar: um teste nunca
+aparece por cima do trabalho da pessoa. O `shot arquivo.png` salva o que o egui desenhou e, ao lado, cada janela
+SwiftUI desenhada por ela mesma, `arquivo-swift-<n>.png` (sem permissão de gravar a tela). Para comparar com o egui,
+rode a mesma cena sem `MAGOAGENT_SWIFTUI`. O desfoque de fundo (materiais) sai liso na captura: confira na tela.

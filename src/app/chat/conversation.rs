@@ -1,7 +1,7 @@
 //! A conversation's messages, as the mini chat, its window and the chat's card on the canvas draw
 //! them (the big chat has its own column).
 
-use crate::app::chat::list::Look;
+use crate::app::chat::list::{GREEN, Look, clipped, elapsed, pulse_dot};
 use crate::app::chat::mini::ConvOut;
 use crate::app::chat::window_start;
 use crate::app::ui::agents::{AgentRow, AgentState};
@@ -104,7 +104,7 @@ impl DrawingApp {
                         .collect();
                     let state = if steps.last().is_some_and(|(.., failed)| *failed) { MagoState::Error } else { MagoState::from_agent(row.state, self.now) };
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(56.0, 52.0), Sense::hover());
-                    paint_mago_for(ui.painter(), &format!("{}-end", row.id), rect.center(), 52.0, state, time);
+                    paint_agent_mago(ui.painter(), &format!("{}-end", row.id), self.agent_color(&row.id), rect.center(), 52.0, state, time);
                 }
             }
             // a session outside the app before its first message, or one whose file the app does not read
@@ -114,7 +114,7 @@ impl DrawingApp {
             _ if only_chat => {
                 if crate::app::mascot::claude(&row.spec) {
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 130.0), Sense::hover());
-                    paint_mago_for(ui.painter(), &format!("{}-welcome", row.id), rect.center(), 130.0, MagoState::Idle, time);
+                    paint_agent_mago(ui.painter(), &format!("{}-welcome", row.id), self.agent_color(&row.id), rect.center(), 130.0, MagoState::Idle, time);
                 }
                 // which agent answers, chosen before the first message
                 let fresh = self.chats.iter().any(|c| c.id == row.id && c.session.is_none());
@@ -128,6 +128,40 @@ impl DrawingApp {
             }
         }
         self.queued_bubbles(ui, &row.id, width, look, out);
+        self.team_rows(ui, &row.id, look, time);
+    }
+
+    /// The agents `id` recruited (`boss_of`) at work now, a line each at the end of its conversation: who, for how long
+    /// and the step it is on, as it happens; what each says at the end comes in as its answer (ask.rs; asked: "quando
+    /// recebe uma mensagem dos agentes, não aparece na hora").
+    pub(crate) fn team_rows(&self, ui: &mut egui::Ui, id: &str, look: &Look, time: f64) {
+        let working: Vec<(String, f64)> = self
+            .chats
+            .iter()
+            .filter(|chat| chat.recruit && self.boss_of(&chat.id).as_deref() == Some(id))
+            .filter_map(|chat| match self.chat_state(&chat.id) {
+                Some(AgentState::Working(since)) => Some((chat.id.clone(), since)),
+                _ => None,
+            })
+            .collect();
+        for (recruit, since) in working {
+            let step = self.transcripts.get(&recruit).and_then(|transcript| {
+                transcript.items.iter().rev().find_map(|item| match item {
+                    ChatItem::Tool(step) => Some(format!("{} {}", crate::app::chat::steps::short_tool(&step.name), step.what)),
+                    _ => None,
+                })
+            });
+            let line = match step {
+                Some(step) => format!("{} trabalhando · {} · {step}", self.speaker(&recruit), elapsed(self.now - since)),
+                None => format!("{} trabalhando · {}", self.speaker(&recruit), elapsed(self.now - since)),
+            };
+            let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
+            let p = ui.painter();
+            pulse_dot(p, Pos2::new(rect.left() + 6.0, rect.center().y), 3.0, GREEN, 1.6, time);
+            let text = clipped(p, line, FontId::proportional(12.5), look.muted, rect.width() - 18.0);
+            p.galley(Pos2::new(rect.left() + 16.0, rect.center().y - text.size().y / 2.0), text, look.muted);
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
+        }
     }
 }
 

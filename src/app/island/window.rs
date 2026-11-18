@@ -23,6 +23,19 @@ const SNAP_SETTLE: f64 = 1.0;
 pub(crate) fn settle_for(target: Pos2, placed: Pos2) -> f64 {
     if (target - placed).abs().max_elem() > 1.0 { SNAP_SETTLE } else { SETTLE }
 }
+/// X11: how long the drag waits at most for the window to be where it was put.
+const DRAG_WAIT: f64 = 0.3;
+
+/// X11: whether the drag asked at `since` starts now, at `time`: once the system has the window (`placed`, last frame) at
+/// the drag size and where it was put (`origin`, `size`), or after `DRAG_WAIT` whatever it has. The system resizes and
+/// moves the window in two steps, and a drag begun between them took the window where it was: the island, at the left
+/// of the big window's room, jumped off to the left of the cursor (asked: "eu tento mover às vezes e ela salta para a
+/// esquerda").
+pub(crate) fn drag_ready(placed: Option<Rect>, origin: Pos2, size: Vec2, since: f64, time: f64) -> bool {
+    let there = placed.is_some_and(|rect| (rect.min - origin).abs().max_elem() < 1.5 && (rect.size() - size).abs().max_elem() < 1.5);
+    there || time - since > DRAG_WAIT
+}
+
 /// X11: the window at the island's size since a drag began (`slim`) stays so while the island moves and until, let go,
 /// it grows past it (it opens): then the window takes its room back. In its room the system stops the window at the top
 /// bar with the island still below it, and the island went up by jumps, one each time it was let go.
@@ -373,13 +386,27 @@ impl DrawingApp {
         // X11: the drag starts once the window is the island's size (the frame after the press moved), so the system
         // takes the island to the top bar and not the room around it
         let slims = cfg!(target_os = "linux") && clicks_through_part && !self.island.resizing;
-        let drag_now = std::mem::take(&mut self.island.drag_next);
+        // a press let go before the window was ready: no drag
+        if self.island.drag_next && !self.island.holding {
+            (self.island.drag_next, self.island.drag_since) = (false, None);
+        }
+        let drag_now = self.island.drag_next && drag_ready(self.island.placed, origin, size, self.island.drag_since.unwrap_or(time), time);
+        if drag_now {
+            (self.island.drag_next, self.island.drag_since) = (false, None);
+        } else if self.island.drag_next {
+            ctx.request_repaint();
+        }
         let drag_later = slims && self.island.slim.is_none();
         let id = egui::ViewportId::from_hash_of("island_window");
         let (anim, radius) = (self.island.anim, self.island.radius);
-        let out = ctx.show_viewport_immediate(id, builder, |ui, _| {
+        self.island.eyes = Some((scale, origin));
+        let rest = self.island.at_rest;
+        let out = ctx.show_viewport_immediate(id, builder.clone(), |ui, _| {
             let at = (ui.max_rect().min + shown.min.to_vec2()).round();
+            let layer = ui.layer_id();
+            super::replay::begin(rest);
             let out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
+            let taken = super::replay::end(ui.ctx(), layer);
             // Windows: `plain::click_through`, below; X11: the input shape, below
             if send_capture && !clicks_through_part {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::MousePassthrough(!capture));
@@ -387,15 +414,25 @@ impl DrawingApp {
             if (out.drag && !drag_later) || drag_now {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
-            (out, ui.ctx().input(|input| input.viewport().outer_rect), menus(ui.ctx()))
+            let focused = ui.ctx().input(|input| input.focused);
+            (paint::Out { focused, ..out }, ui.ctx().input(|input| input.viewport().outer_rect), menus(ui.ctx()), taken)
         });
-        let (out, placed, menus) = out;
+        let (out, placed, menus, taken) = out;
         self.island.menus = menus;
+        // at rest, the window draws the island again by itself, and what moves in it, until the app draws again: its
+        // frames no longer paint the app's window too (`replay.rs`)
+        self.island.replaying = taken.is_some();
+        if let Some(taken) = taken {
+            *self.island.replay.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = taken;
+            let replay = self.island.replay.clone();
+            ctx.show_viewport_deferred(id, builder, move |ui, _| super::replay::frame(ui, &replay));
+        }
         if out.drag && drag_later {
             self.island.slim = Some(self.island.anim.ceil());
-            self.island.drag_next = true;
+            (self.island.drag_next, self.island.drag_since) = (true, Some(time));
             ctx.request_repaint();
         }
+        self.island.placed = placed;
         // X11: only the island (a margin around it) takes the clicks; all of the window while a press is held on it
         #[cfg(target_os = "linux")]
         if clicks_through_part {
@@ -432,7 +469,9 @@ impl DrawingApp {
     /// is where the island hangs from, stuck to the edge of the monitor it is near.
     fn island_moved(&mut self, ctx: &Context, placed: Option<Rect>, size: Vec2, time: f64) {
         let origin = self.island.origin;
-        let Some(placed) = placed.filter(|rect| (rect.size() - size).abs().max_elem() < 1.5 && (rect.min - origin).abs().max_elem() > 2.0) else {
+        // waiting for the drag, the window is between its old place and size and the new ones: not the person moving it
+        let waiting = self.island.drag_next;
+        let Some(placed) = placed.filter(|rect| !waiting && (rect.size() - size).abs().max_elem() < 1.5 && (rect.min - origin).abs().max_elem() > 2.0) else {
             self.island.moved = None;
             return;
         };
@@ -479,8 +518,16 @@ impl DrawingApp {
         let at = Pos2::new((content.center().x - anim.x / 2.0).round(), content.top());
         let mut out = paint::Out::default();
         egui::Area::new(egui::Id::unique("island_area")).order(egui::Order::Foreground).fixed_pos(at).constrain(false).show(ctx, |ui| {
+            // taken down at rest as the window's is (the tests see it); drawn here, it is never drawn again by itself
+            let layer = ui.layer_id();
+            super::replay::begin(self.island.at_rest);
             out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
+            if let Some(taken) = super::replay::end(ui.ctx(), layer) {
+                *self.island.replay.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = taken;
+            }
         });
+        // drawn in the app's window: that window's focus
+        out.focused = ctx.input(|input| input.focused);
         out
     }
 }
@@ -488,6 +535,21 @@ impl DrawingApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Asked: "eu tento mover às vezes e ela salta para a esquerda". The drag waits for the window to be where and as big
+    /// as it was put: resized but not yet moved (at the big window's left), it would carry the island off to the left.
+    #[test]
+    fn the_drag_waits_for_the_window_to_be_where_it_was_put() {
+        let (origin, size) = (Pos2::new(866.0, 0.0), Vec2::new(188.0, 32.0));
+        let big = Rect::from_min_size(Pos2::new(580.0, 0.0), Vec2::new(760.0, 420.0));
+        let resized_only = Rect::from_min_size(big.min, size);
+        let there = Rect::from_min_size(origin, size);
+        assert!(!drag_ready(Some(big), origin, size, 1.0, 1.02), "still the big window");
+        assert!(!drag_ready(Some(resized_only), origin, size, 1.0, 1.05), "resized, not moved yet: at the left");
+        assert!(!drag_ready(None, origin, size, 1.0, 1.05), "not known yet");
+        assert!(drag_ready(Some(there), origin, size, 1.0, 1.05), "where it was put: the drag starts");
+        assert!(drag_ready(Some(resized_only), origin, size, 1.0, 1.0 + DRAG_WAIT + 0.01), "the system never moved it: it starts anyway");
+    }
 
     #[test]
     fn an_open_menu_takes_the_clicks_along_with_the_island() {

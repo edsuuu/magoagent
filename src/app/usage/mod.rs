@@ -144,7 +144,8 @@ pub(crate) fn recruit_command(command: &str, model: &str) -> String {
     if model.is_empty() || !claude || words.any(|word| word == "--model" || word.starts_with("--model=")) {
         return command.to_string();
     }
-    format!("{command} --model {model}")
+    // right after the program, where the Maestro's own flags are and where they are read back (maestro/tuning.rs)
+    format!("claude --model {model}{}", &command["claude".len()..])
 }
 
 /// The line under the prompt of a session the app started: its model, its context and the plan.
@@ -371,7 +372,8 @@ mod tests {
         assert_eq!(recruit_block(1, 6, &Plan::default(), 90, clock), None, "nothing read holds nothing");
         // the recruits' model: only a claude that names none
         assert_eq!(recruit_command(" claude ", "sonnet"), "claude --model sonnet");
-        assert_eq!(recruit_command("claude \"revise o diff\"", "haiku"), "claude \"revise o diff\" --model haiku");
+        assert_eq!(recruit_command("claude \"revise o diff\"", "haiku"), "claude --model haiku \"revise o diff\"");
+        assert_eq!(recruit_command("claude --effort high \"x\"", "haiku"), "claude --model haiku --effort high \"x\"");
         assert_eq!(recruit_command("claude --model opus", "sonnet"), "claude --model opus");
         assert_eq!(recruit_command("claude --model=opus -c", "sonnet"), "claude --model=opus -c");
         assert_eq!(recruit_command("codex", "sonnet"), "codex");
@@ -422,7 +424,7 @@ mod tests {
         assert!(recruit(&mut app).is_ok());
         let recruited =
             app.scene.elements.iter().filter_map(|element| element.terminal.as_ref()).find(|terminal| terminal.command.contains("--model")).unwrap();
-        assert_eq!(recruited.command, "claude --model sonnet");
+        assert_eq!(recruited.command, crate::app::maestro::temp_folder::with_temp_rule("claude --model sonnet", &app.prefs));
         app.prefs.max_agents = 2;
         assert!(recruit(&mut app).unwrap_err().starts_with("Já há 2 agentes rodando"));
         // the settings by the MCP

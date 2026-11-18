@@ -246,3 +246,36 @@ fn the_background_autosave_goes_in_order_and_the_last_one_is_on_disk_after_exit(
     assert_eq!(app.synced.elements.len(), 5);
     let _ = fs::remove_dir_all(dir);
 }
+
+/// Dragging a window or a slider changes the preferences every frame: they reach the disk once they stop changing
+/// (0.5 s after the first change; 2 s while the pointer is held), on the writer's thread, and closing writes what is left.
+#[test]
+fn preferences_reach_the_disk_once_they_stop_changing_not_every_frame() {
+    let (mut app, dir) = app_in_folder("prefs-later");
+    let ctx = Context::default();
+    let at = |app: &mut DrawingApp, time: f64, events: Vec<egui::Event>| {
+        let _ = ctx.run_ui(egui::RawInput { time: Some(time), events, ..Default::default() }, |ui| app.save_prefs_when_due(ui.ctx()));
+        prefs_written();
+    };
+    let ligatures =
+        || fs::read_to_string(dir.join("preferences.json")).ok().and_then(|json| serde_json::from_str::<Prefs>(&json).ok()).map(|prefs| prefs.ligatures);
+    app.prefs.ligatures = false;
+    at(&mut app, 1.0, vec![]);
+    at(&mut app, 1.3, vec![]);
+    assert_eq!(ligatures(), None, "not on the frame it changed");
+    at(&mut app, 1.6, vec![]);
+    assert_eq!(ligatures(), Some(false), "0.5 s after");
+    // a drag: the pointer held
+    let press = egui::Event::PointerButton { pos: Pos2::new(10.0, 10.0), button: egui::PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE };
+    app.prefs.ligatures = true;
+    at(&mut app, 2.0, vec![egui::Event::PointerMoved(Pos2::new(10.0, 10.0)), press]);
+    at(&mut app, 2.8, vec![]);
+    assert_eq!(ligatures(), Some(false), "held, it waits");
+    at(&mut app, 4.1, vec![]);
+    assert_eq!(ligatures(), Some(true));
+    // closing writes what is left
+    app.prefs.ligatures = false;
+    app.save_on_exit();
+    assert_eq!(ligatures(), Some(false));
+    let _ = fs::remove_dir_all(&dir);
+}

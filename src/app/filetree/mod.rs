@@ -13,6 +13,7 @@ pub(crate) mod diff;
 pub(crate) mod editor;
 pub(crate) mod find;
 pub(crate) mod input;
+pub(crate) mod link;
 pub(crate) mod menu;
 #[cfg(target_os = "macos")]
 pub(crate) mod native;
@@ -160,6 +161,8 @@ pub(crate) struct FileTrees {
     /// What the SwiftUI file tree keeps between frames (filetree/native).
     #[cfg(target_os = "macos")]
     pub(crate) native: native::Native,
+    /// Where a link to a file (link.rs) took the person from, while its "Voltar" button shows.
+    pub(crate) link_back: Option<link::LinkReturn>,
 }
 
 impl DrawingApp {

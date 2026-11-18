@@ -9,6 +9,7 @@ struct IslandSnapshot: Decodable, Equatable {
     var count = 0
     var state = "idle"
     var celebrating = false
+    var finished = false
     var lines: [IslandLine] = []
     var feed: [String] = []
     var hidden = 0

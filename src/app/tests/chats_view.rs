@@ -249,3 +249,86 @@ fn a_session_outside_picked_in_the_list_opens_its_conversation_here_and_in_the_i
     assert!(main(&texts, "Ainda não há mensagens nesta sessão."), "{texts:?}");
     let _ = fs::remove_dir_all(dir);
 }
+
+/// Luna (a chat with its card) and the two agents it recruited in chat mode, roped to it: Ana works, Bia rests.
+fn luna_and_team(app: &mut DrawingApp) -> String {
+    let luna = push_chat(app, "Luna");
+    app.add_chat_node(&luna, None);
+    for name in ["Ana", "Bia"] {
+        let recruit = push_chat(app, name);
+        app.chats.last_mut().unwrap().recruit = true;
+        app.add_chat_node(&recruit, None);
+        app.rope_between(&luna, &recruit, false);
+    }
+    app.chat_runs.insert("ana".into(), crate::app::chat::direct::ChatRun::held(app.now));
+    app.chat_open = true;
+    app.chat_agent = Some(luna.clone());
+    luna
+}
+
+/// A second of frames: what eases has eased.
+fn settled(app: &mut DrawingApp, ctx: &Context) -> Vec<(String, Rect)> {
+    (0..70).map(|_| shown(app, ctx, vec![])).last().unwrap()
+}
+
+/// Asked: "Um botão para ser como acordeão para deixar fechado os agentes que foram disparados".
+#[test]
+fn a_maestros_recruits_fold_under_it_in_conversas_and_a_chip_shows_the_ones_it_finds() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let luna = luna_and_team(&mut app);
+    let texts = settled(&mut app, &ctx);
+    let fold = in_list(&texts, "2 agentes · 1 trabalhando").unwrap_or_else(|| panic!("the fold under Luna: {texts:?}"));
+    assert!(in_list(&texts, "Luna").is_some_and(|row| row.top() < fold.top()));
+    assert!(in_list(&texts, "Ana").is_none() && in_list(&texts, "Bia").is_none(), "folded until opened: {texts:?}");
+    tap(&mut app, &ctx, fold.center());
+    assert!(app.team_open(&luna), "kept in the preferences");
+    let texts = settled(&mut app, &ctx);
+    let (ana, bia) = (in_list(&texts, "Ana").expect("opened"), in_list(&texts, "Bia").expect("opened"));
+    assert!(fold.top() < ana.top() && ana.top() < bia.top() && ana.left() > in_list(&texts, "Luna").unwrap().left(), "under the fold, indented");
+    tap(&mut app, &ctx, fold.center());
+    assert!(!app.team_open(&luna));
+    let texts = settled(&mut app, &ctx);
+    assert!(in_list(&texts, "Ana").is_none(), "folded back");
+    // a chip shows whom it keeps, with no fold in the way
+    app.chat_listing.show = Show::Working;
+    let texts = settled(&mut app, &ctx);
+    assert!(in_list(&texts, "Ana").is_some() && in_list(&texts, "2 agentes").is_none(), "{texts:?}");
+    // the MCP opens and folds them by Luna's name, and lists them under it
+    app.chat_listing.show = Show::All;
+    let said = app.act("chats_view", &json!({ "team": "Luna" })).unwrap();
+    assert!(app.team_open(&luna) && said.starts_with("Agentes de Luna abertos (2 agentes · 1 trabalhando)."), "{said}");
+    assert!(
+        said.contains("\n- Luna") && said.contains("\n  agentes dele: 2 agentes · 1 trabalhando (abertos na lista)") && said.contains("\n  - Ana"),
+        "{said}"
+    );
+    app.act("chats_view", &json!({ "team": "luna", "team_open": false })).unwrap();
+    assert!(!app.team_open(&luna));
+}
+
+/// Asked: "O chat não fica no histórico quando eu faço um /clear, precisaria manter". The conversation before /clear
+/// is a row of Conversas of its own, which opens it.
+#[test]
+fn the_conversation_before_clear_stays_in_conversas_and_opens() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let luna = push_chat(&mut app, "Arrumar o login");
+    app.add_chat_node(&luna, None);
+    // a Codex chat: what it said is the app's to keep (a Claude Code one's is read from its session file)
+    (app.chats[0].agent, app.chats[0].session, app.chats[0].named) = ("codex".into(), Some("s1".into()), true);
+    app.chat_transcript(&luna).items.push(crate::transcript::ChatItem::Agent("login arrumado".into()));
+    app.chat_open = true;
+    app.chat_agent = Some(luna.clone());
+    app.chat_clear(&luna);
+    let texts = settled(&mut app, &ctx);
+    let earlier = in_list(&texts, "Arrumar o login").unwrap_or_else(|| panic!("the conversation before /clear: {texts:?}"));
+    let cleared = in_list(&texts, "Codex").unwrap_or_else(|| panic!("the chat cleared, under its agent's name until its next message: {texts:?}"));
+    // its row and the top of its conversation say it is a new session, since when
+    let mark = crate::app::chat::direct::new_session_mark(now_ms());
+    assert!(in_list(&texts, &mark).is_some_and(|line| line.top() > cleared.top()), "{mark}: {texts:?}");
+    assert!(texts.iter().any(|(text, rect)| *text == mark && rect.left() > LIST + 16.0), "atop the conversation: {texts:?}");
+    tap(&mut app, &ctx, earlier.center());
+    assert_eq!(app.chat_agent.as_deref(), Some(app.chats[1].id.as_str()));
+    let texts = settled(&mut app, &ctx);
+    assert!(at(&texts, "login arrumado").is_some(), "what was said, there to read: {texts:?}");
+}

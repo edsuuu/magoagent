@@ -4,6 +4,8 @@ pub(crate) mod deb_update;
 pub(crate) mod download;
 pub(crate) mod files;
 #[cfg(target_os = "linux")]
+pub(crate) mod finish;
+#[cfg(target_os = "linux")]
 pub(crate) mod gtk;
 #[cfg(target_os = "macos")]
 pub(crate) mod login_path;

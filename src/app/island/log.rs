@@ -24,7 +24,8 @@ pub(super) fn said(items: &[ChatItem]) -> impl Iterator<Item = &ChatItem> {
 
 impl DrawingApp {
     /// The log of `items` (from `said`) in `log`; the picture clicked in it (its base64), to show on the whole screen.
-    pub(super) fn island_log(&self, ui: &mut egui::Ui, log: Rect, items: &[&ChatItem], working: bool, time: f64) -> Option<String> {
+    /// `team`: the app's chat whose recruits at work get a line each at its end (`team_rows`).
+    pub(super) fn island_log(&self, ui: &mut egui::Ui, log: Rect, items: &[&ChatItem], working: bool, team: Option<&str>, time: f64) -> Option<String> {
         let mut clicked = None;
         ui.scope_builder(egui::UiBuilder::new().max_rect(log), |ui| {
             ui.spacing_mut().scroll = crate::app::ui::scroll_style();
@@ -38,7 +39,18 @@ impl DrawingApp {
                 let colors = UiColors::new(true);
                 for item in items {
                     match item {
-                        ChatItem::User(text) => bubble(ui, text, width),
+                        // another agent's question: whose it is over it, as the chat on the canvas says (chat_item)
+                        ChatItem::User(text) => match crate::app::chat::ask::asked_by(text) {
+                            Some((who, question)) => {
+                                let kind = if crate::app::chat::ask::is_answer(text) { "Resposta de" } else { "Pergunta de" };
+                                ui.vertical(|ui| {
+                                    ui.spacing_mut().item_spacing.y = 4.0;
+                                    asker(ui, &format!("{kind} {who}"), width);
+                                    bubble(ui, question, width);
+                                });
+                            }
+                            None => bubble(ui, text, width),
+                        },
                         ChatItem::Agent(text) => self.agent_words_in(ui, text, width - 8.0, &colors, false),
                         ChatItem::Image { data, .. } if self.island_picture(ui, data, width) => clicked = Some(data.clone()),
                         _ => {}
@@ -52,6 +64,9 @@ impl DrawingApp {
                         let at = Pos2::new(rect.left() + 4.0 + dot as f32 * 9.0, rect.center().y - lift * 2.0);
                         ui.painter().circle_filled(at, 2.5, REPLY.gamma_multiply(0.5 + lift * 0.5));
                     }
+                }
+                if let Some(id) = team {
+                    self.team_rows(ui, id, &crate::app::chat::list::Look::new(true, &colors), time);
                 }
             });
         });
@@ -108,6 +123,13 @@ fn bubble(ui: &mut egui::Ui, text: &str, width: f32) {
     selectable(ui, bubble.min + Vec2::new(10.0, 7.0), job);
 }
 
+/// Over an agent's question (or answer) in the log: "Pergunta de <who>", small and at the right, where the bubble goes.
+fn asker(ui: &mut egui::Ui, label: &str, width: f32) {
+    let galley = crate::app::chat::list::clipped(ui.painter(), label.to_string(), font(11.0), REPLY, width - 32.0);
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, galley.size().y), Sense::hover());
+    ui.painter().galley(Pos2::new(rect.right() - galley.size().x, rect.top()), galley, REPLY);
+}
+
 /// `job` at `at` as text the person can select and copy (asked: "o texto que o Claude retornar eu preciso poder
 /// selecionar, até as minhas mensagens"): the same job that was measured, wrapped at its own width, from the left.
 fn selectable(ui: &mut egui::Ui, at: Pos2, job: LayoutJob) {
@@ -162,7 +184,7 @@ mod tests {
         let answer = ChatItem::Agent(format!("Abra e digite `wsl -d`:\n\n```bash\nwsl -d Ubuntu\n```\n\n![Print das duas telas]({})", path.display()));
         let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 900.0))), ..Default::default() };
         let output = ctx.run_ui(raw, |ui| {
-            app.island_log(ui, Rect::from_min_size(Pos2::ZERO, Vec2::new(500.0, 880.0)), &[&answer], false, 0.0);
+            app.island_log(ui, Rect::from_min_size(Pos2::ZERO, Vec2::new(500.0, 880.0)), &[&answer], false, None, 0.0);
         });
         let texts: Vec<String> = output
             .shapes

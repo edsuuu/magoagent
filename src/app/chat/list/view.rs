@@ -1,12 +1,8 @@
 use super::running::{Entry, chip, counts, kept, space_groups};
 use super::*;
+use crate::app::chat::accordion::{openness, unfold};
 
 impl DrawingApp {
-    /// A Maestro of the list: a chat of yours (not one of its recruits) or a terminal set as Maestro.
-    pub(super) fn is_maestro_row(&self, row: &AgentRow) -> bool {
-        row.spec.maestro || self.chats.iter().any(|c| c.id == row.id && !c.recruit)
-    }
-
     /// How long its agent has been waiting on its terminal, when its Claude Code session says.
     pub(crate) fn waiting_secs(&self, id: &str) -> Option<f64> {
         self.agent_sessions.get(id).filter(|s| s.status == "waiting" && s.status_at > 0).map(|s| (now_ms() - s.status_at).max(0) as f64 / 1000.0)
@@ -118,10 +114,11 @@ impl DrawingApp {
         // the frameless field keeps no margin: the room for the magnifier is left out of its rect
         ui.put(Rect::from_min_max(field.min + Vec2::new(30.0, 6.0), field.max - Vec2::new(8.0, 6.0)), edit);
         let shown = kept(entries, *show, &filter.trim().to_lowercase());
-        // the agents a Maestro opened go right under it, indented
-        let ids: Vec<&str> = shown.iter().map(|entry| entry.id.as_str()).collect();
-        let maestro: Vec<bool> = shown.iter().map(|entry| entry.row.as_ref().is_some_and(|row| self.is_maestro_row(row))).collect();
-        let parents = subchat_parents(&ids, &maestro, &self.links());
+        // the agents a Maestro opened go right under it, indented and folded (team.rs); a chip or a search shows the ones
+        // it found
+        let keyed: Vec<(&str, Option<&AgentRow>)> = shown.iter().map(|entry| (entry.id.as_str(), entry.row.as_ref())).collect();
+        let parents = self.team_parents(&keyed);
+        let looking = *show != Show::All || !filter.trim().is_empty();
         let order: Vec<String> = self.spaces.list.iter().map(|space| space.id.clone()).collect();
         let list = Rect::from_min_max(Pos2::new(inner.left(), field.bottom() + 4.0), inner.max);
         ui.scope_builder(egui::UiBuilder::new().max_rect(list), |ui| {
@@ -142,14 +139,25 @@ impl DrawingApp {
                     let at = Pos2::new(label.left() + 20.0, label.bottom() - g.size().y - 5.0);
                     ui.painter().circle_filled(Pos2::new(label.left() + 11.0, at.y + g.size().y / 2.0), 4.0, color);
                     ui.painter().galley(at, g, look.muted);
-                    for &i in &members {
-                        if parents[i].is_some_and(|parent| members.contains(&parent)) {
+                    for (top, team) in under_maestros(&members, &parents) {
+                        self.list_row(ui, shown[top], 0.0, look, t, act);
+                        if team.is_empty() {
                             continue;
                         }
-                        self.list_row(ui, shown[i], 0.0, look, t, act);
-                        for &j in members.iter().filter(|&&j| parents[j] == Some(i)) {
-                            self.list_row(ui, shown[j], 18.0, look, t, act);
+                        let maestro = &shown[top].id;
+                        let open = looking || self.team_open(maestro);
+                        let openness = openness(ui.ctx(), ui.scope_id().with(("chat_team_open", maestro)), open);
+                        if !looking {
+                            let states: Vec<AgentState> = team.iter().map(|&index| shown[index].state).collect();
+                            if self.team_fold(ui, maestro, &team_summary(&states), openness, look) {
+                                act.team = Some((maestro.clone(), !open));
+                            }
                         }
+                        unfold(ui, ui.scope_id().with(("chat_team_body", maestro)), openness, |ui| {
+                            for index in team {
+                                self.list_row(ui, shown[index], SUBCHAT_INDENT, look, t, act);
+                            }
+                        });
                     }
                 }
             });
@@ -370,5 +378,25 @@ impl DrawingApp {
                 }
             });
         });
+    }
+}
+
+impl DrawingApp {
+    /// Remover chat, confirmed (asked: a confirmation before, not an undo after): the conversation is deleted for good
+    /// and an agent running in it stops, so the dialog says so; Remover (or Enter) removes it, Cancelar or Esc keeps it.
+    pub(crate) fn remove_chat_dialog(&mut self, ctx: &Context) {
+        let Some(id) = self.chat_listing.removing.take() else { return };
+        let Some(row) = self.chat_rows().into_iter().find(|row| row.id == id) else { return };
+        let running = if matches!(row.state, AgentState::Working(_)) { " O agente que está rodando nele será parado." } else { "" };
+        let text = format!("\"{}\" e toda a sua conversa serão excluídos permanentemente.{running}", self.chat_title(&row));
+        let colors = self.colors();
+        let (remove, cancel) = dialog_ui(ctx, &colors, "Remover chat", "Remover", |ui| {
+            ui.label(egui::RichText::new(text).size(14.0).color(colors.text));
+        });
+        if remove {
+            self.remove_chat(&id);
+        } else if !cancel {
+            self.chat_listing.removing = Some(id);
+        }
     }
 }

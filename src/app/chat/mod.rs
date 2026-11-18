@@ -3,6 +3,7 @@
 //! (chat/list/, chat/header.rs), and the box to write to it (chat/composer.rs). Over the box, what the agent runs now or, when it
 //! waits on its terminal, that terminal's last lines (chat/steps.rs).
 
+pub(crate) mod accordion;
 pub(crate) mod ask;
 pub(crate) mod bubble;
 pub(crate) mod cli_models;
@@ -16,6 +17,7 @@ pub(crate) mod conversation;
 pub(crate) mod decide;
 pub(crate) mod direct;
 pub(crate) mod email;
+pub(crate) mod follow;
 pub(crate) mod footer;
 pub(crate) mod header;
 pub(crate) mod images;
@@ -39,6 +41,7 @@ pub(crate) mod tools;
 pub(crate) mod viewer;
 
 use crate::app::chat::composer::Hints;
+use crate::app::chat::follow::{follow_scroll, talk_mark};
 use crate::app::chat::list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, message_menu};
 use crate::app::chat::mini::ConvOut;
 use crate::app::chat::steps::CardClick;
@@ -90,7 +93,7 @@ impl DrawingApp {
         let time = ctx.input(|i| i.time);
         // the pulses and the dots move only while someone works or needs you
         if rows.iter().any(|r| matches!(r.state, AgentState::Working(_) | AgentState::Waiting)) && ctx.input(|i| i.viewport().visible()) != Some(false) {
-            ctx.request_repaint_after(std::time::Duration::from_millis(33));
+            ctx.request_repaint_after(crate::app::update::AMBIENT);
         }
         if ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::B))) {
             self.chat_list_toggled = !self.chat_list_toggled;
@@ -207,7 +210,9 @@ impl DrawingApp {
                 {
                     let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(strip));
                     ui.spacing_mut().scroll = crate::app::ui::scroll_style();
-                    egui::ScrollArea::vertical().stick_to_bottom(true).auto_shrink(false).max_height(height).show(ui, |ui| {
+                    // following the newest, held still while a run or a step clicked eases (chat/follow.rs)
+                    let scroll = egui::ScrollArea::vertical().auto_shrink(false).max_height(height);
+                    follow_scroll(ui, scroll, &row.id, "chat_screen", talk_mark(transcript), |ui| {
                         let left = ui.max_rect().left() + ((ui.available_width() - width) / 2.0).max(0.0);
                         let inner = Rect::from_min_max(Pos2::new(left, ui.cursor().top()), Pos2::new(left + width, ui.max_rect().bottom()));
                         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
@@ -306,17 +311,16 @@ impl DrawingApp {
         self.chat_draft = draft;
         self.chat_search = search;
         (self.chat_listing.filter, self.chat_listing.show) = (filter, show);
-        // Abrir em miniatura: the chat closes and its panel opens over the canvas
-        if act.mini {
-            self.chat_open = false;
-            self.mini_set(true);
-        }
         // Nova conversa: a draft, made a chat by its first message
         if act.new_chat {
             self.start_draft_chat(false);
         }
         if let Some(id) = act.remove.take() {
-            self.remove_chat(&id);
+            self.chat_listing.removing = Some(id);
+        }
+        self.remove_chat_dialog(ctx);
+        if let Some((maestro, open)) = act.team.take() {
+            self.set_team_open(&maestro, open);
         }
         if let Some(id) = act.rename.take()
             && let Some(row) = self.chat_rows().into_iter().find(|r| r.id == id)
@@ -413,9 +417,14 @@ impl DrawingApp {
         match item {
             ChatItem::User(text) => {
                 let right = egui::Layout::right_to_left(egui::Align::TOP);
-                // another agent's question: said whose, in a grey bubble
+                // another agent's question, its answer brought back or a task it gave: said whose, in a grey bubble
                 if let Some(who) = from {
-                    ui.with_layout(right, |ui| ui.label(egui::RichText::new(format!("Pergunta de {who}")).size(12.0).color(c.muted)));
+                    let kind = match crate::app::chat::ask::asked_by(text) {
+                        Some(_) if crate::app::chat::ask::is_answer(text) => "Resposta de",
+                        Some(_) => "Pergunta de",
+                        None => "Mensagem de",
+                    };
+                    ui.with_layout(right, |ui| ui.label(egui::RichText::new(format!("{kind} {who}")).size(12.0).color(c.muted)));
                 }
                 let (fill, ink) = if from.is_some() { (c.surface_high, c.text) } else { (bubble_fill(self.dark(), true), Color32::WHITE) };
                 // a gutter of 48 pt on the other side
@@ -423,11 +432,11 @@ impl DrawingApp {
                 let bubble = bubble::person_bubble(ui, words, width - 48.0, fill, 16, egui::Margin::symmetric(12, 7));
                 message_menu(&bubble, text, cite);
             }
-            // what a terminal said before it restarted, above; what comes now, below
-            ChatItem::System(text) if text == EARLIER => {
+            // what a terminal said before it restarted, above; what comes now, below; and the top of a new session (/clear)
+            ChatItem::System(text) if text == EARLIER || crate::app::chat::direct::is_new_session_mark(text) => {
                 let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
                 let p = ui.painter();
-                let label = p.layout_no_wrap(EARLIER.into(), FontId::proportional(12.0), c.muted);
+                let label = p.layout_no_wrap(text.clone(), FontId::proportional(12.0), c.muted);
                 let (half, y, line) = (label.size().x / 2.0 + 10.0, rect.center().y, Stroke::new(1.0, tint(self.dark(), 30)));
                 p.hline(rect.left()..=rect.center().x - half, y, line);
                 p.hline(rect.center().x + half..=rect.right(), y, line);
@@ -446,9 +455,11 @@ impl DrawingApp {
             // the mascot's bad day at its left (the plug pulled when it is the login)
             // (a terminal's conversation is Claude Code's; a direct chat says its agent)
             ChatItem::Error(text) if !self.chats.iter().any(|ch| Some(&ch.id) == self.chat_agent.as_ref() && !ch.agent.trim_start().starts_with("claude")) => {
+                // in the colour of the agent whose conversation it is
+                let color = self.chat_agent.as_deref().map_or(crate::app::mascot::mago::LUME, |id| self.agent_color(id));
                 ui.horizontal_top(|ui| {
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 42.0), Sense::hover());
-                    paint_mago_for(ui.painter(), "chat-error", rect.center(), 46.0, MagoState::Error, ui.input(|i| i.time));
+                    paint_agent_mago(ui.painter(), "chat-error", color, rect.center(), 46.0, MagoState::Error, ui.input(|i| i.time));
                     ui.vertical(|ui| {
                         ui.label(egui::RichText::new(text).size(13.0).color(c.danger));
                         if let Some(hint) = error_hint(text) {

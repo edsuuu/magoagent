@@ -90,6 +90,10 @@ impl DrawingApp {
     /// a thread (None: it answers at once, by `act`). An Err is the answer itself (no account, no query).
     pub(crate) fn act_later(&mut self, action: &str, args: &Value) -> Option<Job> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_lowercase();
+        // reading every process's size takes a while (a `ps` per process on macOS)
+        if action == "memory" {
+            return Some(self.memory_job());
+        }
         // the agent's CLI takes seconds (system/mcp_register.rs)
         if action == "set_setting" && text("name") == "register_mcp" {
             let agent = text("value");

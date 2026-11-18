@@ -9,8 +9,10 @@ use crate::app::ui::menu_look::{context_menu, dots_menu, menu_row};
 use crate::prelude::*;
 use crate::transcript::ChatItem;
 pub(crate) mod running;
+pub(crate) mod team;
 mod view;
 pub(crate) use running::{Answer, Show};
+use team::{SUBCHAT_INDENT, team_summary, under_maestros};
 
 /// The whole list's width and the folded column's.
 pub(crate) const LIST: f32 = 320.0;
@@ -224,8 +226,6 @@ pub(crate) struct ListAction {
     /// Novo chat, and Remover chat on a row.
     pub(crate) new_chat: bool,
     pub(crate) remove: Option<String>,
-    /// Abrir em miniatura: the chat leaves for its panel over the canvas.
-    pub(crate) mini: bool,
     /// Mostrar no canvas on a row (chat/node.rs).
     pub(crate) on_canvas: Option<String>,
     /// Renomear on a row.
@@ -234,6 +234,8 @@ pub(crate) struct ListAction {
     pub(crate) answer: Option<(String, Answer)>,
     /// A session outside the app picked: its conversation is the island's.
     pub(crate) outside: Option<String>,
+    /// A Maestro's agents opened (true) or folded under it (team.rs).
+    pub(crate) team: Option<(String, bool)>,
 }
 
 /// The list's search and chip, and when each chat last changed (`chat_when`) with when that was looked up.
@@ -245,6 +247,8 @@ pub(crate) struct ListState {
     /// The chat being renamed and the name typed so far, and its row on screen (the balloon hangs from it).
     pub(crate) renaming: Option<(String, String)>,
     pub(crate) renaming_at: std::cell::Cell<Option<Rect>>,
+    /// Remover chat asked on this chat: the dialog that confirms it is up (`remove_chat_dialog`).
+    pub(crate) removing: Option<String>,
 }
 
 /// The Maestro's subchats: for each row that is not a Maestro (`maestro[i]` false) but is roped to

@@ -595,3 +595,64 @@ fn the_islands_box_wraps_its_words_and_holds_the_island_open_while_typing() {
     run(&mut app, &ctx, 22.05, 40.0, vec![]);
     assert!(app.island.size().x < EXPANDED_W - 50.0, "folded once the box let go: {:?}", app.island.size());
 }
+
+/// A frame of the island whose window the system has (`focused`) or took away (a click elsewhere).
+fn focus_frame(app: &mut DrawingApp, ctx: &Context, time: f64, focused: bool) {
+    let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, ISLAND_SCREEN)), time: Some(time), focused, ..Default::default() };
+    let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
+    output.textures_delta.clear();
+}
+
+/// Asked: "se eu abrir a ilha e clicar fora ela precisa fechar, apenas quando eu estiver com o chat da tab aberto, ou na
+/// música, git etc.; se for pergunta que fez, mantém como está hoje". The window losing the focus is the click elsewhere.
+#[test]
+fn a_click_elsewhere_folds_the_open_island_but_not_one_with_a_question() {
+    for page in ["chats", "spotify", "github"] {
+        let (mut app, ctx, mut time) = opened();
+        app.act("set_setting", &json!({ "name": "island_page", "value": page })).unwrap();
+        for _ in 0..10 {
+            focus_frame(&mut app, &ctx, time, true);
+            time += 0.05;
+        }
+        assert!(app.island.size().x > COMPACT_W + 20.0, "{page}: open");
+        for _ in 0..20 {
+            focus_frame(&mut app, &ctx, time, false);
+            time += 0.05;
+        }
+        assert!(app.island.size().x <= COMPACT_W + 1.0, "{page}: a click elsewhere folds it: {}", app.island.size().x);
+    }
+    // a question waiting on the person: as before, only its answer, the X or the clock
+    let (mut app, ctx, mut time) = opened();
+    let (reply, _answers) = std::sync::mpsc::channel();
+    let request = json!({ "tool_name": "AskUserQuestion", "input": { "questions": [
+        { "question": "Junto com merge ou rebase?", "header": "Merge", "multiSelect": false, "options": [{ "label": "Merge" }, { "label": "Rebase" }] },
+    ] } });
+    app.person_asks.get_mut().push(PersonAsk::new(format!("{}1", crate::app::maestro::outside::ASK_PREFIX), &request, reply));
+    for _ in 0..10 {
+        focus_frame(&mut app, &ctx, time, true);
+        time += 0.05;
+    }
+    for _ in 0..20 {
+        focus_frame(&mut app, &ctx, time, false);
+        time += 0.05;
+    }
+    assert!(!app.person_asks.borrow().is_empty() && app.island.size().x > COMPACT_W + 20.0, "the question keeps it open: {}", app.island.size().x);
+}
+
+/// Asked: "o App consome mais processador, está entre 34 e às vezes 100, precisa rever isso". Every frame of the island
+/// paints the whole app: with the pointer on it, it asks for them at the rate in Ajustes; left alone and settled, only
+/// for what moves in it, never sooner than the ambient rate.
+#[test]
+fn the_island_left_alone_asks_for_few_frames() {
+    let (mut app, ctx, mut time) = opened();
+    let on_it = island_rect(&app).center();
+    rest(&mut app, &ctx, &mut time, on_it, 1.0);
+    let touched = frame_delay(&mut app, &ctx, time);
+    assert!(touched <= crate::app::update::frame_spacing(), "the pointer on it: the rate in Ajustes ({touched:?})");
+    app.island.over = Some(false);
+    frame_at(&mut app, &ctx, time, vec![egui::Event::PointerGone]);
+    run(&mut app, &ctx, time + 0.05, time + 2.0, vec![]);
+    assert_eq!(app.island.size().x, EXPANDED_W, "still open");
+    let alone = frame_delay(&mut app, &ctx, time + 2.05);
+    assert!(alone >= crate::app::update::AMBIENT, "left alone: no frame sooner than the ambient rate ({alone:?})");
+}

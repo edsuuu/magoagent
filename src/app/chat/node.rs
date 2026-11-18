@@ -9,6 +9,7 @@
 
 use crate::app::chat::direct::{CHAT_MODES, NewChat};
 use crate::app::chat::list::clipped;
+use crate::app::chat::markdown::{md_galleys, paint_md, tight};
 use crate::app::ui::agents::{AMBER, AgentState, ago};
 use crate::app::ui::context::{Entry, Target, entry, item, sub};
 use crate::prelude::*;
@@ -172,15 +173,23 @@ impl DrawingApp {
                 continue;
             }
             self.chat_starts.remove(i);
-            if self.is_chat(&id) {
-                self.chat_send(ctx, &id, &prompt);
+            // what it says at the end of it goes to the chat that recruited it (ask.rs)
+            if self.is_chat(&id) && self.chat_send(ctx, &id, &prompt) {
+                self.task_sent(&id, &prompt);
             }
         }
-        // what was written while a chat answered, once it is done (`chat_send`)
+        // what was written while a chat answered, once it is done (`chat_send`); while WSL's first probe runs, it waits
         let (chats, runs) = (&self.chats, &self.chat_runs);
-        let free: Vec<(String, String)> = self.chat_queue.extract_if(.., |(id, _)| chats.iter().any(|c| &c.id == id) && !runs.contains_key(id)).collect();
-        for (id, prompt) in free {
-            self.chat_send(ctx, &id, &prompt);
+        let waits_for_chat = |id: &String| chats.iter().any(|chat| &chat.id == id) && !runs.contains_key(id);
+        if self.chat_queue.iter().any(|(id, _)| waits_for_chat(id)) {
+            if wsl_settling() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            } else {
+                let free: Vec<(String, String)> = self.chat_queue.extract_if(.., |(id, _)| waits_for_chat(id)).collect();
+                for (id, prompt) in free {
+                    self.chat_send(ctx, &id, &prompt);
+                }
+            }
         }
         // a text file's card clicked in a conversation: its note on the canvas (notes/file.rs); a file the note can't
         // hold opens in the system's program, as before
@@ -190,6 +199,7 @@ impl DrawingApp {
             self.toast(why);
             crate::app::browser::open_external(&path.to_string_lossy());
         }
+        self.file_links_tick(ctx);
         self.chat_asks_tick(ctx);
         self.recruit_popups_tick();
     }
@@ -230,7 +240,7 @@ impl DrawingApp {
         env
     }
 
-    /// The last thing said in the chat, on one line: whose it is, and how it starts.
+    /// The last thing said in the chat: whose it is, and how it starts (its lines kept, for its Markdown).
     pub(crate) fn chat_preview(&self, id: &str) -> Option<String> {
         let (who, text) = self.transcripts.get(id)?.items.iter().rev().find_map(|item| match item {
             // what another agent asked it is that agent's, not the person's (chat/ask.rs)
@@ -239,8 +249,9 @@ impl DrawingApp {
             ChatItem::Error(text) => Some(("Erro", text.as_str())),
             _ => None,
         })?;
-        // ponytail: the first 60 words, cut again by the card's rows; a longer look is the chat itself
-        let words = text.split_whitespace().take(60).collect::<Vec<_>>().join(" ");
+        // ponytail: the first 60 words, cut again by the picture's rows; a longer look is the chat itself (the card made
+        // bigger shows its conversation whole)
+        let words = tight(text, 60);
         Some(if who.is_empty() { words } else { format!("{who}: {words}") })
     }
 
@@ -281,7 +292,9 @@ impl DrawingApp {
         }
         // room left for the mini chat's button (chat/node_ui.rs) before the dot, and a recruit's fold
         let buttons = if recruit { 50.0 } else { 30.0 };
-        let name = clipped(&painter, spec.name.clone(), FontId::proportional(9.75 * zoom), muted, (header.right() - pad - buttons * zoom - x).max(0.0));
+        // as the lists say it: no other chat's name
+        let shown = self.chat_card_name(&element.id).unwrap_or_else(|| spec.name.clone());
+        let name = clipped(&painter, shown, FontId::proportional(9.75 * zoom), muted, (header.right() - pad - buttons * zoom - x).max(0.0));
         painter.galley(Pos2::new(x, header.center().y - name.size().y / 2.0), name, muted);
         if recruit {
             // no folder strip: its work goes to the bottom (chat/recruit_card.rs), or its task when small or folded
@@ -305,7 +318,7 @@ impl DrawingApp {
         let painter = painter.with_clip_rect(body.intersect(painter.clip_rect()));
         if figure < MIN_FIGURE {
         } else if crate::app::mascot::claude(&as_terminal) {
-            paint_mago_for(&painter, &format!("{}-card", element.id), at, figure, MagoState::from_agent(state, time), time);
+            paint_agent_mago(&painter, &format!("{}-card", element.id), self.agent_color(&element.id), at, figure, MagoState::from_agent(state, time), time);
         } else {
             crate::editor::icons::paint_tint(&painter, crate::editor::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(figure * 0.55)), light);
         }
@@ -330,10 +343,10 @@ impl DrawingApp {
             let preview = self.chat_preview(&element.id);
             let ink = if preview.is_some() { light.gamma_multiply(0.85) } else { muted };
             let text = preview.unwrap_or_else(|| "Sem mensagens ainda. Clique duplo para abrir o chat.".into());
-            let mut job = egui::text::LayoutJob::simple(text, FontId::proportional(10.5 * zoom), ink, width);
-            job.wrap.max_rows = rows as usize;
-            job.wrap.overflow_character = Some('…');
-            painter.galley(Pos2::new(text_left, body.top() + line + gap), painter.layout_job(job), ink);
+            // in the chat's Markdown (no ** nor ` painted), in the card's own ink
+            let colors = UiColors { text: ink, surface_low: light.gamma_multiply(0.1), code: crate::app::ui::code_ink(light), ..self.colors() };
+            let galleys = md_galleys(&painter, &text, 10.5 * zoom, ink, width, rows as usize, &colors);
+            paint_md(&painter, Pos2::new(text_left, body.top() + line + gap), galleys, ink);
         }
         let painter = painter.with_clip_rect(rect.shrink(1.0).intersect(painter.clip_rect()));
         self.paint_chat_footer(&painter, footer, radius, strip, muted, pad, &spec.cwd, look.rule());

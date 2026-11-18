@@ -102,6 +102,8 @@ pub(crate) struct DrawingApp {
     pub(crate) bind_pulse: std::cell::Cell<Option<(String, f64)>>,
     pub(crate) prefs: Prefs,
     pub(crate) saved_prefs: Prefs,
+    /// When the preferences first changed since they were last written (seconds of the frame clock).
+    pub(crate) prefs_changed_at: Option<f64>,
     /// Ajustes (⌘,), and the quick start being edited in it.
     pub(crate) settings_open: bool,
     pub(crate) settings_edit: Option<usize>,
@@ -123,6 +125,13 @@ pub(crate) struct DrawingApp {
     pub(crate) glide: Option<(f64, Vec2, Vec2)>,
     /// Dispositivo de entrada = Automático: the last scroll came from a mouse wheel (else a touchpad).
     pub(crate) wheel_is_mouse: bool,
+    /// When the canvas's zoom last changed, and the zoom the text is laid out at meanwhile (`text_zoom`).
+    pub(crate) zoomed_at: f64,
+    pub(crate) held_text_zoom: std::cell::Cell<f32>,
+    /// When the canvas last took the wheel: the gesture stays the canvas's over the windows it passes (`canvas_wheel`).
+    pub(crate) wheel_latch: Option<f64>,
+    /// The zoom of an enlarged or docked file tree, its own (`lifted_zoom_by`): the canvas's does not reach it.
+    pub(crate) lifted_zoom: f32,
     /// The minimap's held area and focus.
     pub(crate) minimap_area: canvas::minimap::MinimapArea,
     /// Prompts left half-written when their terminal's workspace was hidden, by terminal id.
@@ -220,6 +229,11 @@ pub(crate) struct DrawingApp {
     /// it last changed (`sync_portals`).
     pub(crate) portal_stills: std::collections::HashMap<String, egui::TextureHandle>,
     pub(crate) portal_motion: std::collections::HashMap<String, (Rect, f64)>,
+    /// Linux: each page's last picture standing still, and when it was asked (`sync_portals`).
+    pub(crate) portal_snaps: std::collections::HashMap<String, (f64, Option<egui::TextureHandle>)>,
+    /// Where this frame's canvas painted each portal's page box (`paint_portal`): the view can change after it (the
+    /// zoom buttons), and the page is cut away only once the card painted there carries its picture (`sync_portals`).
+    pub(crate) portal_painted: std::cell::RefCell<std::collections::HashMap<String, Rect>>,
     pub(crate) chat_agent: Option<String>,
     pub(crate) chat_draft: String,
     pub(crate) maestro_note: Option<chat::code_comment::Note>,
@@ -238,8 +252,10 @@ pub(crate) struct DrawingApp {
     /// The first message of each recruit chat, sent when the chat can take it (maestro/mod.rs).
     pub(crate) chat_starts: Vec<(String, String)>,
     pub(crate) chat_nodes_read: f64,
-    /// The areas that paint a window in front over a tree's or chat card's live parts (canvas/cover.rs).
+    /// The areas that paint a card in front over another card's live parts (canvas/cover.rs), this frame's and the last
+    /// one's (a page's holes leave out both: egui still counts last frame's areas).
     pub(crate) covers: Vec<egui::LayerId>,
+    pub(crate) covers_before: Vec<egui::LayerId>,
     /// What each recruit chat had done at the last look (tool calls, working), and what popped of it (chat/recruit_card.rs).
     pub(crate) recruit_seen: std::collections::HashMap<String, (usize, bool)>,
     pub(crate) recruit_popups: Vec<chat::recruit_card::RecruitPopup>,
@@ -300,6 +316,9 @@ pub(crate) struct DrawingApp {
     pub(crate) person_asks: std::cell::RefCell<Vec<crate::app::chat::decide::PersonAsk>>,
     /// The Claude Code sessions outside the app: their pills on the island (maestro/outside.rs).
     pub(crate) outside: crate::app::maestro::outside::Outside,
+    /// Each agent's mascot colour while it lives, by its id (mascot/identity.rs); in a cell, as the lists that paint
+    /// them only read the app.
+    pub(crate) agent_colors: std::cell::RefCell<crate::app::mascot::identity::AgentColors>,
     pub(crate) terminal_dialog: Option<TerminalDialog>,
     pub(crate) portal_dialog: Option<PortalDialog>,
     pub(crate) portal_extras: browser::extras::PortalExtras,
@@ -348,7 +367,6 @@ pub(crate) struct DrawingApp {
     pub(crate) script: Option<Script>,
     /// MAGOAGENT_PERF: frames and their CPU, measured (app/script.rs).
     pub(crate) perf: Option<system::script::Perf>,
-    pub(crate) memory: system::memory::Monitor,
     /// The right-click menu open now (ui/context.rs).
     pub(crate) context: Option<ui::context::ContextMenu>,
     /// Renomear: the element being renamed and the name typed so far.

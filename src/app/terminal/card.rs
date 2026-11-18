@@ -15,6 +15,14 @@ const NAME_SIZE: f32 = 9.75;
 /// The veil's eye button, and its eye.
 const VEIL_BUTTON: f32 = 44.0;
 
+/// "Sonnet 5.5 · Alto": the model and effort an agent's terminal (not a Maestro's) was started with, when its command
+/// names them; none for a shell or an agent on its defaults.
+pub(crate) fn recruit_tag(spec: &TerminalSpec) -> Option<String> {
+    let (agent, model, effort) = crate::app::maestro::tuning::of_command(&spec.command, "");
+    let named = !agent.is_empty() && !spec.maestro && (!model.is_empty() || !effort.is_empty());
+    named.then(|| crate::app::maestro::tuning::names(&agent, &model, &effort)).map(|(model, effort)| format!("{model} · {effort}"))
+}
+
 impl DrawingApp {
     pub(crate) fn paint_terminal(&self, painter: &Painter, element: &Element, rect: Rect, zoom: f32) {
         if swift_ui() {
@@ -64,12 +72,22 @@ impl DrawingApp {
         if spec.maestro && zoom >= 0.6 {
             maestro_crown(&painter, name.right_center() + Vec2::new(HEAD_GAP + 5.0, 0.0) * zoom, zoom, crate::app::ui::agents::AMBER);
         }
+        // a recruit's model and effort beside its name (asked: "precisa ficar descritível o modelo e o effort que o Maestro escolhe")
+        if let Some(tuning) = (zoom >= 0.6).then(|| recruit_tag(&spec)).flatten() {
+            painter.text(
+                name.right_center() + Vec2::new(HEAD_GAP * 2.0 * zoom, 0.0),
+                egui::Align2::LEFT_CENTER,
+                tuning,
+                FontId::proportional(NAME_SIZE * zoom),
+                muted,
+            );
+        }
         if enlarged {
             paint_icon(&painter, Icon::Expand, Self::restore_button(rect).center(), light);
         }
         if let Some(session) = session {
             let marks = self.find_marks(&element.id);
-            let view = GridView { look: &look, font, marks: &marks };
+            let view = GridView { look: &look, font, marks: &marks, text_zoom: self.text_zoom_at(zoom) };
             session.paint(&painter, rect.min + Vec2::new(TERMINAL_PAD, TERMINAL_HEADER + 4.0) * zoom, zoom, focused, &view);
         }
         let footer = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - TERMINAL_FOOTER * zoom), rect.max);

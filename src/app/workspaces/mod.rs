@@ -187,13 +187,13 @@ impl DrawingApp {
         found.map(|w| w.id.clone()).ok_or_else(|| format!("Nenhum espaço se chama {name}."))
     }
 
-    /// Per space: its agents running, and how many of them need the person (waiting or done unseen).
+    /// Per space: its agents running, and how many of them call the person (`calls_you`).
     pub(crate) fn space_counts(&self) -> std::collections::HashMap<String, (usize, usize)> {
         let mut counts: std::collections::HashMap<String, (usize, usize)> = Default::default();
         for row in self.agent_rows().into_iter().filter(|r| !r.space.is_empty()) {
             // working now, not merely a shell left open
             let running = matches!(row.state, crate::app::ui::agents::AgentState::Working(_) | crate::app::ui::agents::AgentState::Active(_));
-            let needs = row.state == crate::app::ui::agents::AgentState::Waiting || self.terminal_unread.contains(&row.id);
+            let needs = self.calls_you(&row);
             let entry = counts.entry(row.space.split('#').next().unwrap_or_default().to_string()).or_default();
             entry.0 += usize::from(running);
             entry.1 += usize::from(needs);

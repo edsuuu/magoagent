@@ -75,7 +75,7 @@ impl TerminalSession {
         };
         let shell = program.map(|(p, args)| tty::Shell::new(p.into(), args.iter().map(|a| a.to_string()).collect())).or(login);
         let mut vars: std::collections::HashMap<String, String> =
-            [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", APP_TITLE)].map(|(k, v)| (k.to_string(), v.to_string())).into();
+            [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", "MagoAgent")].map(|(k, v)| (k.to_string(), v.to_string())).into();
         vars.extend(env);
         let cwd = cwd.filter(|dir| dir.is_dir());
         let options = tty::Options { shell, working_directory: cwd.clone(), env: vars, ..Default::default() };
@@ -166,16 +166,19 @@ impl TerminalSession {
         let content = term.renderable_content();
         let look = view.look;
         let (cw, ch) = (cell(view.font).x * zoom, cell(view.font).y * zoom);
-        let font = FontId::monospace(view.font * zoom);
+        // the letters at the zoom held while the canvas zooms, scaled to the card's: a zoom's frames lay none out again
+        let font = |zoom: f32| FontId::monospace(view.font * zoom);
         let at = |line: usize, col: usize| origin + Vec2::new(col as f32 * cw, line as f32 * ch);
         // runs of same-styled ASCII share one text shape; anything else is placed on its own cell
         let mut run: Option<(usize, usize, String, Color32, Flags)> = None;
         let flush = |run: &mut Option<(usize, usize, String, Color32, Flags)>| {
             if let Some((line, col, text, fg, flags)) = run.take() {
                 let pos = at(line, col);
-                let rect = painter.text(pos, egui::Align2::LEFT_TOP, &text, font.clone(), fg);
+                let galley = crate::render::zoom::steady_text(painter, &text, font, fg, zoom, view.text_zoom);
+                let rect = Rect::from_min_size(pos, galley.size());
+                painter.galley(pos, galley.clone(), fg);
                 if flags.contains(Flags::BOLD) {
-                    painter.text(pos + Vec2::new(0.6 * zoom.min(1.5), 0.0), egui::Align2::LEFT_TOP, &text, font.clone(), fg);
+                    painter.galley(pos + Vec2::new(0.6 * zoom.min(1.5), 0.0), galley, fg);
                 }
                 if flags.contains(Flags::UNDERLINE) {
                     painter.hline(rect.x_range(), pos.y + ch - zoom, Stroke::new(zoom, fg));

@@ -26,6 +26,8 @@ pub(crate) struct GridView<'a> {
     pub(crate) look: &'a Look,
     pub(crate) font: f32,
     pub(crate) marks: &'a [Vec<(usize, usize, bool)>],
+    /// The zoom its letters are laid out at, drawn scaled to the card's (render/zoom.rs).
+    pub(crate) text_zoom: f32,
 }
 
 /// What a search's matches are painted with: a yellow, and an orange for the current one.

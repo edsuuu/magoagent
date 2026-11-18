@@ -54,14 +54,20 @@ impl DrawingApp {
 
     /// The menu's rows for what the box says now; None when it is closed.
     pub(crate) fn slash_entries(&mut self) -> Option<Vec<Entry>> {
-        let draft = self.chat_draft.clone();
+        let (id, draft) = (self.chat_agent.clone()?, self.chat_draft.clone());
+        self.slash_entries_of(&id, &draft)
+    }
+
+    /// `slash_entries` for the box of chat `id` holding `draft`: the island's own box and a card's on the canvas have
+    /// theirs (asked: "quando digito /c, não aparece um select para aparecer as opções que eu tenho").
+    pub(crate) fn slash_entries_of(&mut self, id: &str, draft: &str) -> Option<Vec<Entry>> {
         let query = draft.strip_prefix('/')?;
-        if query.contains(char::is_whitespace) || self.slash.off.as_deref() == Some(draft.as_str()) {
+        if query.contains(char::is_whitespace) || self.slash.off.as_deref() == Some(draft) {
             return None;
         }
-        let chat = self.chat_agent.as_deref().and_then(|id| self.chat_of(id))?;
+        let chat = self.chat_of(id)?;
         if self.slash.last != draft {
-            (self.slash.last, self.slash.sel) = (draft.clone(), 0);
+            (self.slash.last, self.slash.sel) = (draft.to_string(), 0);
         }
         let custom = self.slash_custom(&chat);
         let all: Vec<Entry> = catalog(&chat.agent).into_iter().chain(custom).collect();
@@ -102,14 +108,16 @@ impl DrawingApp {
         enter && complete
     }
 
-    /// The menu over the box: a row to click completes it. `anchor` is the box's top left.
+    /// The menu over the box: a row to click completes it. `anchor` is the box's top left. It is never taller than the
+    /// room above the box in its window (the island's is short).
     pub(crate) fn slash_menu_ui(&self, ctx: &Context, entries: &[Entry], anchor: Pos2, width: f32, look: &Look) -> Option<String> {
         let mut picked = None;
         let selected = self.slash.sel.min(entries.len() - 1);
+        let room = (anchor.y - ctx.content_rect().top() - 16.0).clamp(60.0, 264.0);
         egui::Area::new(egui::Id::unique("slash_menu")).order(egui::Order::Foreground).pivot(egui::Align2::LEFT_BOTTOM).fixed_pos(anchor).show(ctx, |ui| {
             egui::Frame::new().fill(look.surface).stroke(Stroke::new(1.0, look.line)).corner_radius(14).inner_margin(6).show(ui, |ui| {
                 ui.set_width(width - 12.0);
-                egui::ScrollArea::vertical().max_height(264.0).auto_shrink([false, true]).show(ui, |ui| {
+                egui::ScrollArea::vertical().max_height(room).auto_shrink([false, true]).show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 1.0;
                     for (i, e) in entries.iter().enumerate() {
                         let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::click());

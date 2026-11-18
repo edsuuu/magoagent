@@ -13,5 +13,7 @@ typedef struct MagoCallbacks {
 void mago_ui_start(const MagoCallbacks *callbacks);
 void mago_ui_publish(const char *topic, const char *json);
 void mago_ui_stop(void);
+// uma fonte do app (os bytes do .ttf que o Rust embute), registrada no CoreText para as vistas a usarem pelo nome
+void mago_ui_font(const unsigned char *bytes, unsigned long length);
 
 #endif

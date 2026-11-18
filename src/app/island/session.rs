@@ -81,11 +81,11 @@ impl DrawingApp {
         let origin = view.origin.get();
         let height = page.bottom() + 10.0 - origin.y;
         aim(view, Pos2::new(origin.x + 52.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 44.0, MagoState::from_agent(state, time));
-        let (log, chip_row, bar) = chat_body(page, bar_height(ui, session_draft_id(&session.id)));
+        let (log, chip_row, bar) = chat_body(page, bar_height(ui, session_draft_id(&session.id)), 0.0);
         match &session.transcript {
             Some(transcript) => {
                 let messages: Vec<&ChatItem> = said(&transcript.items).collect();
-                out.picture = self.island_log(ui, log, &messages, matches!(state, AgentState::Working(_)), time).or(out.picture.take());
+                out.picture = self.island_log(ui, log, &messages, matches!(state, AgentState::Working(_)), None, time).or(out.picture.take());
             }
             None => {
                 painter.text(log.center(), egui::Align2::CENTER_CENTER, unread, font(12.0), DIM);

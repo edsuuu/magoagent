@@ -3,10 +3,12 @@
 //! window points; MAGOAGENT_SCRIPT holds them or the path of a file with them:
 //!   move x y · click x y · rclick x y · dclick x y · down x y · up x y · drag x1 y1 x2 y2
 //!   type texto · key J cmd shift alt · hold cmd (the clicks after it are Ctrl+clicks; `hold` alone lets go) · paste /imagem.png
-//!   drop x y /arquivo · wait ms · shot /caminho.png · size w h · minimize · quit
+//!   drop x y /arquivo · scroll x y dy dx · pinch x y fator · wait ms · shot /caminho.png · shot-ilha /caminho.png
+//!   size w h · minimize · quit
 //! They go in through raw input, the same path as a real mouse. `shot` saves what egui drew;
-//! native web pages are not in it (macOS and Linux save each page beside it, `<shot>-<id>.png`; the SwiftUI windows too). A `wait` lets the
-//! app idle as it would, so MAGOAGENT_PERF (`Perf`) measures it.
+//! native web pages are not in it (macOS and Linux save each page beside it, `<shot>-<id>.png`; the SwiftUI windows too). `shot-ilha` saves the
+//! island's window, only while it draws itself (`island/replay.rs`: eframe takes no picture of it otherwise). A `wait`
+//! lets the app idle as it would, so MAGOAGENT_PERF (`Perf`) measures it.
 
 use crate::prelude::*;
 use std::collections::VecDeque;
@@ -23,10 +25,16 @@ pub(crate) struct Script {
     /// The path of the last `shot`, so the app also saves the native pages next to it (macOS, Linux).
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     pages: Option<String>,
+    /// The window stepped aside (`crate::step_aside_window`): a test run never shows over the person's work, its
+    /// `shot`s still come out.
+    #[cfg(target_os = "macos")]
+    aside: bool,
 }
 
 /// MAGOAGENT_PERF=<file>: once a second, the frames painted, the CPU they took (mean and worst,
-/// in ms) and what asked for them (`file:line`), appended to the file as a tab-separated line.
+/// in ms), the jobs sent to GTK's thread (Linux: the portals' pages and the tray; `-` elsewhere), the frames the island's
+/// window drew by itself (`island/replay.rs`) and what asked for the frames (`file:line`), appended to the file as a
+/// tab-separated line.
 #[derive(Default)]
 pub(crate) struct Perf {
     pub(crate) path: std::path::PathBuf,
@@ -34,6 +42,9 @@ pub(crate) struct Perf {
     frames: u32,
     cpu_ms: f32,
     worst_ms: f32,
+    /// GTK's count of jobs at the last line.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    jobs: u64,
     causes: std::collections::BTreeSet<String>,
 }
 
@@ -52,9 +63,17 @@ impl Perf {
         if now - self.since < 1.0 {
             return;
         }
-        let head = if self.since == 0.0 { "tempo\tquadros\tcpu_med_ms\tcpu_max_ms\tcausas\n" } else { "" };
+        let head = if self.since == 0.0 { "tempo\tquadros\tcpu_med_ms\tcpu_max_ms\tgtk\tilha_sozinha\tcausas\n" } else { "" };
         let causes = std::mem::take(&mut self.causes).into_iter().collect::<Vec<_>>().join(", ");
-        let line = format!("{head}{now:.1}\t{}\t{:.2}\t{:.2}\t{causes}\n", self.frames, self.cpu_ms / self.frames as f32, self.worst_ms);
+        #[cfg(target_os = "linux")]
+        let jobs = {
+            let total = crate::app::system::gtk::JOBS.load(std::sync::atomic::Ordering::Relaxed);
+            (total - std::mem::replace(&mut self.jobs, total)).to_string()
+        };
+        #[cfg(not(target_os = "linux"))]
+        let jobs = "-";
+        let island = crate::app::island::replay::FRAMES.swap(0, std::sync::atomic::Ordering::Relaxed);
+        let line = format!("{head}{now:.1}\t{}\t{:.2}\t{:.2}\t{jobs}\t{island}\t{causes}\n", self.frames, self.cpu_ms / self.frames as f32, self.worst_ms);
         use std::io::Write;
         let _ = std::fs::OpenOptions::new().create(true).append(true).open(&self.path).and_then(|mut file| file.write_all(line.as_bytes()));
         (self.since, self.frames, self.cpu_ms, self.worst_ms) = (now, 0, 0.0, 0.0);
@@ -82,6 +101,8 @@ impl Script {
             held: Modifiers::NONE,
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             pages: None,
+            #[cfg(target_os = "macos")]
+            aside: false,
         }
     }
 
@@ -89,6 +110,10 @@ impl Script {
     /// frames, as a hand would.
     pub(crate) fn feed(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
         let now = raw.time.unwrap_or(0.0);
+        #[cfg(target_os = "macos")]
+        if !self.aside {
+            self.aside = crate::step_aside_window(true);
+        }
         if self.held != Modifiers::NONE {
             raw.events.push(egui::Event::ModifiersChanged(self.held));
         }
@@ -156,6 +181,10 @@ impl Script {
                         modifiers: self.held,
                     },
                 ]);
+            }
+            ["pinch", ..] => {
+                // a touchpad's pinch over (x, y): above 1 it spreads (zooms in), below it closes
+                raw.events.extend([egui::Event::PointerMoved(at), egui::Event::Zoom(number(3))]);
             }
             ["drag", ..] => {
                 // pressed at the start, ten moves along the way, released at the end
@@ -225,6 +254,17 @@ impl Script {
                     }
                     shooting.store(false, Ordering::Relaxed);
                 });
+            }
+            ["shot-ilha", path] => {
+                let path = path.to_string();
+                let island = egui::ViewportId::from_hash_of("island_window");
+                let saved = move |image: Arc<egui::ColorImage>| {
+                    let pixels = image.pixels.iter().flat_map(|pixel| pixel.to_array()).collect();
+                    if !matches!(image::RgbaImage::from_raw(image.size[0] as u32, image.size[1] as u32, pixels).map(|rgba| rgba.save(&path)), Some(Ok(()))) {
+                        eprintln!("roteiro: não salvei {path}");
+                    }
+                };
+                ctx.send_viewport_cmd_to(island, egui::ViewportCommand::Screenshot(egui::ScreenshotCallback::new(saved)));
             }
             ["minimize"] => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
             // below the window's minimum too, to see the narrow layouts

@@ -155,7 +155,8 @@ fn a_task_for_an_agent_on_a_menu_waits_in_the_queue_and_goes_when_it_is_ready() 
     let id = element.id.clone();
     app.scene.elements.push(element);
     app.terminals.insert(id.clone(), Ok(session));
-    app.tasks.list.push(Task { id: "t1".into(), title: "faça".into(), owner: id.clone(), ..Default::default() });
+    // plain letters: Windows PowerShell reads and writes the console's code page, not UTF-8
+    app.tasks.list.push(Task { id: "t1".into(), title: "revise o login".into(), owner: id.clone(), ..Default::default() });
     // the trust question of the folder is on its screen: the task stays queued
     app.terminal_waiting.insert(id.clone());
     let said = app.deliver_task("t1").unwrap();
@@ -167,9 +168,10 @@ fn a_task_for_an_agent_on_a_menu_waits_in_the_queue_and_goes_when_it_is_ready() 
     app.flush_chat_queue();
     assert!(app.chat_queue.is_empty());
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-    while fs::read_to_string(&saved).map_or(true, |s| s.trim().is_empty()) && std::time::Instant::now() < deadline {
+    let read = || String::from_utf8_lossy(&fs::read(&saved).unwrap_or_default()).into_owned();
+    while read().trim().is_empty() && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
-    assert!(fs::read_to_string(&saved).unwrap().contains("faça"));
+    assert!(read().contains("revise o login"), "{}", read());
     let _ = fs::remove_dir_all(&dir);
 }

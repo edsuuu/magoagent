@@ -7,3 +7,7 @@
 CLAUDE.local.md
 /.idea
 /macos/MagoUI/.build
+# do .claude só as skills vão para o git; worktrees e ajustes locais ficam fora
+!/.claude/
+/.claude/*
+!/.claude/skills/

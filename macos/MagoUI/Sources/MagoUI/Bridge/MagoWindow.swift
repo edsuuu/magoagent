@@ -34,6 +34,12 @@ public enum MagoWindow {
             window.hasShadow = false
         }
         window.contentView = NSHostingView(rootView: content)
+        // num roteiro de teste (MAGOAGENT_SCRIPT) a janela fica invisível e deixa o clique passar, para não aparecer por
+        // cima do trabalho da pessoa; o `shot` a salva assim mesmo (MagoStore.shoot)
+        if ProcessInfo.processInfo.environment["MAGOAGENT_SCRIPT"] != nil {
+            window.alphaValue = 0
+            window.ignoresMouseEvents = true
+        }
         MagoStore.shared.windows.append(window)
         window.orderFrontRegardless()
         return window

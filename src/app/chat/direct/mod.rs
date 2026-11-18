@@ -10,8 +10,10 @@ use crate::prelude::*;
 use crate::transcript::{ChatItem, LOG_MAX, Step, Transcript, claude_dir, log_tail, project_folder, step_mut};
 use std::io::{BufRead, Read, Write};
 use std::sync::mpsc::{Receiver, channel};
+mod archive;
 mod sync;
 mod title;
+pub(crate) use archive::{is_new_session_mark, new_session_mark};
 pub(crate) use title::ChatTitles;
 
 /// What a chat runs, where, and how far it got.
@@ -85,13 +87,37 @@ pub(crate) struct ChatRun {
     child: std::process::Child,
     events: Receiver<ChatEvent>,
     pub(crate) since: f64,
+    /// Since when its turn is over though the reader has not seen the end of its output: the agent printed its last event
+    /// (`turn_over`) or its process exited. Something it left running (a server started in the background, an MCP
+    /// call still waiting) holds the output open, and the end the reader waits for may never come (`RUN_GRACE`).
+    over: Option<f64>,
+}
+
+/// How long a run whose turn is over waits for the end of its output before it ends all the same: the lines still on
+/// their way come in meanwhile. A process still alive then is stopped (`ChatRun`'s drop), as Esc does.
+pub(crate) const RUN_GRACE: f64 = 5.0;
+
+/// Whether `event` is the agent's last of its turn: Claude Code's `result`, Codex's `turn.completed` or `turn.failed`.
+pub(crate) fn turn_over(agent: &str, event: &Value) -> bool {
+    match agent {
+        "codex" => matches!(event["type"].as_str(), Some("turn.completed" | "turn.failed")),
+        _ => event["type"] == "result",
+    }
 }
 
 impl ChatRun {
     /// A run of a stand-in process, for the tests: nothing comes from it.
     #[cfg(test)]
     pub(crate) fn stand_in(child: std::process::Child, since: f64) -> Self {
-        Self { child, events: channel().1, since }
+        Self { child, events: channel().1, since, over: None }
+    }
+
+    /// A run of a stand-in process whose events are what the tests send: as long as they keep the sender, its output
+    /// is open, as when a process it started holds it.
+    #[cfg(test)]
+    pub(crate) fn fed(child: std::process::Child, since: f64) -> (Self, std::sync::mpsc::Sender<ChatEvent>) {
+        let (sender, events) = channel();
+        (Self { child, events, since, over: None }, sender)
     }
 }
 
@@ -116,7 +142,7 @@ impl ChatRun {
     pub(crate) fn held(since: f64) -> Self {
         let exe = std::env::current_exe().expect("the test binary");
         let child = crate::editor::command(exe).arg("--list").stdout(std::process::Stdio::null()).spawn().expect("the test binary runs");
-        Self { child, events: channel().1, since }
+        Self { child, events: channel().1, since, over: None }
     }
 }
 
@@ -386,6 +412,8 @@ impl DrawingApp {
         }
         self.chats.retain(|c| c.id != id);
         self.drop_chat_node(id);
+        // its team's fold, if it had one, is not remembered for nothing
+        self.set_team_open(id, false);
         if self.chat_agent.as_deref() == Some(id) {
             self.chat_agent = None;
         }
@@ -401,7 +429,13 @@ impl DrawingApp {
             self.queue_message(id, prompt.to_string());
             return true;
         }
-        wsl_settle();
+        // WSL's first probe still runs: the message waits in the queue and goes once it ends (`chat_nodes_tick`)
+        if wsl_settling() {
+            self.chat_note(id, "Preparando o WSL: a mensagem sai assim que ele responder.");
+            self.queue_message(id, prompt.to_string());
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            return true;
+        }
         let Some(cli) = agent_cli(&chat.agent) else {
             self.toast(format!("{} não foi encontrado no PATH nem no WSL.", chat.agent));
             return false;
@@ -512,7 +546,7 @@ impl DrawingApp {
         if chat.agent != "codex" {
             transcript.echoes += 1;
         }
-        self.chat_runs.insert(id.to_string(), ChatRun { child, events: rx, since: self.now });
+        self.chat_runs.insert(id.to_string(), ChatRun { child, events: rx, since: self.now, over: None });
         // what Mandar de novo sends again if the login turns out to be what failed
         self.slash.sent.insert(id.to_string(), prompt.to_string());
         self.slash.retry.remove(id);

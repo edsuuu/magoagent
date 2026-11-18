@@ -14,15 +14,8 @@ struct TerminalFonts {
     let ascent: CGFloat
     let descent: CGFloat
 
-    /// Registered once for the process.
-    private static let registered: Bool = {
-        // the .app carries it in Contents/Resources (build-macos-app.sh); a bare build from target/ falls back to Menlo
-        guard let url = Bundle.main.url(forResource: "Hack-Regular", withExtension: "ttf") else { return false }
-        return CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
-    }()
-
+    /// Hack comes from Rust at start (`mago_ui_font`, egui's own copy).
     init(size: CGFloat) {
-        _ = Self.registered
         var base = CTFontCreateWithName("Hack" as CFString, size, nil)
         if (CTFontCopyFamilyName(base) as String) != "Hack" {
             base = CTFontCreateWithName("Menlo" as CFString, size, nil)

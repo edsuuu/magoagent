@@ -20,6 +20,7 @@ unsafe extern "C" {
     fn mago_ui_start(callbacks: *const MagoCallbacks);
     fn mago_ui_publish(topic: *const c_char, json: *const c_char);
     fn mago_ui_stop();
+    fn mago_ui_font(bytes: *const u8, length: std::ffi::c_ulong);
 }
 
 /// Swift's envelope: `{"id": 7, "action": "chat_new", "args": {...}}`.
@@ -74,6 +75,13 @@ pub(crate) fn start(context: &Context) {
     static CALLBACKS: MagoCallbacks = MagoCallbacks { act: take_envelope };
     // SAFETY: on the main thread (eframe's creation callback); the struct is static, Swift copies it anyway
     unsafe { mago_ui_start(&CALLBACKS) };
+    // the app's own fonts, before any area draws: the interface's, the hand's and the terminal's (egui's Hack)
+    let defaults = egui::FontDefinitions::default();
+    let hack: Option<&[u8]> = defaults.font_data.get("Hack").map(|data| (*data.font).as_ref());
+    for font in [crate::geometry::ASSISTANT_FONT, crate::geometry::HAND_FACE].into_iter().chain(hack) {
+        // SAFETY: on the main thread; the bytes live through the call and Swift copies them
+        unsafe { mago_ui_font(font.as_ptr(), font.len() as std::ffi::c_ulong) };
+    }
     publish("areas", &areas);
 }
 

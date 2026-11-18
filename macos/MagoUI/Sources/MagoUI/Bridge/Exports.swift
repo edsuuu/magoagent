@@ -1,5 +1,6 @@
-// O lado Swift do contrato C (Sources/MagoBridgeC/include/mago_ui.h): o Rust chama estas três funções, sempre na
+// O lado Swift do contrato C (Sources/MagoBridgeC/include/mago_ui.h): o Rust chama estas funções, sempre na
 // thread principal (`MainActor.assumeIsolated` derruba o app se não for, de propósito).
+import CoreText
 import Foundation
 import MagoBridgeC
 
@@ -22,4 +23,13 @@ public func magoUIPublish(_ topic: UnsafePointer<CChar>, _ json: UnsafePointer<C
 @_cdecl("mago_ui_stop")
 public func magoUIStop() {
     MainActor.assumeIsolated { MagoStore.shared.stop() }
+}
+
+/// Uma fonte do app vinda do Rust (Assistant, Excalifont, Hack): registrada para o processo, as vistas a usam pelo nome
+/// (`Font.app`, `CTFontCreateWithName("Hack")`).
+@_cdecl("mago_ui_font")
+public func magoUIFont(_ bytes: UnsafePointer<UInt8>, _ length: UInt) {
+    let data = Data(bytes: bytes, count: Int(length)) as CFData
+    guard let provider = CGDataProvider(data: data), let font = CGFont(provider) else { return }
+    CTFontManagerRegisterGraphicsFont(font, nil)
 }

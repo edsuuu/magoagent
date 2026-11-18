@@ -5,7 +5,7 @@
 //! `island.machine`, which nothing steps here: it is read as an inbox each frame and handed to Swift as an event.
 
 use super::paint::header_tabs;
-use super::{Line, Mood, Tab, feed, fsm, main_state, mood, sounds, turn_ended};
+use super::{Line, Mood, Tab, done, feed, fsm, main_state, mood, sounds};
 use crate::app::chat::decide::Question;
 use crate::app::integrations::ITEM_PREFIX;
 use crate::app::maestro::outside::{Badge, PILL_PREFIX};
@@ -27,6 +27,8 @@ pub(crate) struct Snapshot {
     /// The island's own wizard (`main_state`).
     pub(crate) state: &'static str,
     pub(crate) celebrating: bool,
+    /// An agent finished since the island was last open: Luna wears a check (`done.rs`).
+    pub(crate) finished: bool,
     pub(crate) lines: Vec<LineOut>,
     /// Início's list (ids, in order) and how many are hidden.
     pub(crate) feed: Vec<String>,
@@ -399,12 +401,13 @@ impl DrawingApp {
         // an agent got busy: the island peeks if it was closed (`reveal`), which only Swift knows
         let busy = matches!(mood, Mood::Needs(_) | Mood::Working(_));
         let revealed = busy && !island.was_busy;
+        // the end is celebrated quietly, as `island_ui`: no chime, a check on Luna until the island is opened
         if island.was_busy && mood == Mood::Ready {
             island.celebrate_until = time + 6.0;
-            tones.push(sounds::FINISH);
         }
         island.was_busy = busy;
-        if turn_ended(&island.working, &rows) {
+        island.finished |= done::turn_done(&island.working, &rows);
+        if done::turn_waits(&island.working, &rows) {
             island.machine.force_home(time);
         }
         island.working = rows.iter().filter(|row| matches!(row.state, AgentState::Working(_))).map(|row| row.id.clone()).collect();
@@ -469,6 +472,7 @@ impl DrawingApp {
             },
             state: mago_name(main_state(view.mood, view.celebrating)),
             celebrating: view.celebrating,
+            finished: view.finished,
             feed,
             hidden,
             lines: view.lines.iter().map(|line| line_out(line, chips_of(&line.id))).collect(),
@@ -558,7 +562,7 @@ impl DrawingApp {
             .agent_rows()
             .iter()
             .find(|row| row.id == line)
-            .map(|row| hex(super::agent_color(row.spec.command.split_whitespace().next().unwrap_or_default(), &row.id)))
+            .map(|row| hex(self.agent_color(&row.id)))
             .or_else(|| self.outside_pills().into_iter().find(|pill| pill.id == line).map(|pill| hex(pill.color)));
         let all = self.person_asks.borrow();
         let ask = all.iter().find(|ask| &ask.chat == chat)?;
@@ -681,6 +685,10 @@ impl DrawingApp {
                     (Some(super::Shape::Closed | super::Shape::Compact), super::Shape::Open) => Some(if pinned { sounds::ASK } else { sounds::OPEN }),
                     _ => None,
                 };
+                // open, what finished is in sight: the check goes
+                if shape == super::Shape::Open {
+                    self.island.finished = false;
+                }
                 if shape != super::Shape::Open {
                     let island = &mut self.island;
                     (island.tab, island.chat_big, island.chat_full, island.session, island.settings) = (Tab::Home, false, false, None, false);
@@ -879,7 +887,9 @@ mod tests {
         let snapshot = app.native_island_snapshot();
         assert!(snapshot.on);
         let line = snapshot.lines.iter().find(|line| line.id == "a").expect("the chat is a line");
-        assert_eq!((line.tab, line.chat, line.outside, line.tool, line.color.as_str()), ("chats", true, false, false, "#d97757"));
+        // each agent wears its own colour (`agent_color`), the same as in the egui lists
+        assert_eq!((line.tab, line.chat, line.outside, line.tool), ("chats", true, false, false));
+        assert_eq!(line.color, hex(app.agent_color("a")));
         assert_eq!(snapshot.tab, "home");
         assert_eq!(snapshot.tabs.first().map(|tab| tab.tab), Some("home"));
         assert_eq!(snapshot.tabs.last().map(|tab| tab.tab), Some("new"), "the new chat always last");

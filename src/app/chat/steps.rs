@@ -2,9 +2,8 @@
 //! folds into one line), the band over the box with the one running now and the amber card when it
 //! waits on its terminal (the messages queued meanwhile are chat/queue.rs).
 
-use crate::app::chat::list::{
-    ACCENT, AMBER, AmberCard, CHECK, CROSS, DOWN, GREEN, Look, PROMPT, RED, RIGHT, bold, clipped, code_card, elapsed, glyph, pulse_dot,
-};
+use crate::app::chat::accordion::{chevron, openness, unfold};
+use crate::app::chat::list::{ACCENT, AMBER, AmberCard, CHECK, CROSS, GREEN, Look, PROMPT, RED, bold, clipped, code_card, elapsed, glyph, pulse_dot};
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;
 use crate::transcript::{ChatItem, Step, Transcript};
@@ -132,8 +131,27 @@ impl DrawingApp {
         fold: &mut Option<String>,
     ) {
         let key = steps[0].id.clone();
+        let c = self.colors();
+        // its steps, each opening its card on a click, kept open as the runs are (`chat_unfolded`)
+        let steps_ui = |ui: &mut egui::Ui, fold: &mut Option<String>| {
+            ui.scope(|ui| {
+                ui.spacing_mut().item_spacing.y = 6.0;
+                for step in steps {
+                    let live = match running.iter().any(|(id, _)| *id == step.id) {
+                        true if waiting => Live::Waiting,
+                        true => Live::Running,
+                        false => Live::Done,
+                    };
+                    let card = format!("card:{}", step.id);
+                    if step_with_card(ui, step, live, look, narrow, self.chat_unfolded.contains(&card), t, &c) {
+                        *fold = Some(card);
+                    }
+                }
+            });
+        };
         if steps.len() >= 2 && !trailing {
-            let open = self.chat_unfolded.contains(&key);
+            let id = ui.scope_id().with(("tool_run", &key));
+            let openness = openness(ui.ctx(), id, self.chat_unfolded.contains(&key));
             let font = FontId::monospace(if narrow { 11.5 } else { 12.0 });
             // cut to the chat's width: a long run would widen the whole conversation (and the mini chat past its edge)
             let text = clipped(ui.painter(), run_summary(steps), font, look.muted, (ui.available_width() - 30.0).max(0.0));
@@ -143,36 +161,16 @@ impl DrawingApp {
             if response.hovered() {
                 p.rect_filled(rect, 6, look.surface.gamma_multiply(0.6));
             }
-            glyph(p, Pos2::new(rect.left() + 10.0, rect.center().y), 12.0, 2.4, look.muted, if open { DOWN } else { RIGHT });
+            chevron(p, Pos2::new(rect.left() + 10.0, rect.center().y), 12.0, 2.4, look.muted, openness);
             p.galley(Pos2::new(rect.left() + 22.0, rect.center().y - text.size().y / 2.0), text, look.muted);
             if response.clicked() {
                 *fold = Some(key);
             }
-            if !open {
-                self.step_files(ui, steps, &self.colors());
-                ui.add_space(8.0);
-                return;
-            }
+            // its steps ease open under it (`accordion::unfold`)
+            unfold(ui, id, openness, |ui| steps_ui(ui, fold));
+        } else {
+            steps_ui(ui, fold);
         }
-        let c = self.colors();
-        ui.scope(|ui| {
-            ui.spacing_mut().item_spacing.y = 6.0;
-            for step in steps {
-                let live = match running.iter().any(|(id, _)| *id == step.id) {
-                    true if waiting => Live::Waiting,
-                    true => Live::Running,
-                    false => Live::Done,
-                };
-                // a click on its row opens its card, kept open as the runs are (`chat_unfolded`)
-                let card = format!("card:{}", step.id);
-                if step_row(ui, step, live, look, narrow, t) {
-                    *fold = Some(card.clone());
-                }
-                if self.chat_unfolded.contains(&card) && step_card(ui, step, live, look, &c) {
-                    *fold = Some(card.clone());
-                }
-            }
-        });
         self.step_files(ui, steps, &c);
         ui.add_space(8.0);
     }
@@ -235,7 +233,7 @@ impl DrawingApp {
                 let mut x = if claude {
                     // the agent's own state in its turn (talking while it writes, the error of a step), on a motion of its own
                     let state = MagoState::in_turn(row.state, transcript.map_or(&[], |transcript| &transcript.items), self.now);
-                    paint_mago_for(p, &format!("{}-steps", row.id), Pos2::new(rect.left() + 26.0, cy), 52.0, state, t);
+                    paint_agent_mago(p, &format!("{}-steps", row.id), self.agent_color(&row.id), Pos2::new(rect.left() + 26.0, cy), 52.0, state, t);
                     rect.left() + 54.0 + gap
                 } else {
                     busy_dots(p, Pos2::new(rect.left(), cy), GREEN, t);
@@ -345,9 +343,20 @@ pub(crate) fn short_tool(name: &str) -> &str {
     name.strip_prefix("mcp__").and_then(|rest| rest.split_once("__")).map_or(name, |(_, tool)| tool)
 }
 
+/// A step and, when `open`, its card easing open under its row (`accordion::unfold`): an accordion, no tip. True: its
+/// row or its card clicked, which opens or shuts it.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn step_with_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: bool, open: bool, t: f64, c: &UiColors) -> bool {
+    let id = ui.scope_id().with(("step_card_open", &step.id));
+    let openness = openness(ui.ctx(), id, open);
+    let clicked = step_row(ui, step, live, look, narrow, openness, t);
+    clicked | unfold(ui, id, openness, |ui| step_card(ui, step, live, look, c)).unwrap_or(false)
+}
+
 /// One step: ✓ (✗ failed) or a pulsing dot while it runs, its name in a 6ch column, what it was
-/// given and what its answer says; a running command's last output line under it. True: clicked.
-pub(crate) fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: bool, t: f64) -> bool {
+/// given and what its answer says, and at the end a chevron, turned as far as its card is open (`openness`, 0 to 1);
+/// a running command's last output line under it. No tip: what the line cuts, the card shows whole. True: clicked.
+fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: bool, openness: f32, t: f64) -> bool {
     let size = if narrow { 12.0 } else { 12.5 };
     let font = FontId::monospace(size);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::click());
@@ -372,14 +381,15 @@ pub(crate) fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, 
     // a name longer than the column pushes what it was given along, never under it
     let column = column.max(name.size().x);
     p.galley(Pos2::new(name_x, cy - name.size().y / 2.0), name, look.text);
-    // what its answer says, at the line's end: measured first, the input is cut before it
+    // what its answer says, at the line's end: measured first, the input is cut before it; why it failed in red, in at
+    // most half the row (its card has it whole)
     let mut tail: Vec<(String, Color32)> = Vec::new();
     match live {
         Live::Running => tail.push(("· rodando".into(), GREEN)),
         Live::Waiting => tail.push(("· aguardando você".into(), AMBER)),
         Live::Done => {
             if let Some(note) = &step.note {
-                tail.push((format!("· {note}"), look.muted));
+                tail.push((format!("· {note}"), if step.failed { RED } else { look.muted }));
             }
             if let Some((added, removed)) = step.diff.filter(|_| step.note.is_none()) {
                 tail.push(("·".into(), look.muted));
@@ -388,11 +398,15 @@ pub(crate) fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, 
             }
         }
     }
-    let tail: Vec<_> = tail.into_iter().map(|(text, color)| p.layout_no_wrap(text, font.clone(), color)).collect();
-    let tail_width: f32 = tail.iter().map(|g| g.size().x + 8.0).sum();
+    // the chevron at the right edge, what comes before it cut short of it
+    chevron(p, Pos2::new(rect.right() - 6.0, cy), 11.0, 2.4, look.muted, openness);
+    let end = rect.right() - 14.0;
     let what_x = name_x + column + 8.0;
+    let half = ((end - what_x) * 0.5).max(40.0);
+    let tail: Vec<_> = tail.into_iter().map(|(text, color)| clipped(p, text, font.clone(), color, half)).collect();
+    let tail_width: f32 = tail.iter().map(|g| g.size().x + 8.0).sum();
     let what_color = if live_now { look.text.gamma_multiply(0.9) } else { look.soft };
-    let what = clipped(p, step.what.clone(), font.clone(), what_color, (rect.right() - what_x - tail_width).max(0.0));
+    let what = clipped(p, step.what.clone(), font.clone(), what_color, (end - what_x - tail_width).max(0.0));
     let mut x = what_x + what.size().x + 8.0;
     p.galley(Pos2::new(what_x, cy - what.size().y / 2.0), what, what_color);
     for g in tail {
@@ -406,6 +420,24 @@ pub(crate) fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, 
         ui.painter().galley(Pos2::new(name_x, line.center().y - g.size().y / 2.0), g, look.muted);
     }
     response.clicked()
+}
+
+/// A file a step touched: its path in the code colour, a click opens it in a tree on the canvas (underlined under the
+/// pointer); a path no longer there is only words.
+fn file_link_label(ui: &mut egui::Ui, file: &str, c: &UiColors) {
+    let path = PathBuf::from(file);
+    let text = egui::RichText::new(file).monospace().size(12.0).color(c.code);
+    if !path.is_file() {
+        ui.label(text);
+        return;
+    }
+    let response = ui.add(egui::Label::new(text).sense(Sense::click())).on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Abrir na Árvore de Arquivos");
+    if response.hovered() {
+        ui.painter().hline(response.rect.x_range(), response.rect.bottom() - 1.0, Stroke::new(1.0, c.code));
+    }
+    if response.clicked() {
+        crate::app::filetree::link::ask_open(ui.ctx(), crate::app::filetree::link::FileLink { path, line: None }, None);
+    }
 }
 
 /// How many lines of what a step printed its card shows.
@@ -440,12 +472,22 @@ fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColo
     };
     let mut lines = vec![format!("{} · {state}{took}", step.name)];
     lines.extend(step.cwd.as_ref().map(|cwd| format!("Pasta: {cwd}")));
-    if !step.files.is_empty() {
-        lines.push(format!("Arquivos: {}", step.files.join(", ")));
-    }
     let frame = egui::Frame::new().inner_margin(egui::Margin { left: 27, right: 0, top: 0, bottom: 4 }).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.label(egui::RichText::new(lines.join("\n")).monospace().size(12.0).color(look.muted));
+        // its files, each a link to it in a tree on the canvas (filetree/link.rs)
+        if !step.files.is_empty() {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.label(egui::RichText::new("Arquivos: ").monospace().size(12.0).color(look.muted));
+                for (index, file) in step.files.iter().enumerate() {
+                    if index > 0 {
+                        ui.label(egui::RichText::new(", ").monospace().size(12.0).color(look.muted));
+                    }
+                    file_link_label(ui, file, c);
+                }
+            });
+        }
         let input = if step.input.is_empty() { &step.what } else { &step.input };
         if !input.is_empty() {
             code_card(ui, if step.name == "Bash" { "comando" } else { "entrada" }, input, c, look.dark);

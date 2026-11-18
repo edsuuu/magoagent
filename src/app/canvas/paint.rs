@@ -19,6 +19,35 @@ impl DrawingApp {
         if dark && self.scene.background == WHITE { CANVAS_DARK } else { themed(rgba(self.scene.background), dark) }
     }
 
+    /// Sticky note `index` with its text, where its frame is (on the canvas, or lifted); also over the live parts of a
+    /// window under it (canvas/cover.rs).
+    pub(crate) fn paint_note_card(&self, painter: &Painter, index: usize) {
+        let element = &self.scene.elements[index];
+        let label = note_label(&self.scene.elements, index);
+        let text = label.and_then(|label_index| match &self.scene.elements[label_index].kind {
+            ElementKind::Text { value, .. } => Some(value.as_str()),
+            _ => None,
+        });
+        // the frame sets where and how big the card is
+        let (frame, zoom) = self.terminal_frame(element);
+        let view = View {
+            origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom,
+            zoom,
+            text_zoom: self.text_zoom_at(zoom),
+            dark: self.dark(),
+            background: self.ground(),
+        };
+        let faded = self.erasing.as_ref().is_some_and(|erased| erased.contains(&index));
+        // its text, or the placeholder of a note without one (left empty, its text was dropped)
+        let body = label.is_none_or(|label_index| self.editing != Some(label_index));
+        let shown = self.shown_note(element);
+        let end = paint_note(painter, &shown, text.unwrap_or(""), body, &view, faded, self.note_scroll_offset(&element.id));
+        // typing, the editor scrolls: what the card hides is known again once it rests
+        if body {
+            self.note_painted(&shown, end);
+        }
+    }
+
     pub(crate) fn paint_scene(&self, painter: &Painter, rect: Rect) {
         // SwiftUI draws the canvas (canvas/native.rs)
         #[cfg(target_os = "macos")]
@@ -58,12 +87,14 @@ impl DrawingApp {
                 y += step;
             }
         }
-        let view = View { origin: self.origin(), zoom: self.zoom, dark, background: self.ground() };
+        let view = View { origin: self.origin(), zoom: self.zoom, text_zoom: self.text_zoom(), dark, background: self.ground() };
         let mut pen = None;
         // ropes first: the part of one that crosses a window or note stays under it, so a
         // connection only ever shows leaving their edges
         // a rope lights up while one of its agents asks the other something
-        let asking = self.bridge.as_ref().map(|bridge| locked(&bridge.shared).asking.clone()).unwrap_or_default();
+        let mut asking = self.bridge.as_ref().map(|bridge| locked(&bridge.shared).asking.clone()).unwrap_or_default();
+        // and while a recruit works on what its boss asked, though the boss no longer waits on the line (ask.rs)
+        asking.extend(self.asks_running());
         let clicked: &[String] = match self.links_popover.as_ref().map(|popover| &popover.of) {
             Some(crate::app::ui::links::LinksOf::Ropes(ids)) => ids,
             _ => &[],
@@ -98,10 +129,10 @@ impl DrawingApp {
             painter.extend(Shape::dashed_line(&points, Stroke::new(2.0 * self.zoom, PRIMARY), 8.0 * self.zoom, 7.0 * self.zoom));
         }
         self.paint_groups(painter);
-        // windows over the drawings (a portal's page is native and always on top, so its bar
-        // and the other windows go there too), and the enlarged one last, over everything it covers
+        // the cards (windows and notes) over the drawings, among themselves in the drawing's order, as their live parts
+        // and pages stack (canvas/cover.rs, browser/sync.rs); and the enlarged one last, over everything it covers
         let mut order: Vec<usize> = (0..self.scene.elements.len()).collect();
-        order.sort_by_key(|&index| self.scene.elements[index].is_node());
+        order.sort_by_key(|&index| self.scene.elements[index].is_card());
         let lift = self.lift_index();
         // the part of the world on screen: a drawing outside it costs nothing (its rough strokes, hatching and text)
         let seen = Rect::from_two_pos(self.to_world(rect.min), self.to_world(rect.max));
@@ -164,23 +195,7 @@ impl DrawingApp {
                 continue; // a note paints its own text, or the editor types over it
             }
             if element.created.is_some() {
-                let label = note_label(&self.scene.elements, index);
-                let text = label.and_then(|label_index| match &self.scene.elements[label_index].kind {
-                    ElementKind::Text { value, .. } => Some(value.as_str()),
-                    _ => None,
-                });
-                // on the canvas, or lifted: the frame sets where and how big the card is
-                let (frame, zoom) = self.terminal_frame(element);
-                let view =
-                    View { origin: frame.min.to_vec2() - local_bounds(element).min.to_vec2() * zoom, zoom, dark: view.dark, background: view.background };
-                // its text, or the placeholder of a note without one (left empty, its text was dropped)
-                let body = label.is_none_or(|label_index| self.editing != Some(label_index));
-                let shown = self.shown_note(element);
-                let end = paint_note(painter, &shown, text.unwrap_or(""), body, &view, faded, self.note_scroll_offset(&element.id));
-                // typing, the editor scrolls: what the card hides is known again once it rests
-                if body {
-                    self.note_painted(&shown, end);
-                }
+                self.paint_note_card(painter, index);
                 continue;
             }
             // a note's card goes by its frame (enlarged, it is not where it is in the world), above
@@ -276,7 +291,7 @@ impl DrawingApp {
         let handle_fill = if dark { Color32::from_rgb(18, 18, 18) } else { Color32::WHITE };
         let two_point_line = self.single_line().is_some_and(|index| self.line_points(index).len() == 2);
         let selected: Vec<&Element> = self.selected.iter().filter_map(|index| self.scene.elements.get(*index)).collect();
-        let card = |element: &Element| element.is_node() || element.created.is_some();
+        let card = Element::is_card;
         // a note's text is grouped with it and goes along
         // and a rope picked along with its windows has no box of its own
         let with_card = |element: &&Element| {
@@ -353,7 +368,11 @@ impl DrawingApp {
             return;
         };
         if let Some(note) = self.scene.elements.get(index).and_then(|label| note_of_label(&self.scene.elements, label)) {
-            return self.note_editor(ctx, index, note);
+            // the note typed in is in front (`raise_card`), however its typing began: its card and text are drawn over
+            // the cards that covered it, as the editor is (asked: "cliquei em editar a nota e o texto saiu em cima do
+            // terminal")
+            let note = self.raise_card(note);
+            return self.note_editor(ctx, self.editing.unwrap_or(index), note);
         }
         let (pos, size, color, width) = match self.scene.elements.get(index) {
             Some(element @ Element { kind: ElementKind::Text { x, y, .. }, .. }) => (
@@ -400,75 +419,6 @@ impl DrawingApp {
         });
         if finish {
             self.finish_text();
-        }
-    }
-
-    /// A note's text being typed: the card's text box, the same markdown, scrolling in place.
-    fn note_editor(&mut self, ctx: &Context, index: usize, note: usize) {
-        let shown = self.shown_note(&self.scene.elements[note]).into_owned();
-        let body = note_text_box(&shown);
-        let (frame, zoom) = self.terminal_frame(&self.scene.elements[note]);
-        let at = |point: Pos2| frame.min + (point - local_bounds(&shown).min) * zoom;
-        let screen = Rect::from_two_pos(at(body.min), at(body.max));
-        let (_, ink) = note_colors(&self.scene.elements[note], 100);
-        // zoom from the note's frame: an enlarged note grows its text too
-        let size = self.scene.elements[note].note.font_size * zoom;
-        // a popover or the rename dialog has the keys: the editor waits for them
-        let want_focus = self.rename.is_none() && self.note_color.is_none();
-        let mut finish = false;
-        egui::Area::new(egui::Id::unique("note_editor")).fixed_pos(screen.min).constrain(false).order(egui::Order::Foreground).show(ctx, |ui| {
-            // off the screen with its note, never clamped back onto it; and never over the sidebar
-            ui.shrink_clip_rect(self.canvas_rect);
-            ui.set_width(screen.width());
-            egui::ScrollArea::vertical().id_salt("note_text").max_height(screen.height()).show(ui, |ui| {
-                if let Some(Element { kind: ElementKind::Text { value, .. }, .. }) = self.scene.elements.get_mut(index) {
-                    let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap: f32| {
-                        let job = markdown::edit_job(text.as_str(), size, ink, wrap);
-                        ui.ctx().fonts_mut(|fonts| fonts.layout_job(job))
-                    };
-                    let response = ui.add(
-                        egui::TextEdit::multiline(value)
-                            .id(crate::app::notes::editor_id())
-                            .frame(egui::Frame::NONE)
-                            .margin(Vec2::ZERO)
-                            .text_color(ink)
-                            .background_color(Color32::TRANSPARENT)
-                            .layouter(&mut layouter)
-                            .desired_width(screen.width())
-                            .desired_rows(1),
-                    );
-                    // the resting note's placeholder, in the same letters and ink (egui's own hint_text takes the theme's
-                    // weak color, near white on the paper)
-                    if value.is_empty() {
-                        let format = egui::TextFormat { font_id: FontId::monospace(size), color: ink.gamma_multiply(0.4), italics: true, ..Default::default() };
-                        let galley = ui.fonts_mut(|fonts| fonts.layout_job(egui::text::LayoutJob::single_section("Clique para editar…".into(), format)));
-                        ui.painter().galley(response.rect.min, galley, ink);
-                    }
-                    // the click that focuses the note releases on the next frame and counts as a
-                    // click elsewhere, which takes the focus back: keep asking for it while editing
-                    if want_focus && !ui.memory(|memory| memory.has_focus(response.id)) {
-                        response.request_focus();
-                    } else if let Some(range) = egui::TextEdit::load_state(ui.ctx(), response.id).and_then(|state| state.cursor.char_range()) {
-                        let (primary, secondary) = (range.primary.index.0, range.secondary.index.0);
-                        self.note_selection = Some((index, primary.min(secondary), primary.max(secondary)));
-                    }
-                    // the modifiers ride on the key event (scripted keys set them only there)
-                    finish = ui.input(|input| {
-                        input.events.iter().any(|event| {
-                            matches!(event, egui::Event::Key { key: Key::Escape, pressed: true, .. })
-                                || matches!(event, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if modifiers.command)
-                        })
-                    });
-                }
-            });
-        });
-        if finish {
-            // Esc or Cmd+Enter in a lifted note also puts it back on the canvas (set_elevated ends the typing)
-            if self.elevated_index().is_some_and(|index| self.scene.elements[index].created.is_some()) {
-                self.set_elevated(None);
-            } else {
-                self.finish_text();
-            }
         }
     }
 

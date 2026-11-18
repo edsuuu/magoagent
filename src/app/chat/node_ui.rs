@@ -3,6 +3,7 @@
 //! `paint_chat_node` draws (the mascot and the last message).
 
 use crate::app::chat::composer::Hints;
+use crate::app::chat::follow::{follow_scroll, talk_mark};
 use crate::app::chat::list::Look;
 use crate::app::chat::mini::ConvOut;
 use crate::app::ui::agents::AgentState;
@@ -47,9 +48,9 @@ pub(crate) fn keep_pinned(ctx: &Context, key: egui::Id, laid: Rect) {
 }
 
 /// The conversation's scroll: what is left above the pinned part, never more (egui's own floor would push the
-/// pinned part off the card), stuck to the newest.
+/// pinned part off the card); `follow_scroll` shows it, following the newest.
 pub(crate) fn card_scroll(salt: (&str, &str), height: f32) -> egui::ScrollArea {
-    egui::ScrollArea::vertical().id_salt(salt).stick_to_bottom(true).auto_shrink(false).min_scrolled_height(0.0).max_height(height)
+    egui::ScrollArea::vertical().id_salt(salt).auto_shrink(false).min_scrolled_height(0.0).max_height(height)
 }
 
 /// The part of the card under its header and over its folder strip, on screen.
@@ -141,6 +142,11 @@ impl DrawingApp {
         let card_draft = ctx.data_mut(|d| d.get_temp::<String>(draft_key)).unwrap_or_default();
         let outer_agent = self.chat_agent.replace(id.to_string());
         let outer_draft = std::mem::replace(&mut self.chat_draft, card_draft);
+        // its box has the / menu too, while it has the keys (the canvas has many cards; one box types at a time)
+        let typing = ctx.memory(|m| m.has_focus(draft_id) || m.had_focus_last_frame(draft_id));
+        let slash = if typing { self.slash_entries() } else { None };
+        let mut draft = std::mem::take(&mut self.chat_draft);
+        let swallow = slash.as_ref().is_some_and(|entries| self.slash_keys(ctx, &mut draft, entries, draft_id));
         let size = body.size() / z;
         let clip = body.intersect(canvas);
         let clip = Rect::from_min_max(((clip.min - body.min) / z).to_pos2(), ((clip.max - body.min) / z).to_pos2());
@@ -148,9 +154,9 @@ impl DrawingApp {
         let talks = transcript.is_some_and(|t| !t.items.is_empty());
         let asked = self.asked_of();
         let hint = format!("Mensagem para {}", self.maestro_name(&row.spec.name));
-        let mut draft = std::mem::take(&mut self.chat_draft);
         let mut conv = ConvOut::default();
         let (mut send, mut interrupt, mut attach, mut footer_act) = (None, false, false, None);
+        let mut box_rect = None;
         let area = egui::Area::new(egui::Id::unique(("chat_card", id))).fixed_pos(Pos2::ZERO).constrain(false).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_clip_rect(clip);
             let rect = Rect::from_min_size(Pos2::ZERO, size);
@@ -164,7 +170,7 @@ impl DrawingApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
                 ui.set_max_width(width);
                 ui.spacing_mut().scroll = crate::app::ui::scroll_style();
-                card_scroll(("chat_card_scroll", id), top.height()).show(ui, |ui| {
+                follow_scroll(ui, card_scroll(("chat_card_scroll", id), top.height()), id, "chat_card", talk_mark(transcript), |ui| {
                     self.conversation(ui, &row, transcript, talks, true, false, &asked, None, width, &look, &c, true, time, &mut conv);
                     // what the agent asks the person ends the conversation: however tall, it scrolls with it
                     if self.person_asked(&row.id) {
@@ -179,8 +185,8 @@ impl DrawingApp {
                     interrupt |= self.work_band(ui, &row, transcript, &look, true, time);
                     ui.add_space(6.0);
                 }
-                let card = self.composer(ui, &mut draft, draft_id, &hint, width, 120f32.min(size.y * 0.3), false, &look, &c, Hints::None, time);
-                (attach, footer_act) = (card.attach, card.footer);
+                let card = self.composer(ui, &mut draft, draft_id, &hint, width, 120f32.min(size.y * 0.3), swallow, &look, &c, Hints::None, time);
+                (attach, footer_act, box_rect) = (card.attach, card.footer, Some(card.rect));
                 if card.send {
                     send = Some(std::mem::take(&mut draft).trim_end().to_string());
                 }
@@ -189,7 +195,15 @@ impl DrawingApp {
         });
         // laid out at the card's size, shown at the canvas's
         ctx.set_transform_layer(area.response.layer_id, egui::emath::TSTransform::new(body.min.to_vec2(), z));
+        // the menu over the box where the canvas shows it, at the interface's own size
+        if let (Some(entries), Some(rect)) = (&slash, box_rect) {
+            let anchor = body.min + rect.left_top().to_vec2() * z - Vec2::new(0.0, 6.0);
+            if let Some(name) = self.slash_menu_ui(ctx, entries, anchor, (rect.width() * z).max(260.0), &look) {
+                crate::app::chat::commands::complete_into(ctx, &mut draft, &name, draft_id);
+            }
+        }
         self.chat_draft = draft;
+        // a run or a step opened or shut: the row clicked stays where it is (`conv_apply` holds the scroll)
         self.conv_apply(ctx, conv, draft_id);
         if attach {
             self.chat_attach_pick(ctx);

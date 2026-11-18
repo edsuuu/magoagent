@@ -86,7 +86,7 @@ fn fixed_claude_more() -> Vec<Choice> {
 
 const EFFORT_NAMES: [(&str, &str); 6] = [("low", "Baixo"), ("medium", "Médio"), ("high", "Alto"), ("xhigh", "Extra"), ("max", "Máx"), ("ultra", "Ultra")];
 
-fn effort_name(id: &str) -> String {
+pub(crate) fn effort_name(id: &str) -> String {
     EFFORT_NAMES.iter().find(|(e, _)| *e == id).map_or_else(|| id.to_string(), |(_, n)| n.to_string())
 }
 
@@ -192,7 +192,7 @@ pub(crate) fn agent_default(agent: &str) -> (String, String) {
 }
 
 /// Claude Code's aliases to the model they run now: "opus[1m]" → claude-opus-5-5.
-fn claude_alias(model: &str) -> String {
+pub(crate) fn claude_alias(model: &str) -> String {
     let base = model.split('[').next().unwrap_or(model).trim();
     match base {
         "opus" | "default" | "best" => "claude-opus-5-5",
@@ -328,10 +328,28 @@ fn segments(ui: &mut egui::Ui, list: &[Choice], current: &str, c: &UiColors) -> 
     picked
 }
 
+/// How tall a chip's menu can be over `chip` in `room` (the island, or the window): the room above it less the menu's
+/// frame and its gap from the chip.
+pub(crate) fn menu_height(chip: Rect, room: Rect) -> f32 {
+    (chip.top() - room.top() - 2.0 * crate::app::ui::menu_look::MENU_PAD - 12.0).max(120.0)
+}
+
+/// A chip's menu (asked: "quando eu clico em trocar o modelo no chat completo, ele fica bugado"): over the chip (the
+/// chips sit under the conversation, the room is above them), as tall as `menu_height` lets it be, what is past it
+/// scrolling; under it, the island's went out of the island's window, cut and out of the click's reach. A click in it
+/// leaves it open (egui's menu closed at Mais modelos): a pick closes it.
+fn chip_menu(chip: &egui::Response, dark: bool) -> egui::Popup<'_> {
+    egui::Popup::menu(chip)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .align(egui::RectAlign::TOP_START)
+        .align_alternatives(&[egui::RectAlign::TOP_END])
+        .frame(crate::app::ui::menu_look::menu_frame(dark))
+}
+
 /// The folder chip's menu, as the reference's: "Pesquisar pastas…" in focus, "Nenhuma pasta" (the app's own,
 /// `projects_dir`), the recent ones by name (the favorites first) filtered by what is typed, the chat's own
 /// checked, and "Abrir pasta…" (the system's picker).
-fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Folders, c: &UiColors) -> Option<FooterAct> {
+fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Folders, c: &UiColors, height: f32) -> Option<FooterAct> {
     let none = crate::file::projects_dir().map(|d| d.display().to_string()).unwrap_or_default();
     let filter_id = chip.id.with("filter");
     if chip.clicked() {
@@ -339,7 +357,7 @@ fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Fo
     }
     let mut act = None;
     let dark = ui.visuals().dark_mode;
-    egui::Popup::menu(chip).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).frame(crate::app::ui::menu_look::menu_frame(dark)).show(|ui| {
+    chip_menu(chip, dark).show(|ui| {
         ui.set_width(240.0);
         ui.spacing_mut().item_spacing.y = 1.0;
         let mut filter = ui.data(|d| d.get_temp::<String>(filter_id)).unwrap_or_default();
@@ -370,7 +388,9 @@ fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Fo
         if words.is_empty() && !found.is_empty() {
             section(ui, "Recente", c);
         }
-        egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
+        // the search, Nenhuma pasta, Recente and Abrir pasta… take about 150 of it
+        let list = (height - 150.0).clamp(60.0, 280.0);
+        egui::ScrollArea::vertical().max_height(list).min_scrolled_height(list).show(ui, |ui| {
             for path in &found {
                 // the row's own click: the scope around it (for the tip) never has one, and a recent folder did nothing
                 let picked = ui.scope(|ui| row(ui, &folder_label(path), same_folder(cwd, path)));
@@ -480,6 +500,7 @@ impl DrawingApp {
         // a chat too narrow for the model's button keeps only what fits
         chips.retain(|chip| chip.4.left() >= row_rect.left());
         let mut act = None;
+        let room = self.mini.island_rect.unwrap_or_else(|| ui.ctx().content_rect());
         for (what, text, hint, enabled, chip) in chips {
             let sense = if enabled { Sense::click() } else { Sense::hover() };
             let response = ui.interact(chip, ui.scope_id().with(("chat_footer", what)), sense);
@@ -504,61 +525,67 @@ impl DrawingApp {
                 p.galley(Pos2::new(chip.left() + 29.0, y - g.size().y / 2.0), g, color);
             }
             if what == "folder" {
-                if let Some(picked) = folder_menu(ui, &response, &chat.cwd, &self.prefs.folders, &c) {
+                if let Some(picked) = folder_menu(ui, &response, &chat.cwd, &self.prefs.folders, &c, menu_height(chip, room)) {
                     act = Some(picked);
                 }
                 continue;
             }
             // the others open a menu over the chip
             let dark = ui.visuals().dark_mode;
-            egui::Popup::menu(&response).frame(crate::app::ui::menu_look::menu_frame(dark)).show(|ui| {
+            chip_menu(&response, dark).show(|ui| {
                 // as wide as their rows need: a row takes the whole width it is given
                 ui.set_width(if what == "model" { 220.0 } else { 180.0 });
-                ui.spacing_mut().item_spacing.y = 1.0;
-                match what {
-                    "model" => {
-                        ui.spacing_mut().item_spacing.y = 2.0;
-                        section(ui, "Modelo", &c);
-                        for model in &list {
-                            if row(ui, &model.name, model.id == model_id) {
-                                act = Some(FooterAct::Model(pick(&model.id, &default_model)));
-                                ui.close();
-                            }
-                        }
-                        if !more.is_empty() {
-                            let open_id = ui.scope_id().with("more_models");
-                            let open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(more.iter().any(|m| m.id == model_id));
-                            if fold(ui, "Mais modelos", open, &c) {
-                                ui.data_mut(|d| d.insert_temp(open_id, !open));
-                            }
-                            if open {
-                                for model in &more {
+                egui::ScrollArea::vertical().max_height(menu_height(chip, room)).min_scrolled_height(menu_height(chip, room)).auto_shrink([false, true]).show(
+                    ui,
+                    |ui| {
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        match what {
+                            "model" => {
+                                ui.spacing_mut().item_spacing.y = 2.0;
+                                section(ui, "Modelo", &c);
+                                for model in &list {
                                     if row(ui, &model.name, model.id == model_id) {
                                         act = Some(FooterAct::Model(pick(&model.id, &default_model)));
                                         ui.close();
                                     }
                                 }
+                                if !more.is_empty() {
+                                    let open_id = ui.scope_id().with("more_models");
+                                    let open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(more.iter().any(|m| m.id == model_id));
+                                    if fold(ui, "Mais modelos", open, &c) {
+                                        ui.data_mut(|d| d.insert_temp(open_id, !open));
+                                    }
+                                    if open {
+                                        for model in &more {
+                                            if row(ui, &model.name, model.id == model_id) {
+                                                act = Some(FooterAct::Model(pick(&model.id, &default_model)));
+                                                ui.close();
+                                            }
+                                        }
+                                    }
+                                }
+                                if !effort_list.is_empty() {
+                                    ui.add_space(4.0);
+                                    menu_line(ui, &c);
+                                    section(ui, "Esforço", &c);
+                                    if let Some(e) = segments(ui, &effort_list, &effort_id, &c) {
+                                        act = Some(FooterAct::Effort(pick(&e, &default_effort)));
+                                        ui.close();
+                                    }
+                                    ui.add_space(4.0);
+                                }
+                            }
+                            _ => {
+                                for (index, name) in CHAT_MODES.iter().enumerate() {
+                                    if row(ui, name, chat.mode == index) {
+                                        act = Some(FooterAct::Mode(index));
+                                        ui.close();
+                                    }
+                                }
                             }
                         }
-                        if !effort_list.is_empty() {
-                            ui.add_space(4.0);
-                            menu_line(ui, &c);
-                            section(ui, "Esforço", &c);
-                            if let Some(e) = segments(ui, &effort_list, &effort_id, &c) {
-                                act = Some(FooterAct::Effort(pick(&e, &default_effort)));
-                            }
-                            ui.add_space(4.0);
-                        }
-                    }
-                    _ => {
-                        for (index, name) in CHAT_MODES.iter().enumerate() {
-                            if row(ui, name, chat.mode == index) {
-                                act = Some(FooterAct::Mode(index));
-                                ui.close();
-                            }
-                        }
-                    }
-                }
+                    },
+                );
             });
         }
         act
