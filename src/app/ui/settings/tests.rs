@@ -839,6 +839,15 @@ fn sobre_has_no_credits() {
     assert!(!sobre.has("CRÉDITOS") && !sobre.has("Ver os avisos"), "{:?}", sobre.texts);
 }
 
+/// Asked: "no sobre pode colocar o meu nome". Sobre says who made the app, under VERSÃO and above PRIVACIDADE, with
+/// a button to the GitHub profile.
+#[test]
+fn sobre_names_the_author() {
+    let sobre = Window::at(tab_of("Sobre"));
+    assert!(sobre.has_under("VERSÃO", "AUTOR") && sobre.has_under("AUTOR", "Criado por edsuuu"), "{:?}", sobre.texts);
+    assert!(sobre.has_under("AUTOR", "Abrir no GitHub") && sobre.has_under("Criado por edsuuu", "PRIVACIDADE"), "{:?}", sobre.texts);
+}
+
 /// Sobre's buttons sit inside their card's padding (asked: "Ver as releases no GitHub" was stuck to its edge), whatever
 /// the update's state: no release read yet, a release with its notes, the warning before Atualizar on Windows.
 #[test]
