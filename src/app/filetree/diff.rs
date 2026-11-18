@@ -16,7 +16,7 @@ use std::path::Path;
 
 pub(crate) const ADDED: Color32 = Color32::from_rgb(0x54, 0x91, 0x59);
 pub(crate) const MODIFIED: Color32 = Color32::from_rgb(0x37, 0x5F, 0xAD);
-const DELETED: Color32 = Color32::from_rgb(0x86, 0x8A, 0x91);
+pub(crate) const DELETED: Color32 = Color32::from_rgb(0x86, 0x8A, 0x91);
 /// The popup's old lines: the viewer's gray for lines that went, the blue of a changed word.
 const OLD_LINE: Color32 = Color32::from_rgb(0x2B, 0x2D, 0x2E);
 const OLD_WORD: Color32 = Color32::from_rgb(0x38, 0x55, 0x70);

@@ -20,10 +20,10 @@ pub(crate) use fold::{Plan, visible_plan};
 pub(crate) use ui::compare_ui;
 
 /// A removed and an added line over the editor's background, and the changed words inside them.
-const REMOVED: Color32 = Color32::from_rgb(0x3A, 0x22, 0x25);
-const ADDED: Color32 = Color32::from_rgb(0x1F, 0x33, 0x27);
-const REMOVED_WORD: Color32 = Color32::from_rgb(0x6B, 0x2F, 0x34);
-const ADDED_WORD: Color32 = Color32::from_rgb(0x2C, 0x5C, 0x3A);
+pub(crate) const REMOVED: Color32 = Color32::from_rgb(0x3A, 0x22, 0x25);
+pub(crate) const ADDED: Color32 = Color32::from_rgb(0x1F, 0x33, 0x27);
+pub(crate) const REMOVED_WORD: Color32 = Color32::from_rgb(0x6B, 0x2F, 0x34);
+pub(crate) const ADDED_WORD: Color32 = Color32::from_rgb(0x2C, 0x5C, 0x3A);
 
 /// One row of a column.
 #[derive(Clone, Copy, Debug, PartialEq)]

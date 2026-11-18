@@ -12,6 +12,9 @@ pub(crate) type Svg = (&'static str, &'static str);
 macro_rules! icons {
     ($($name:ident = $file:literal;)*) => {
         $(pub(crate) const $name: Svg = ($file, include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/editor-icons/", $file, ".svg")));)*
+        /// Every embedded icon, for a UI that draws them itself (the SwiftUI file tree).
+        #[cfg(target_os = "macos")]
+        pub(crate) const ALL: &[Svg] = &[$($name),*];
     };
 }
 
@@ -72,7 +75,7 @@ const LIGHT: [(&str, &str); 15] = [
     ("#1E1F22", "#FFFFFF"),
 ];
 
-fn to_light(svg: &str) -> String {
+pub(crate) fn to_light(svg: &str) -> String {
     LIGHT.iter().fold(svg.to_string(), |s, (dark, light)| s.replace(dark, light))
 }
 
@@ -129,7 +132,7 @@ pub(crate) fn button(ui: &mut Ui, src: Svg, tip: &str, selected: bool) -> egui::
     super::chrome::named(resp, tip).tip(tip)
 }
 
-fn file_icon(path: &Path) -> Option<Svg> {
+pub(crate) fn file_icon(path: &Path) -> Option<Svg> {
     let name = path.file_name()?.to_string_lossy().to_lowercase();
     let ext = name.rsplit_once('.').map_or("", |(_, e)| e);
     if name == "dockerfile" || name.starts_with("docker-compose") || name.ends_with(".dockerfile") {
@@ -172,7 +175,7 @@ fn file_icon(path: &Path) -> Option<Svg> {
 }
 
 /// Languages whose JetBrains icons are proprietary get a lookalike badge in the same style.
-fn badge(path: &Path) -> Option<(u32, &'static str)> {
+pub(crate) fn badge(path: &Path) -> Option<(u32, &'static str)> {
     // no language: a PDF, or a binary
     match path.extension().and_then(|e| e.to_str()).map(str::to_lowercase).as_deref() {
         Some("pdf") => return Some((0xE05252, "PDF")),

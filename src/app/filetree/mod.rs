@@ -14,6 +14,8 @@ pub(crate) mod editor;
 pub(crate) mod find;
 pub(crate) mod input;
 pub(crate) mod menu;
+#[cfg(target_os = "macos")]
+pub(crate) mod native;
 pub(crate) mod ops;
 pub(crate) mod pane;
 pub(crate) mod problems;
@@ -155,6 +157,9 @@ pub(crate) struct FileTrees {
     pub(crate) ctx: Option<Context>,
     /// The "Conflitos" window and the merge window (editor/mergeview.rs) of the tree that asked for them.
     pub(crate) conflicts: crate::editor::Conflicts,
+    /// What the SwiftUI file tree keeps between frames (filetree/native).
+    #[cfg(target_os = "macos")]
+    pub(crate) native: native::Native,
 }
 
 impl DrawingApp {
@@ -263,6 +268,11 @@ impl DrawingApp {
                 view.kept.clone_from(&self.prefs.hidden_shown);
                 view.rebuild(spec);
             }
+        }
+        // the SwiftUI tree reads what was just built
+        #[cfg(target_os = "macos")]
+        if crate::app::native::enabled("filetree") {
+            self.native_filetree();
         }
     }
 
