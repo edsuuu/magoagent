@@ -562,9 +562,9 @@ impl DrawingApp {
                 }
                 Some(row) => {
                     self.refresh_transcript();
-                    (self.mini.window, self.mini.in_island) = (true, true);
+                    (self.mini.window, self.mini.in_island, self.mini.island_rect) = (true, true, Some(rect));
                     self.mini_panel(ui.ctx(), row, page, look, colors, time);
-                    (self.mini.window, self.mini.in_island) = (false, false);
+                    (self.mini.window, self.mini.in_island, self.mini.island_rect) = (false, false, None);
                     // its ✕ (and Esc) and its full screen: the island folds, the chat going to the app with the latter
                     out.close |= std::mem::take(&mut self.mini.left);
                     self.island_edges(ui, rect, out);

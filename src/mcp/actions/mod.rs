@@ -135,6 +135,11 @@ impl DrawingApp {
                 let open = text("state") != "close";
                 if open {
                     let id = if text("chat").is_empty() { self.chat_agent.clone().ok_or("nenhum chat")? } else { self.chat_named(&text("chat"))? };
+                    // with the island on, the small conversation is the island's: no panel over the canvas
+                    if self.prefs.island {
+                        self.open_mini_chat(&id);
+                        return Ok("Chat aberto na ilha.".into());
+                    }
                     self.chat_agent = Some(id);
                     self.chat_open = false;
                 }

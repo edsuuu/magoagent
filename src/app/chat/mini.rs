@@ -50,6 +50,8 @@ pub(crate) struct Mini {
     pub(crate) window: bool,
     /// The panel is drawn inside the island (island/paint.rs): the island sizes it, not the system.
     pub(crate) in_island: bool,
+    /// Inside the island, the island as painted: the chips' menus stay in it (`footer::menu_height`).
+    pub(crate) island_rect: Option<Rect>,
     /// Its close or expand was clicked this frame: inside the island, the island folds.
     pub(crate) left: bool,
     /// Where its window opened: the window is built with it for as long as it is open (a builder that

@@ -128,14 +128,8 @@ impl DrawingApp {
         let font = FontId::proportional(13.0);
         // the buttons first, from the right: the name and folder are cut before them
         let mut right = main.right();
-        // Abrir em miniatura: the chat leaves for its panel over the canvas
-        let rect = button(right, 32.0);
-        let mini = bar_button(ui, rect, "chat_mini", look, false, false).tip("Abrir em miniatura");
-        let ink = if mini.hovered() { look.text } else { look.soft };
-        glyph(ui.painter(), rect.center(), 17.0, 2.0, ink, &[&[(3.0, 5.0), (21.0, 5.0), (21.0, 19.0), (3.0, 19.0), (3.0, 5.0)]]);
-        ui.painter().rect_filled(Rect::from_min_max(rect.center() + Vec2::new(0.5, 0.5), rect.center() + Vec2::new(6.0, 4.5)), 1, ink);
-        act.mini |= mini.clicked();
-        right = rect.left() - 6.0;
+        // no Abrir em miniatura: the small conversation is the island's alone (asked: "do chat abrir em um pop, remove
+        // 'Abrir em miniatura', deixa apenas na ilha")
         // Ver no canvas: the canvas, in the agent's space, on its card
         let label = if narrow { "" } else { "Ver no canvas" };
         let width = if narrow { 32.0 } else { 30.0 + ui.painter().layout_no_wrap(label.into(), font.clone(), look.soft).size().x + 12.0 };

@@ -224,8 +224,6 @@ pub(crate) struct ListAction {
     /// Novo chat, and Remover chat on a row.
     pub(crate) new_chat: bool,
     pub(crate) remove: Option<String>,
-    /// Abrir em miniatura: the chat leaves for its panel over the canvas.
-    pub(crate) mini: bool,
     /// Mostrar no canvas on a row (chat/node.rs).
     pub(crate) on_canvas: Option<String>,
     /// Renomear on a row.
