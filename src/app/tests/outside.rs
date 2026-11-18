@@ -510,3 +510,26 @@ fn a_permission_of_another_tool_reads_as_text_and_opens_whole_on_a_click() {
     assert!(drawn.iter().any(|(text, _)| text.contains("Montar o vídeo.")), "the whole request shows");
     assert!(drawn.iter().any(|(text, _)| text == "recolher"));
 }
+
+#[test]
+fn a_new_versions_card_waits_for_the_agents_to_finish() {
+    let mut app = island_app();
+    let release =
+        crate::app::system::updates::Release { version: "99.0.0".into(), notes: String::new(), page: String::new(), installer: None, digest: None, size: None };
+    app.updates.state = crate::app::system::updates::UpdateState::Available(release.clone());
+    app.updates.offer = Some(release);
+    // a session outside the app at work
+    app.take_hook("ext:s1", &hook("PreToolUse", "Bash", json!({ "command": "ls" })), None);
+    assert!(app.agents_working());
+    let ctx = Context::default();
+    crate::app::ui::install_fonts(&ctx, false);
+    let screen = Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)));
+    let _ = ctx.run_ui(egui::RawInput { screen_rect: screen, ..Default::default() }, |_| app.changelog_ui(&ctx));
+    assert!(app.changelog.is_none() && app.updates.offer.is_some(), "held");
+    assert!(app.status.contains("quando os agentes terminarem"), "{}", app.status);
+    // its turn over: the card opens
+    app.take_hook("ext:s1", &hook("Stop", "", json!({})), None);
+    assert!(!app.agents_working());
+    let _ = ctx.run_ui(egui::RawInput { screen_rect: screen, ..Default::default() }, |_| app.changelog_ui(&ctx));
+    assert!(app.changelog.is_some());
+}

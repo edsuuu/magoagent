@@ -132,8 +132,14 @@ pub(crate) struct Prefs {
     /// never, a distro's name runs the agents there.
     pub(crate) wsl: String,
     pub(crate) chat_mode: usize,
-    /// The day (since 1970) the app last looked for a newer release: once a day when it opens.
-    pub(crate) update_checked_day: u64,
+    /// When the app looks for a newer release by itself (Ajustes › Sobre): 0 when it opens and every hour, 1 only when
+    /// it opens, 2 never (only Sobre's button).
+    pub(crate) update_check: u8,
+    /// When "Atualizar depois" put the new version's card off (ms since 1970): it comes back 6 h later, or once the
+    /// computer restarted.
+    pub(crate) update_later: Option<i64>,
+    /// The version "Pular esta versão" let go: its card doesn't open by itself (Sobre still offers it).
+    pub(crate) update_skipped: String,
     /// O painel Contexto do chat aberto, e o valor de "Compactar automaticamente em" (vazio: o padrão do modelo).
     pub(crate) chat_panel: bool,
     pub(crate) chat_autocompact: String,
@@ -260,7 +266,9 @@ impl Default for Prefs {
             agent_mode: AgentMode::Terminal,
             wsl: String::new(),
             chat_mode: 0,
-            update_checked_day: 0,
+            update_check: 0,
+            update_later: None,
+            update_skipped: String::new(),
             chat_panel: false,
             chat_autocompact: String::new(),
             chat_agent: "claude".into(),

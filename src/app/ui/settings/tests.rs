@@ -290,7 +290,11 @@ fn sobre_offers_the_check_and_then_the_update_with_its_notes() {
     use crate::app::system::updates::{Release, UpdateState};
     let mut window = Window::at(tab_of("Sobre"));
     assert!(window.has("Verificar atualizações"), "{:?}", window.texts);
-    let release = Release { version: "99.0.0".into(), notes: "## Novo\n- mais legível".into(), page: String::new(), installer: None, digest: None };
+    // when the app looks by itself: Sempre (on opening and every hour) by default
+    assert!(window.has("Procurar atualizações") && window.has("Sempre"), "{:?}", window.texts);
+    assert_eq!(window.app.prefs.update_check, 0);
+    let release =
+        Release { version: "99.0.0".into(), notes: "## Novo\n- mais legível".into(), page: String::new(), installer: None, digest: None, size: None };
     window.app.updates.state = UpdateState::Available(release);
     window.frame(vec![]);
     assert!(window.has("Atualizar") && window.has("NOVIDADES DA 99.0.0"), "{:?}", window.texts);
@@ -302,8 +306,14 @@ fn sobre_offers_the_check_and_then_the_update_with_its_notes() {
 fn atualizar_warns_that_the_app_closes_and_reopens_before_doing_anything() {
     use crate::app::system::updates::{Release, UpdateState};
     let mut window = Window::at(super::SETTINGS_TABS.iter().position(|tab| *tab == "Sobre").unwrap());
-    let release =
-        Release { version: "99.0.0".into(), notes: String::new(), page: String::new(), installer: Some("https://github.com/x.msi".into()), digest: None };
+    let release = Release {
+        version: "99.0.0".into(),
+        notes: String::new(),
+        page: String::new(),
+        installer: Some("https://github.com/x.msi".into()),
+        digest: None,
+        size: None,
+    };
     window.app.updates.state = UpdateState::Available(release);
     window.frame(vec![]);
     window.click_text("Atualizar");
@@ -819,7 +829,7 @@ fn the_notices_go_in_the_installers_not_in_sobre() {
 fn sobre_buttons_keep_the_cards_padding() {
     use crate::app::system::updates::{Release, UpdateState};
     let mut window = Window::at(tab_of("Sobre"));
-    let release = || Release { version: "99.0.0".into(), notes: "- mais legível".into(), page: String::new(), installer: None, digest: None };
+    let release = || Release { version: "99.0.0".into(), notes: "- mais legível".into(), page: String::new(), installer: None, digest: None, size: None };
     let states = [(UpdateState::Idle, false), (UpdateState::UpToDate(release()), false), (UpdateState::Available(release()), true)];
     for (state, confirming) in states {
         (window.app.updates.state, window.app.updates.confirming) = (state, confirming);
