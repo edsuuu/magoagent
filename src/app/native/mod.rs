@@ -195,6 +195,7 @@ impl DrawingApp {
             Some(("canvas", verb)) => self.native_canvas_act(verb, args),
             Some(("island", verb)) => self.native_island_act(verb, args),
             Some(("shell", verb)) => self.native_shell_act(verb, args),
+            Some(("filetree", verb)) => self.native_filetree_act(verb, args),
             _ => Err(format!("ação de interface desconhecida: ui.{name}")),
         }
     }

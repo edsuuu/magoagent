@@ -243,6 +243,11 @@ impl DrawingApp {
 
     /// Every file tree's live parts, over its card.
     pub(crate) fn filetree_overlay(&mut self, ctx: &Context) {
+        // the SwiftUI file tree draws the live parts
+        #[cfg(target_os = "macos")]
+        if crate::app::native::enabled("filetree") {
+            return;
+        }
         // enlarged, only the enlarged one (when it is a tree)
         let lifted = self.terminal_elevated.clone();
         if lifted.as_ref().is_some_and(|id| !self.scene.elements.iter().any(|e| &e.id == id && e.filetree.is_some())) {

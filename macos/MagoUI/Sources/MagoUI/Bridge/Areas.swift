@@ -13,6 +13,7 @@ enum Areas {
             case "canvas": CanvasArea.start()
             case "island": IslandArea.start()
             case "shell": ShellArea.start()
+            case "filetree": FileTreeArea.start()
             case "probe": ProbeArea.start()
             default: break
             }
