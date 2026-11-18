@@ -2,8 +2,8 @@
 //! draws them, scaled with the canvas. Too small on screen, the card stays the picture
 //! `paint_chat_node` draws (the mascot and the last message).
 
-use crate::app::chat::accordion::UNFOLD_SECONDS;
 use crate::app::chat::composer::Hints;
+use crate::app::chat::follow::{follow_scroll, talk_mark};
 use crate::app::chat::list::Look;
 use crate::app::chat::mini::ConvOut;
 use crate::app::ui::agents::AgentState;
@@ -48,31 +48,9 @@ pub(crate) fn keep_pinned(ctx: &Context, key: egui::Id, laid: Rect) {
 }
 
 /// The conversation's scroll: what is left above the pinned part, never more (egui's own floor would push the
-/// pinned part off the card), stuck to the newest unless held (`scroll_held`).
-pub(crate) fn card_scroll(ctx: &Context, id: &str, salt: (&str, &str), height: f32) -> egui::ScrollArea {
-    let held = scroll_held(ctx, id);
-    egui::ScrollArea::vertical().id_salt(salt).stick_to_bottom(!held).auto_shrink(false).min_scrolled_height(0.0).max_height(height)
-}
-
-/// A step or a run of chat `id` opened or shut this frame: its scrolls (the card's, the chat's, the mini chat's) stay
-/// where they are while it eases open or shut (`scroll_held`).
-pub(crate) fn hold_scroll(ctx: &Context, id: &str) {
-    // read before: the context is locked inside `data_mut`
-    let (frame, time) = (ctx.cumulative_frame_nr(), ctx.input(|i| i.time));
-    ctx.data_mut(|d| d.insert_temp(held_key(id), (frame, time)));
-}
-
-/// Not stuck to the newest in the frame after a step or a run of chat `id` opened or shut (`hold_scroll`), nor while
-/// it eases (`UNFOLD_SECONDS` and a frame or two): the row clicked stays under the pointer and what it holds opens below.
-// ponytail: once a step opened, the chat no longer follows what comes until it is scrolled back to its end, as egui does
-pub(crate) fn scroll_held(ctx: &Context, id: &str) -> bool {
-    let (now, frame_now) = (ctx.input(|i| i.time), ctx.cumulative_frame_nr());
-    let easing = f64::from(UNFOLD_SECONDS) + 0.1;
-    ctx.data(|d| d.get_temp::<(u64, f64)>(held_key(id))).is_some_and(|(frame, time)| frame + 1 >= frame_now || now - time <= easing)
-}
-
-fn held_key(id: &str) -> egui::Id {
-    egui::Id::unique(("chat_card_held", id))
+/// pinned part off the card); `follow_scroll` shows it, following the newest.
+pub(crate) fn card_scroll(salt: (&str, &str), height: f32) -> egui::ScrollArea {
+    egui::ScrollArea::vertical().id_salt(salt).auto_shrink(false).min_scrolled_height(0.0).max_height(height)
 }
 
 /// The part of the card under its header and over its folder strip, on screen.
@@ -187,7 +165,7 @@ impl DrawingApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
                 ui.set_max_width(width);
                 ui.spacing_mut().scroll = crate::app::ui::scroll_style();
-                card_scroll(ui.ctx(), id, ("chat_card_scroll", id), top.height()).show(ui, |ui| {
+                follow_scroll(ui, card_scroll(("chat_card_scroll", id), top.height()), id, "chat_card", talk_mark(transcript), |ui| {
                     self.conversation(ui, &row, transcript, talks, true, false, &asked, None, width, &look, &c, true, time, &mut conv);
                     // what the agent asks the person ends the conversation: however tall, it scrolls with it
                     if self.person_asked(&row.id) {

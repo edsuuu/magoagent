@@ -17,6 +17,7 @@ pub(crate) mod conversation;
 pub(crate) mod decide;
 pub(crate) mod direct;
 pub(crate) mod email;
+pub(crate) mod follow;
 pub(crate) mod footer;
 pub(crate) mod header;
 pub(crate) mod images;
@@ -38,6 +39,7 @@ pub(crate) mod tools;
 pub(crate) mod viewer;
 
 use crate::app::chat::composer::Hints;
+use crate::app::chat::follow::{follow_scroll, talk_mark};
 use crate::app::chat::list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, message_menu};
 use crate::app::chat::mini::ConvOut;
 use crate::app::chat::steps::CardClick;
@@ -201,9 +203,9 @@ impl DrawingApp {
                 {
                     let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(strip));
                     ui.spacing_mut().scroll = crate::app::ui::scroll_style();
-                    // stuck to the newest, but not while a run or a step clicked eases open (`scroll_held`)
-                    let held = crate::app::chat::node_ui::scroll_held(ctx, &row.id);
-                    egui::ScrollArea::vertical().stick_to_bottom(!held).auto_shrink(false).max_height(height).show(ui, |ui| {
+                    // following the newest, held still while a run or a step clicked eases (chat/follow.rs)
+                    let scroll = egui::ScrollArea::vertical().auto_shrink(false).max_height(height);
+                    follow_scroll(ui, scroll, &row.id, "chat_screen", talk_mark(transcript), |ui| {
                         let left = ui.max_rect().left() + ((ui.available_width() - width) / 2.0).max(0.0);
                         let inner = Rect::from_min_max(Pos2::new(left, ui.cursor().top()), Pos2::new(left + width, ui.max_rect().bottom()));
                         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {

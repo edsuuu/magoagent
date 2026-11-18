@@ -245,10 +245,10 @@ impl DrawingApp {
             quote_into(&mut self.chat_draft, &text);
             ctx.memory_mut(|m| m.request_focus(draft_id));
         }
-        // a run or a step opened or shut: the row clicked stays where it is while it eases (`scroll_held`)
+        // a run or a step opened or shut: the row clicked stays where it is while it eases (chat/follow.rs)
         if let Some(key) = out.fold {
             if let Some(id) = &self.chat_agent {
-                crate::app::chat::node_ui::hold_scroll(ctx, id);
+                crate::app::chat::follow::hold_scroll(ctx, id);
             }
             if !self.chat_unfolded.remove(&key) {
                 self.chat_unfolded.insert(key);
@@ -549,12 +549,11 @@ impl DrawingApp {
                 ui.set_max_width(width);
                 let footer_height = if self.mini.footer > 0.0 { self.mini.footer } else { 70.0 };
                 ui.spacing_mut().scroll = crate::app::ui::scroll_style();
-                egui::ScrollArea::vertical()
-                    .id_salt("mini_scroll")
-                    .stick_to_bottom(!crate::app::chat::node_ui::scroll_held(ctx, &row.id))
-                    .auto_shrink(false)
-                    .max_height(ui.available_height() - footer_height)
-                    .show(ui, |ui| self.conversation(ui, row, transcript, talks, only_chat, waiting, &asked, None, width, look, c, true, time, &mut conv));
+                let scroll = egui::ScrollArea::vertical().id_salt("mini_scroll").auto_shrink(false).max_height(ui.available_height() - footer_height);
+                let mark = crate::app::chat::follow::talk_mark(transcript);
+                crate::app::chat::follow::follow_scroll(ui, scroll, &row.id, "mini", mark, |ui| {
+                    self.conversation(ui, row, transcript, talks, only_chat, waiting, &asked, None, width, look, c, true, time, &mut conv)
+                });
                 let top = ui.cursor().top();
                 ui.add_space(6.0);
                 if working_now(row) {

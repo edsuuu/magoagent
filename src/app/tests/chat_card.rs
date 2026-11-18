@@ -271,6 +271,28 @@ fn a_recruits_card_draws_its_markdown_its_errors_whole_and_opens_a_step_on_a_cli
     shown(&mut app, &ctx, time + 0.1, vec![]);
     let texts = shown(&mut app, &ctx, time + 1.0, vec![]);
     assert!(!app.chat_unfolded.contains("card:longo") && !texts.iter().any(|(text, ..)| packed(text) == packed(COMMAND)));
+    assert!((row_at(&texts) - at).length() < 1.0, "shut, the row still where it was");
+    // opened again at the end of the conversation: the view holds still, past the easing too...
+    time += 2.0;
+    shown(&mut app, &ctx, time, vec![button(at, true)]);
+    shown(&mut app, &ctx, time + 0.05, vec![button(at, false)]);
+    for later in [0.1, 0.3, 0.6, 1.0, 1.5] {
+        let still = row_at(&shown(&mut app, &ctx, time + later, vec![]));
+        assert!((still - at).length() < 1.0, "{later} s after: the row moved from {at:?} to {still:?}");
+    }
+    // ...until something new comes in the conversation: then it follows the newest again, down to its end
+    const NEWS: &str = "Rodei de novo: 14 passaram.";
+    app.transcripts.get_mut(&id).unwrap().items.push(ChatItem::Agent(NEWS.into()));
+    time += 2.0;
+    let mut texts = Vec::new();
+    for later in [0.0, 0.05, 0.1] {
+        texts = shown(&mut app, &ctx, time + later, vec![]);
+    }
+    let news = texts.iter().find(|(text, ..)| text.starts_with("Rodei de novo")).map(|(.., rect)| *rect).unwrap_or_else(|| panic!("{texts:?}"));
+    // the line pinned under the conversation ("Pronto"): the newest just over it, in sight
+    let pinned = texts.iter().filter(|(text, ..)| text == "Pronto").map(|(.., rect)| *rect).max_by(|a, b| a.top().total_cmp(&b.top())).unwrap();
+    assert!(news.bottom() <= pinned.top() && pinned.top() - news.bottom() < 30.0, "at the end: {news:?} over {pinned:?}");
+    assert!(row_at(&texts).y < at.y - 1.0, "the view went down to it");
 }
 
 #[test]

@@ -3,9 +3,10 @@
 //! task only; and while its work is out of sight (folded, off the view, too small), what it starts
 //! and when it ends pop at the top of the window, under the toolbar.
 
+use crate::app::chat::follow::{follow_scroll, hold_scroll, talk_mark};
 use crate::app::chat::list::{DOWN, Look, RED, glyph};
 use crate::app::chat::markdown::{md_galleys, md_plain, paint_md, tight};
-use crate::app::chat::node_ui::{card_scroll, chat_live, hold_scroll, keep_pinned, mini_button, pinned_key, split_body};
+use crate::app::chat::node_ui::{card_scroll, chat_live, keep_pinned, mini_button, pinned_key, split_body};
 use crate::app::chat::steps::{Live, short_tool, step_with_card};
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
@@ -116,7 +117,7 @@ impl DrawingApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
                 ui.set_max_width(inner.width());
                 ui.spacing_mut().scroll = crate::app::ui::scroll_style();
-                card_scroll(ui.ctx(), id, ("recruit_scroll", id), top.height()).show(ui, |ui| {
+                follow_scroll(ui, card_scroll(("recruit_scroll", id), top.height()), id, "recruit_card", talk_mark(transcript), |ui| {
                     // room between the words and the scroll bar at the right edge
                     let width = inner.width() - 14.0;
                     ui.set_max_width(width);
