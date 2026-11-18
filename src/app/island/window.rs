@@ -367,7 +367,8 @@ impl DrawingApp {
             if (out.drag && !drag_later) || drag_now {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
-            (out, ui.ctx().input(|input| input.viewport().outer_rect), menus(ui.ctx()))
+            let focused = ui.ctx().input(|input| input.focused);
+            (paint::Out { focused, ..out }, ui.ctx().input(|input| input.viewport().outer_rect), menus(ui.ctx()))
         });
         let (out, placed, menus) = out;
         self.island.menus = menus;
@@ -447,6 +448,8 @@ impl DrawingApp {
         egui::Area::new(egui::Id::unique("island_area")).order(egui::Order::Foreground).fixed_pos(at).constrain(false).show(ctx, |ui| {
             out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
         });
+        // drawn in the app's window: that window's focus
+        out.focused = ctx.input(|input| input.focused);
         out
     }
 }
