@@ -332,6 +332,15 @@ pub(crate) fn with_hooks(command: String, settings: Option<&Path>) -> String {
     }
 }
 
+/// Set on every agent CLI the app runs (`AgentCli::command`): the plan's reading, the models' list, a chat's turn.
+pub(crate) const OWN_RUN: &str = "MAGOAGENT_OWN";
+
+/// A hook of the app's own agents, which `hook external` leaves alone: a terminal's or a chat's (they have the bridge),
+/// or any CLI the app ran, even one of a test instance (MAGOAGENT_SCENE) whose hooks would reach the person's app.
+pub(crate) fn own_run(env: &dyn Fn(&str) -> Option<String>) -> bool {
+    env(OWN_RUN).is_some() || (env("MAGOAGENT_BRIDGE").is_some() && env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID")).is_some())
+}
+
 /// `magoagent hook`: the CLI's event (JSON on stdin) goes to the app by the bridge, as the
 /// terminal's (or chat's) agent. A permission request waits up to `PERMISSION_WAIT` for the app's
 /// answer and prints it. It never stands in the CLI's way: no app, no answer or an input it can't
@@ -348,8 +357,7 @@ pub(crate) fn hook_cli() -> i32 {
     let env = |key: &str| std::env::var(key).ok().filter(|v| !v.is_empty());
     let args: Vec<String> = std::env::args().collect();
     let answer = if args.get(2).map(String::as_str) == Some("external") {
-        let own = env("MAGOAGENT_BRIDGE").is_some() && (env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID"))).is_some();
-        if own {
+        if own_run(&env) {
             return 0;
         }
         super::relay::external(payload, args.get(3).map(String::as_str) == Some("wait"), &env)
@@ -376,6 +384,19 @@ pub(crate) struct Hooks {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_apps_own_runs_are_not_sessions_outside() {
+        let with =
+            |pairs: &'static [(&'static str, &'static str)]| move |key: &str| pairs.iter().find(|(name, _)| *name == key).map(|(_, value)| value.to_string());
+        // asked ("cliquei em ver uma sessão fora do app e ela não abre"): the plan's reading of a test instance in its
+        // scene's folder came as a session outside, with no conversation file (--no-session-persistence)
+        assert!(own_run(&with(&[("MAGOAGENT_OWN", "1")])), "a CLI the app ran, with no bridge");
+        assert!(own_run(&with(&[("MAGOAGENT_BRIDGE", "127.0.0.1:1"), ("MAGOAGENT_CHAT_ID", "c1")])), "a chat");
+        assert!(own_run(&with(&[("MAGOAGENT_BRIDGE", "127.0.0.1:1"), ("MAGOAGENT_TERMINAL_ID", "t1")])), "a terminal");
+        assert!(!own_run(&with(&[("MAGOAGENT_CHAT_ID", "c1")])), "no bridge, no mark: someone else's");
+        assert!(!own_run(&with(&[])), "a Claude Code of the person's");
+    }
 
     #[test]
     fn events_are_kept_in_sqlite_and_old_ones_go() {
