@@ -169,20 +169,19 @@ fn the_hole_slides_between_targets() {
 }
 
 #[test]
-fn the_balloon_goes_under_over_or_beside_its_hole() {
+fn the_balloon_stays_in_the_middle_unless_it_would_cover_its_hole() {
     let screen = Rect::from_min_size(Pos2::ZERO, SIZE);
     let size = Vec2::new(320.0, 160.0);
-    assert_eq!(tip_place(None, size, screen).center(), screen.center());
-    // the toolbar at the top: under it, centered and kept on the screen
+    // the toolbar at the top, the corner at the bottom right, the sidebar: the balloon stays in the middle, only the
+    // hole moves
     let toolbar = Rect::from_min_size(Pos2::new(500.0, 10.0), Vec2::new(280.0, 44.0));
-    let tip = tip_place(Some(toolbar), size, screen);
-    assert!(tip.top() > toolbar.bottom() && (tip.center().x - toolbar.center().x).abs() < 1.0);
-    // the corner at the bottom right: over it, inside the window
     let corner = Rect::from_min_size(Pos2::new(1000.0, 740.0), Vec2::new(270.0, 50.0));
-    let tip = tip_place(Some(corner), size, screen);
-    assert!(tip.bottom() < corner.top() && tip.right() <= screen.right() - 16.0);
-    // the sidebar, the window's whole height: beside it
     let sidebar = Rect::from_min_size(Pos2::ZERO, Vec2::new(260.0, 800.0));
-    let tip = tip_place(Some(sidebar), size, screen);
-    assert!(tip.left() > sidebar.right() && screen.contains_rect(tip));
+    for hole in [None, Some(toolbar), Some(corner), Some(sidebar)] {
+        assert_eq!(tip_place(hole, size, screen).center(), screen.center(), "{hole:?}");
+    }
+    // a hole in the middle: the balloon moves out of its way, under it, inside the window
+    let middle = Rect::from_center_size(screen.center(), Vec2::new(200.0, 60.0));
+    let tip = tip_place(Some(middle), size, screen);
+    assert!(!tip.intersects(middle) && screen.contains_rect(tip));
 }
