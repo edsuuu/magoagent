@@ -642,13 +642,16 @@ impl DrawingApp {
         let (response, at, ink) = button(ui, "island_settings", "Ajustes da ilha", view.settings);
         icons::paint(ui.painter(), if view.settings { icons::GEAR_FILL } else { icons::GEAR_LINE }, at, 18.0, ink);
         out.toggle_settings = response.clicked();
-        let (response, at, ink) = button(ui, "island_voice", if view.voice_on { "Encerrar o chat por voz" } else { "Chat por voz" }, view.voice_on);
-        if view.voice_on {
-            crate::app::voice::paint_bars(ui.painter(), at, crate::app::voice::call_bars(view.voice_state, view.mic, time), ink);
-        } else {
-            icons::paint(ui.painter(), icons::MIC, at, 18.0, ink);
+        // the call on hold (voice::CALL_ON): no Chat por voz; one still on can be ended
+        if crate::app::voice::CALL_ON || view.voice_on {
+            let (response, at, ink) = button(ui, "island_voice", if view.voice_on { "Encerrar o chat por voz" } else { "Chat por voz" }, view.voice_on);
+            if view.voice_on {
+                crate::app::voice::paint_bars(ui.painter(), at, crate::app::voice::call_bars(view.voice_state, view.mic, time), ink);
+            } else {
+                icons::paint(ui.painter(), icons::MIC, at, 18.0, ink);
+            }
+            out.voice = response.clicked();
         }
-        out.voice = response.clicked();
         // the conversation: its big and small size
         if view.tab == Tab::Chat && view.chat_full && !pinned {
             let (response, at, ink) = button(ui, "island_big", "Aumentar ou voltar ao tamanho", false);

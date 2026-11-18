@@ -432,13 +432,21 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "panel",
-            "description": "O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.",
+            "description": "O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão) ou note (Nota rápida: texto simples da pessoa; o texto em si fica na ferramenta quick_note), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.",
             "inputSchema": { "type": "object", "properties": {
-                "name": { "type": "string", "enum": ["changes"] },
+                "name": { "type": "string", "enum": ["changes", "note"] },
                 "open": { "type": "boolean" },
                 "width": { "type": "number", "description": "a largura do painel em pixels (de 300 até deixar 360 ao canvas); 0 volta à padrão" },
                 "worktree": name("Alterações: o worktree a mostrar (nome da pasta, ramo ou caminho); todos: as Árvores do canvas"),
             } },
+        }),
+        json!({
+            "name": "quick_note",
+            "description": "A Nota rápida (o botão ao lado de Alterações, na barra de título): um bloco de texto simples da pessoa, sem markdown, guardado com as preferências. show abre o painel; get lê o texto; set troca o texto por `text`; append junta `text` numa linha embaixo; to_canvas leva o texto para o canvas como uma nota (mostrada como foi digitada, sem markdown) e esvazia o painel.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["show", "get", "set", "append", "to_canvas"] },
+                "text": { "type": "string", "description": "set e append: o texto" },
+            }, "required": ["action"] },
         }),
         json!({
             "name": "changes_review",

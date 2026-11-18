@@ -118,14 +118,14 @@ fn the_conversation_grows_and_comes_back_by_its_size_button() {
     // the spring that opens the conversation takes a little over a second to settle
     rest(&mut app, &ctx, &mut time, at, 1.0);
     let small = app.island.size();
-    let at = right_button(&app, 4);
+    let at = right_button(&app, BIG_BUTTON);
     click(&mut app, &ctx, &mut time, at);
     rest(&mut app, &ctx, &mut time, at, 1.0);
     assert!(app.island.chat_big(), "big");
     let big = app.island.size();
     assert!(big.x > small.x && big.y > small.y, "{small:?} → {big:?}");
     // the same button, where it is now on the big island
-    let at = right_button(&app, 4);
+    let at = right_button(&app, BIG_BUTTON);
     click(&mut app, &ctx, &mut time, at);
     rest(&mut app, &ctx, &mut time, at, 1.0);
     assert!(!app.island.chat_big(), "back");
@@ -243,7 +243,7 @@ fn the_window_holds_the_big_conversation_while_it_opens() {
     app.island.chat_full = true;
     let at = tab_button(&app, 1);
     click(&mut app, &ctx, &mut time, at);
-    let at = right_button(&app, 4);
+    let at = right_button(&app, BIG_BUTTON);
     let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
     for events in [vec![egui::Event::PointerMoved(at)], vec![press(true)], vec![press(false)]] {
         step(&mut app, &ctx, time, events);
@@ -642,4 +642,23 @@ fn the_model_menu_stays_in_the_island_and_opens_more_models() {
     tap(&mut app, sonnet);
     assert_eq!(app.chats[0].model, "claude-sonnet-5-5");
     assert!(menu().is_empty() && app.island.chat_full, "the pick closed the menu, the island stays");
+}
+
+/// Asked: "do modo chat oculta o modo voz e ditado por favor, e da ilha também". With the call and Ditar on hold
+/// (`voice::CALL_ON`, `voice::DICTATION_ON`) the island's header has no Chat por voz, and neither the island nor the
+/// MCP starts them.
+#[test]
+fn the_island_and_the_chat_have_no_voice_nor_dictation_while_they_are_on_hold() {
+    if crate::app::voice::CALL_ON || crate::app::voice::DICTATION_ON {
+        return;
+    }
+    let (mut app, ctx, mut time) = opened();
+    // where Chat por voz was, left of Ajustes
+    let voice = right_button(&app, 3);
+    click(&mut app, &ctx, &mut time, voice);
+    assert!(!app.voice.on, "no call from where its button was");
+    app.dictate_toggle();
+    assert!(app.dictation.is_none(), "Ditar starts nothing");
+    assert_eq!(app.act("voice_call", &json!({ "state": "dictate_on" })), Err("O ditado está desligado por enquanto.".into()));
+    assert_eq!(app.act("voice_call", &json!({ "state": "on" })), Err("O chat por voz está desligado por enquanto.".into()));
 }

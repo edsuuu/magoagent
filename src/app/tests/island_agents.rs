@@ -180,7 +180,7 @@ fn the_islands_buttons_show_the_hand_and_their_press_never_drags_the_window() {
         let rect = island_rect(&island.app);
         let agents = frame.place_of("Agentes").expect("the agents' button").center();
         let mut buttons = vec![("Início", Pos2::new(rect.left() + 29.0, rect.top() + 25.0)), ("Agentes", agents)];
-        buttons.extend((0..4).map(|index| ("à direita", right_button(&island.app, index))));
+        buttons.extend((0..RIGHT_BUTTONS).map(|index| ("à direita", right_button(&island.app, index))));
         if !full {
             buttons.push(("⤢", Pos2::new(rect.right() - 10.0 - 18.0, rect.top() + 42.0 + 18.0)));
         }
