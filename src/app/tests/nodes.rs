@@ -201,3 +201,39 @@ fn a_window_an_agent_makes_is_roped_to_its_maker() {
     assert!(app.links()[&boss_id].contains(&child_id));
     assert!(!app.agent_nodes().iter().find(|n| n.id == child_id).unwrap().maestro);
 }
+
+#[test]
+fn a_window_a_chats_agent_draws_is_roped_to_its_card() {
+    let mut app = DrawingApp::default();
+    app.chats = vec![crate::app::chat::direct::Chat {
+        id: "c".into(),
+        agent: "claude".into(),
+        name: "Luna".into(),
+        cwd: "/p".into(),
+        session: None,
+        mode: 0,
+        model: String::new(),
+        effort: String::new(),
+        recruit: false,
+        named: false,
+        draft: false,
+    }];
+    let mut tests = app.new_element(ElementKind::Rectangle { x: 700.0, y: 0.0, width: 600.0, height: 400.0 });
+    tests.terminal = Some(TerminalSpec { name: "Testes".into(), command: "cargo test".into(), ..Default::default() });
+    let shape = app.new_element(ElementKind::Rectangle { x: 0.0, y: 900.0, width: 100.0, height: 100.0 });
+    let (tests_id, shape_id) = (tests.id.clone(), shape.id.clone());
+    app.scene.elements.extend([tests, shape]);
+    // the drawing its MCP wrote with the chat as the agent, and no card on this canvas yet: the card comes, roped to the
+    // terminal; what it drew is the person's, no rope
+    app.tie_to_terminal("c", &[tests_id.clone(), shape_id.clone()]);
+    assert!(app.chat_node("c").is_some());
+    assert!(app.links()["c"].contains(&tests_id));
+    assert!(!app.links()["c"].contains(&shape_id));
+    // a drawing with no window brings no card
+    let mut other = DrawingApp { chats: app.chats.clone(), ..DrawingApp::default() };
+    let shape = other.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 10.0, height: 10.0 });
+    let shape_id = shape.id.clone();
+    other.scene.elements.push(shape);
+    other.tie_to_terminal("c", &[shape_id]);
+    assert!(other.chat_node("c").is_none());
+}

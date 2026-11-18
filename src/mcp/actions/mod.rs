@@ -71,6 +71,7 @@ impl DrawingApp {
                 self.delete_selected();
                 Ok(format!("{} fechado (dá para desfazer).", text("name")))
             }
+            "create_terminal" => self.act_create_terminal(args),
             "terminal_restart" => {
                 let index = self.node_named(&text("name"))?;
                 if self.scene.elements[index].terminal.is_none() {

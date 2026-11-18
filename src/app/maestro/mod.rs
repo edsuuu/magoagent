@@ -20,8 +20,9 @@ pub(crate) mod timeline;
 use crate::prelude::*;
 use std::sync::mpsc::Sender;
 
-/// A recruit in chat mode starts this small.
-const RECRUIT_CARD: Vec2 = Vec2::new(340.0, 220.0);
+/// A recruit in chat mode starts this size: its task, a screenful of its work and the band, under a terminal's size (at
+/// 340 x 220 the band went past the card's edge).
+pub(crate) const RECRUIT_CARD: Vec2 = Vec2::new(380.0, 400.0);
 
 impl DrawingApp {
     /// A box the size of `want` at its place, or the nearest free one in a grid of three beside it and down,
@@ -61,7 +62,7 @@ impl DrawingApp {
         let command = crate::app::usage::recruit_command(command, &self.prefs.recruit_model);
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else { return };
         // a chat's card is smaller than any terminal: its recruit is a new terminal's size, in the chat's folder; a
-        // recruit in chat mode is a small card (its task and what it does, chat/recruit_card.rs), pulled bigger by hand
+        // recruit in chat mode is a card (its task and what it does, chat/recruit_card.rs), pulled bigger by hand
         let (mut cwd, size) = match (&caller.terminal, &caller.chat) {
             (Some(t), _) => (t.cwd.clone(), b.size()),
             (_, Some(chat)) => (chat.cwd.clone(), self.new_terminal_size()),
@@ -166,6 +167,42 @@ impl DrawingApp {
         self.rope_between(from, &id, false);
         self.publish_nodes();
         let _ = reply.send(Ok(format!("Navegador \"{name}\" aberto à sua direita e conectado.")));
+    }
+
+    /// The MCP's `create_terminal`: a terminal an agent opens to run what it watches (tests, an API), to its right and
+    /// roped to it (`asker`, the terminal or chat that asked: the bridge says which), in its folder unless `cwd` says
+    /// otherwise, running `command` as if typed. No agent to hang it from, no terminal: it would be loose on the canvas.
+    pub(crate) fn act_create_terminal(&mut self, args: &Value) -> Result<String, String> {
+        let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
+        let asker = text("asker");
+        // a chat opens it from its card, put on the canvas shown when it is not there
+        if !asker.is_empty() {
+            self.add_chat_node(&asker, None);
+        }
+        let Some(caller) = self.scene.elements.iter().find(|e| !asker.is_empty() && e.id == asker) else {
+            return Err("Abra terminais de dentro de um terminal ou chat do MagoAgent: o terminal fica ligado por corda a quem o abriu.".into());
+        };
+        let b = local_bounds(caller);
+        let folder = caller.terminal.as_ref().map(|t| t.cwd.clone()).or_else(|| caller.chat.as_ref().map(|c| c.cwd.clone())).unwrap_or_default();
+        let command = text("command");
+        let cwd = Some(text("cwd")).filter(|cwd| !cwd.is_empty()).unwrap_or(folder);
+        let name = Some(text("name")).filter(|name| !name.is_empty()).unwrap_or_else(|| self.command_name(&command));
+        let name = self.unique_terminal_name(&name, None);
+        let at = self.free_spot(Rect::from_min_size(Pos2::new(b.max.x + 60.0, b.min.y), self.new_terminal_size()));
+        let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
+        terminal.style = node_style(terminal.style);
+        terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command: command.clone(), maestro: false, ..Default::default() });
+        let id = terminal.id.clone();
+        // one Cmd+Z takes back the terminal and its rope together
+        self.snapshot();
+        self.scene.elements.push(terminal);
+        self.hang_from(&asker, std::slice::from_ref(&id));
+        self.publish_nodes();
+        let running = if command.is_empty() { String::new() } else { format!(", rodando `{command}`") };
+        Ok(format!(
+            "Terminal \"{name}\" aberto à sua direita{running} e ligado a você por corda: leia a tela com read_terminal \"{name}\" (ou `magoagent check \"{name}\"`), \
+             mande teclas com ask_agent raw (\\x03 para parar) e veja os processos com terminal_processes."
+        ))
     }
 
     /// `connect`: a rope between two things on the canvas, by id (the bridge resolves names).

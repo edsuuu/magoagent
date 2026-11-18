@@ -15,7 +15,9 @@ pub(crate) fn tools() -> Value {
             "name": "add_elements",
             "description": "Adiciona elementos (objetos JSON com type, x, y, width, height, cores, text, points). Extras: `label: {text, fontSize?}` em formas e setas; \
                 `start: {id}` / `end: {id}` em setas para ligá-las a formas (os pontos são calculados sozinhos). \
-                Devolve os ids criados.",
+                Um terminal, navegador ou árvore de arquivos que você abre aqui (type terminal, portal, filetree) já nasce ligado a você \
+                por uma corda (ao seu terminal ou ao seu cartão de chat): list_agents o mostra e read_terminal lê a tela do terminal. \
+                Para rodar testes ou uma API e acompanhar, prefira create_terminal. Devolve os ids criados (e em `linked` os ligados a você).",
             "inputSchema": { "type": "object", "properties": { "elements": elements }, "required": ["elements"] },
         },
         {
@@ -118,7 +120,8 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "read_terminal",
-            "description": "Lê a tela atual de um agente conectado (de um chat, o fim da conversa), sem mandar nada.",
+            "description": "Lê a tela atual de um agente ou terminal conectado (de um chat, o fim da conversa), sem mandar nada. Os terminais \
+                que você abre (create_terminal, add_elements) ficam conectados a você: é por aqui que você acompanha os testes ou a API que rodam neles.",
             "inputSchema": { "type": "object", "properties": { "name": agent_name }, "required": ["name"] },
         },
         {

@@ -32,7 +32,7 @@ src/
   mcp/           tudo do MCP: mod (JSON-RPC, INSTRUCTIONS), calls/ (ferramentas: lista em tools.rs, despacho em mod.rs),
                  elements (adicionar/atualizar elementos), app_tools + actions/ (o que o app faz a pedido do MCP:
                  arquivos, janelas, chats, ajustes), bridge/ (a ponte local com token entre app, terminais e o MCP;
-                 `magoagent list|ask|check|note|portal|recruit|connect|notify`)
+                 `magoagent list|ask|check|note|portal|recruit|terminal|connect|notify`)
   model/         Element, ElementKind, Style, specs (TerminalSpec, PortalSpec, NoteSpec), Scene, Prefs
   geometry/      limites, contornos e hit-test (mod), setas presas (binding), rótulos (labels), desenhar para criar forma
                  (recognize), cordas de Verlet (rope); `HAND_FACE` e `ASSISTANT_FONT`

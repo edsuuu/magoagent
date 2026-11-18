@@ -70,6 +70,31 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
     Ok(created)
 }
 
+/// What an agent opens on the canvas (a terminal to run its tests or its API, a portal, a file tree) hangs from it, as
+/// `recruit` hangs its child: a rope from `caller` (the canvas terminal or chat card it runs in) to each window just
+/// `created`, so it reaches them (read_terminal, portal_*) and list_agents shows them. A caller this drawing does not
+/// have (a chat with no card here) is the app's to tie when the drawing comes in (`tie_to_terminal`). Back: the windows
+/// tied.
+pub(crate) fn tie_to_caller(scene: &mut Scene, caller: Option<&str>, created: &[Value]) -> Result<Vec<String>, String> {
+    let Some(caller) = caller.filter(|caller| scene.elements.iter().any(|e| e.id == *caller)) else { return Ok(Vec::new()) };
+    let window = |id: &str| scene.elements.iter().any(|e| e.id == id && e.id != caller && e.is_node());
+    let windows: Vec<String> = created.iter().filter_map(|c| c["id"].as_str()).filter(|id| window(id)).map(String::from).collect();
+    for id in windows.iter().map(String::as_str) {
+        // a line it bound to both already connects them
+        let ends = |e: &Element| [&e.ends.start, &e.ends.end].map(|end| end.as_ref().map(|b| b.element_id.clone()));
+        if scene.elements.iter().any(|e| matches!(ends(e), [Some(a), Some(b)] if (a == caller && b == id) || (a == id && b == caller))) {
+            continue;
+        }
+        // the app's own rope (`rope_between`): dashed, grey, no heads
+        let rope = json!({
+            "type": "arrow", "rope": true, "start": { "id": caller }, "end": { "id": id }, "startArrowhead": null, "endArrowhead": null,
+            "strokeColor": "#8a8a8a", "strokeWidth": 2, "strokeStyle": "dashed", "roughness": 0, "roundness": { "type": 2 },
+        });
+        add_elements(scene, &[rope])?;
+    }
+    Ok(windows)
+}
+
 pub(crate) fn center_of(scene: &Scene, id: &str) -> Result<Pos2, String> {
     scene.elements.iter().find(|e| e.id == id).map(|e| element_bounds(e).center()).ok_or_else(|| format!("elemento `{id}` não existe"))
 }

@@ -400,3 +400,52 @@ fn registering_the_mcp_in_another_agent_runs_on_a_thread_and_never_in_a_test() {
     let tool = tools.iter().find(|tool| tool["name"] == "set_setting").unwrap();
     assert!(tool["inputSchema"]["properties"]["name"]["enum"].as_array().unwrap().contains(&json!("register_mcp")));
 }
+
+#[test]
+fn a_terminal_an_agent_opens_is_roped_to_it() {
+    let mut app = DrawingApp::default();
+    app.canvas_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+    let named = |app: &DrawingApp, name: &str| app.scene.elements.iter().find(|e| e.terminal.as_ref().is_some_and(|t| t.name == name)).cloned();
+    // nobody to hang it from (an agent outside the app): no terminal loose on the canvas
+    assert!(app.act("create_terminal", &json!({ "command": "cargo test" })).is_err());
+    assert!(app.scene.elements.iter().all(|e| e.terminal.is_none()));
+    // from the Luna's terminal: to its right, in its folder, running the command, roped to it
+    let mut luna = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+    luna.terminal = Some(TerminalSpec { name: "Luna".into(), cwd: "/p/loja".into(), maestro: true, ..Default::default() });
+    let luna_id = luna.id.clone();
+    app.scene.elements.push(luna);
+    let said = app.act("create_terminal", &json!({ "command": "cargo test", "asker": luna_id })).unwrap();
+    let tests = named(&app, "cargo").unwrap();
+    let spec = tests.terminal.as_ref().unwrap();
+    assert_eq!((spec.command.as_str(), spec.cwd.as_str(), spec.maestro), ("cargo test", "/p/loja", false));
+    assert!(element_bounds(&tests).min.x >= 400.0, "to its right");
+    assert!(app.links().get(&luna_id).is_some_and(|links| links.contains(&tests.id)), "roped to who opened it");
+    assert!(said.contains("\"cargo\"") && said.contains("read_terminal"), "{said}");
+    // a copy it makes of it hangs from it too
+    app.act("terminal_menu", &json!({ "name": "cargo", "action": "duplicate", "asker": luna_id })).unwrap();
+    let copy = named(&app, "cargo 2").unwrap();
+    assert!(app.links().get(&luna_id).is_some_and(|links| links.contains(&copy.id)));
+    // one Cmd+Z takes back the copy and its rope; another, the terminal and its rope
+    app.undo();
+    app.undo();
+    assert!(named(&app, "cargo").is_none() && app.scene.elements.iter().all(|e| !e.rope));
+    // from a chat with no card on the canvas: its card comes, and the terminal hangs from it, named and where it says
+    app.chats = vec![crate::app::chat::direct::Chat {
+        id: "c".into(),
+        agent: "claude".into(),
+        name: "Luna".into(),
+        cwd: "/p/loja".into(),
+        session: None,
+        mode: 0,
+        model: String::new(),
+        effort: String::new(),
+        recruit: false,
+        named: false,
+        draft: false,
+    }];
+    app.act("create_terminal", &json!({ "command": "npm run dev", "name": "API", "cwd": "/p/loja/api", "asker": "c" })).unwrap();
+    let api = named(&app, "API").unwrap();
+    assert_eq!(api.terminal.as_ref().unwrap().cwd, "/p/loja/api");
+    assert!(app.chat_node("c").is_some());
+    assert!(app.links().get("c").is_some_and(|links| links.contains(&api.id)));
+}
