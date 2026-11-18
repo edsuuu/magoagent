@@ -64,6 +64,7 @@ impl Default for DrawingApp {
             bind_pulse: Default::default(),
             prefs: Prefs::default(),
             saved_prefs: Prefs::default(),
+            prefs_changed_at: None,
             settings_open: false,
             settings_edit: None,
             claude_hooks_preview: None,

@@ -102,6 +102,8 @@ pub(crate) struct DrawingApp {
     pub(crate) bind_pulse: std::cell::Cell<Option<(String, f64)>>,
     pub(crate) prefs: Prefs,
     pub(crate) saved_prefs: Prefs,
+    /// When the preferences first changed since they were last written (seconds of the frame clock).
+    pub(crate) prefs_changed_at: Option<f64>,
     /// Ajustes (⌘,), and the quick start being edited in it.
     pub(crate) settings_open: bool,
     pub(crate) settings_edit: Option<usize>,
