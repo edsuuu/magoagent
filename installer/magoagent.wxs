@@ -4,10 +4,10 @@
      instalador .exe fazia) e a pasta registrada em HKCU\Software\MagoAgent. Nada de voz vai junto: o app
      não baixa modelos nem programas de voz. Atualizar = instalar um MSI mais novo por cima. -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
-  <Product Id="*" Name="MagoAgent" Language="1046" Codepage="1252" Version="$(var.Version)" Manufacturer="edsuuu"
+  <Product Id="*" Name="MagoAgent AlphaVersion" Language="1046" Codepage="1252" Version="$(var.Version)" Manufacturer="edsuuu"
            UpgradeCode="7fdfda60-a14a-44bb-9f0d-609f4ba31ad3">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"
-             Description="MagoAgent $(var.Version)" Languages="1046" SummaryCodepage="1252" />
+             Description="MagoAgent AlphaVersion $(var.Version)" Languages="1046" SummaryCodepage="1252" />
     <MajorUpgrade DowngradeErrorMessage="Já há uma versão mais nova do MagoAgent instalada." />
     <MediaTemplate EmbedCab="yes" />
     <!-- o programa não tem versão de arquivo: sem isto, um magoagent.exe deixado pelo instalador
@@ -48,7 +48,7 @@
     </DirectoryRef>
     <DirectoryRef Id="ProgramMenuFolder">
       <Component Id="MenuShortcut" Guid="e4a6b2d1-5c3f-4e8a-9b70-1d2c3e4f5a66" Win64="yes">
-        <Shortcut Id="MagoAgentShortcut" Name="MagoAgent" Target="[INSTALLFOLDER]magoagent.exe" WorkingDirectory="INSTALLFOLDER" Icon="MagoAgentIcon" />
+        <Shortcut Id="MagoAgentShortcut" Name="MagoAgent AlphaVersion" Target="[INSTALLFOLDER]magoagent.exe" WorkingDirectory="INSTALLFOLDER" Icon="MagoAgentIcon" />
         <RegistryValue Root="HKCU" Key="Software\MagoAgent" Name="Shortcut" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </DirectoryRef>
