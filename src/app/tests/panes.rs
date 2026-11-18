@@ -125,6 +125,25 @@ fn the_buttons_are_no_place_to_move_the_window() {
     assert_eq!(raw.events.len(), 2, "the press stays the button's");
 }
 
+/// Asked: "se eu tô na intro e clico e arrasto a janela no meio ela deve deixar eu arrastar, mesma coisa com os botões
+/// … eles nem devem aparecer na intro". On the welcome the panels' buttons are gone and the bar's middle moves the window.
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn on_the_welcome_the_panel_buttons_hide_and_the_top_moves_the_window() {
+    let ctx = Context::default();
+    let mut app = DrawingApp { welcome: Some(Default::default()), ..Default::default() };
+    settle(&mut app, &ctx);
+    assert_eq!(app.panes.buttons, None, "no panel buttons on the welcome");
+    let middle = Pos2::new(SCREEN.x / 2.0, 20.0);
+    let mut raw = egui::RawInput {
+        screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SCREEN)),
+        events: vec![egui::Event::PointerMoved(middle), button(middle, true)],
+        ..Default::default()
+    };
+    app.caption_drag(&ctx, &mut raw);
+    assert_eq!(raw.events.len(), 1, "the press in the middle of the top moves the window");
+}
+
 #[test]
 fn a_task_is_made_for_an_agent_and_concluded_with_its_box() {
     let (ctx, mut app, shown) = opened(Pane::Tasks);
