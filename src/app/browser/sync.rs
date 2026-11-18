@@ -1,6 +1,17 @@
 use super::*;
 
 impl DrawingApp {
+    /// What is kept for each portal, for the `live` ones only: a portal gone (deleted, unloaded) leaves nothing behind.
+    pub(super) fn forget_portals(&mut self, live: &[&str]) {
+        let alive = |id: &String| live.contains(&id.as_str());
+        self.portals.retain(|id, _| alive(id));
+        self.portal_stills.retain(|id, _| alive(id));
+        self.portal_motion.retain(|id, _| alive(id));
+        self.portal_snaps.retain(|id, _| alive(id));
+        self.portal_painted.get_mut().retain(|id, _| alive(id));
+        self.annotations.retain(|id, _| alive(id));
+    }
+
     /// One webview per tab of every portal, placed over its page box every frame (the open tab
     /// shows, the others wait hidden, alive). Also takes in what the pages reported.
     pub(crate) fn sync_portals(&mut self, window: &impl wry::raw_window_handle::HasWindowHandle, ctx: &Context) {
@@ -126,12 +137,8 @@ impl DrawingApp {
                 Some((e.id.clone(), urls, spec.active_tab(), rect, zoom, self.cards_in_front(i)))
             })
             .collect();
-        self.portals.retain(|id, _| live.iter().any(|(live, ..)| live == id));
-        self.portal_stills.retain(|id, _| live.iter().any(|(live, ..)| live == id));
-        self.portal_motion.retain(|id, _| live.iter().any(|(live, ..)| live == id));
-        self.portal_snaps.retain(|id, _| live.iter().any(|(live, ..)| live == id));
+        self.forget_portals(&live.iter().map(|(id, ..)| id.as_str()).collect::<Vec<_>>());
         let marquee = self.marquee.zip(self.last_pointer).map(|(start, end)| Rect::from_two_pos(self.to_screen(start), end));
-        self.annotations.retain(|id, _| live.iter().any(|(live, ..)| live == id));
         if self.design.as_ref().is_some_and(|d| !live.iter().any(|(live, ..)| *live == d.portal)) {
             self.design = None;
         }

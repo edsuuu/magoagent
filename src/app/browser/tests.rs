@@ -138,3 +138,19 @@ fn a_moving_card_carries_its_pages_picture_from_the_first_frame() {
     assert_ne!(moved, Some(page));
     assert_eq!(app.portal_painted.borrow().get(&id), moved.as_ref());
 }
+
+/// A portal gone from the canvas leaves nothing kept for it: where its page box was painted, how it moved, its picture.
+#[test]
+fn a_portal_gone_leaves_nothing_behind() {
+    let mut app = DrawingApp::default();
+    let place = Rect::from_min_size(Pos2::ZERO, Vec2::splat(100.0));
+    for id in ["fica", "saiu"] {
+        app.portal_painted.get_mut().insert(id.into(), place);
+        app.portal_motion.insert(id.into(), (place, 0.0));
+        app.portal_snaps.insert(id.into(), (0.0, None));
+    }
+    app.forget_portals(&["fica"]);
+    assert_eq!(app.portal_painted.borrow().keys().collect::<Vec<_>>(), ["fica"]);
+    assert_eq!(app.portal_motion.keys().collect::<Vec<_>>(), ["fica"]);
+    assert_eq!(app.portal_snaps.keys().collect::<Vec<_>>(), ["fica"]);
+}
