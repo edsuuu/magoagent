@@ -11,6 +11,8 @@ use crate::app::chat::list::clipped;
 use crate::app::integrations::github::{CiState, PrFilter, PrState, PullRequest, Pulse};
 use crate::prelude::*;
 
+mod activity;
+
 /// The island's height on this tab: the list and the description need the room.
 pub(super) const HEIGHT: f32 = 404.0;
 const ROW_H: f32 = 38.0;
@@ -39,6 +41,31 @@ pub(crate) struct Page {
     note: String,
     /// Why the last press did nothing (a long description is not saved).
     refused: String,
+    /// Atividade shows at the right instead of the pull request.
+    activity: bool,
+    /// A write pressed, waiting for Confirmar, and the pull request it is for.
+    confirm: Option<(Ask, String)>,
+}
+
+/// The writes that change something on GitHub: each asks before it goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Ask {
+    Save,
+    Comment,
+    Approve,
+    Merge,
+}
+
+/// The question Confirmar answers.
+fn question(ask: Ask, request: &PullRequest, merge: &str) -> String {
+    let id = &request.id;
+    match ask {
+        Ask::Save => format!("Trocar a descrição de {id} no GitHub?"),
+        Ask::Comment => format!("Publicar o comentário em {id}?"),
+        Ask::Approve => format!("Aprovar {id}?"),
+        Ask::Merge if request.base_ref.is_empty() => format!("Mesclar {id} {merge}?"),
+        Ask::Merge => format!("Mesclar {id} na {} {merge}?", request.base_ref),
+    }
 }
 
 /// The icon of a pull request's state, in its colour: open green, a draft grey, merged purple, closed red.
@@ -132,14 +159,25 @@ impl DrawingApp {
         let list = pulse.listed(state.filter);
         self.github_list(ui, left, &pulse, &list, &mut state);
         let picked = shown(&list, state.picked.as_deref()).cloned();
-        if let Some(request) = picked {
-            self.github_side(ui, right, &request, colors, &mut state);
+        if state.activity {
+            self.github_activity(ui, right, &pulse.login, &mut state);
+        } else if let Some(request) = picked {
+            let mine = pulse.mine.iter().any(|known| known.id == request.id);
+            self.github_side(ui, right, &request, mine, colors, &mut state);
         } else {
             let words = if state.filter == PrFilter::NeedsYou { "Nada precisa de você agora" } else { "Nenhum pull request aqui" };
             ui.painter().text(right.center(), egui::Align2::CENTER_CENTER, words, font(12.0), DIM_3);
         }
         self.integrations.github.pulse = Some(pulse);
         self.island.github = state;
+    }
+
+    /// Ctrl+O on the tab: the pull request shown opens in the browser, as Abrir no navegador.
+    pub(super) fn github_open_shown(&self) {
+        let (Some(pulse), state) = (&self.integrations.github.pulse, &self.island.github) else { return };
+        if let Some(request) = shown(&pulse.listed(state.filter), state.picked.as_deref()).filter(|_| !state.activity) {
+            self.integrations.pressed.borrow_mut().push(format!("open {}", request.page()));
+        }
     }
 
     /// The filters, the rows and the footer.
@@ -171,7 +209,20 @@ impl DrawingApp {
         if list.is_empty() {
             ui.painter().text(rows.center(), egui::Align2::CENTER_CENTER, "Nenhum pull request neste filtro", font(12.0), DIM_3);
         }
-        let shown_id = shown(list, state.picked.as_deref()).map(|request| request.id.clone());
+        // Ctrl+↓ and Ctrl+↑ pick the next and the one before, its row scrolled into sight
+        let step = ui.input_mut(|input| match (input.consume_key(Modifiers::CTRL, Key::ArrowDown), input.consume_key(Modifiers::CTRL, Key::ArrowUp)) {
+            (true, _) => 1,
+            (_, true) => -1,
+            _ => 0,
+        });
+        let mut reveal = None;
+        if step != 0 && !list.is_empty() {
+            let at = shown(list, state.picked.as_deref()).and_then(|request| list.iter().position(|other| other.id == request.id)).unwrap_or(0);
+            let next = (at as isize + step).clamp(0, list.len() as isize - 1) as usize;
+            (state.picked, state.activity) = (Some(list[next].id.clone()), false);
+            reveal = state.picked.clone();
+        }
+        let shown_id = shown(list, state.picked.as_deref()).map(|request| request.id.clone()).filter(|_| !state.activity);
         let now = now_ms();
         ui.scope_builder(egui::UiBuilder::new().max_rect(rows), |ui| {
             ui.spacing_mut().item_spacing = Vec2::new(0.0, 2.0);
@@ -180,6 +231,9 @@ impl DrawingApp {
                 for request in list {
                     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::click());
                     let response = response.on_hover_cursor(CursorIcon::PointingHand);
+                    if reveal.as_deref() == Some(request.id.as_str()) {
+                        response.scroll_to_me(None);
+                    }
                     if response.hovered() || shown_id.as_deref() == Some(request.id.as_str()) {
                         ui.painter().rect_filled(rect, 10, HOVER);
                     }
@@ -206,12 +260,13 @@ impl DrawingApp {
                     let meta = clipped(ui.painter(), request.subtitle(now), font(11.0), DIM_3, width);
                     ui.painter().galley(Pos2::new(text_x, rect.top() + 21.0), meta, DIM_3);
                     if response.clicked() {
-                        state.picked = Some(request.id.clone());
+                        (state.picked, state.activity) = (Some(request.id.clone()), false);
                     }
                 }
             });
         });
-        // the main branch of each repository
+        // the last week at the end, and before it the main branch of each repository
+        self.github_spark(ui, inner.right() - 8.0, foot_y, state);
         if pulse.main.is_empty() {
             return;
         }
@@ -219,23 +274,37 @@ impl DrawingApp {
         let said = ui.painter().text(Pos2::new(x, foot_y), egui::Align2::LEFT_CENTER, "Branch principal:", font(11.0), DIM_3);
         x = said.right() + 14.0;
         for branch in &pulse.main {
-            if x > inner.right() - 60.0 {
+            if x > inner.right() - 60.0 - activity::SPARK_W {
                 break;
             }
             let color = ci_mark(branch.ci).map_or(DIM_3, |(_, color)| color);
-            ui.painter().circle_filled(Pos2::new(x + 3.5, foot_y), 3.5, color);
             let name = branch.repo.rsplit('/').next().unwrap_or(&branch.repo);
-            let words = clipped(ui.painter(), format!("{name} {}", ci_words(branch.ci)), font(11.0), DIM, inner.right() - x - 12.0);
+            let room = inner.right() - x - 12.0 - activity::SPARK_W - 16.0;
+            let words = clipped(ui.painter(), format!("{name} {}", ci_words(branch.ci)), font(11.0), DIM, room);
             let width = words.size().x;
-            ui.painter().galley(Pos2::new(x + 12.0, foot_y - words.size().y / 2.0), words, DIM);
+            // a click opens its Actions, where a red branch is explained
+            let rect = Rect::from_min_size(Pos2::new(x - 3.0, foot_y - 9.0), Vec2::new(12.0 + width + 6.0, 18.0));
+            let response = ui
+                .interact(rect, ui.scope_id().with(("github_main", &branch.repo)), Sense::click())
+                .on_hover_cursor(CursorIcon::PointingHand)
+                .on_hover_text(format!("Abrir as Actions de {} ({})", branch.repo, branch.branch));
+            if response.clicked() {
+                self.integrations.pressed.borrow_mut().push(format!("open {}", branch.actions_page()));
+            }
+            let ink = if response.hovered() { INK } else { DIM };
+            ui.painter().circle_filled(Pos2::new(x + 3.5, foot_y), 3.5, color);
+            ui.painter().galley_with_override_text_color(Pos2::new(x + 12.0, foot_y - words.size().y / 2.0), words, ink);
             x += 12.0 + width + 14.0;
         }
     }
 
     /// The pull request picked: its title, what holds it back, the description or a comment, the buttons.
-    fn github_side(&mut self, ui: &mut egui::Ui, card: Rect, request: &PullRequest, colors: &UiColors, state: &mut Page) {
+    fn github_side(&mut self, ui: &mut egui::Ui, card: Rect, request: &PullRequest, mine: bool, colors: &UiColors, state: &mut Page) {
         let inner = card.shrink2(Vec2::new(14.0, 12.0));
         let id = request.id.clone();
+        if state.confirm.as_ref().is_some_and(|(_, of)| *of != id) {
+            state.confirm = None;
+        }
         // the detail is read once the pull request shows
         if self.github_detail(&id).is_none() && !self.github_detail_loading(&id) && self.github_detail_error(&id).is_none() {
             let _ = self.github_load_detail(&id);
@@ -285,8 +354,23 @@ impl DrawingApp {
                 })
                 .collect()
         };
-        for (text, url, color, mark) in lines.into_iter().take(3) {
-            let row = Rect::from_min_size(Pos2::new(inner.left(), y), Vec2::new(inner.width(), 18.0));
+        // Aprovar (someone else's) and Mesclar (one ready) at the end of the first line
+        let mut actions_left = inner.right();
+        let ready = detail.as_ref().is_some_and(|detail| detail.unmergeable().is_none());
+        for (words, ask, shows) in [("Mesclar", Ask::Merge, ready), ("Aprovar", Ask::Approve, request.is_open() && !mine)] {
+            if !shows {
+                continue;
+            }
+            let width = ui.painter().layout_no_wrap(words.to_string(), font(11.5), INK).size().x + 22.0;
+            let response = forms::chip(ui, Pos2::new(actions_left - width, y - 4.0), words, false);
+            if response.clicked() {
+                state.confirm = Some((ask, id.clone()));
+            }
+            actions_left = response.rect.left() - 6.0;
+        }
+        for (index, (text, url, color, mark)) in lines.into_iter().take(3).enumerate() {
+            let width = if index == 0 { actions_left - inner.left() } else { inner.width() };
+            let row = Rect::from_min_size(Pos2::new(inner.left(), y), Vec2::new(width, 18.0));
             let hovered = url.as_ref().is_some_and(|url| {
                 let response = ui.interact(row, ui.scope_id().with(("github_blocker", &text)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
                 if response.clicked() {
@@ -313,7 +397,10 @@ impl DrawingApp {
         }
         // the buttons, and over them what the last press said
         let buttons_y = inner.bottom() - 26.0;
+        let merge = detail.as_ref().map_or("", |detail| detail.merge_words());
+        let confirming = state.confirm.as_ref().map(|(ask, _)| *ask);
         let said = match (self.github_writing(), self.github_last_write(), state.refused.is_empty()) {
+            _ if confirming.is_some() => confirming.map(|ask| (question(ask, request, merge), INK)),
             (_, _, false) => Some((state.refused.clone(), RED)),
             (true, ..) => Some(("Enviando ao GitHub…".to_string(), DIM)),
             (false, Some(Ok(done)), _) => Some((done.clone(), GREEN)),
@@ -360,8 +447,26 @@ impl DrawingApp {
                 }
             });
         });
+        if let Some(ask) = confirming {
+            let yes = forms::chip(ui, Pos2::new(inner.left(), buttons_y), "Confirmar", true);
+            let no = forms::chip(ui, Pos2::new(yes.rect.right() + 6.0, buttons_y), "Cancelar", false);
+            if yes.clicked() {
+                let sent = match ask {
+                    Ask::Save => self.github_save_body(&id, &state.draft),
+                    Ask::Comment => self.github_comment(&id, state.note.trim()).map(|()| state.note.clear()),
+                    Ask::Approve => self.github_approve(&id),
+                    Ask::Merge => self.github_merge(&id),
+                };
+                state.refused = sent.err().unwrap_or_default();
+            }
+            if yes.clicked() || no.clicked() {
+                state.confirm = None;
+            }
+            return;
+        }
         let mut x = inner.left();
-        let open = forms::chip(ui, Pos2::new(x, buttons_y), "Abrir no navegador", true);
+        let open =
+            forms::chip(ui, Pos2::new(x, buttons_y), "Abrir no navegador", true).on_hover_text("Ctrl+O · Ctrl+↓ e Ctrl+↑ passam de um pull request a outro");
         if open.clicked() {
             self.integrations.pressed.borrow_mut().push(format!("open {}", request.page()));
         }
@@ -373,13 +478,10 @@ impl DrawingApp {
         x = checks.rect.right() + 6.0;
         let changed = detail.as_ref().is_some_and(|detail| detail.body != state.draft);
         if !state.comment && changed && forms::chip(ui, Pos2::new(x, buttons_y), "Salvar", false).clicked() {
-            state.refused = self.github_save_body(&id, &state.draft).err().unwrap_or_default();
+            state.confirm = Some((Ask::Save, id.clone()));
         }
         if state.comment && !state.note.trim().is_empty() && forms::chip(ui, Pos2::new(x, buttons_y), "Comentar", false).clicked() {
-            match self.github_comment(&id, state.note.trim()) {
-                Ok(()) => state.note.clear(),
-                Err(error) => state.refused = error,
-            }
+            state.confirm = Some((Ask::Comment, id.clone()));
         }
     }
 }

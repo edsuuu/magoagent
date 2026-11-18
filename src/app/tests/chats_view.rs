@@ -192,3 +192,58 @@ fn the_mcp_opens_the_area_on_a_chip_and_says_what_it_lists() {
     app.act("chats_view", &json!({ "state": "close" })).unwrap();
     assert!(!app.chat_open);
 }
+
+/// A line of Claude Code's conversation file.
+fn said(kind: &str, text: &str) -> String {
+    let content = if kind == "user" { json!(text) } else { json!([{ "type": "text", "text": text }]) };
+    format!("{}\n", json!({ "type": kind, "message": { "content": content } }))
+}
+
+/// Asked ("cliquei em ver uma sessão fora do app e ela não abre de jeito nenhum, nem no topo nem no chat"): a session
+/// outside, picked in the list, shows its conversation in the chat's own area (and in the island), read from the file
+/// Claude Code keeps under the folder it names after the session's; one with no message yet says so.
+#[test]
+fn a_session_outside_picked_in_the_list_opens_its_conversation_here_and_in_the_island() {
+    let dir = std::env::temp_dir().join(format!("mago-chats-fora-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    // where Claude Code files it: every UTF-16 unit not an ASCII letter or digit is a dash
+    let cwd = r"C:\Users\eu\Área de Trabalho\loja_v2.0";
+    assert_eq!(crate::transcript::project_folder(cwd), "C--Users-eu--rea-de-Trabalho-loja-v2-0");
+    assert_eq!(crate::transcript::project_folder(r"C:\Users\edsu\.magoagent"), "C--Users-edsu--magoagent", "as on the owner's machine");
+    assert_eq!(crate::transcript::project_folder("/home/eu/a😀b"), "-home-eu-a--b", "an emoji is two units");
+    let file = crate::transcript::transcript_path(&dir, &crate::transcript::project_folder(cwd), "fora-lida");
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(&file, said("user", "arrume o login") + &said("assistant", "Vou olhar o formulário.")).unwrap();
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.prefs.island = true;
+    let hook = json!({ "hook_event_name": "UserPromptSubmit", "session_id": "fora-lida", "cwd": cwd, "transcript_path": file.display().to_string(), "prompt": "arrume o login" });
+    app.take_outside_hook(&hook, None);
+    // a session just started: its file comes with the first message
+    let empty = dir.join("projects").join("-tmp-novo").join("fora-nova.jsonl");
+    app.take_outside_hook(
+        &json!({ "hook_event_name": "SessionStart", "session_id": "fora-nova", "cwd": "/tmp/novo", "transcript_path": empty.display().to_string() }),
+        None,
+    );
+    let pill = app.outside_pills().into_iter().find(|pill| pill.session == "fora-lida").expect("its pill").id;
+    app.chat_open = true;
+    shown(&mut app, &ctx, vec![]);
+    let texts = shown(&mut app, &ctx, vec![]);
+    let row = in_list(&texts, "arrume o login").unwrap_or_else(|| panic!("its row: {texts:?}"));
+    let texts = tap(&mut app, &ctx, row.center());
+    assert_eq!(app.chat_agent.as_deref(), Some(pill.as_str()), "the chat shows it");
+    assert_eq!(app.island.focus(), Some(pill.as_str()), "and so does the island");
+    let main = |texts: &[(String, Rect)], words: &str| texts.iter().any(|(text, rect)| text == words && rect.left() > LIST + 16.0);
+    assert!(main(&texts, "Vou olhar o formulário.") && main(&texts, "arrume o login"), "the conversation in the chat's area: {texts:?}");
+    assert!(texts.iter().all(|(text, _)| !text.contains("não pode ser lida")), "{texts:?}");
+    // it goes on: the new answer shows in a moment
+    std::io::Write::write_all(&mut fs::OpenOptions::new().append(true).open(&file).unwrap(), said("assistant", "Pronto, corrigido.").as_bytes()).unwrap();
+    app.now += 1.0;
+    let texts = shown(&mut app, &ctx, vec![]);
+    assert!(main(&texts, "Pronto, corrigido."), "{texts:?}");
+    // the one with no message yet
+    let row = in_list(&texts, "Sem atividade ainda").unwrap_or_else(|| panic!("its row: {texts:?}"));
+    let texts = tap(&mut app, &ctx, row.center());
+    assert!(main(&texts, "Ainda não há mensagens nesta sessão."), "{texts:?}");
+    let _ = fs::remove_dir_all(dir);
+}

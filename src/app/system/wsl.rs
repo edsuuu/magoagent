@@ -31,8 +31,8 @@ pub(crate) enum AgentCli {
 }
 
 /// The bridge's variables a WSL agent needs, and back to the Windows exe it runs (the scene's path translated).
-const CROSSING: [&str; 6] =
-    ["MAGOAGENT_BRIDGE", "MAGOAGENT_TOKEN", "MAGOAGENT_TERMINAL_ID", "MAGOAGENT_TERMINAL_NAME", "MAGOAGENT_CHAT_ID", "MAGOAGENT_SCENE/p"];
+const CROSSING: [&str; 7] =
+    ["MAGOAGENT_BRIDGE", "MAGOAGENT_TOKEN", "MAGOAGENT_TERMINAL_ID", "MAGOAGENT_TERMINAL_NAME", "MAGOAGENT_CHAT_ID", "MAGOAGENT_OWN", "MAGOAGENT_SCENE/p"];
 
 /// The probe's marker: what a profile prints before it is not the probe's.
 const MARK: &str = "MAGOAGENT-WSL";
@@ -217,12 +217,15 @@ impl AgentCli {
         }
     }
 
-    /// The command to add the agent's arguments to; `finish` makes it run where the agent is.
+    /// The command to add the agent's arguments to; `finish` makes it run where the agent is. Marked as the app's own
+    /// (`OWN_RUN`): its hooks are not a session outside the app, the plan's reading and the models' list included.
     pub(crate) fn command(&self) -> Command {
-        match self {
+        let mut command = match self {
             AgentCli::Here(path) => crate::editor::command(path),
             AgentCli::Wsl(_, program) => crate::editor::command(program),
-        }
+        };
+        command.env(crate::app::maestro::events::OWN_RUN, "1");
+        command
     }
 
     /// In WSL: `wsl.exe -d <distro> --cd <folder> --exec env PATH=<its PATH, magoagent first> <program> <args>`, the
@@ -441,7 +444,10 @@ mod tests {
         assert_eq!(args[5], "env");
         assert!(args[6].starts_with("PATH=") && args[6].ends_with(":/home/eu/.local/bin:/usr/bin"), "{}", args[6]);
         assert_eq!(wsl_args(&ubuntu(), None)[2], "--exec");
-        assert_eq!(wslenv(None), "MAGOAGENT_BRIDGE:MAGOAGENT_TOKEN:MAGOAGENT_TERMINAL_ID:MAGOAGENT_TERMINAL_NAME:MAGOAGENT_CHAT_ID:MAGOAGENT_SCENE/p");
+        assert_eq!(
+            wslenv(None),
+            "MAGOAGENT_BRIDGE:MAGOAGENT_TOKEN:MAGOAGENT_TERMINAL_ID:MAGOAGENT_TERMINAL_NAME:MAGOAGENT_CHAT_ID:MAGOAGENT_OWN:MAGOAGENT_SCENE/p"
+        );
         assert!(wslenv(Some("USERPROFILE/p:MAGOAGENT_TOKEN/u")).starts_with("USERPROFILE/p:MAGOAGENT_TOKEN/u:MAGOAGENT_BRIDGE:MAGOAGENT_TERMINAL_ID"));
         // the command the app built, moved into the distro
         let cli = AgentCli::Wsl(ubuntu(), "claude".into());
@@ -455,9 +461,12 @@ mod tests {
         let envs: Vec<_> = wsl.get_envs().map(|(k, v)| (k.to_string_lossy().into_owned(), v.map(|v| v.to_string_lossy().into_owned()))).collect();
         assert!(envs.contains(&("MAGOAGENT_TOKEN".into(), Some("t".into()))));
         assert!(envs.iter().any(|(k, v)| k == "WSLENV" && v.as_deref().is_some_and(|v| v.contains("MAGOAGENT_TOKEN"))));
-        // an agent here runs as it was
+        assert!(envs.contains(&("MAGOAGENT_OWN".into(), Some("1".into()))), "the app's own run, inside WSL too");
+        // an agent here runs as it was, marked as the app's own
         let here = AgentCli::Here(PathBuf::from("claude"));
-        assert_eq!(here.finish(here.command()).get_program(), "claude");
+        let command = here.finish(here.command());
+        assert_eq!(command.get_program(), "claude");
+        assert!(command.get_envs().any(|(key, value)| key == "MAGOAGENT_OWN" && value.is_some()));
         let shim = wsl_shim_text("/mnt/c/Program Files/O'Mago/magoagent.exe");
         assert!(shim.starts_with("#!/bin/sh\nexe='/mnt/c/Program Files/O'\\''Mago/magoagent.exe'\n[ -t 1 ] || exec \"$exe\" \"$@\"\n"), "{shim}");
         assert!(shim.contains("| cat >&3") && shim.ends_with("exit \"$code\"\n"), "{shim}");

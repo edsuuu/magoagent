@@ -138,6 +138,8 @@ impl DrawingApp {
                 KeyAction::Open => {
                     if view.tab == Tab::Chat {
                         self.chat_open = true;
+                    } else if view.tab == Tab::GitHub {
+                        self.github_open_shown();
                     }
                 }
                 KeyAction::Search => {

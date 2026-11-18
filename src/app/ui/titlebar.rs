@@ -205,7 +205,13 @@ impl DrawingApp {
         let (Some(screen), time) = (raw.screen_rect, raw.time.unwrap_or(0.0)) else { return };
         let maximized = raw.viewport().maximized == Some(true);
         let (buttons, panes) = (self.title_buttons, self.panes.buttons);
+        // the welcome covers the whole bar: all of its top moves the window, but the window's own buttons (asked: "se eu
+        // tô na intro e clico e arrasto a janela no meio ela deve deixar eu arrastar")
+        let welcome = self.welcome.is_some();
         let empty = |pos: Pos2| {
+            if welcome {
+                return pos.y < TITLE_BAR && pos.x < screen.right() - 3.0 * CAPTION_WIDTH;
+            }
             let bar = [egui::Id::unique("title_bar"), egui::Id::unique("title_bar_right")];
             let on_bar = match ctx.layer_id_at(pos) {
                 Some(layer) if bar.contains(&layer.id) => true,

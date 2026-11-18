@@ -291,9 +291,12 @@ impl Editor {
         }
         let name = file.file_name().unwrap_or_default().to_string_lossy();
         let path = file.with_file_name(format!("HEAD ↔ {name}"));
+        let mut compare = Compare::new(file, old, new);
+        let folder = file.parent().unwrap_or(Path::new("."));
+        compare.head = crate::editor::run_git(folder, &["rev-parse", "--short", "HEAD"]).map(|hash| hash.trim().to_string()).unwrap_or_default();
         match self.tabs.iter_mut().find(|t| t.path == path) {
-            Some(tab) => tab.body = Body::Compare(Box::new(Compare::new(file, old, new))),
-            None => self.tabs.push(PaneTab { path: path.clone(), body: Body::Compare(Box::new(Compare::new(file, old, new))) }),
+            Some(tab) => tab.body = Body::Compare(Box::new(compare)),
+            None => self.tabs.push(PaneTab { path: path.clone(), body: Body::Compare(Box::new(compare)) }),
         }
         self.active = Some(path);
         Ok(n)

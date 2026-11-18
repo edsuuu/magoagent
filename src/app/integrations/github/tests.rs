@@ -105,8 +105,20 @@ fn a_review_asked_for_is_told_once_and_a_failure_comes_first() {
 fn a_recorded_calendar_is_read() {
     let root: Value = serde_json::from_str(include_str!("../fixtures/github_activity.json")).unwrap();
     let activity = Activity::parse(&root).unwrap();
-    assert_eq!((activity.total, activity.today), (412, 3));
-    assert_eq!(activity.weeks, [vec![0, 1, 2, 3, 4, 0, 0], vec![0, 4, 0]], "an unknown level reads as none; the last week is the current one");
+    assert_eq!((activity.total, activity.today, activity.repos, activity.stars), (1412, 3, 12, 1340), "a star count below zero or missing adds none");
+    let levels: Vec<Vec<u8>> = activity.weeks.iter().map(|week| week.iter().map(|day| day.level).collect()).collect();
+    assert_eq!(levels, [vec![0, 1, 2, 3, 4, 0, 0], vec![0, 4, 0]], "an unknown level reads as none; the last week is the current one");
+    let last = &activity.weeks[1];
+    assert_eq!((last[1].date.as_str(), last[1].count, last[1].weekday), ("2026-11-16", 22, 1));
+    assert_eq!((last[2].date.as_str(), last[2].weekday), ("", 2), "no date nor weekday: its place in the week");
+    assert_eq!(activity.summary(), "1.412 contribuições no último ano · 12 repositórios · ★ 1,3 mil");
+    assert_eq!(day_words(&last[1]), "16 de nov. · 22 contribuições");
+    assert_eq!(day_words(&activity.weeks[0][0]), "1 de nov. · nenhuma contribuição");
+    assert_eq!(day_words(&last[2]), "3 contribuições");
+    // the last seven days, graded against the busiest of them
+    let week: Vec<(i64, u8)> = activity.last_days(7).iter().map(|day| (day.count, day.level)).collect();
+    assert_eq!(week, [(7, 2), (15, 3), (0, 0), (0, 0), (0, 0), (22, 4), (3, 1)]);
+    assert_eq!(Activity { total: 1, ..Default::default() }.summary(), "1 contribuição no último ano");
     assert_eq!(Activity::parse(&json!({ "data": { "viewer": {} } })), None);
 }
 
@@ -164,13 +176,13 @@ fn the_report_says_who_and_each_pull_request_with_its_checks() {
     let mut github = GitHub::with_token(TOKEN);
     assert!(github.report().contains("ainda sem resposta"));
     github.pulse = Pulse::parse(&recorded_pulse());
-    github.activity = Some(Activity { total: 412, weeks: vec![], today: 3 });
+    github.activity = Some(Activity { total: 412, today: 3, ..Default::default() });
     let report = github.report();
     assert!(report.starts_with("GitHub: conectado como @ana-dev · 3 PRs abertos"), "{report}");
     assert!(report.contains("- ana-dev/loja#42 Adiciona o checkout (checks passaram · aprovado) https://github.com/ana-dev/loja/pull/42"), "{report}");
     assert!(report.contains("- ana-dev/loja#43 Rascunho do frete (sem checks · rascunho)"), "{report}");
     assert!(report.contains("- revisar time/api#310"), "{report}");
-    assert!(report.ends_with("412 contribuições no último ano, 3 hoje."), "{report}");
+    assert!(report.ends_with("412 contribuições no último ano; 3 hoje."), "{report}");
     assert!(!report.contains("ghp_"), "never the token");
     github.error = Some("Token inválido ou expirado.".into());
     assert_eq!(github.report(), "GitHub: Token inválido ou expirado.");
@@ -571,6 +583,47 @@ fn the_description_is_saved_and_a_comment_sent_one_write_at_a_time() {
 }
 
 #[test]
+fn a_pull_request_is_approved_and_merged_only_when_it_can_be() {
+    let mut app = app_with_pulse();
+    // Aprovar: someone else's, never the person's own
+    assert_eq!(app.github_approve("ana-dev/loja#42").unwrap_err(), "O GitHub não deixa aprovar o próprio pull request.");
+    app.github_approve("time/api#310").unwrap();
+    assert_eq!(app.integrations.github.sent, [approve_request("PR_kwDOAAAB310")]);
+    let query = approve_request("x")["query"].as_str().unwrap().to_string();
+    assert!(query.contains("addPullRequestReview(input: {pullRequestId: $id, event: APPROVE})"), "{query}");
+    app.integrations.github.receive(Message::Detail("time/api#310".into(), Ok(Box::new(PrDetail::default()))), 5);
+    app.integrations.github.receive(Message::Wrote(Write::Approve, "time/api#310".into(), Ok(())), 10);
+    assert_eq!(app.github_last_write(), Some(&Ok("Pull request aprovado.".to_string())));
+    assert!(app.github_detail("time/api#310").is_none() && app.integrations.github.next_pulse <= 10, "read again, and the list soon");
+    // Mesclar: only one read, and ready
+    assert!(app.github_merge("ana-dev/loja#42").unwrap_err().starts_with("Leia ana-dev/loja#42 antes de mesclar"));
+    let conflicting = PrDetail::parse(&recorded_detail(), 5).unwrap();
+    assert_eq!(conflicting.merge_method, "SQUASH");
+    app.integrations.github.receive(Message::Detail("ana-dev/site#7".into(), Ok(Box::new(conflicting.clone()))), 20);
+    assert_eq!(app.github_merge("ana-dev/site#7").unwrap_err(), "ana-dev/site#7 tem conflito com main: resolva antes.");
+    assert_eq!(app.github_last_write(), Some(&Err("ana-dev/site#7 tem conflito com main: resolva antes.".to_string())), "the tab reads why");
+    let with = |change: fn(&mut PullRequest)| {
+        let mut detail = conflicting.clone();
+        change(&mut detail.request);
+        detail.unmergeable()
+    };
+    assert_eq!(with(|request| request.draft = true).unwrap(), "ana-dev/site#7 é um rascunho: marque como pronto para revisão antes.");
+    assert_eq!(with(|request| request.state = PrState::Merged).unwrap(), "ana-dev/site#7 já foi mesclado.");
+    assert!(with(|request| request.mergeable = MergeableState::Unknown).unwrap().contains("ainda está vendo"));
+    assert_eq!(with(|request| request.mergeable = MergeableState::Mergeable), None);
+    let ready = PrDetail { request: app.integrations.github.pulse.as_ref().unwrap().mine[0].clone(), merge_method: "REBASE", ..Default::default() };
+    app.integrations.github.receive(Message::Detail("ana-dev/loja#42".into(), Ok(Box::new(ready))), 30);
+    app.github_merge("ana-dev/loja#42").unwrap();
+    assert_eq!(app.integrations.github.sent.last(), Some(&merge_request("PR_kwDOAAAB42", "REBASE", Some("aaa111"))), "only at the commit read");
+    let merge = merge_request("x", "MERGE", None);
+    assert!(merge["query"].as_str().unwrap().contains("mergePullRequest(input: {pullRequestId: $id, mergeMethod: $method, expectedHeadOid: $head})"));
+    assert_eq!(merge["variables"], json!({ "id": "x", "method": "MERGE", "head": null }));
+    app.integrations.github.receive(Message::Wrote(Write::Merge("REBASE", Some("aaa111".into())), "ana-dev/loja#42".into(), Ok(())), 40);
+    assert_eq!(app.github_last_write(), Some(&Ok("Pull request mesclado.".to_string())));
+    assert_eq!((conflicting.merge_words(), PrDetail::default().merge_words()), ("em um commit só (squash)", "com um commit de merge"));
+}
+
+#[test]
 fn the_agents_list_read_edit_and_comment_on_pull_requests_through_the_mcp() {
     let mut app = app_with_pulse();
     let github = |app: &mut DrawingApp, args: Value| {
@@ -602,5 +655,11 @@ fn the_agents_list_read_edit_and_comment_on_pull_requests_through_the_mcp() {
     assert!(status.ends_with("Última escrita: Descrição salva.") && !status.contains("#40"), "the merged ones stay out of status: {status}");
     github(&mut app, json!({ "action": "pr_comment", "pr": "time/api#310", "text": "Pode revisar de novo?" })).unwrap();
     assert_eq!(app.integrations.github.sent.last(), Some(&comment_request("PR_kwDOAAAB310", "Pode revisar de novo?")));
+    app.integrations.github.receive(Message::Wrote(Write::Comment("Pode revisar de novo?".into()), "time/api#310".into(), Ok(())), now_ms());
+    let approving = github(&mut app, json!({ "action": "pr_approve", "pr": "time/api#310" })).unwrap();
+    assert!(approving.starts_with("Enviando a aprovação de time/api#310"), "{approving}");
+    assert_eq!(app.integrations.github.sent.last(), Some(&approve_request("PR_kwDOAAAB310")));
+    app.integrations.github.receive(Message::Wrote(Write::Approve, "time/api#310".into(), Ok(())), now_ms());
+    assert!(github(&mut app, json!({ "action": "pr_merge", "pr": "ana-dev/site#7" })).unwrap_err().contains("tem conflito com main"));
     assert!(!format!("{all}{read}{status}").contains(TOKEN), "never the token");
 }

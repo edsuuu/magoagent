@@ -15,9 +15,11 @@ mod detail;
 mod fake;
 mod pulls;
 mod token;
+mod write;
 pub(crate) use activity::*;
 pub(crate) use detail::*;
 pub(crate) use pulls::*;
+pub(crate) use write::*;
 
 /// The token's item in the keychain.
 pub(crate) const TOKEN_ID: &str = "integration-github-token";
@@ -76,6 +78,13 @@ pub(crate) struct BranchCi {
     pub(crate) branch: String,
     pub(crate) ci: CiState,
     pub(crate) head: Option<String>,
+}
+
+impl BranchCi {
+    /// The repository's Actions, where a failed run of the branch is.
+    pub(crate) fn actions_page(&self) -> String {
+        format!("{}/actions", self.url.trim_end_matches('/'))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -373,6 +382,9 @@ impl GitHub {
         if fake::pulse().is_some() {
             self.token.get_or_insert_with(|| "cena-de-teste".into());
             self.pulse.get_or_insert_with(|| fake::pulse().cloned().unwrap_or_default());
+            if self.activity.is_none() {
+                self.activity = fake::activity();
+            }
             return;
         }
         if self.token.is_none() {
@@ -400,7 +412,7 @@ impl GitHub {
                 .map(|branch| format!("- {} ({}): {}", branch.repo, branch.branch, branch.ci.label().1)),
         );
         if let Some(activity) = &self.activity {
-            lines.push(format!("{} contribuições no último ano, {} hoje.", activity.total, activity.today));
+            lines.push(format!("{}; {} hoje.", activity.summary(), activity.today));
         }
         match (self.writing, &self.last_write) {
             (true, _) => lines.push("Uma escrita está a caminho do GitHub.".into()),
@@ -493,7 +505,7 @@ impl GitHub {
             };
             let url = match alert {
                 // the repository's Actions, where the failed run is
-                Alert::MainFailed(_) => pulse.main.iter().find(|branch| &branch.repo == id).map(|branch| format!("{}/actions", branch.url)),
+                Alert::MainFailed(_) => pulse.main.iter().find(|branch| &branch.repo == id).map(BranchCi::actions_page),
                 _ => pulse.mine.iter().chain(&pulse.to_review).find(|request| &request.id == id).map(PullRequest::page),
             };
             self.notice = Some(Notice { text, failure, url: url.unwrap_or_default(), at: now, seen: None });

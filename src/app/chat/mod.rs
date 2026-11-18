@@ -38,6 +38,7 @@ use crate::app::chat::composer::Hints;
 use crate::app::chat::list::{CHAT_SEARCH, COLUMN, LIST, ListAction, Look, NARROW, message_menu};
 use crate::app::chat::mini::ConvOut;
 use crate::app::chat::steps::CardClick;
+use crate::app::maestro::outside::PILL_PREFIX;
 use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
 use crate::transcript::{ChatItem, Transcript, claude_dir};
@@ -52,7 +53,11 @@ impl DrawingApp {
         // a draft no longer shown goes: it was never talked to
         let shown = self.chat_agent.clone();
         self.chats.retain(|chat| !chat.draft || shown.as_deref() == Some(chat.id.as_str()));
-        let screen_rows = |app: &Self| app.agent_rows().into_iter().chain(app.draft_rows()).collect::<Vec<_>>();
+        // and the session outside the app picked in the list, read from its file (`refresh_transcript_of`)
+        let screen_rows = |app: &Self| {
+            let outside = app.chat_agent.as_deref().and_then(|id| app.outside_row(id));
+            app.agent_rows().into_iter().chain(app.draft_rows()).chain(outside).collect::<Vec<_>>()
+        };
         let mut rows = screen_rows(self);
         if self.chat_agent.as_ref().is_none_or(|id| !rows.iter().any(|r| &r.id == id)) {
             // a chat by default, Claude's first; an agent's conversation is opened from its terminal
@@ -228,6 +233,7 @@ impl DrawingApp {
                 } else if waiting {
                     // the agent stopped on a question only its terminal answers
                     match self.waiting_card(ui, row, &look, narrow, time) {
+                        Some(CardClick::Terminal) if row.id.starts_with(PILL_PREFIX) => act.on_canvas = Some(row.id.clone()),
                         Some(CardClick::Terminal) => act.canvas = true,
                         Some(CardClick::Pick(from, to)) => pick = Some((from, to)),
                         None => {}
@@ -308,7 +314,12 @@ impl DrawingApp {
         self.chat_rename_ui(ctx);
         // a chat's card (made now if this canvas has none); a terminal's row, its terminal
         if let Some(id) = act.on_canvas.take() {
-            if self.is_chat(&id) {
+            // a session outside the app runs in a window of its own: that one comes, as the island's "Ir ao terminal"
+            if id.starts_with(PILL_PREFIX) {
+                if !self.outside_terminal(&id) {
+                    self.toast("Não deu para trazer a janela desse terminal: responda nele.");
+                }
+            } else if self.is_chat(&id) {
                 if let Err(why) = self.show_chat_on_canvas(&id) {
                     self.toast(why);
                 }
@@ -351,9 +362,11 @@ impl DrawingApp {
         if let Some((id, answer)) = act.answer.take() {
             self.answer_row(&id, answer);
         }
-        // a session outside the app: its conversation is the island's
+        // a session outside the app: its conversation here, read from its file, and in the island
         if let Some(id) = act.outside.take() {
             self.island_show(&id, time);
+            self.chat_agent = Some(id);
+            self.chat_polled = f64::MIN;
         }
         // the same way a dropped file goes in (`handle_canvas`)
         if let Some(act) = footer_act {
@@ -478,6 +491,18 @@ impl DrawingApp {
         let id = id.to_string();
         if self.is_chat(&id) {
             self.chat_refresh(&id);
+            return;
+        }
+        // a session outside the app: the file its hooks named, once Claude Code wrote it; meanwhile its pill stays
+        if id.starts_with(PILL_PREFIX) {
+            self.outside_shown(&id);
+            let Some(path) = self.outside_transcript(&id) else { return };
+            if self.transcripts.get(&id).is_none_or(|transcript| transcript.path() != path) {
+                self.transcripts.insert(id.clone(), Transcript::new(path));
+            }
+            if let Some(transcript) = self.transcripts.get_mut(&id) {
+                transcript.poll();
+            }
             return;
         }
         let Some(dir) = claude_dir() else { return };

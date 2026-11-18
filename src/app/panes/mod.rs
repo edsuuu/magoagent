@@ -1,11 +1,10 @@
-//! The panels on the window's right, as in Claude Code: Tarefas, Linha do tempo and Alterações
+//! The panels on the window's right, as in Claude Code: Tarefas and Alterações (Linha do tempo went: "remove o botão linha do tempo e o modal dele")
 //! (the Fichário went: "não entendi muito bem para o que ele serve, remove"). A button each in the title bar (`pane_buttons`); one open at a time, 340 wide under
 //! the bar, the canvas narrower beside it (update.rs takes `pane_width` off its rect). X, Esc or
 //! the same button close it; the MCP's `panel` opens and closes them for the Maestro.
 
 mod changes;
 mod tasks;
-mod timeline;
 
 use crate::prelude::*;
 
@@ -17,16 +16,11 @@ const HEAD: f32 = 46.0;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Pane {
     Tasks,
-    Timeline,
     Changes,
 }
 
 /// Each panel: its id (MCP), its name (screen) and its button's icon, in the buttons' order.
-pub(crate) const PANES: [(Pane, &str, &str, Icon); 3] = [
-    (Pane::Tasks, "tasks", "Tarefas", Icon::Todo),
-    (Pane::Timeline, "timeline", "Linha do tempo", Icon::Clock),
-    (Pane::Changes, "changes", "Alterações", Icon::Diff),
-];
+pub(crate) const PANES: [(Pane, &str, &str, Icon); 2] = [(Pane::Tasks, "tasks", "Tarefas", Icon::Todo), (Pane::Changes, "changes", "Alterações", Icon::Diff)];
 
 impl Pane {
     pub(crate) fn name(self) -> &'static str {
@@ -45,9 +39,6 @@ pub(crate) struct Panes {
     pub(crate) task_owner: String,
     /// Feitas instead of Abertas.
     pub(crate) tasks_done: bool,
-    /// The agent the timeline shows (its id); none: all.
-    pub(crate) timeline_agent: Option<String>,
-    timeline: timeline::TimelineCache,
     pub(crate) changes: changes::ChangesPane,
 }
 
@@ -65,7 +56,6 @@ impl DrawingApp {
     pub(crate) fn set_pane(&mut self, pane: Option<Pane>) {
         if pane.is_some() && pane != self.panes.open {
             // what it shows is read again on opening
-            self.panes.timeline = Default::default();
             self.panes.changes.read_at = None;
         }
         self.panes.open = pane;
@@ -80,13 +70,14 @@ impl DrawingApp {
     /// opens or closes its panel. Hidden over the chat, which the panels don't cover.
     pub(crate) fn pane_buttons(&mut self, ui: &mut egui::Ui) {
         self.panes.buttons = None;
-        if self.chat_open {
+        // over the chat, which the panels don't cover, and on the welcome (asked: "eles nem devem aparecer na intro")
+        if self.chat_open || self.welcome.is_some() {
             return;
         }
         let (dark, width) = (self.dark(), ui.ctx().content_rect().width());
         let ink = glass_ink(dark);
         let p = ui.painter().clone();
-        let counts = [self.open_task_count(), 0, self.changed_file_count()];
+        let counts = [self.open_task_count(), self.changed_file_count()];
         for (k, (pane, _, name, icon)) in PANES.into_iter().enumerate() {
             let rect = self.pane_button(width, k);
             self.panes.buttons = Some(self.panes.buttons.map_or(rect, |span| span.union(rect)));
@@ -152,7 +143,6 @@ impl DrawingApp {
                     ui.spacing_mut().item_spacing.y = 10.0;
                     match pane {
                         Pane::Tasks => self.tasks_pane(ui),
-                        Pane::Timeline => self.timeline_pane(ui),
                         Pane::Changes => self.changes_pane(ui),
                     }
                     ui.add_space(12.0);
@@ -161,7 +151,7 @@ impl DrawingApp {
         });
     }
 
-    /// The MCP's `panel`: opens `name` (tasks, timeline, changes), closes it with `open`
+    /// The MCP's `panel`: opens `name` (tasks, changes), closes it with `open`
     /// false, toggles it with no `open`; no name with `open` false closes whichever is open.
     pub(crate) fn act_panel(&mut self, args: &Value) -> Result<String, String> {
         let name = args["name"].as_str().unwrap_or_default().trim().to_lowercase();
@@ -171,10 +161,10 @@ impl DrawingApp {
                 self.set_pane(None);
                 return Ok("Painel fechado.".into());
             }
-            return Err("Diga qual painel (name): tasks, timeline ou changes.".into());
+            return Err("Diga qual painel (name): tasks ou changes.".into());
         }
         let pane = PANES.iter().find(|p| p.1 == name || p.2.to_lowercase() == name).map(|p| p.0);
-        let pane = pane.ok_or_else(|| format!("Painel desconhecido: {name}. Use tasks, timeline ou changes."))?;
+        let pane = pane.ok_or_else(|| format!("Painel desconhecido: {name}. Use tasks ou changes."))?;
         let wanted = open.unwrap_or(self.panes.open != Some(pane));
         if wanted {
             self.chat_open = false;

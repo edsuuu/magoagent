@@ -299,7 +299,9 @@ fn paint_slide(ui: &egui::Ui, rect: Rect, index: usize, k: &K, time: f64, elapse
         paint_story(&painter, slide.story, stage, scale, k, slide.luna, time, elapsed);
     }
     let mut y = top + art + 28.0;
-    painter.text(Pos2::new(middle, y), egui::Align2::CENTER_TOP, slide.title, kit::semibold(26.0), k.fg);
+    // the hand font of the site's titles (asked: "a fonte a gente pode usar a fonte que usamos no site")
+    let title_font = FontId::new(32.0, egui::FontFamily::Name(HAND_FONT.into()));
+    painter.text(Pos2::new(middle, y), egui::Align2::CENTER_TOP, slide.title, title_font, k.fg);
     y += 44.0;
     for line in slide.subtitle.lines() {
         painter.text(Pos2::new(middle, y), egui::Align2::CENTER_TOP, line, FontId::proportional(15.0), k.muted_fg);

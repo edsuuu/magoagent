@@ -54,9 +54,9 @@ fn calendar(ui: &mut egui::Ui, k: &K, activity: &github::Activity) {
     const CELL: f32 = 8.0;
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 7.0 * (CELL + 2.0)), Sense::hover());
     for (column, week) in activity.weeks.iter().enumerate() {
-        for (line, level) in week.iter().enumerate() {
-            let at = Pos2::new(rect.left() + column as f32 * (CELL + 2.0), rect.top() + line as f32 * (CELL + 2.0));
-            let color = if *level == 0 { k.muted } else { k.muted.lerp_to_gamma(GREEN, f32::from(*level) / 4.0) };
+        for day in week {
+            let at = Pos2::new(rect.left() + column as f32 * (CELL + 2.0), rect.top() + f32::from(day.weekday) * (CELL + 2.0));
+            let color = if day.level == 0 { k.muted } else { k.muted.lerp_to_gamma(GREEN, f32::from(day.level) / 4.0) };
             ui.painter().rect_filled(Rect::from_min_size(at, Vec2::splat(CELL)), 2.0, color);
         }
     }
@@ -541,7 +541,7 @@ impl DrawingApp {
         }
         if let Some(activity) = &github.activity {
             ui.add_space(6.5);
-            note(ui, k, &format!("{} contribuições no último ano · {} hoje", activity.total, activity.today));
+            note(ui, k, &format!("{} · {} hoje", activity.summary(), activity.today));
             ui.add_space(3.25);
             calendar(ui, k, activity);
             // the card's padding under the grid, as a row's (it ended flush with the card's edge)

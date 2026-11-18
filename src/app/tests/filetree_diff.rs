@@ -229,30 +229,41 @@ fn the_unchanged_stretches_collapse_keeping_four_lines_around_each_change() {
 }
 
 #[test]
-fn the_columns_scroll_together_each_at_its_own_pace() {
-    use crate::app::filetree::compare::map_row;
-    // a change: old rows 10..12 against new rows 10..16; knots are where it starts and ends
-    let knots = [(10.0, 10.0), (12.0, 16.0)];
-    assert_eq!(map_row(&knots, 0, 5.0), 5.0, "equal rows go 1:1");
-    assert_eq!(map_row(&knots, 0, 10.0), 10.0);
-    assert_eq!(map_row(&knots, 0, 11.0), 13.0, "inside the change it interpolates");
-    assert_eq!(map_row(&knots, 0, 12.0), 16.0);
-    assert_eq!(map_row(&knots, 0, 20.0), 24.0, "after it the new column is 4 rows ahead");
-    assert_eq!(map_row(&knots, 1, 13.0), 11.0);
-    assert_eq!(map_row(&knots, 1, 24.0), 20.0);
-    // a pure insertion: nothing on the left, so the left's row jumps over the right's lines
-    let wedge = [(4.0, 4.0), (4.0, 7.0)];
-    assert_eq!(map_row(&wedge, 0, 3.0), 3.0);
-    assert_eq!(map_row(&wedge, 0, 4.5), 7.5);
-    assert_eq!(map_row(&wedge, 1, 5.5), 4.0 + 0.0, "inside the wedge the left row stays at the wedge");
-    assert_eq!(map_row(&[], 0, 7.0), 7.0);
-    // the tab's own scroll: the driver is clamped and the other follows
+fn the_columns_line_up_row_for_row_and_scroll_together() {
+    use crate::app::filetree::compare::Item;
+    // "x" and "y" added after "a", "c" removed: each faces an empty row on the other side
+    let compare = Compare::new(Path::new("x.rs"), "a\nb\nc\nd\n".into(), "a\nx\ny\nb\nd\n".into());
+    assert_eq!(compare.items[0].len(), 6);
+    assert_eq!(compare.items[1].len(), 6, "both columns have the same rows");
+    let sides = |column: usize| -> Vec<Option<usize>> {
+        compare.items[column]
+            .iter()
+            .map(|item| match item {
+                Item::Line { row, .. } => row.left.or(row.right),
+                Item::Fold { .. } => None,
+            })
+            .collect()
+    };
+    assert_eq!(sides(0), [Some(0), None, None, Some(1), Some(2), Some(3)], "the HEAD's column has two empty rows across from x and y");
+    assert_eq!(sides(1), [Some(0), Some(1), Some(2), Some(3), None, Some(4)], "the file's has one across from the removed c");
+    assert!(compare.blocks.iter().all(|block| block.rows[0] == block.rows[1]));
+    // where the text edit puts each line: past the empty rows
+    assert_eq!(compare.line_rows(0), [(0, true), (3, true), (4, true), (5, true)]);
+    assert_eq!(compare.line_rows(1), [(0, true), (1, true), (2, true), (3, true), (5, true)]);
+    assert_eq!(compare.totals(), (1, 2), "one line removed, two added");
+    // a hidden stretch: its lines sit on the marker's row, without glyphs
+    let folded = Compare::new(Path::new("x.rs"), numbered(30, &[]), numbered(30, &[15]));
+    let rows = folded.line_rows(1);
+    assert_eq!(rows.len(), 30);
+    assert_eq!((rows[0], rows[10], rows[11]), ((0, false), (0, false), (1, true)));
+    assert_eq!(folded.totals(), (1, 1));
+    // the tab's own scroll: the driver is clamped and the other follows on the same row
     let mut compare = Compare::new(Path::new("x.rs"), numbered(40, &[]), format!("{}{}", "novo\n".repeat(6), numbered(40, &[])));
     compare.set_collapse(false);
-    compare.scroll_driver(0, 8.0, [100.0, 100.0], 0.0);
-    assert_eq!(compare.scroll(), [8.0, 14.0], "six rows added at the top: the new column is six ahead");
-    compare.scroll_driver(1, 1000.0, [30.0, 36.0], 0.0);
-    assert_eq!(compare.scroll(), [30.0, 36.0], "clamped");
+    compare.scroll_driver(0, 8.0, [100.0, 100.0]);
+    assert_eq!(compare.scroll(), [8.0, 8.0]);
+    compare.scroll_driver(1, 1000.0, [36.0, 36.0]);
+    assert_eq!(compare.scroll(), [36.0, 36.0], "clamped");
 }
 
 #[test]

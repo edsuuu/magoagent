@@ -22,6 +22,7 @@ icons! {
     CHEVRON_UP = "general_chevronUp";
     CLOSE_SMALL = "general_closeSmall";
     REFRESH = "general_refresh";
+    DIFF = "vcs_diff";
     FOLDER = "nodes_folder";
     FT_TEXT = "fileTypes_text";
     FT_JSON = "fileTypes_json";

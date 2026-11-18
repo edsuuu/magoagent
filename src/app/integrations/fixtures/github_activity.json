@@ -1,26 +1,31 @@
 {
   "data": {
     "viewer": {
+      "login": "ana-dev",
+      "repositories": {
+        "totalCount": 12,
+        "nodes": [{ "stargazerCount": 300 }, { "stargazerCount": 1040 }, { "stargazerCount": -5 }, {}]
+      },
       "contributionsCollection": {
         "contributionCalendar": {
-          "totalContributions": 412,
+          "totalContributions": 1412,
           "weeks": [
             {
               "contributionDays": [
-                { "contributionCount": 0, "contributionLevel": "NONE" },
-                { "contributionCount": 1, "contributionLevel": "FIRST_QUARTILE" },
-                { "contributionCount": 4, "contributionLevel": "SECOND_QUARTILE" },
-                { "contributionCount": 7, "contributionLevel": "THIRD_QUARTILE" },
-                { "contributionCount": 15, "contributionLevel": "FOURTH_QUARTILE" },
-                { "contributionCount": 0, "contributionLevel": "NOVO_NIVEL" },
-                { "contributionCount": 0, "contributionLevel": "NONE" }
+                { "date": "2026-11-01", "weekday": 0, "contributionCount": 0, "contributionLevel": "NONE" },
+                { "date": "2026-11-02", "weekday": 1, "contributionCount": 1, "contributionLevel": "FIRST_QUARTILE" },
+                { "date": "2026-11-03", "weekday": 2, "contributionCount": 4, "contributionLevel": "SECOND_QUARTILE" },
+                { "date": "2026-11-04", "weekday": 3, "contributionCount": 7, "contributionLevel": "THIRD_QUARTILE" },
+                { "date": "2026-11-05", "weekday": 4, "contributionCount": 15, "contributionLevel": "FOURTH_QUARTILE" },
+                { "date": "2026-11-06", "weekday": 5, "contributionCount": 0, "contributionLevel": "NOVO_NIVEL" },
+                { "date": "2026-11-07", "weekday": 6, "contributionCount": 0, "contributionLevel": "NONE" }
               ]
             },
             { "contributionDays": [] },
             {
               "contributionDays": [
-                { "contributionCount": 0, "contributionLevel": "NONE" },
-                { "contributionCount": 22, "contributionLevel": "FOURTH_QUARTILE" },
+                { "date": "2026-11-15", "weekday": 0, "contributionCount": 0, "contributionLevel": "NONE" },
+                { "date": "2026-11-16", "weekday": 1, "contributionCount": 22, "contributionLevel": "FOURTH_QUARTILE" },
                 { "contributionCount": 3, "contributionLevel": "NONE" }
               ]
             }

@@ -42,9 +42,7 @@ pub(crate) const STEPS: [Step; 7] = [
         text: "Cada espaço é um projeto, com o seu quadro e a sua pasta. O botão ☰ dobra e abre esta lateral.",
     },
     Step {
-        spot: Some(Spot::Panes),
-        title: "Painéis",
-        text: "Tarefas, Linha do tempo e Alterações abrem ao lado do quadro. O número no botão diz quanto espera por você.",
+        spot: Some(Spot::Panes), title: "Painéis", text: "Tarefas e Alterações abrem ao lado do quadro. O número no botão diz quanto espera por você."
     },
     Step {
         spot: Some(Spot::Corners), title: "Navegar no canvas", text: "Andares, minimapa e zoom ficam neste canto. O uso dos planos fica no pé da lateral."
@@ -113,9 +111,12 @@ pub(crate) fn spot_rect(ctx: &Context, spot: Spot) -> Option<Rect> {
     found.map(|rect| rect.intersect(screen)).filter(|rect| rect.is_positive() && rect.width() >= 4.0 && rect.height() >= 4.0)
 }
 
-/// Where the balloon of `size` goes: under the hole when it fits, else over it, else beside it; in the middle with none.
+/// Where the balloon of `size` goes: in the middle of the screen, only the hole moving from step to step (asked: "o modal
+/// pode ficar centralizado e só muda o foco de onde está, pois preciso ir clicando em cada canto"); when the middle would
+/// cover the hole, under it if it fits, else over it, else beside it.
 pub(crate) fn tip_place(hole: Option<Rect>, size: Vec2, screen: Rect) -> Rect {
-    let Some(hole) = hole else { return Rect::from_center_size(screen.center(), size) };
+    let middle = Rect::from_center_size(screen.center(), size);
+    let Some(hole) = hole.filter(|hole| hole.intersects(middle.expand(GAP))) else { return middle };
     let inside = screen.shrink(MARGIN);
     let x = (hole.center().x - size.x / 2.0).clamp(inside.left(), (inside.right() - size.x).max(inside.left()));
     let y = (hole.center().y - size.y / 2.0).clamp(inside.top(), (inside.bottom() - size.y).max(inside.top()));

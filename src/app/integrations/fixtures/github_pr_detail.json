@@ -14,7 +14,7 @@
         "updatedAt": "2026-11-15T09:00:00Z",
         "headRefName": "fix/carrinho",
         "baseRefName": "main",
-        "repository": { "nameWithOwner": "ana-dev/site" },
+        "repository": { "nameWithOwner": "ana-dev/site", "viewerDefaultMergeMethod": "SQUASH" },
         "latestOpinionatedReviews": {
           "nodes": [
             { "state": "APPROVED", "author": { "login": "bia" } },

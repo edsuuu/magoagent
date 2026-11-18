@@ -196,7 +196,11 @@ fn free_color(own: Color32, taken: &[Color32]) -> Color32 {
 /// session's folder and id when the hook leaves it out.
 fn transcript_of(payload: &Value, session: &str) -> Option<String> {
     if let Some(file) = payload["transcript_path"].as_str().filter(|file| !file.is_empty()) {
-        return Some(file.to_string());
+        // a session in WSL says where its file is in the distro (`/home/…`): from Windows, by `\\wsl.localhost\<distro>`
+        return Some(match payload["wsl_distro"].as_str().filter(|distro| cfg!(windows) && !distro.is_empty() && file.starts_with('/')) {
+            Some(distro) => crate::app::system::wsl::windows_path(distro, file),
+            None => file.to_string(),
+        });
     }
     let cwd = payload["cwd"].as_str().filter(|cwd| !cwd.is_empty() && !session.is_empty())?;
     let dir = crate::transcript::claude_dir()?;
@@ -418,6 +422,25 @@ impl DrawingApp {
         Some(PathBuf::from(&pill.transcript)).filter(|path| path.is_file())
     }
 
+    /// What the conversation of pill `id` says while `outside_transcript` has no file: Claude Code writes it with the
+    /// first message; Hermes and Cursor keep none the app reads.
+    pub(crate) fn outside_unread(&self, id: &str) -> &'static str {
+        let key = id.strip_prefix(PILL_PREFIX).unwrap_or_default();
+        match self.outside.pills.iter().any(|pill| pill.key == key && !pill.transcript.is_empty()) {
+            true => "Ainda não há mensagens nesta sessão.",
+            false => "A conversa desta sessão não pode ser lida daqui.",
+        }
+    }
+
+    /// Pill `id` as a row of the chat screen, whose conversation it shows (chat/mod.rs): a Claude Code of its folder.
+    pub(crate) fn outside_row(&self, id: &str) -> Option<crate::app::ui::agents::AgentRow> {
+        let view = self.outside_pills().into_iter().find(|pill| pill.id == id)?;
+        let cwd = view.id.strip_prefix(PILL_PREFIX).and_then(|key| key.split_once(':')).map(|(_, cwd)| cwd.to_string()).unwrap_or_default();
+        // chat: a conversation only, the session's terminal is not the app's
+        let spec = TerminalSpec { name: view.name, cwd, command: "claude".into(), chat: true, ..Default::default() };
+        Some(crate::app::ui::agents::AgentRow { id: view.id, spec, state: view.state, mission: None, space: crate::app::chat::list::running::OUTSIDE.into() })
+    }
+
     /// "Ir ao terminal" of pill `id`: its session's window to the front. False when no window of it is known, the system
     /// did not let it come, or `id` is no pill.
     pub(crate) fn outside_terminal(&self, id: &str) -> bool {
@@ -441,5 +464,18 @@ mod palette_tests {
         assert!(PILL_PALETTE.iter().any(|value| rgb_hex(*value) == next));
         let all: Vec<Color32> = PILL_PALETTE.iter().map(|value| rgb_hex(*value)).collect();
         assert_eq!(free_color(own, &all), own, "all taken: its own");
+    }
+
+    #[test]
+    fn a_session_in_wsl_is_read_from_windows_by_its_distro() {
+        let payload = json!({ "transcript_path": "/home/eu/.claude/projects/-home-eu-loja/s1.jsonl", "wsl_distro": "Ubuntu" });
+        let expected = if cfg!(windows) {
+            r"\\wsl.localhost\Ubuntu\home\eu\.claude\projects\-home-eu-loja\s1.jsonl"
+        } else {
+            "/home/eu/.claude/projects/-home-eu-loja/s1.jsonl"
+        };
+        assert_eq!(transcript_of(&payload, "s1").as_deref(), Some(expected));
+        let here = json!({ "transcript_path": r"C:\Users\eu\.claude\projects\C--loja\s1.jsonl", "wsl_distro": "" });
+        assert_eq!(transcript_of(&here, "s1").as_deref(), Some(r"C:\Users\eu\.claude\projects\C--loja\s1.jsonl"));
     }
 }
