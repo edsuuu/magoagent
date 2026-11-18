@@ -94,15 +94,16 @@ fn a_chat_from_before_gets_its_card_from_the_canvas_menu() {
     app.chats[0].name = "Novo nome".into();
     app.chat_nodes_tick(&ctx);
     assert_eq!(app.scene.elements[card].chat.as_ref().unwrap().name, "Novo nome");
-    // the card's last message: whose it is, on one line; an agent's question is that agent's
+    // the card's last message: whose it is, its spaces folded and its lines kept (for its Markdown); an agent's
+    // question is that agent's
     use crate::transcript::ChatItem;
     assert_eq!(app.chat_preview("velho"), None);
     app.chat_transcript("velho").items.extend([ChatItem::User("oi,\n tudo bem?".into()), ChatItem::Agent("tudo  certo".into())]);
     assert_eq!(app.chat_preview("velho").as_deref(), Some("tudo certo"));
     app.chat_transcript("velho").items.push(ChatItem::User("Pergunta de \"Dev\" (a sua resposta volta para quem perguntou):\n\nquanto é 2+2?".into()));
     assert_eq!(app.chat_preview("velho").as_deref(), Some("Dev: quanto é 2+2?"));
-    app.chat_transcript("velho").items.push(ChatItem::User("oi,\n tudo bem?".into()));
-    assert_eq!(app.chat_preview("velho").as_deref(), Some("Você: oi, tudo bem?"));
+    app.chat_transcript("velho").items.push(ChatItem::User("oi,\n\n tudo   bem?".into()));
+    assert_eq!(app.chat_preview("velho").as_deref(), Some("Você: oi,\ntudo bem?"));
     // its own menu: it opens the chat, has no copy, and deleting says what it takes
     let rows = app.context_entries(&Target::Element("velho".into()));
     assert_eq!(ids(&rows), ["open_chat", "open_mini_chat", "-", "lock", "front", "back", "-", "delete"]);
