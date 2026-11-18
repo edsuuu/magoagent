@@ -198,8 +198,9 @@ fn a_recruits_card_draws_its_markdown_its_errors_whole_and_opens_a_step_on_a_cli
     frame(&mut app, &ctx, vec![]);
     let id = recruit(&mut app);
     // after its task: a command longer than its row, its report, what the Maestro asked since and a tool that failed in JSON
-    let failed = json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true,
-        "content": "{\"action\":\"type_text\",\"implemented\":true,\"message\":\"X11 input verification failed after typing; text may have been sent. Inspect the target before submitting or retrying.\"}"}]}});
+    let mut failed = Step { id: "falhou".into(), name: "mcp__computer__type_text".into(), what: "Buscar".into(), ..Default::default() };
+    let said = "{\"action\":\"type_text\",\"implemented\":true,\"message\":\"X11 input verification failed after typing; text may have been sent. Inspect the target before submitting or retrying.\"}";
+    failed.finish(&Value::Null, true, said, Some(2.0));
     let transcript = app.transcripts.get_mut(&id).unwrap();
     transcript.items.truncate(1);
     let step = Step {
@@ -211,7 +212,7 @@ fn a_recruits_card_draws_its_markdown_its_errors_whole_and_opens_a_step_on_a_cli
         ..Default::default()
     };
     transcript.items.extend([ChatItem::Tool(step), ChatItem::Agent(REPORT.into()), ChatItem::User("Agora **rode** os testes de `fila`.".into())]);
-    transcript.items.extend(crate::transcript::chat_items(&failed));
+    transcript.items.push(ChatItem::Tool(failed));
     resize(&mut app, &id, Vec2::new(430.0, 580.0));
     let mut time = 10.0;
     for _ in 0..4 {
@@ -226,10 +227,10 @@ fn a_recruits_card_draws_its_markdown_its_errors_whole_and_opens_a_step_on_a_cli
         assert!(joined.contains(words), "{words}: {all:?}");
     }
     assert!(!joined.contains("**") && !joined.contains('`') && !joined.contains("- **"), "{all:?}");
-    // the tool's failure: its message after its action, whole
-    let error = texts.iter().find(|(text, ..)| text.starts_with("Ferramenta falhou (type_text):")).unwrap_or_else(|| panic!("{all:?}"));
-    assert!(!error.1 && packed(&error.0).ends_with(&packed("Inspect the target before submitting or retrying.")), "{error:?}");
-    assert!(texts.iter().all(|(text, cut, _)| !*cut || text.starts_with("php")), "only the step's one line is cut: {all:?}");
+    // the tool's failure on its own step, why in red after its action (its card has it whole): no line of its own
+    assert!(texts.iter().any(|(text, ..)| text.starts_with("· X11 input")), "{all:?}");
+    assert!(!joined.contains("Ferramenta falhou"), "{all:?}");
+    assert!(texts.iter().all(|(text, cut, _)| !*cut || text.starts_with("php") || text.starts_with("· X11")), "only the steps' lines are cut: {all:?}");
     // the step: one line cut short, a chevron at its end; resting on it shows no tip with the rest. The card just tall
     // enough for all of it, so its card opened makes it scroll
     resize(&mut app, &id, Vec2::new(430.0, 360.0));

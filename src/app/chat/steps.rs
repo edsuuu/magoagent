@@ -381,14 +381,15 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
     // a name longer than the column pushes what it was given along, never under it
     let column = column.max(name.size().x);
     p.galley(Pos2::new(name_x, cy - name.size().y / 2.0), name, look.text);
-    // what its answer says, at the line's end: measured first, the input is cut before it
+    // what its answer says, at the line's end: measured first, the input is cut before it; why it failed in red, in at
+    // most half the row (its card has it whole)
     let mut tail: Vec<(String, Color32)> = Vec::new();
     match live {
         Live::Running => tail.push(("· rodando".into(), GREEN)),
         Live::Waiting => tail.push(("· aguardando você".into(), AMBER)),
         Live::Done => {
             if let Some(note) = &step.note {
-                tail.push((format!("· {note}"), look.muted));
+                tail.push((format!("· {note}"), if step.failed { RED } else { look.muted }));
             }
             if let Some((added, removed)) = step.diff.filter(|_| step.note.is_none()) {
                 tail.push(("·".into(), look.muted));
@@ -400,9 +401,10 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
     // the chevron at the right edge, what comes before it cut short of it
     chevron(p, Pos2::new(rect.right() - 6.0, cy), 11.0, 2.4, look.muted, openness);
     let end = rect.right() - 14.0;
-    let tail: Vec<_> = tail.into_iter().map(|(text, color)| p.layout_no_wrap(text, font.clone(), color)).collect();
-    let tail_width: f32 = tail.iter().map(|g| g.size().x + 8.0).sum();
     let what_x = name_x + column + 8.0;
+    let half = ((end - what_x) * 0.5).max(40.0);
+    let tail: Vec<_> = tail.into_iter().map(|(text, color)| clipped(p, text, font.clone(), color, half)).collect();
+    let tail_width: f32 = tail.iter().map(|g| g.size().x + 8.0).sum();
     let what_color = if live_now { look.text.gamma_multiply(0.9) } else { look.soft };
     let what = clipped(p, step.what.clone(), font.clone(), what_color, (end - what_x - tail_width).max(0.0));
     let mut x = what_x + what.size().x + 8.0;
