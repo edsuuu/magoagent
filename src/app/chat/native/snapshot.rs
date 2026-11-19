@@ -179,7 +179,7 @@ pub(super) struct SlashEntry {
 
 /// The chips under the box: folder, permission, model and effort.
 #[derive(Serialize, PartialEq, Debug)]
-pub(super) struct Chips {
+pub(crate) struct Chips {
     pub(super) folder: String,
     pub(super) folder_path: String,
     /// The conversation started in its folder: no other.
@@ -251,6 +251,42 @@ pub(super) fn pick(id: &str, default: &str) -> String {
 }
 
 impl DrawingApp {
+    /// A chat's chips (footer.rs `chat_footer`): the folder, the permission, the model and its effort, with their menus;
+    /// the big chat's and the island's.
+    pub(crate) fn chat_chips(&self, chat: &crate::app::chat::direct::Chat) -> Chips {
+        let (default_model, default_effort) = agent_default(&chat.agent);
+        let ran = self.ran_model(&chat.id);
+        let default_model = if ran.is_empty() { default_model } else { ran };
+        let model_id = if chat.model.is_empty() { default_model } else { chat.model.clone() };
+        let effort_id = if chat.effort.is_empty() { default_effort } else { chat.effort.clone() };
+        let (mut list, more) = (models(&chat.agent), more_models(&chat.agent));
+
+        if !model_id.is_empty() && !list.iter().chain(&more).any(|choice| choice.id == model_id) {
+            list.insert(0, Choice { id: model_id.clone(), name: pretty(&model_id), note: "O que esta conversa está usando".into() });
+        }
+
+        let all: Vec<Choice> = list.iter().chain(&more).cloned().collect();
+        let effort_list = efforts(&chat.agent, &model_id);
+        let model = if model_id.is_empty() { "Modelo padrão".to_string() } else { label(&all, &model_id) };
+        let effort = effort_list.iter().find(|choice| choice.id == effort_id).map(|choice| choice.name.clone());
+
+        Chips {
+            folder: chip_folder(&chat.cwd),
+            folder_path: chat.cwd.clone(),
+            folder_locked: chat.session.is_some(),
+            no_folder: crate::file::projects_dir().map(|dir| dir.display().to_string()).unwrap_or_default(),
+            recent: self.prefs.folders.choices().into_iter().map(|(path, _)| (folder_label(&path), path)).collect(),
+            mode: chat.mode.min(CHAT_MODES.len() - 1),
+            modes: CHAT_MODES.to_vec(),
+            tuning: effort.map_or(model.clone(), |effort| format!("{model} · {effort}")),
+            model: model_id,
+            models: choices(&list),
+            more: choices(&more),
+            effort: effort_id,
+            efforts: choices(&effort_list),
+        }
+    }
+
     pub(crate) fn native_chat_snapshot(&mut self, id: &str) -> Option<ChatSnapshot> {
         let row = self.row_of(id)?;
         let chat = self.chats.iter().find(|c| c.id == id).cloned();
@@ -440,39 +476,7 @@ impl DrawingApp {
         // the slash menu reads the open chat's box
         let slash = if self.chat_agent.as_deref() == Some(id) { self.slash_entries().unwrap_or_default() } else { Vec::new() };
 
-        let chips = chat.as_ref().map(|chat| {
-            let (default_model, default_effort) = agent_default(&chat.agent);
-            let ran = self.ran_model(&chat.id);
-            let default_model = if ran.is_empty() { default_model } else { ran };
-            let model_id = if chat.model.is_empty() { default_model } else { chat.model.clone() };
-            let effort_id = if chat.effort.is_empty() { default_effort } else { chat.effort.clone() };
-            let (mut list, more) = (models(&chat.agent), more_models(&chat.agent));
-
-            if !model_id.is_empty() && !list.iter().chain(&more).any(|choice| choice.id == model_id) {
-                list.insert(0, Choice { id: model_id.clone(), name: pretty(&model_id), note: "O que esta conversa está usando".into() });
-            }
-
-            let all: Vec<Choice> = list.iter().chain(&more).cloned().collect();
-            let effort_list = efforts(&chat.agent, &model_id);
-            let model = if model_id.is_empty() { "Modelo padrão".to_string() } else { label(&all, &model_id) };
-            let effort = effort_list.iter().find(|choice| choice.id == effort_id).map(|choice| choice.name.clone());
-
-            Chips {
-                folder: chip_folder(&chat.cwd),
-                folder_path: chat.cwd.clone(),
-                folder_locked: chat.session.is_some(),
-                no_folder: crate::file::projects_dir().map(|dir| dir.display().to_string()).unwrap_or_default(),
-                recent: self.prefs.folders.choices().into_iter().map(|(path, _)| (folder_label(&path), path)).collect(),
-                mode: chat.mode.min(CHAT_MODES.len() - 1),
-                modes: CHAT_MODES.to_vec(),
-                tuning: effort.map_or(model.clone(), |effort| format!("{model} · {effort}")),
-                model: model_id,
-                models: choices(&list),
-                more: choices(&more),
-                effort: effort_id,
-                efforts: choices(&effort_list),
-            }
-        });
+        let chips = chat.as_ref().map(|chat| self.chat_chips(chat));
 
         let (draft, draft_seq) = NATIVE.with_borrow(|native| (self.chat_draft.clone(), native.draft_seq));
         let claude = crate::app::chat::header::program(&row.spec, self.agent_sessions.contains_key(id)) == Some("Claude Code");

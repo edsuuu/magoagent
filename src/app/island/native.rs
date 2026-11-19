@@ -44,6 +44,8 @@ pub(crate) struct Snapshot {
     pub(crate) glimpse: Vec<Said>,
     pub(crate) chat: Option<ChatOut>,
     pub(crate) voice: bool,
+    /// The call is on in the code (`voice::CALL_ON`): its button shows; off, only a call still on can be ended.
+    pub(crate) call_on: bool,
     pub(crate) voice_state: &'static str,
     pub(crate) voice_note: String,
     pub(crate) sound: bool,
@@ -155,6 +157,8 @@ pub(crate) struct ChatOut {
     pub(crate) session: Option<String>,
     /// What was said, the last ones: (the person, the words).
     pub(crate) said: Vec<Said>,
+    /// A chat's own chips (folder, permission, model and effort), as the big chat's; none for a terminal or a session.
+    pub(crate) chips: Option<crate::app::chat::native::Chips>,
 }
 
 /// A line of text: something said (`person`: by the person) or a line of the file read (`number`).
@@ -193,6 +197,8 @@ pub(crate) struct SongOut {
     pub(crate) device: String,
     pub(crate) track_uri: String,
     pub(crate) tint: Option<String>,
+    /// The bars' two colours, the cover's liveliest, left to right (`Spotify::colours`).
+    pub(crate) colours: Option<[String; 2]>,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -530,6 +536,7 @@ impl DrawingApp {
             glimpse: view.glimpse.iter().map(|(number, text)| Said { person: false, number: *number, text: text.clone() }).collect(),
             chat: self.island_chat_out(view.chat_row.as_ref(), view.session.clone()),
             voice: view.voice_on,
+            call_on: crate::app::voice::CALL_ON,
             voice_state: match view.voice_state {
                 crate::voice::VoiceState::Off => "off",
                 crate::voice::VoiceState::Preparing => "preparing",
@@ -561,6 +568,7 @@ impl DrawingApp {
                 device: now.playback.device.clone(),
                 track_uri: now.playback.track_uri.clone(),
                 tint: spotify.tint.map(hex),
+                colours: spotify.colours.map(|(left, right)| [hex(left), hex(right)]),
             }),
             luna_dances: self.prefs.integrations.luna_dances,
             luna_color: hex(self.luna_colour(crate::app::mascot::mago::LUME)),
@@ -625,7 +633,7 @@ impl DrawingApp {
         if let Some(session) = session {
             let name = self.outside_pills().into_iter().find(|pill| pill.id == session).map(|pill| pill.name).unwrap_or_default();
 
-            return Some(ChatOut { id: session.clone(), name, working: false, session: Some(session), said: Vec::new() });
+            return Some(ChatOut { id: session.clone(), name, working: false, session: Some(session), said: Vec::new(), chips: None });
         }
 
         let row = row?;
@@ -643,7 +651,9 @@ impl DrawingApp {
             said[said.len().saturating_sub(40)..].to_vec()
         });
 
-        Some(ChatOut { id: row.id.clone(), name: self.chat_short_name(row), working: matches!(row.state, AgentState::Working(_)), session: None, said })
+        let chips = self.chats.iter().find(|chat| chat.id == row.id).map(|chat| self.chat_chips(chat));
+
+        Some(ChatOut { id: row.id.clone(), name: self.chat_short_name(row), working: matches!(row.state, AgentState::Working(_)), session: None, said, chips })
     }
 
     /// GitHub's tab: the person's pull requests and the ones asking for their review.
@@ -972,9 +982,40 @@ mod tests {
         assert_eq!(snapshot.tabs.last().map(|tab| tab.tab), Some("new"), "the new chat always last");
         assert_eq!(snapshot.color, "#000000");
         assert!(snapshot.ask.is_none() && !snapshot.pinned);
+        // the call is off in the code: Swift shows no Chat por voz, as the egui header
+        assert_eq!(snapshot.call_on, crate::app::voice::CALL_ON);
         let json = serde_json::to_value(&snapshot).unwrap();
 
         assert!(json["lines"][0]["mago"].is_string() && json["closeAfter"].is_number(), "camelCase for Swift: {json}");
+    }
+
+    /// The island's one chat carries the chat's own chips, as the big chat's; a session outside the app has none.
+    #[test]
+    fn the_island_chat_has_the_chips_of_its_chat() {
+        let mut app = DrawingApp::default();
+
+        app.chats = vec![chat("a")];
+        let row = app.agent_rows().into_iter().find(|row| row.id == "a").expect("the chat is an agent");
+        let out = app.island_chat_out(Some(&row), None).expect("the chat");
+        let json = serde_json::to_value(&out).unwrap();
+
+        assert_eq!(json["chips"]["folder_path"], "/p", "the chips keep their own keys, as ChatChips decodes them: {json}");
+        assert!(app.island_chat_out(None, Some("fora".into())).is_some_and(|out| out.chips.is_none()));
+    }
+
+    /// The bars on the notch go from the cover's first colour to its second, as the egui pill's (`pill::Row`).
+    #[test]
+    fn the_song_carries_the_colours_of_its_bars() {
+        use crate::app::integrations::spotify::{Now, Track};
+        let mut app = DrawingApp::default();
+
+        app.prefs.island = true;
+        app.integrations.spotify.now = Some(Now { track: Track::new("505", "Arctic Monkeys", "", "").unwrap(), playing: true, ..Default::default() });
+        assert_eq!(app.native_island_snapshot().song.map(|song| song.colours), Some(None), "no cover yet: Spotify's green in Swift");
+        app.integrations.spotify.colours = Some((Color32::from_rgb(0xff, 0x00, 0x00), Color32::from_rgb(0x00, 0x00, 0xff)));
+        let song = app.native_island_snapshot().song.expect("the song shows");
+
+        assert_eq!(song.colours, Some(["#ff0000".to_string(), "#0000ff".to_string()]));
     }
 
     #[test]

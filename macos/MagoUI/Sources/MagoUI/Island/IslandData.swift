@@ -23,6 +23,8 @@ struct IslandSnapshot: Decodable, Equatable {
     var glimpse: [IslandSaid] = []
     var chat: IslandChat?
     var voice = false
+    /// The call is on in the code (`voice::CALL_ON`): off, the header has no Chat por voz, only one still on to end.
+    var callOn = false
     var voiceState = "off"
     var voiceNote = ""
     var sound = true
@@ -133,6 +135,8 @@ struct IslandChat: Decodable, Equatable {
     var working: Bool
     var session: String?
     var said: [IslandSaid]
+    /// A chat's own chips (folder, permission, model and effort), the big chat's; none for a terminal.
+    var chips: ChatChips?
 }
 
 struct IslandSong: Decodable, Equatable {
@@ -151,6 +155,8 @@ struct IslandSong: Decodable, Equatable {
     var device: String
     var trackUri: String
     var tint: String?
+    /// The bars' two colours, left to right (`Spotify::colours`); none until the cover comes.
+    var colours: [String]?
 
     /// Where in the song it is now: what the player said, gone on while it plays (`Now::position_at`).
     func position(now: Date = Date()) -> Double? {

@@ -64,55 +64,48 @@ struct IslandNewPage: View {
 
 // MARK: a question or a permission
 
+/// The card of the first ask waiting (`ask.rs`): its wash (amber a permission, cyan a question), Luna at the left and,
+/// from 116, who asks, then the permission's command with Negar and Permitir, or the question whole with its options as
+/// rows and "Outro"; the card grows with them up to the window's room, and past it they scroll.
 struct IslandAskCard: View {
     let model: IslandModel
     let ask: IslandAsk
     let size: CGSize
     @State private var other = ""
+    /// The question's list as tall as it is (`content` in `island_question`), for the island's height.
+    @State private var content: CGFloat = 0
     @FocusState private var focused: Bool
+
+    static let left: CGFloat = 116
 
     var body: some View {
         let wash = ask.approval ? IslandInk.amber : IslandInk.cyan
-        let color = ask.color.map(IslandInk.hex) ?? wash
         ZStack(alignment: .topLeading) {
             IslandWash(color: wash, strength: ask.approval ? 0.42 : 0.38)
-            IslandLuna(model: model, center: CGPoint(x: 52, y: size.height / 2), size: 56, state: ask.approval ? .needsYou : .asking)
-            // "Depois": folded, it keeps waiting
-            HStack(spacing: 8) {
-                if ask.queued > 0 { Text("+\(ask.queued) na fila").font(.system(size: 11)).foregroundStyle(IslandInk.dim) }
-                Button { model.fold() } label: {
-                    Image(systemName: "chevron.up").font(.system(size: 8, weight: .bold)).foregroundStyle(IslandInk.rgb(0x5f646d))
-                        .frame(width: 16, height: 16).background(Circle().fill(Color.white.opacity(18 / 255)))
-                }
-                .buttonStyle(.plain).help("Depois — deixar esperando")
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 10).padding(.top, 8)
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 7) {
-                    if let name = ask.name {
-                        Circle().fill(color).frame(width: 8, height: 8)
-                        Text(name).font(.system(size: 12, weight: .semibold)).foregroundStyle(IslandInk.ink).lineLimit(1)
-                    }
-                    Text(ask.doing).font(.system(size: 12)).foregroundStyle(IslandInk.dim).lineLimit(1)
-                }
-                if ask.approval { approval } else { question }
-            }
-            .padding(.leading, 106).padding(.trailing, 40).padding(.vertical, 14)
-            .frame(width: size.width, height: size.height, alignment: ask.approval && !ask.open ? .leading : .topLeading)
+            // the middle of an 84 tall card under the header (`botPosition`), 52 in
+            IslandLuna(model: model, center: CGPoint(x: 52, y: size.height / 2 + 5), size: 56, state: ask.approval ? .needsYou : .asking)
+            fold
+            if ask.approval { approval } else { question }
         }
-        .frame(width: size.width, height: size.height)
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
         .islandCard()
         .onAppear { report() }
         .onChange(of: ask) { report() }
+        .onChange(of: content) { report() }
         .onChange(of: focused) { model.typing = focused }
         .onDisappear { model.typing = false }
     }
 
-    /// The card's height for the island (`ask.rs`: 160 a permission, 380 opened, 200 a question growing with its options).
+    /// The card's height for the island: 160 a permission, 380 opened; a question as tall as what it holds, from 200 to
+    /// 420 (`ask.rs`).
     private func report() {
-        let options = ask.questions.isEmpty ? 0 : ask.questions[min(ask.step, ask.questions.count - 1)].options.count
-        let height = ask.approval ? (ask.open ? IslandSize.approvalOpenH : IslandSize.approvalH)
-            : min(IslandSize.questionH + CGFloat(max(options - 2, 0)) * 34, IslandSize.questionMost)
+        let height: CGFloat
+        if ask.approval {
+            height = ask.open ? IslandSize.approvalOpenH : IslandSize.approvalH
+        } else {
+            let needed = 14 + 15 + 10 + content + (footer ? 38 : 0) + 14
+            height = min(max(needed + IslandSize.pageTop + 10, IslandSize.questionH), IslandSize.questionMost)
+        }
         if height != model.askHeight { model.askHeight = height }
     }
 
@@ -122,91 +115,228 @@ struct IslandAskCard: View {
         model.act("ask", args.merging(["chat": ask.chat]) { first, _ in first })
     }
 
+    private var step: Int { min(ask.step, max(ask.questions.count - 1, 0)) }
+    private var current: IslandQuestion? { ask.questions.isEmpty ? nil : ask.questions[step] }
+    /// OK for a multiple choice, the way to the terminal for a session outside the app.
+    private var footer: Bool { current?.multiple == true || ask.outside }
+
+    /// "Depois — deixar esperando": the island folds and the ask keeps waiting; the asks behind it at its left.
+    private var fold: some View {
+        HStack(spacing: 8) {
+            if ask.queued > 0 { Text("+\(ask.queued) na fila").font(.system(size: 11)).foregroundStyle(IslandInk.dim) }
+            Button { model.fold() } label: {
+                Image(systemName: "chevron.up").font(.system(size: 8, weight: .bold)).foregroundStyle(IslandInk.rgb(0x5f646d))
+                    .frame(width: 16, height: 16).background(Circle().fill(Color.white.opacity(18 / 255)))
+            }
+            .buttonStyle(.plain).help("Depois — deixar esperando")
+        }
+        .frame(width: size.width - 10, height: 16, alignment: .trailing)
+        .offset(y: 8)
+    }
+
+    /// `agentWho`: its dot, its name, what it does (cut before the fold).
+    private var who: some View {
+        HStack(spacing: 7) {
+            if let name = ask.name {
+                Circle().fill(ask.color.map(IslandInk.hex) ?? (ask.approval ? IslandInk.amber : IslandInk.cyan)).frame(width: 8, height: 8)
+                Text(name).font(.system(size: 12, weight: .semibold)).foregroundStyle(IslandInk.ink).lineLimit(1).fixedSize()
+            }
+            Text(ask.doing).font(.system(size: 12)).foregroundStyle(IslandInk.dim).lineLimit(1)
+        }
+        .frame(height: 15)
+        .padding(.trailing, 24)
+    }
+
+    /// Who asks, the command and the row of buttons, centred down the card, 5 apart.
     private var approval: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .top) {
-                if ask.open {
-                    ScrollView { Text(ask.details).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.scrollIndicators(.never)
-                } else {
-                    Text(ask.summary).lineLimit(1)
-                }
-                IslandLink(text: ask.open ? "recolher" : "ver tudo", size: 11) { press(["open": true]) }
-            }
-            .font(.system(size: 12, design: .monospaced)).foregroundStyle(IslandInk.rgb(0xe8e9ec))
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(18 / 255)))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(15 / 255)))
+            who
+            well
             HStack(spacing: 8) {
                 IslandAskButton(label: "Negar", key: "N") { press(["allow": false]) }
                 IslandAskButton(label: "Permitir", key: "Y", primary: true) { press(["allow": true]) }
-                if ask.outside { IslandLink(text: "Responder no terminal", size: 11.5) { press(["terminal": true]) } }
+                if ask.outside { IslandAskLink(text: "Responder no terminal") { press(["terminal": true]) } }
             }
         }
+        .frame(width: size.width - Self.left - 16, alignment: .leading)
+        .frame(maxHeight: .infinity)
+        .padding(.vertical, ask.open ? 14 : 0)
+        .padding(.leading, Self.left)
     }
 
-    private var question: some View {
-        let step = min(ask.step, max(ask.questions.count - 1, 0))
-        let current = ask.questions.isEmpty ? nil : ask.questions[step]
-        let picked = step < ask.picked.count ? ask.picked[step] : []
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 6) {
-                if let current {
-                    Text(current.text).font(.system(size: 13)).foregroundStyle(IslandInk.ink).fixedSize(horizontal: false, vertical: true)
-                    if current.multiple { Text("Escolha uma ou mais").font(.system(size: 11)).foregroundStyle(IslandInk.dim) }
-                    ForEach(Array(current.options.enumerated()), id: \.offset) { index, option in
-                        Button { press(["pick": index]) } label: {
-                            HStack(alignment: .top, spacing: 8) {
-                                Text("\(index + 1)").font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundStyle(IslandInk.dim3)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(option.first ?? "").font(.system(size: 12, weight: .semibold)).foregroundStyle(IslandInk.ink)
-                                    if option.count > 1, !option[1].isEmpty {
-                                        Text(option[1]).font(.system(size: 11)).foregroundStyle(IslandInk.dim).fixedSize(horizontal: false, vertical: true)
-                                    }
-                                }
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity((picked.contains(index) ? 40 : 14) / 255)))
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    HStack(spacing: 8) {
-                        TextField("Outro: escreva a sua resposta…", text: $other).textFieldStyle(.plain).font(.system(size: 12)).focused($focused)
-                            .onSubmit { press(["other": other]); other = "" }
-                        if current.multiple { IslandAskButton(label: "OK", primary: true) { press(["next": true]) } }
-                    }
-                    .padding(.horizontal, 10).frame(height: 30)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(14 / 255)))
-                    if ask.outside { IslandLink(text: "Responder no terminal", size: 11.5) { press(["terminal": true]) } }
+    /// The command on one line with "ver tudo" at its end; opened, the whole request in a well that scrolls.
+    private var well: some View {
+        Group {
+            if ask.open {
+                VStack(alignment: .trailing, spacing: 6) {
+                    IslandAskLink(text: "recolher", inset: 0) { press(["open": true]) }.padding(.trailing, 6)
+                    ScrollView { Text(ask.details).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.scrollIndicators(.never)
                 }
+                .padding(.leading, 10).padding(.trailing, 4).padding(.top, 5).padding(.bottom, 6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
+                HStack(spacing: 10) {
+                    Text(ask.summary).lineLimit(1)
+                    IslandAskLink(text: "ver tudo", inset: 0) { press(["open": true]) }
+                }
+                .padding(.horizontal, 10).padding(.vertical, 5)
             }
         }
-        .scrollIndicators(.never)
+        .font(.system(size: 12, design: .monospaced)).foregroundStyle(IslandInk.rgb(0xe8e9ec))
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(18 / 255)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(15 / 255)))
+        .contentShape(Rectangle())
+        // closed, the whole well opens it
+        .onTapGesture { if !ask.open { press(["open": true]) } }
+    }
+
+    /// Who asks; under it the question, its options and "Outro", scrolling past the room; OK and the terminal at the bottom.
+    private var question: some View {
+        let picked = step < ask.picked.count ? ask.picked[step] : []
+        return VStack(alignment: .leading, spacing: 0) {
+            who
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if let current {
+                        Text(current.text).font(.system(size: 15, weight: .semibold)).foregroundStyle(IslandInk.ink).fixedSize(horizontal: false, vertical: true)
+                        if current.multiple { Text("Escolha uma ou mais").font(.system(size: 11)).foregroundStyle(IslandInk.dim).padding(.top, 4) }
+                        VStack(spacing: 6) {
+                            ForEach(Array(current.options.enumerated()), id: \.offset) { index, option in
+                                IslandAskOption(number: index, option: option, multiple: current.multiple, on: picked.contains(index)) { press(["pick": index]) }
+                            }
+                            otherBox
+                        }
+                        .padding(.top, 10)
+                    }
+                }
+                .padding(.trailing, 4)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { content = $0 }
+            }
+            .scrollIndicators(.never)
+            .padding(.top, 10)
+            if footer {
+                HStack(spacing: 8) {
+                    if current?.multiple == true {
+                        // with nothing picked nor written it waits; written, OK sends the words too (`answer_other`)
+                        let words = other.trimmingCharacters(in: .whitespacesAndNewlines)
+                        IslandAskButton(label: "OK", primary: true, off: picked.isEmpty && words.isEmpty) { words.isEmpty ? press(["next": true]) : sendOther() }
+                    }
+                    if ask.outside { IslandAskLink(text: "Responder no terminal") { press(["terminal": true]) } }
+                }
+                .frame(height: 30)
+                .padding(.top, 8)
+            }
+        }
+        .padding(.vertical, 14)
+        .frame(width: size.width - Self.left - 12, height: size.height, alignment: .topLeading)
+        .padding(.leading, Self.left)
+    }
+
+    /// "Outro": the answer in one's own words, sent by Enter or its round button.
+    private var otherBox: some View {
+        let empty = other.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return HStack(alignment: .bottom, spacing: 8) {
+            TextField("", text: $other, prompt: Text("Outro: escreva a sua resposta…").foregroundStyle(IslandInk.dim3), axis: .vertical)
+                .textFieldStyle(.plain).font(.system(size: 13)).foregroundStyle(IslandInk.ink)
+                .lineLimit(1...5).focused($focused)
+                .onSubmit(sendOther)
+                .padding(.vertical, 3)
+            Button(action: sendOther) {
+                Image(systemName: "arrow.up").font(.system(size: 11, weight: .bold)).foregroundStyle(IslandInk.black)
+                    .frame(width: 24, height: 24).background(Circle().fill(IslandInk.ink.opacity(empty ? 0.5 : 1)))
+            }
+            .buttonStyle(.plain).help("Enviar")
+        }
+        .padding(.leading, 12).padding(.trailing, 8).padding(.vertical, 8)
+        .frame(minHeight: 40)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(18 / 255)))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.white.opacity(14 / 255)))
+    }
+
+    private func sendOther() {
+        guard !other.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        press(["other": other])
+        other = ""
     }
 }
 
-/// A button of the ask's row: `.btn.primary` (ink on white) or `.btn.secondary` (9% white), with its key.
-struct IslandAskButton: View {
-    let label: String
-    var key: String?
-    var primary = false
+/// An option as a row (`island_question`): the key that picks it (✓ once picked in a multiple choice), its label and
+/// what it means, wrapped.
+struct IslandAskOption: View {
+    let number: Int
+    let option: [String]
+    let multiple: Bool
+    let on: Bool
     let action: () -> Void
     @State private var hovered = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                Text(label).font(.system(size: 12, weight: .semibold))
+            HStack(alignment: .top, spacing: 8) {
+                Text(multiple && on ? "✓" : "\(number + 1)").font(.system(size: 10.5)).foregroundStyle(IslandInk.ink.opacity(on ? 1 : 0.7))
+                    .frame(width: 18, height: 18)
+                    .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.white.opacity((on ? 140 : 70) / 255)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(option.first ?? "").font(.system(size: 13, weight: .semibold)).foregroundStyle(IslandInk.ink)
+                    if option.count > 1, !option[1].isEmpty { Text(option[1]).font(.system(size: 11.5)).foregroundStyle(IslandInk.dim) }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .frame(minHeight: 34)
+            .background(RoundedRectangle(cornerRadius: 10).fill(on ? IslandInk.cyan.opacity(0.2) : Color.white.opacity((hovered ? 34 : 18) / 255)))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(on ? IslandInk.cyan.opacity(0.8) : Color.white.opacity(14 / 255)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+    }
+}
+
+/// A button of the ask's row (`paint_button`): `.btn.primary` (black on the ink) or `.btn.secondary` (9% white), 12.5,
+/// padding 7 13, with its key 7 after the label; `off`, faded and dead.
+struct IslandAskButton: View {
+    let label: String
+    var key: String?
+    var primary = false
+    var off = false
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Text(label).font(.system(size: 12.5))
                 if let key {
-                    Text(key).font(.system(size: 10, weight: .semibold, design: .monospaced)).opacity(0.55)
-                        .padding(.horizontal, 4).background(RoundedRectangle(cornerRadius: 4).strokeBorder((primary ? Color.black : IslandInk.ink).opacity(0.3)))
+                    Text(key).font(.system(size: 10.5)).opacity(0.55)
+                        .padding(.horizontal, 5)
+                        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder((primary ? Color.black : Color.white).opacity(102 / 255 * 0.55)))
                 }
             }
-            .foregroundStyle(primary ? Color.black : IslandInk.ink)
-            .padding(.horizontal, 14).frame(height: 28)
-            .background(Capsule().fill(primary ? IslandInk.ink.opacity(hovered ? 1 : 0.92) : Color.white.opacity((hovered ? 38 : 23) / 255)))
+            .foregroundStyle(primary ? IslandInk.black : IslandInk.rgb(0xf1f2f4))
+            .padding(.horizontal, 13).padding(.vertical, 7)
+            .background(Capsule().fill(primary ? IslandInk.ink : Color.white.opacity((hovered ? 38 : 23) / 255)))
+            .opacity(off ? 0.4 : 1)
             .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(off)
+        .onHover { hovered = $0 }
+    }
+}
+
+/// `.link-btn`: 11, light enough on the wash, the ink and a line under it under the pointer.
+struct IslandAskLink: View {
+    let text: String
+    var inset: CGFloat = 6
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(text).font(.system(size: 11)).foregroundStyle(hovered ? IslandInk.ink : IslandInk.link).underline(hovered)
+                .padding(.horizontal, inset)
         }
         .buttonStyle(.plain)
         .onHover { hovered = $0 }

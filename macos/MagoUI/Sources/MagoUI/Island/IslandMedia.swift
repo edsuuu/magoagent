@@ -213,7 +213,7 @@ struct IslandMusicPage: View {
     // ponytail: the song playing and its controls only; the queue, the playlists, the liked songs and the search of
     // music.rs need their lists in the snapshot first
     private func playing(_ song: IslandSong) -> some View {
-        let tint = IslandInk.hex(song.tint ?? "#1db954")
+        let tint = IslandInk.hex(song.tint ?? IslandInk.spotify)
         let cover = min(size.height - 28, 220)
         return HStack(spacing: 18) {
             IslandCover(song: song, side: cover, corner: 14).shadow(color: tint.opacity(0.35), radius: 14, y: 4)

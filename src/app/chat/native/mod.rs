@@ -7,6 +7,8 @@ mod list;
 mod snapshot;
 mod words;
 
+pub(crate) use snapshot::Chips;
+
 use crate::app::chat::footer::{FooterAct, agent_default};
 use crate::app::chat::list::running::chip;
 use crate::app::ui::agents::{AgentRow, AgentState};

@@ -142,8 +142,8 @@ struct IslandFeed: View {
         var rows: [(Color, Int?, String)] = []
         if needs > 0 { rows.append((IslandInk.amber, needs, needs == 1 ? "precisa de você" : "precisam de você")) }
         if working > 0 { rows.append((IslandInk.blue, working, working == 1 ? "agente trabalhando" : "agentes trabalhando")) }
-        if failing > 0 { rows.append((IslandInk.red, failing, failing == 1 ? "PR com CI falhando" : "PRs com CI falhando")) }
-        if snapshot.song?.playing == true { rows.append((IslandInk.green, nil, "tocando no Spotify")) }
+        if failing > 0 { rows.append((IslandInk.feedRed, failing, failing == 1 ? "PR com CI falhando" : "PRs com CI falhando")) }
+        if snapshot.song?.playing == true { rows.append((IslandInk.hex(IslandInk.spotify), nil, "tocando no Spotify")) }
         if rows.isEmpty { rows.append((IslandInk.dim3, nil, "Tudo calmo por aqui")) }
         return rows
     }
@@ -207,9 +207,12 @@ struct IslandFeedRow: View {
             if ago.isEmpty, line.id == "integration:spotify" { return model.snapshot.song?.playing == true ? "tocando" : "pausado" }
             return ago
         }()
-        let tone = line.rank == 0 ? IslandInk.amber : line.rank == 1 ? IslandInk.red : IslandInk.dim3
+        let tone = line.rank == 0 ? IslandInk.amber : line.rank == 1 ? IslandInk.feedRed : IslandInk.dim3
+        let mini = CGPoint(x: 11, y: 20)
         HStack(spacing: 10) {
-            IslandCanvas(model: model, sprites: [.mini(line: line, center: CGPoint(x: 11, y: 20), body: 20, mark: line.outside)]).frame(width: 22, height: 38)
+            // a session outside the app wears what it is at on its shoulder; the app's own agents nothing here
+            IslandCanvas(model: model, sprites: [.mini(line: line, center: mini, body: 20, mark: false)] + (line.outside ? [.shoulder(line: line, center: mini, body: 20)] : []))
+                .frame(width: 22, height: 38)
             VStack(alignment: .leading, spacing: 2) {
                 Text(line.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(IslandInk.ink).lineLimit(1)
                 Text(line.detail).font(.system(size: 11)).foregroundStyle(tone).lineLimit(1)
@@ -357,18 +360,42 @@ struct IslandPillButton: View {
                 RoundedRectangle(cornerRadius: 14).fill(IslandInk.cardFlat)
                 RoundedRectangle(cornerRadius: 14).fill(hovered ? color.opacity(0x2e / 255) : .clear)
                 RoundedRectangle(cornerRadius: 14).strokeBorder(color.opacity((hovered ? 0x8c : line.asleep ? 0x1e : 0x24) / 255))
-                IslandCanvas(model: model, sprites: [.mini(line: line, center: CGPoint(x: 19, y: 14), body: 24, mark: true)])
+                // a session outside the app: its mark on the shoulder; the rest the state's badge (`paint::pill`)
+                let mini = CGPoint(x: 19, y: 14)
+                IslandCanvas(model: model, sprites: [.mini(line: line, center: mini, body: 24, mark: !line.outside)] + (line.outside ? [.shoulder(line: line, center: mini, body: 24)] : []))
                 Text(line.name).font(.system(size: 10, weight: .semibold)).lineLimit(1)
                     .foregroundStyle(hovered ? IslandInk.lighten(line.color, 0.3) : IslandInk.dim3)
                     .frame(maxWidth: .infinity).padding(.leading, 34).padding(.trailing, 8)
             }
             .frame(height: 28)
+            .overlay(alignment: .topTrailing) {
+                // an integration's on the pill's corner, what failed there (`pillBadge`)
+                if !line.outside, line.badge != nil, let corner = Self.corner(line) {
+                    ZStack {
+                        Circle().fill(IslandInk.black)
+                        Circle().fill(corner.0).padding(1)
+                        Text(corner.1).font(.system(size: 7)).foregroundStyle(Color.black)
+                    }
+                    .frame(width: 14, height: 14).offset(x: -3, y: -5)
+                }
+            }
             .shadow(color: hovered ? color.opacity(0x59 / 255) : .clear, radius: 5, y: 2)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovered = $0 }
         .help(line.name)
+    }
+
+    /// The corner badge's colour and mark (`paint::badge`).
+    static func corner(_ line: IslandLine) -> (Color, String)? {
+        switch (line.badge, line.state, line.mago) {
+        case ("error", _, _): (IslandInk.red, "✕")
+        case ("approval", _, _), (_, "waiting", _): (IslandInk.amber, "!")
+        case ("finished", _, _), (_, _, "done"): (IslandInk.green, "✓")
+        case (_, _, "error"): (IslandInk.red, "✕")
+        default: nil
+        }
     }
 }
 
@@ -601,7 +628,8 @@ struct IslandChatPage: View {
         .onDisappear { model.typing = false }
     }
 
-    /// The short conversation (`prompt.rs`): the last things said and the box to say more.
+    /// The island's one chat (`prompt.rs`): the last things said, the chat's own chips (each with its menu, as the big
+    /// chat's) and the box to say more.
     private func talk(_ chat: IslandChat) -> some View {
         VStack(spacing: 8) {
             HStack {
@@ -626,7 +654,8 @@ struct IslandChatPage: View {
                 .onAppear { reader.scrollTo(chat.said.count - 1, anchor: .bottom) }
                 .onChange(of: chat.said.count) { reader.scrollTo(chat.said.count - 1, anchor: .bottom) }
             }
-            IslandPromptBar(text: $draft, placeholder: "Responder…", focused: $focused) {
+            if let chips = chat.chips { ChipsRow(chat: chat.id, chips: chips).environment(\.colorScheme, .dark) }
+            IslandPromptBar(text: $draft, placeholder: chat.said.isEmpty ? "Pergunte qualquer coisa…" : "Continuar…", focused: $focused) {
                 let words = draft.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !words.isEmpty else { return }
                 model.app("chat_send", ["chat": chat.id, "text": words])

@@ -28,7 +28,7 @@ pub(crate) mod mini;
 pub(crate) mod mini_agents;
 pub(crate) mod mini_window;
 #[cfg(target_os = "macos")]
-mod native;
+pub(crate) mod native;
 pub(crate) mod node;
 pub(crate) mod node_ui;
 pub(crate) mod queue;

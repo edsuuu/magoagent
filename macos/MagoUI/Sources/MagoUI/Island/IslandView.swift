@@ -10,6 +10,8 @@ enum IslandInk {
     static let card = rgb(0x141518), cardFlat = rgb(0x0e0f11), tabOn = rgb(0x1d1f23), hover = rgb(0x1b1d21)
     static let amber = rgb(0xf5a524), red = rgb(0xf4505e), cyan = rgb(0x22d3ee), green = rgb(0x22c55e), mint = rgb(0x34d399)
     static let blue = rgb(0x3b9eff), picked = rgb(0x818cf8), black = rgb(0x0b0c0e)
+    /// Início's red (`feed::RED`), the ask's links light enough on its wash (`ask::LINK`), Spotify's green.
+    static let feedRed = rgb(0xf85149), link = rgb(0xd4d7dd), spotify = "#1ed760"
     static let hairline = Color.white.opacity(9 / 255)
     static let colors = ["#000000", "#222327", "#182a4e", "#1f3a2c", "#3a1f3f"]
 
@@ -20,6 +22,29 @@ enum IslandInk {
     /// "#rrggbb" (what Rust sends); black for anything else.
     static func hex(_ text: String) -> Color {
         UInt32(text.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16).map(rgb) ?? .black
+    }
+
+    /// From `from` to `to`, `along` of the way, channel by channel as stored (`lerp_to_gamma`).
+    static func mix(_ from: String, _ to: String, _ along: Double) -> Color {
+        let value = { (text: String) in UInt32(text.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16) ?? 0 }
+        let (a, b) = (value(from), value(to))
+        let channel = { (shift: UInt32) in (Double(a >> shift & 0xff) * (1 - along) + Double(b >> shift & 0xff) * along) / 255 }
+        return Color(red: channel(16), green: channel(8), blue: channel(0))
+    }
+
+    /// The bars' two colours: the cover's, else its tint, else Spotify's green (`pill::spotify`).
+    static func bars(_ song: IslandSong?) -> (String, String) {
+        if let colours = song?.colours, colours.count == 2 { return (colours[0], colours[1]) }
+        let tint = song?.tint ?? spotify
+        return (tint, tint)
+    }
+
+    /// A cover still to come: a diagonal of two colours picked by its name (`music::placeholder`).
+    static func placeholder(_ name: String) -> (Color, Color) {
+        let pairs: [(UInt32, UInt32)] = [(0x7c3aed, 0xdb2777), (0x0ea5e9, 0x22c55e), (0xf59e0b, 0xef4444), (0x334155, 0x64748b), (0x16a34a, 0x4ade80)]
+        let sum = name.utf8.reduce(UInt(0)) { $0 &* 31 &+ UInt($1) }
+        let pair = pairs[Int(sum % UInt(pairs.count))]
+        return (rgb(pair.0), rgb(pair.1))
     }
 
     /// `color` moved `amount` of the way to white (`lighten`).
@@ -129,7 +154,9 @@ enum IslandSprite {
     case luna(center: CGPoint, size: CGFloat, state: LunaState, motion: String = "island-main")
     case mini(line: IslandLine, center: CGPoint, body: CGFloat, mark: Bool)
     /// The song's cover is a view; these are the sound's bars from `x` (`count` of them, `bar` wide, `gap` apart).
-    case bars(x: CGFloat, y: CGFloat, count: Int, bar: CGFloat, gap: CGFloat, tall: CGFloat, upright: Bool, tint: Color)
+    case bars(x: CGFloat, y: CGFloat, count: Int, bar: CGFloat, gap: CGFloat, tall: CGFloat, upright: Bool, colours: (String, String))
+    /// What a session outside the app is at, on its mini's shoulder (`shoulder_mark`).
+    case shoulder(line: IslandLine, center: CGPoint, body: CGFloat)
     case voice(center: CGPoint)
     /// The check Luna wears while an agent finished and the island was not opened yet (`done::paint_check`).
     case check(luna: CGPoint, size: CGFloat)
@@ -171,7 +198,7 @@ struct IslandCanvas: View {
             motion.advance(LunaState(rawValue: line.mago) ?? .idle, time, gaze: motion.glance(time))
             Luna.paintMini(&context, center: center, body: body, color: IslandInk.hex(line.color), motion: motion, time: time)
             if mark { miniBadge(&context, line, center: center, body: body, time: time) }
-        case let .bars(x, y, count, bar, gap, tall, upright, tint):
+        case let .bars(x, y, count, bar, gap, tall, upright, colours):
             let bands = model.snapshot.song?.playing == true ? (live.bands ?? []) : []
             for index in 0..<count {
                 // the closed notch is small: its bars are the bands two by two
@@ -180,8 +207,12 @@ struct IslandCanvas: View {
                 let height = bar + (tall - bar) * min(max(pow(level, 1.6), 0), 1)
                 let along = x + CGFloat(index) * (bar + gap)
                 let rect = upright ? CGRect(x: y - height / 2, y: along, width: height, height: bar) : CGRect(x: along, y: y - height / 2, width: bar, height: height)
-                context.fill(Path(roundedRect: rect, cornerRadius: bar / 2), with: .color(tint))
+                // the first bar the first colour, the last the second, the ones between a bit of each
+                let share = count > 1 ? Double(index) / Double(count - 1) : 0
+                context.fill(Path(roundedRect: rect, cornerRadius: bar / 2), with: .color(IslandInk.mix(colours.0, colours.1, share)))
             }
+        case let .shoulder(line, center, body):
+            shoulder(&context, line, center: center, body: body, time: time)
         case let .check(luna, size):
             let radius = max(size * 0.2, 4)
             let at = CGPoint(x: luna.x + size * 0.34, y: luna.y - size * 0.3)
@@ -206,6 +237,31 @@ struct IslandCanvas: View {
     }
 
     private func band(_ bands: [Double], _ index: Int) -> Double { index < bands.count ? bands[index] : 0 }
+
+    /// `!` it waits on the person, `✓` its turn ended, `✕` it failed, in a ring of the card; stopped, a `z` drifting up.
+    private func shoulder(_ context: inout GraphicsContext, _ line: IslandLine, center: CGPoint, body: CGFloat, time: Double) {
+        let at = CGPoint(x: center.x + body * 0.42, y: center.y - body * 0.4)
+        let radius = max(body * 0.23, 4.5)
+        let mark: (Color, String, Color)? = switch (line.badge, line.state) {
+        case ("approval", _), (_, "waiting"): (IslandInk.amber, "!", IslandInk.rgb(0x2b1a00))
+        case ("finished", _): (IslandInk.mint, "✓", IslandInk.rgb(0x062b1d))
+        case ("error", _): (IslandInk.red, "✕", IslandInk.rgb(0x2b0006))
+        default: nil
+        }
+        let circle = { (r: CGFloat) in Path(ellipseIn: CGRect(x: at.x - r, y: at.y - r, width: 2 * r, height: 2 * r)) }
+        if let mark {
+            context.fill(circle(radius + 2), with: .color(IslandInk.cardFlat))
+            context.fill(circle(radius), with: .color(mark.0))
+            context.draw(Text(mark.1).font(.system(size: radius * 1.55, weight: .semibold)).foregroundStyle(mark.2), at: CGPoint(x: at.x, y: at.y + 0.5))
+        } else if line.asleep {
+            for (delay, size) in [(0.0, radius * 1.6), (0.5, radius * 1.2)] {
+                let phase = (time * 0.45 + delay).truncatingRemainder(dividingBy: 1)
+                let fade = (1 - phase) * min(phase * 4, 1)
+                let drift = CGPoint(x: at.x + phase * 3, y: at.y - phase * 7 - 1)
+                context.draw(Text("z").font(.system(size: size, weight: .semibold)).foregroundStyle(IslandInk.dim.opacity(fade * 230 / 255)), at: drift)
+            }
+        }
+    }
 
     /// The state's badge on a mini (`mini_badge`): on its upper left, a black ring and a disc of the state's colour;
     /// working, the disc pulses.
@@ -238,10 +294,8 @@ struct IslandCover: View {
         AsyncImage(url: URL(string: song.coverUrl)) { image in
             image.resizable().aspectRatio(contentMode: .fill)
         } placeholder: {
-            ZStack {
-                IslandInk.hex(song.tint ?? "#1db954").opacity(0.35)
-                Image(systemName: "music.note").font(.system(size: side * 0.5)).foregroundStyle(IslandInk.ink)
-            }
+            let (from, to) = IslandInk.placeholder(song.title)
+            LinearGradient(colors: [from, to], startPoint: .topLeading, endPoint: .bottomTrailing)
         }
         .frame(width: side, height: side)
         .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
@@ -250,8 +304,8 @@ struct IslandCover: View {
 
 // MARK: closed and compact
 
-/// The closed notch (Luna's face; the song's cover and bars around her) or the compact island (Luna, the song, a mini per
-/// agent in a 2×2 grid at the right, the call's bars) (`island_small`).
+/// The closed notch (Luna's face; the song's cover and bars around her, one under the other standing up on a side) or
+/// the compact island (Luna, the song, a mini per agent in a 2×2 grid at the right, the call's bars) (`island_small`).
 struct IslandSmall: View {
     let model: IslandModel
     let compact: Bool
@@ -263,8 +317,8 @@ struct IslandSmall: View {
         let upright = model.dock.upright
         let notch = model.notch?.width ?? 0
         let state = LunaState(rawValue: snapshot.state) ?? .idle
-        let song = snapshot.song.flatMap { compact || !upright ? $0 : nil }
-        let tint = IslandInk.hex(song?.tint ?? "#1db954")
+        let song = snapshot.song
+        let colours = IslandInk.bars(song)
         var sprites: [IslandSprite] = []
         var cover: CGRect?
         var cells: [(IslandLine, CGRect)] = []
@@ -274,9 +328,12 @@ struct IslandSmall: View {
             sprites.append(.luna(center: center, size: 18, state: state, motion: "island-small"))
             if snapshot.finished { sprites.append(.check(luna: center, size: 18)) }
             if song != nil {
+                // the cover 4 from the left end and the bars' middle 12 from the right; standing up, from the top and the
+                // bottom, the bars lying down (`pill::spotify`)
                 let total = 5 * 1.5 + 4 * 1.5
-                cover = CGRect(x: 4, y: size.height / 2 - 8, width: 16, height: 16)
-                sprites.append(.bars(x: size.width - 12 - total / 2, y: size.height / 2, count: 5, bar: 1.5, gap: 1.5, tall: 11, upright: false, tint: tint))
+                let (along, across) = upright ? (size.height, size.width) : (size.width, size.height)
+                cover = upright ? CGRect(x: across / 2 - 8, y: 4, width: 16, height: 16) : CGRect(x: 4, y: across / 2 - 8, width: 16, height: 16)
+                sprites.append(.bars(x: along - 12 - total / 2, y: across / 2, count: 5, bar: 1.5, gap: 1.5, tall: 11, upright: upright, colours: colours))
             }
         } else {
             let wizard = upright ? CGPoint(x: size.width / 2, y: 24) : CGPoint(x: IslandSize.compactSide, y: size.height / 2 + 1)
@@ -299,11 +356,11 @@ struct IslandSmall: View {
                     let gridTop: CGFloat = grid?.minY ?? size.height
                     let start: CGFloat = (wizardEnd + gridTop) / 2 - pair / 2
                     cover = CGRect(x: size.width / 2 - 11, y: start, width: 22, height: 22)
-                    sprites.append(.bars(x: start + 22 + IslandPill.pairGap, y: size.width / 2, count: IslandPill.bars, bar: 1.5, gap: 3, tall: 16, upright: true, tint: tint))
+                    sprites.append(.bars(x: start + 22 + IslandPill.pairGap, y: size.width / 2, count: IslandPill.bars, bar: 1.5, gap: 3, tall: 16, upright: true, colours: colours))
                 } else {
                     let (coverX, barsX) = IslandPill.spread(rect, minis: grid, notch: notch)
                     cover = CGRect(x: coverX, y: size.height / 2 - 11, width: 22, height: 22)
-                    sprites.append(.bars(x: barsX, y: size.height / 2, count: IslandPill.bars, bar: 1.5, gap: 3, tall: 16, upright: false, tint: tint))
+                    sprites.append(.bars(x: barsX, y: size.height / 2, count: IslandPill.bars, bar: 1.5, gap: 3, tall: 16, upright: false, colours: colours))
                 }
             }
         }
@@ -373,7 +430,8 @@ struct IslandHeaderButton: View {
     }
 }
 
-/// The tabs at the left; the voice, the settings, the sound and the close at the right (`island_header`).
+/// The tabs at the left; the settings, the sound and the close at the right, the voice while the call is on
+/// (`island_header`).
 struct IslandHeader: View {
     let model: IslandModel
     @State private var hoveredTab: String?
@@ -422,9 +480,11 @@ struct IslandHeader: View {
                     .position(x: left + max(end - left, 0) / 2, y: IslandSize.headerMid)
             }
             HStack(spacing: 8) {
-                // the call is on hold (voice::CALL_ON): only one still on can be ended
-                if snapshot.voice {
-                    IslandHeaderButton(symbol: "waveform", tip: "Encerrar o chat por voz", on: true) { model.app("voice_call", ["state": "off"]) }
+                // the call on hold (`voice::CALL_ON`): no Chat por voz; one still on can be ended
+                if snapshot.callOn || snapshot.voice {
+                    IslandHeaderButton(symbol: snapshot.voice ? "waveform" : "mic", tip: snapshot.voice ? "Encerrar o chat por voz" : "Chat por voz", on: snapshot.voice) {
+                        model.app("voice_call", ["state": snapshot.voice ? "off" : "on"])
+                    }
                 }
                 IslandHeaderButton(symbol: snapshot.settings ? "gearshape.fill" : "gearshape", tip: "Ajustes da ilha", on: snapshot.settings) { model.act("settings") }
                 IslandHeaderButton(symbol: snapshot.sound ? "speaker.wave.2" : "speaker.slash", tip: snapshot.sound ? "Silenciar os sons" : "Ligar os sons") {
@@ -440,7 +500,7 @@ struct IslandHeader: View {
 
     /// Right to left, 32 apart from 25 in (`island_header`).
     private func widthOfButtons(_ snapshot: IslandSnapshot, pinned: Bool) -> CGFloat {
-        let count = 2 + (pinned ? 0 : 1) + (snapshot.voice ? 1 : 0)
+        let count = 2 + (snapshot.callOn || snapshot.voice ? 1 : 0) + (pinned ? 0 : 1)
         return CGFloat(count) * 24 + CGFloat(count - 1) * 8
     }
 }
