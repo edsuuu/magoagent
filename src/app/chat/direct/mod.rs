@@ -91,6 +91,8 @@ pub(crate) struct ChatRun {
     /// (`turn_over`) or its process exited. Something it left running (a server started in the background, an MCP
     /// call still waiting) holds the output open, and the end the reader waits for may never come (`RUN_GRACE`).
     over: Option<f64>,
+    /// Whether this run still names the chat's folder (`takes_folder`): a session's first, until it said where it is.
+    pub(super) fresh: bool,
 }
 
 /// How long a run whose turn is over waits for the end of its output before it ends all the same: the lines still on
@@ -109,7 +111,7 @@ impl ChatRun {
     /// A run of a stand-in process, for the tests: nothing comes from it.
     #[cfg(test)]
     pub(crate) fn stand_in(child: std::process::Child, since: f64) -> Self {
-        Self { child, events: channel().1, since, over: None }
+        Self { child, events: channel().1, since, over: None, fresh: false }
     }
 
     /// A run of a stand-in process whose events are what the tests send: as long as they keep the sender, its output
@@ -118,7 +120,7 @@ impl ChatRun {
     pub(crate) fn fed(child: std::process::Child, since: f64) -> (Self, std::sync::mpsc::Sender<ChatEvent>) {
         let (sender, events) = channel();
 
-        (Self { child, events, since, over: None }, sender)
+        (Self { child, events, since, over: None, fresh: false }, sender)
     }
 }
 
@@ -145,7 +147,7 @@ impl ChatRun {
         let exe = std::env::current_exe().expect("the test binary");
         let child = crate::editor::command(exe).arg("--list").stdout(std::process::Stdio::null()).spawn().expect("the test binary runs");
 
-        Self { child, events: channel().1, since, over: None }
+        Self { child, events: channel().1, since, over: None, fresh: false }
     }
 }
 
@@ -625,7 +627,7 @@ impl DrawingApp {
             transcript.echoes += 1;
         }
 
-        self.chat_runs.insert(id.to_string(), ChatRun { child, events: rx, since: self.now, over: None });
+        self.chat_runs.insert(id.to_string(), ChatRun { child, events: rx, since: self.now, over: None, fresh: !resume });
         // what Mandar de novo sends again if the login turns out to be what failed
         self.slash.sent.insert(id.to_string(), prompt.to_string());
         self.slash.retry.remove(id);
