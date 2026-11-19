@@ -3,6 +3,7 @@
 //! from the moment the app opens as Chrome's, brings it back (Mostrar in its menu, or a click on Windows and macOS) or
 //! quits (Sair); opening the app again also does it (`raise` through the bridge, main.rs). Ctrl+Q quits for real.
 
+use crate::app::system::close_ask::CloseAnswer;
 use crate::prelude::*;
 
 /// What the icon asked for.
@@ -190,6 +191,17 @@ pub(crate) fn hides_on_close(close_to_background: bool, quitting: bool, scripted
 }
 
 impl DrawingApp {
+    /// The close that keeps the app running: what is open is saved and the window goes out of sight.
+    fn hide_window(&mut self, ctx: &Context) {
+        self.save_on_exit();
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+
+        if cfg!(target_os = "linux") {
+            // Wayland can't hide a window (winit ignores Visible there): it goes to the dock instead
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+        }
+    }
+
     /// Each pass, shown or hidden: the close that hides, Ctrl+Q, the icon's asks and a second launch's `raise`.
     pub(crate) fn background_window(&mut self, ctx: &Context) {
         if !cfg!(test) && makes_icon(self.tray_tried, self.script.is_some()) {
@@ -203,13 +215,31 @@ impl DrawingApp {
         }
 
         if ctx.input(|input| input.viewport().close_requested()) && hides_on_close(self.prefs.close_to_background, self.quitting, self.script.is_some()) {
-            self.save_on_exit();
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
 
-            if cfg!(target_os = "linux") {
-                // Wayland can't hide a window (winit ignores Visible there): it goes to the dock instead
-                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+            // agents at work go on hidden only with the person's yes (close_ask.rs)
+            if self.agents_at_work().is_empty() && self.chat_queue.is_empty() {
+                self.hide_window(ctx);
+            } else {
+                self.close_ask = true;
+                self.raise_window = true;
+            }
+        }
+
+        if self.close_ask
+            && let Some(answer) = self.close_ask_ui(ctx)
+        {
+            self.close_ask = false;
+
+            match answer {
+                CloseAnswer::Background => self.hide_window(ctx),
+                CloseAnswer::StopAndClose => {
+                    let said = self.stop_all();
+
+                    self.toast(said);
+                    self.hide_window(ctx);
+                }
+                CloseAnswer::Stay => {}
             }
         }
 

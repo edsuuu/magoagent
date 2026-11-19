@@ -319,6 +319,7 @@ fn every_app_action_is_a_tool_once() {
         "connection_history",
         "tasks",
         "doubts",
+        "stop_all",
         "flow",
         "binder",
         "minimap",
