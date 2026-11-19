@@ -161,6 +161,28 @@ final class TerminalGridView: NSView, @preconcurrency NSTextInputClient {
         context.setFillColor(color.cgColor)
         if style & 4 != 0 { context.fill(CGRect(x: x, y: top + cellSize.height - 1, width: CGFloat(cells) * width, height: 1)) }
         if style & 8 != 0 { context.fill(CGRect(x: x, y: top + cellSize.height / 2, width: CGFloat(cells) * width, height: 1)) }
+        if let scalar = text.unicodeScalars.first, text.unicodeScalars.count == 1, let arms = terminalBoxArms(scalar.value) {
+            // a one-point line from the centre to each side it reaches; a round corner bends through the centre
+            let cell = CGRect(x: x, y: top, width: CGFloat(cells) * width, height: cellSize.height)
+            let centre = CGPoint(x: cell.midX, y: cell.midY)
+            let ends = [(arms.left, CGPoint(x: cell.minX, y: centre.y)), (arms.up, CGPoint(x: centre.x, y: cell.minY)),
+                        (arms.right, CGPoint(x: cell.maxX, y: centre.y)), (arms.down, CGPoint(x: centre.x, y: cell.maxY))]
+                .filter(\.0).map(\.1)
+            context.setStrokeColor(color.cgColor)
+            context.setLineWidth(1)
+            // square ends: the two arms of a corner cover its centre
+            context.setLineCap(.square)
+            if arms.round, ends.count == 2 {
+                context.move(to: ends[0])
+                context.addArc(tangent1End: centre, tangent2End: ends[1], radius: min(cell.width, cell.height) / 2)
+                context.addLine(to: ends[1])
+            } else {
+                for end in ends { context.move(to: centre); context.addLine(to: end) }
+            }
+            context.strokePath()
+            context.restoreGState()
+            return
+        }
         if let scalar = text.unicodeScalars.first, text.unicodeScalars.count == 1, let block = terminalBlockParts(scalar.value) {
             // block elements fill their cell exactly
             context.setFillColor(color.withAlphaComponent(block.alpha).cgColor)

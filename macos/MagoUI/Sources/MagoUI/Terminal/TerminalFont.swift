@@ -75,3 +75,23 @@ func terminalBlockParts(_ scalar: UInt32) -> (parts: [[CGFloat]], alpha: CGFloat
     default: return nil
     }
 }
+
+/// The arms of a light box-drawing line (─ │, the corners, tees and cross, U+2500–U+257F) from the cell's centre, and
+/// whether its corner is round (╭ ╮ ╯ ╰): drawn as lines through the cell so they join, which the fallback font's glyph
+/// (Hack's copy has none) does not, a ─ run came out dashed.
+func terminalBoxArms(_ scalar: UInt32) -> (left: Bool, up: Bool, right: Bool, down: Bool, round: Bool)? {
+    switch scalar {
+    case 0x2500: (true, false, true, false, false)
+    case 0x2502: (false, true, false, true, false)
+    case 0x250C, 0x256D: (false, false, true, true, scalar == 0x256D)
+    case 0x2510, 0x256E: (true, false, false, true, scalar == 0x256E)
+    case 0x2514, 0x2570: (false, true, true, false, scalar == 0x2570)
+    case 0x2518, 0x256F: (true, true, false, false, scalar == 0x256F)
+    case 0x251C: (false, true, true, true, false)
+    case 0x2524: (true, true, false, true, false)
+    case 0x252C: (true, false, true, true, false)
+    case 0x2534: (true, true, true, false, false)
+    case 0x253C: (true, true, true, true, false)
+    default: nil
+    }
+}
