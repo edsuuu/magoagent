@@ -152,10 +152,15 @@ impl DrawingApp {
         };
 
         match action {
-            "" | "list" => Ok(match self.chat_queue.iter().find(|(to, _)| *to == id) {
-                Some((_, text)) => format!("Na fila de {}: {text}", self.agent_label(&id)),
-                None => format!("Nada na fila de {}.", self.agent_label(&id)),
-            }),
+            "" | "list" => {
+                let queued: Vec<&str> = self.chat_queue.iter().filter(|(to, _)| *to == id).map(|(_, text)| text.as_str()).collect();
+
+                Ok(if queued.is_empty() {
+                    format!("Nada na fila de {}.", self.agent_label(&id))
+                } else {
+                    format!("Na fila de {}: {}", self.agent_label(&id), queued.join("\n\n"))
+                })
+            }
             "send_now" => self.send_queued_now(&id),
             "edit" => {
                 if !self.has_queued(&id) {

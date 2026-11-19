@@ -25,6 +25,59 @@ fn press(app: &mut DrawingApp, ctx: &Context, time: &mut f64, at: Pos2, bar: boo
     sent
 }
 
+/// A press at `from` held while the pointer goes 2 and then 12 to the right, and let go: what each frame sent, the
+/// frames given by `frame` (events, seconds after the first).
+#[cfg(not(target_os = "macos"))]
+fn drag_bar(frame: &mut dyn FnMut(Vec<egui::Event>, f64) -> Vec<egui::ViewportCommand>, from: Pos2) -> Vec<egui::ViewportCommand> {
+    let mut sent = frame(vec![egui::Event::PointerMoved(from), button(from, true)], 0.0);
+
+    sent.extend(frame(vec![egui::Event::PointerMoved(from + Vec2::new(2.0, 0.0))], 0.02));
+    assert!(sent.is_empty(), "2 is not a move yet: {sent:?}");
+    sent.extend(frame(vec![egui::Event::PointerMoved(from + Vec2::new(12.0, 0.0))], 0.04));
+    sent.extend(frame(vec![button(from + Vec2::new(12.0, 0.0), false)], 0.06));
+    sent
+}
+
+/// The press is read before the main window's frame, when egui's areas are those of the window it drew last: with
+/// the island's drawn in between (its own areas, none on the bar), the bar still moves the window and maximizes.
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn the_island_drawn_in_between_leaves_the_bar_working() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let island = egui::ViewportId::from_hash_of("island");
+
+    app.prefs.sidebar_hidden = true;
+
+    let frame = |app: &mut DrawingApp, time: f64, events: Vec<egui::Event>| {
+        let sent = menu_frame(app, &ctx, time, events, true);
+        // the island's window, a frame of its own right after
+        let viewports = [(island, Default::default())].into_iter().collect();
+        let raw = egui::RawInput { viewport_id: island, viewports, time: Some(time + 0.01), ..Default::default() };
+
+        let mut output = ctx.run_ui(raw, |ui| {
+            egui::Area::new(egui::Id::unique("island_pill")).fixed_pos(Pos2::ZERO).show(ui.ctx(), |ui| ui.allocate_space(Vec2::new(40.0, 20.0)));
+        });
+
+        output.textures_delta.clear();
+        sent
+    };
+
+    for step in 0..3 {
+        frame(&mut app, step as f64 * 0.1, vec![]);
+    }
+
+    let empty = Pos2::new(600.0, TITLE_BAR / 2.0);
+
+    assert_eq!(drag_bar(&mut |events, at| frame(&mut app, 1.0 + at, events), empty), vec![egui::ViewportCommand::StartDrag]);
+    let mut sent = frame(&mut app, 3.0, vec![egui::Event::PointerMoved(empty), button(empty, true)]);
+
+    sent.extend(frame(&mut app, 3.05, vec![button(empty, false)]));
+    sent.extend(frame(&mut app, 3.2, vec![button(empty, true)]));
+    sent.extend(frame(&mut app, 3.25, vec![button(empty, false)]));
+    assert_eq!(sent, vec![egui::ViewportCommand::Maximized(true)]);
+}
+
 /// As in the reference app: ☰ beside the window buttons opens the folded sidebar, where Ajustes is.
 #[cfg(target_os = "macos")]
 #[test]
@@ -145,13 +198,19 @@ fn the_title_bar_holds_the_top_buttons_and_moves_the_window() {
     assert!(!app.settings_open && !app.chat_open, "and both close");
     menu_frame(&mut app, &ctx, time, vec![], true);
     menu_frame(&mut app, &ctx, time, vec![], true);
-    // a press on the empty bar moves the window at once (no waiting for a drag), a second one maximizes
+    // a press on the empty bar and the pointer going on with the button down move the window, a second press maximizes
     let empty = Pos2::new(300.0, TITLE_BAR / 2.0);
 
     time += 1.0;
-    let sent = press(&mut app, &ctx, &mut time, empty, true);
+    assert!(press(&mut app, &ctx, &mut time, empty, true).is_empty(), "a click alone is half of a double-click: no move");
+    time += 1.0;
+    assert_eq!(drag_bar(&mut |events, at| menu_frame(&mut app, &ctx, time + at, events, true), empty), vec![egui::ViewportCommand::StartDrag]);
+    // the button already up when the frame gets to the move: none (the window would go on following the pointer)
+    time += 1.0;
+    let past = empty + Vec2::new(12.0, 0.0);
+    let flick = vec![egui::Event::PointerMoved(empty), button(empty, true), egui::Event::PointerMoved(past), button(past, false)];
 
-    assert_eq!(sent, vec![egui::ViewportCommand::StartDrag]);
+    assert!(menu_frame(&mut app, &ctx, time, flick, true).is_empty());
     time += 1.0;
     let mut sent = press(&mut app, &ctx, &mut time, empty, true);
 
@@ -243,7 +302,9 @@ fn the_title_bar_moves_the_window_with_ajustes_open() {
     };
 
     time += 1.0;
-    assert_eq!(press(&mut app, &mut time, empty), vec![egui::ViewportCommand::StartDrag]);
+    let at = time;
+
+    assert_eq!(drag_bar(&mut |events, step| frame(&mut app, at + step, events), empty), vec![egui::ViewportCommand::StartDrag]);
     assert!(app.settings_open, "the press moved the window, it did not close Ajustes");
     time += 1.0;
     let mut sent = press(&mut app, &mut time, empty);
@@ -310,7 +371,10 @@ fn the_window_buttons_stay_over_the_welcome() {
     let minimize = caption(2);
 
     assert_eq!(press(&mut app, &mut time, minimize), vec![egui::ViewportCommand::Minimized(true)]);
-    assert_eq!(press(&mut app, &mut time, Pos2::new(300.0, TITLE_BAR / 2.0)), vec![egui::ViewportCommand::StartDrag]);
+    let at = time;
+
+    assert_eq!(drag_bar(&mut |events, step| frame(&mut app, at + step, events), Pos2::new(300.0, TITLE_BAR / 2.0)), vec![egui::ViewportCommand::StartDrag]);
+    time += 1.0;
     assert!(press(&mut app, &mut time, close).contains(&egui::ViewportCommand::Close));
     assert!(app.welcome.is_some(), "the welcome stays");
 }

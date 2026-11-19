@@ -166,6 +166,10 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_popup: bool,
     /// The last press on the title bar's empty stretch, for a second one to maximize.
     pub(crate) caption_press: Option<(f64, Pos2)>,
+    /// A press on the bar's empty stretch still held and not a move yet: where it was and where the pointer is now.
+    pub(crate) caption_held: Option<(Pos2, Pos2)>,
+    /// The bar as the main window's last frame drew it (ui/titlebar.rs::CaptionMap).
+    pub(crate) caption_map: crate::app::ui::titlebar::CaptionMap,
     /// The top-left buttons as the title bar last drew them: their presses are not the window's drag.
     pub(crate) title_buttons: Rect,
     /// What the sidebar's Filtrar holds: the spaces listed are the ones with it in their name.
