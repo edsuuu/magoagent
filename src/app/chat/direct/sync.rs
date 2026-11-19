@@ -11,6 +11,15 @@ fn renamed(cwd: &mut String, named: &str) -> bool {
     news
 }
 
+/// The folder a session's first run says it is in, once: it is where Claude Code files the conversation, as it names
+/// it (links resolved). A resumed run's is not taken: the agent may have moved (a `cd`), and a chat that followed it
+/// looked for its conversation in a folder that never had it.
+fn takes_folder<'a>(fresh: &mut bool, event: &'a Value) -> Option<&'a str> {
+    let cwd = event["cwd"].as_str().filter(|_| event["type"] == "system" && event["subtype"] == "init")?;
+
+    std::mem::take(fresh).then_some(cwd)
+}
+
 impl DrawingApp {
     /// Esc: the answer stops where it is.
     pub(crate) fn chat_stop(&mut self, id: &str) {
@@ -102,10 +111,7 @@ impl DrawingApp {
                         // one may go on as a copy)
                         let mut named = false;
 
-                        if value["type"] == "system"
-                            && value["subtype"] == "init"
-                            && let Some(cwd) = value["cwd"].as_str()
-                        {
+                        if let Some(cwd) = self.chat_runs.get_mut(&id).and_then(|run| takes_folder(&mut run.fresh, &value)) {
                             // a Claude Code in WSL names it as Linux does (system/wsl.rs): the chat keeps Windows' name
                             let cwd = match wsl_distro() {
                                 Some(distro) if cfg!(windows) && cwd.starts_with('/') => windows_path(&distro.name, cwd),
@@ -338,5 +344,19 @@ mod tests {
         assert!(super::renamed(&mut cwd, "/home/eu/p"), "chats.json has to hear of it");
         assert_eq!(cwd, "/home/eu/p");
         assert!(!super::renamed(&mut cwd, "/home/eu/p"), "nothing new, nothing to save");
+    }
+
+    #[test]
+    fn only_a_sessions_first_run_says_where_the_chat_is() {
+        let init = serde_json::json!({ "type": "system", "subtype": "init", "cwd": "/home/eu/p/sub" });
+        let mut fresh = true;
+
+        assert_eq!(super::takes_folder(&mut fresh, &serde_json::json!({ "type": "assistant", "cwd": "/x" })), None);
+        assert_eq!(super::takes_folder(&mut fresh, &init), Some("/home/eu/p/sub"));
+        assert_eq!(super::takes_folder(&mut fresh, &init), None, "once");
+
+        let mut resumed = false;
+
+        assert_eq!(super::takes_folder(&mut resumed, &init), None, "the agent moved: the conversation did not");
     }
 }
