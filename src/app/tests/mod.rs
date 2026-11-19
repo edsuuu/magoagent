@@ -6,6 +6,7 @@ mod changelog;
 mod changes_pane;
 mod chat;
 mod chat_card;
+mod chat_images;
 mod chat_node;
 mod chat_queue;
 mod chats_view;
