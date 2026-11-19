@@ -154,3 +154,39 @@ fn a_portal_gone_leaves_nothing_behind() {
     assert_eq!(app.portal_motion.keys().collect::<Vec<_>>(), ["fica"]);
     assert_eq!(app.portal_snaps.keys().collect::<Vec<_>>(), ["fica"]);
 }
+
+/// macOS with SwiftUI drawing the canvas: the card's bar comes as topic `portals` under egui's rules, and its buttons and
+/// address do what egui's do (browser/native.rs).
+#[cfg(target_os = "macos")]
+#[test]
+fn swiftui_draws_the_bar_egui_would_and_runs_its_buttons() {
+    let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
+    let mut portal = app.new_element(ElementKind::Rectangle { x: 40.0, y: 40.0, width: 600.0, height: 400.0 });
+    portal.portal = Some(PortalSpec { name: "Docs".into(), url: "https://exemplo.com/docs".into(), ..Default::default() });
+    let id = portal.id.clone();
+    app.scene.elements.push(portal);
+    let card = |app: &DrawingApp| serde_json::to_value(app.portals_topic()).unwrap()["cards"][&id].clone();
+    assert_eq!((card(&app)["address"].as_str(), card(&app)["url"].as_str()), (Some("exemplo.com/docs"), Some("https://exemplo.com/docs")));
+    assert_eq!((card(&app)["bar"].as_bool(), card(&app)["hidden"].as_bool()), (Some(true), Some(false)));
+    // too small on screen for a live bar, as egui's `chrome_live`
+    app.zoom = 0.3;
+    assert_eq!(card(&app)["bar"], false);
+    app.zoom = 1.0;
+    // a dialog over the canvas hides it, as the page
+    app.export_open = true;
+    assert_eq!(card(&app)["bar"], false);
+    app.export_open = false;
+    // the address typed in the bar goes to the open tab
+    app.native_browser_act("navigate", &json!({ "portal": id, "url": "outro.dev" })).unwrap();
+    assert_eq!(app.scene.elements[0].portal.as_ref().unwrap().url, "https://outro.dev");
+    assert_eq!(card(&app)["address"], "outro.dev");
+    assert!(app.native_browser_act("back", &json!({ "portal": "nenhum" })).is_err(), "a portal that is not there says so");
+    assert!(app.native_browser_act("voar", &json!({ "portal": id })).is_err());
+    // Design's Enviar shows with its agent and text; Cancelar sends nothing and takes it away
+    let ask = design::DesignConfirm { portal: id.clone(), agent: "a".into(), name: "Agente".into(), prompt: "texto".into(), since: 0.0 };
+    app.design_confirm = Some(ask);
+    let topic = serde_json::to_value(app.portals_topic()).unwrap();
+    assert_eq!((topic["confirm"]["name"].as_str(), topic["confirm"]["prompt"].as_str()), (Some("Agente"), Some("texto")));
+    app.native_browser_act("send", &json!({ "send": false })).unwrap();
+    assert!(app.design_confirm.is_none() && serde_json::to_value(app.portals_topic()).unwrap()["confirm"].is_null());
+}

@@ -138,7 +138,9 @@ impl DrawingApp {
             })
             .collect();
         self.forget_portals(&live.iter().map(|(id, ..)| id.as_str()).collect::<Vec<_>>());
-        let marquee = self.marquee.zip(self.last_pointer).map(|(start, end)| Rect::from_two_pos(self.to_screen(start), end));
+        // SwiftUI drawing the canvas stacks its own over the pages, and egui's areas are not on screen: no holes
+        let swift = pages_in_swift();
+        let marquee = self.marquee.zip(self.last_pointer).filter(|_| !swift).map(|(start, end)| Rect::from_two_pos(self.to_screen(start), end));
         if self.design.as_ref().is_some_and(|d| !live.iter().any(|(live, ..)| *live == d.portal)) {
             self.design = None;
         }
@@ -199,7 +201,7 @@ impl DrawingApp {
                 view.shown = None;
             }
             view.tabs = tabs;
-            let mut holes = rect.map_or(Vec::new(), |r| Self::page_holes(ctx, r, &card_parts, &fronts));
+            let mut holes = rect.filter(|_| !swift).map_or(Vec::new(), |r| Self::page_holes(ctx, r, &card_parts, &fronts));
             // the selection box stays on top: its outline cuts through the page
             if let (Some(r), Some(m)) = (rect, marquee) {
                 holes.extend(marquee_edges(m).into_iter().map(|e| e.intersect(r)).filter(|e| e.width() >= 1.0 && e.height() >= 1.0));

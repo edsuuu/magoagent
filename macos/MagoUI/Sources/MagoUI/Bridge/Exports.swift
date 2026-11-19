@@ -25,6 +25,13 @@ public func magoUIStop() {
     MainActor.assumeIsolated { MagoStore.shared.stop() }
 }
 
+/// A NSView do canvas onde o Rust põe as páginas dos navegadores (Browser/PageHost.swift); nil fora de uma janela.
+@_cdecl("mago_ui_page_host")
+public func magoUIPageHost() -> UnsafeMutableRawPointer? {
+    let address = MainActor.assumeIsolated { PageHostView.live.map { UInt(bitPattern: Unmanaged.passUnretained($0).toOpaque()) } }
+    return address.flatMap { UnsafeMutableRawPointer(bitPattern: $0) }
+}
+
 /// Uma fonte do app vinda do Rust (Assistant, Excalifont, Hack): registrada para o processo, as vistas a usam pelo nome
 /// (`Font.app`, `CTFontCreateWithName("Hack")`).
 @_cdecl("mago_ui_font")

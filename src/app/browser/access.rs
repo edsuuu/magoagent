@@ -9,10 +9,21 @@ impl DrawingApp {
         for element in self.scene.elements.iter().filter(|e| e.portal.is_some()) {
             let Some(rect) = self.portal_page_rect(element) else { continue };
             let Some(tab) = self.open_tab_view(&element.id) else { continue };
-            let frame = tab.webview.webview().frame();
+            let view = tab.webview.webview();
+            let frame = view.frame();
+            // and where that is in its window, which is egui's or, with SwiftUI drawing the canvas, SwiftUI's
+            // SAFETY: plain view-tree lookups on the main thread
+            let in_window = unsafe { view.superview() }.map(|parent| parent.convertRect_toView(frame, None));
+            let window = view.window().map(|window| window.title().to_string()).unwrap_or_default();
             eprintln!(
-                "pagina {}: no canvas {:?}, nativa origem ({}, {}) tamanho {}x{}",
-                element.id, rect, frame.origin.x, frame.origin.y, frame.size.width, frame.size.height
+                "pagina {}: no canvas {:?}, nativa origem ({}, {}) tamanho {}x{}, visível {}, na janela \"{window}\" em {in_window:?}",
+                element.id,
+                rect,
+                frame.origin.x,
+                frame.origin.y,
+                frame.size.width,
+                frame.size.height,
+                !view.isHidden()
             );
             let (zoom, file) = (self.terminal_frame(element).1 as f64, format!("{path}-{}.png", element.id));
             let css = [0.0, 0.0, frame.size.width / zoom, frame.size.height / zoom];

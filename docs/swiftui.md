@@ -26,6 +26,7 @@ void mago_ui_start(const MagoCallbacks *callbacks);        // Rust → Swift, um
 void mago_ui_publish(const char *topic, const char *json); // Rust → Swift, a cada tópico que mudou
 void mago_ui_stop(void);                                   // Rust → Swift, ao fechar
 void mago_ui_font(const unsigned char *bytes, unsigned long length); // Rust → Swift, as fontes do app no começo
+void *mago_ui_page_host(void);                             // Rust → Swift, a NSView do canvas onde ficam as páginas
 ```
 
 - Textos em UTF-8 terminados em zero, válidos só durante a chamada (quem recebe copia).
@@ -117,9 +118,15 @@ As fontes do app (Assistant da interface, Excalifont do traço à mão, Hack do 
 (`mago_ui_font`) e ficam registradas para o processo: a interface usa `Font.app(tamanho)` (a Assistant, só regular, como o
 egui; o seminegrito do egui é o do sistema, `.system(size:weight: .semibold)`) e o terminal pede a "Hack" pelo nome. Nada de fonte do sistema onde o egui usa a do app.
 
-`MagoViews` guarda as vistas que uma área oferece a outra sem dependência ao compilar: `canvas`, `chats`, `settings`
-(`() -> AnyView`) e `chat`, `terminal`, `filetree` (`(id) -> AnyView`). A área registra no `start()`; quem embute lê e
-mostra outra coisa enquanto é nil.
+`MagoViews` guarda as vistas que uma área oferece a outra sem dependência ao compilar: `canvas`, `chats`, `settings`,
+`pages` (`() -> AnyView`) e `chat`, `terminal`, `filetree`, `portal` (`(id) -> AnyView`). A área registra no `start()`;
+quem embute lê e mostra outra coisa enquanto é nil.
+
+Os navegadores do canvas (`Browser/`, começa junto com o `canvas`; o Rust em `src/app/browser/native.rs`): a página é o
+WKWebView do wry, feito e posto pelo Rust (`sync_portals`, os mesmos pontos do egui) dentro da `PageHostView`, uma NSView
+do tamanho do canvas que o canvas põe por cima dos cartões (`MagoViews.pages`) e que o Rust pede por `mago_ui_page_host`
+(nil fora de uma janela: aí as páginas esperam). `MagoViews.portal(id)` é o corpo do cartão com a barra (tópico
+`portals`, verbos `ui.browser.*`).
 
 ## Como compilar
 
