@@ -1,13 +1,14 @@
 //! macOS: compiles the SwiftUI interface (macos/MagoUI, a SwiftPM static library) and links it with the Swift runtime.
 //! Every other system: nothing. The contract is in docs/swiftui.md.
 
-use std::{path::Path, process::Command};
+use std::{path::PathBuf, process::Command};
 
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
         return;
     }
-    let package = Path::new(env!("CARGO_MANIFEST_DIR")).join("macos/MagoUI");
+    // read at run time: the compiled build script is shared between checkouts (worktrees) of the same target dir
+    let package = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR")).join("macos/MagoUI");
     println!("cargo:rerun-if-changed={}", package.join("Package.swift").display());
     println!("cargo:rerun-if-changed={}", package.join("Sources").display());
     println!("cargo:rerun-if-env-changed=SDKROOT");
