@@ -57,7 +57,8 @@ struct ShellContent: View {
     /// What fills the window beside the sidebar, and the chrome that floats over it.
     private var canvasColumn: some View {
         ZStack(alignment: .top) {
-            content.ignoresSafeArea()
+            content.ignoresSafeArea().padding(.trailing, PanesModel.shared.inset)
+            PaneColumn()
             if !chats {
                 VStack(spacing: 8) {
                     ToolbarView(state: state)
@@ -85,7 +86,7 @@ struct ShellContent: View {
                         FloorsPill(state: state, sheet: $sheet)
                         ZoomPill(state: state)
                     }
-                    .padding(10)
+                    .padding(10).padding(.trailing, PanesModel.shared.inset)
                 }
             }
             if let toast {

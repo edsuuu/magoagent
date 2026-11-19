@@ -15,8 +15,8 @@ const DIFF_LINES: usize = 400;
 /// A row of the diff.
 const LINE: f32 = 17.0;
 /// The background of an added and of a removed line.
-pub(super) const ADDED_ROW: Color32 = Color32::from_rgba_unmultiplied_const(46, 160, 67, 40);
-pub(super) const REMOVED_ROW: Color32 = Color32::from_rgba_unmultiplied_const(248, 81, 73, 40);
+pub(crate) const ADDED_ROW: Color32 = Color32::from_rgba_unmultiplied_const(46, 160, 67, 40);
+pub(crate) const REMOVED_ROW: Color32 = Color32::from_rgba_unmultiplied_const(248, 81, 73, 40);
 
 /// A line of the diff: `+`, `-`, ` ` or `…` (stretches apart), its numbers in the HEAD and in the file now, its text
 /// and its colors (byte ranges of `text` and their kind).
@@ -110,21 +110,13 @@ pub(crate) fn token_color(kind: St, dark: bool, text: Color32) -> Color32 {
     }
 }
 
-/// A line's text in its colors, tabs as four spaces.
-fn line_job(line: &DiffLine, font: &FontId, dark: bool, text: Color32) -> LayoutJob {
-    let mut job = LayoutJob::default();
-
-    let format = |kind: St| TextFormat {
-        font_id: font.clone(),
-        color: token_color(kind, dark, text),
-        italics: matches!(kind, St::Doc),
-        valign: egui::Align::Center,
-        ..Default::default()
-    };
+/// A line's text in stretches of one kind each, tabs as four spaces (the SwiftUI panel paints the same stretches).
+pub(crate) fn line_parts(line: &DiffLine) -> Vec<(String, St)> {
+    let mut parts = Vec::new();
 
     let mut push = |range: std::ops::Range<usize>, kind: St| {
         if let Some(part) = line.text.get(range).filter(|p| !p.is_empty()) {
-            job.append(&part.replace('\t', "    "), 0.0, format(kind));
+            parts.push((part.replace('\t', "    "), kind));
         }
     };
 
@@ -140,6 +132,25 @@ fn line_job(line: &DiffLine, font: &FontId, dark: bool, text: Color32) -> Layout
     }
 
     push(at..line.text.len(), St::Text);
+    parts
+}
+
+/// A line's text in its colors.
+fn line_job(line: &DiffLine, font: &FontId, dark: bool, text: Color32) -> LayoutJob {
+    let mut job = LayoutJob::default();
+
+    for (part, kind) in line_parts(line) {
+        let format = TextFormat {
+            font_id: font.clone(),
+            color: token_color(kind, dark, text),
+            italics: matches!(kind, St::Doc),
+            valign: egui::Align::Center,
+            ..Default::default()
+        };
+
+        job.append(&part, 0.0, format);
+    }
+
     job
 }
 

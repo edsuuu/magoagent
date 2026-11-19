@@ -9,7 +9,7 @@
 //! `native_filetree_act` as `ui.filetree.<verb>` (verbs.rs).
 
 mod doc;
-mod snapshot;
+pub(crate) mod snapshot;
 #[cfg(test)]
 mod tests;
 mod verbs;

@@ -245,6 +245,21 @@ impl DrawingApp {
 
                 return Ok(String::new());
             }
+            // the footer's Processos (procs.rs): its rows, the chip with how many and their memory, the menus' colors
+            "processes" => {
+                let rows = self.terminal_processes(&id);
+                let total: u64 = rows.iter().filter_map(|row| row.bytes).sum();
+                let colors = crate::app::ui::menu_look::menu_colors(self.dark());
+                let rgba = |color: Color32| color.to_srgba_unmultiplied();
+
+                let answer = json!({
+                    "chip": (!rows.is_empty()).then(|| format!("{} · {} MB", rows.len(), (total as f64 / 1048576.0).round())),
+                    "rows": rows.iter().map(|row| json!({"pid": row.pid, "name": row.name, "memory": crate::app::terminal::procs::memory_text(row.bytes)})).collect::<Vec<_>>(),
+                    "look": {"bg": rgba(colors.bg), "border": rgba(colors.border), "text": rgba(colors.text), "muted": rgba(colors.muted), "hover": rgba(colors.hover)},
+                });
+
+                return Ok(answer.to_string());
+            }
             "focus" => {
                 let on = args["focused"].as_bool().unwrap_or(true);
 
@@ -433,6 +448,32 @@ mod tests {
         }
 
         panic!("{text} never showed");
+    }
+
+    #[test]
+    fn processos_lists_the_shells_children_with_their_chip_and_colors() {
+        let (mut app, id) = app_running("sh", &["-c", "sleep 30; echo fim"]);
+        let mut answer = Value::Null;
+
+        for _ in 0..60 {
+            answer = serde_json::from_str(&app.native_terminal_act("processes", &json!({ "id": id })).unwrap()).unwrap();
+
+            if !answer["rows"].as_array().unwrap().is_empty() {
+                break;
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+
+        let rows = answer["rows"].as_array().unwrap();
+
+        assert!(!rows.is_empty(), "the sleep runs under the shell: {answer}");
+        assert!(rows[0]["pid"].as_u64().is_some_and(|pid| pid > 0) && rows[0]["memory"].is_string());
+        assert!(answer["chip"].as_str().is_some_and(|chip| chip.starts_with(&format!("{} · ", rows.len())) && chip.ends_with(" MB")), "{answer}");
+        let bg = crate::app::ui::menu_look::menu_colors(app.dark()).bg.to_srgba_unmultiplied();
+
+        assert_eq!(answer["look"]["bg"], json!(bg), "the menus' surface");
+        assert!(app.native_terminal_act("processes", &json!({ "id": "nenhum" })).is_err());
     }
 
     #[test]

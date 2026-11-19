@@ -258,6 +258,7 @@ impl DrawingApp {
             Some(("browser", verb)) => self.native_browser_act(verb, args),
             Some(("island", verb)) => self.native_island_act(verb, args),
             Some(("shell", verb)) => self.native_shell_act(verb, args),
+            Some(("panes", verb)) => self.native_panes_act(verb, args),
             Some(("filetree", verb)) => self.native_filetree_act(verb, args),
             Some(("terminal", verb)) => self.native_terminal_act(verb, args),
             Some(("settings", verb)) => self.native_settings_act(verb, args),

@@ -20,13 +20,13 @@ fn hex_alpha(color: Color32) -> String {
 /// A row's or a tab's icon: an embedded SVG by key (`filetree:icons`), or a lookalike badge (a colored box with letters).
 #[derive(Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct IconRef {
+pub(crate) struct IconRef {
     key: Option<&'static str>,
     label: Option<&'static str>,
     color: Option<String>,
 }
 
-pub(super) fn icon_of(path: &Path, dir: bool) -> IconRef {
+pub(crate) fn icon_of(path: &Path, dir: bool) -> IconRef {
     let svg = |key| IconRef { key: Some(key), label: None, color: None };
 
     if dir {

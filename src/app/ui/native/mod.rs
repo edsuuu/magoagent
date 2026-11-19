@@ -9,6 +9,7 @@
 mod act;
 mod menu;
 mod model;
+mod panes;
 mod sidebar;
 #[cfg(test)]
 mod tests;
@@ -27,6 +28,7 @@ impl DrawingApp {
         }
 
         crate::app::native::publish("shell", &self.shell_model());
+        self.native_panes();
     }
 
     /// The `ui.shell.<verb>` Swift sent.
