@@ -74,7 +74,7 @@ fn prose_blocks(ui: &mut egui::Ui, part: &str, c: &UiColors, dark: bool, width: 
 
 /// Splits the lines of a run of words into blocks: (is a table, its lines). Blank lines end a
 /// paragraph; a table starts at a `|` line whose next line is its |---| row.
-fn blocks(lines: &[&str]) -> Vec<(bool, std::ops::Range<usize>)> {
+pub(crate) fn blocks(lines: &[&str]) -> Vec<(bool, std::ops::Range<usize>)> {
     let table_at = |i: usize| lines[i].trim_start().starts_with('|') && lines.get(i + 1).is_some_and(|l| rule(l.trim_start()));
     let mut out = vec![];
     let mut i = 0;
@@ -313,7 +313,7 @@ fn md_runs(job: &mut LayoutJob, ghost: &mut LayoutJob, text: &str, size: f32, co
 
 /// A run between ** marks cut at its *italics* (or _italics_): (words, italic). A mark opens before a letter and closes
 /// after one, `_` only outside a word (snake_case stays as written); a mark with no pair is just a character.
-fn emphasis(run: &str) -> Vec<(&str, bool)> {
+pub(crate) fn emphasis(run: &str) -> Vec<(&str, bool)> {
     let chars: Vec<(usize, char)> = run.char_indices().collect();
     let at = |index: usize| chars.get(index).map(|&(_, letter)| letter);
     let (mut out, mut start, mut index) = (Vec::new(), 0, 0);
@@ -538,7 +538,7 @@ fn rule(line: &str) -> bool {
 }
 
 /// The cells of a table's rows, without the |---| row; their ** and ` marks stay for `md_line`.
-fn table_cells<'a>(rows: &[&'a str]) -> Vec<Vec<&'a str>> {
+pub(crate) fn table_cells<'a>(rows: &[&'a str]) -> Vec<Vec<&'a str>> {
     rows.iter().copied().filter(|r| !rule(r)).map(|r| r.trim().trim_matches('|').split('|').map(str::trim).collect()).collect()
 }
 

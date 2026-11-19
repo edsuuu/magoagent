@@ -1,5 +1,6 @@
-// The chat's snapshots as Rust publishes them (src/app/chat/native.rs): "chats" for the list, "chat:<id>" for one
-// conversation. Keys arrive snake_case: the few with an underscore are named in CodingKeys.
+// The chat's snapshots as Rust publishes them (src/app/chat/native/): "chats" for the list (list.rs), "chat:<id>" for one
+// conversation (snapshot.rs, words.rs). Keys arrive snake_case: `MagoStore.decode` reads them as they are, so the few
+// with an underscore are named in CodingKeys.
 import Foundation
 
 struct ChatsSnapshot: Decodable, Equatable {
@@ -10,11 +11,14 @@ struct ChatsSnapshot: Decodable, Equatable {
     let counts: [Int]
     let running: Int
     let waiting: Int
+    /// A chip or a search picks what shows: the teams show open, with no fold.
+    let looking: Bool
     let groups: [ChatGroup]
 }
 
 struct ChatGroup: Decodable, Equatable, Identifiable {
     let name: String
+    let color: [Int]
     let entries: [ChatEntry]
     var id: String { name }
 }
@@ -23,10 +27,33 @@ struct ChatEntry: Decodable, Equatable, Identifiable {
     let id: String
     let name: String
     let state: String
+    let ended: Bool
     let last: String
     let ago: String
     let color: [Int]
     let chat: Bool
+    let answers: [ChatAnswer]
+    let team: [ChatEntry]
+    let teamSummary: String?
+    let teamOpen: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, state, ended, last, ago, color, chat, answers, team
+        case teamSummary = "team_summary"
+        case teamOpen = "team_open"
+    }
+}
+
+/// A button that answers a row right there: ["Permitir", true] (its label, and whether it is the main one).
+struct ChatAnswer: Decodable, Equatable {
+    let label: String
+    let main: Bool
+
+    init(from decoder: Decoder) throws {
+        var pair = try decoder.unkeyedContainer()
+        label = try pair.decode(String.self)
+        main = try pair.decode(Bool.self)
+    }
 }
 
 struct ChatSnapshot: Decodable, Equatable {
@@ -34,6 +61,7 @@ struct ChatSnapshot: Decodable, Equatable {
     let title: String
     let agent: String
     let folder: String
+    let claude: Bool
     let state: String
     let status: String
     let isChat: Bool
@@ -43,17 +71,26 @@ struct ChatSnapshot: Decodable, Equatable {
     let items: [ChatItem]
     let band: ChatBand?
     let ask: ChatAsk?
+    let waiting: ChatWaiting?
     let queue: [String]
+    let team: [String]
     let draft: String
     let draftSeq: UInt64
     let hint: String
     let slash: [SlashEntry]
     let chips: ChatChips?
+    /// Buscar na conversa: the words searched ("" not searching).
+    let query: String
+    /// The pictures that go with the next message: [where it came from, its path].
+    let attached: [[String]]
+    let attachedTotal: String
 
     enum CodingKeys: String, CodingKey {
-        case id, title, agent, folder, state, status, fresh, providers, earlier, items, band, ask, queue, draft, hint, slash, chips
+        case id, title, agent, folder, claude, state, status, fresh, providers, earlier, items, band, ask, waiting, queue, team, draft, hint, slash, chips, query,
+            attached
         case isChat = "is_chat"
         case draftSeq = "draft_seq"
+        case attachedTotal = "attached_total"
     }
 }
 
@@ -64,6 +101,7 @@ struct ChatProvider: Decodable, Equatable, Identifiable {
     var id: String { program }
 }
 
+/// A message (user, agent, system, divider, error, image) or a run of tool steps (tools).
 struct ChatItem: Decodable, Equatable, Identifiable {
     let id: String
     let kind: String
@@ -72,14 +110,43 @@ struct ChatItem: Decodable, Equatable, Identifiable {
     let steps: [ChatStep]?
     let summary: String?
     let folded: Bool
+    let media: [ChatPart]?
     let from: String?
     let hint: String?
 }
 
+/// A piece of the agent's words: text (paragraphs and tables), code, image, web or file.
 struct ChatPart: Decodable, Equatable {
     let kind: String
-    let text: String
+    let text: String?
     let info: String?
+    let detail: String?
+    let opens: String?
+    let paras: [ChatPara]?
+}
+
+/// A paragraph (its lines, a bubble) or a table (its rows of cells, the first the header).
+struct ChatPara: Decodable, Equatable {
+    let lines: [ChatLine]?
+    let rows: [[[ChatRun]]]?
+}
+
+/// text, heading (level 1 to 3), quote or item (its mark; level is its indentation).
+struct ChatLine: Decodable, Equatable {
+    let kind: String
+    let level: Int?
+    let mark: String?
+    let runs: [ChatRun]
+}
+
+struct ChatRun: Decodable, Equatable {
+    let text: String
+    let bold: Bool?
+    let italic: Bool?
+    let code: Bool?
+    /// A file it names: a click opens it in the Árvore.
+    let path: String?
+    let line: Int?
 }
 
 struct ChatStep: Decodable, Equatable, Identifiable {
@@ -88,11 +155,24 @@ struct ChatStep: Decodable, Equatable, Identifiable {
     let what: String
     let note: String
     let failed: Bool
-    let running: Bool
+    /// done, running or waiting.
+    let live: String
+    let ended: Bool
     let diff: [Int]?
-    let input: String
     let output: String
+    let head: String
+    let files: [String]
+    let inputLabel: String
+    let input: String
+    let log: String
+    let logCut: Bool
     let error: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, what, note, failed, live, ended, diff, output, head, files, input, log, error
+        case inputLabel = "input_label"
+        case logCut = "log_cut"
+    }
 }
 
 struct ChatBand: Decodable, Equatable {
@@ -104,8 +184,15 @@ struct ChatBand: Decodable, Equatable {
 }
 
 struct ChatAsk: Decodable, Equatable {
+    let head: String
     let tool: String
+    let summary: String
+    let outside: Bool
     let questions: [ChatQuestion]
+    let step: Int
+    let picked: [[Int]]
+    let other: [String]
+    let complete: Bool
 }
 
 struct ChatQuestion: Decodable, Equatable, Identifiable {
@@ -114,6 +201,16 @@ struct ChatQuestion: Decodable, Equatable, Identifiable {
     let multiple: Bool
     let options: [[String]]
     var id: String { text }
+}
+
+/// A terminal stopped on a question only its screen answers.
+struct ChatWaiting: Decodable, Equatable {
+    let head: String
+    let why: String
+    let question: String
+    let choices: [String]
+    let marked: Int
+    let screen: String
 }
 
 struct SlashEntry: Decodable, Equatable, Identifiable {
@@ -150,4 +247,8 @@ struct ChatChoice: Decodable, Equatable, Identifiable {
     let id: String
     let name: String
     let note: String
+}
+
+extension Array {
+    subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
 }

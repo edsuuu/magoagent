@@ -243,18 +243,34 @@ impl DrawingApp {
         ui.painter().galley(Pos2::new(right - total.size().x - 4.0, bottom - total.size().y - 2.0), total, under);
 
         if let Some(k) = remove {
-            let gone = self.chat_pics.borrow_mut().attached.remove(k);
-
-            // a paste is a file of ours nobody will read now
-            if gone.pasted {
-                let _ = fs::remove_file(gone.path);
-            }
+            self.unattach(k);
         } else if let Some(k) = open {
             let mut pics = self.chat_pics.borrow_mut();
             let viewer = Viewer::attached(ui.ctx(), &pics.attached[k].path);
 
             pics.viewer = Some(viewer);
         }
+    }
+
+    /// The × of picture `k` in the box: it no longer goes with the message.
+    pub(crate) fn unattach(&self, k: usize) {
+        let mut pics = self.chat_pics.borrow_mut();
+
+        if k >= pics.attached.len() {
+            return;
+        }
+
+        let gone = pics.attached.remove(k);
+
+        // a paste is a file of ours nobody will read now
+        if gone.pasted {
+            let _ = fs::remove_file(gone.path);
+        }
+    }
+
+    /// The pictures that go with the next message: what each is called (`Attached::name`) and its path.
+    pub(crate) fn attached_list(&self) -> Vec<(String, PathBuf)> {
+        self.chat_pics.borrow().attached.iter().map(|a| (a.name(), a.path.clone())).collect()
     }
 }
 

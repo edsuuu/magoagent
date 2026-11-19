@@ -318,22 +318,7 @@ impl DrawingApp {
     pub(crate) fn waiting_card(&self, ui: &mut egui::Ui, row: &AgentRow, look: &Look, narrow: bool, t: f64) -> Option<CardClick> {
         let card = AmberCard::new(look.dark);
         let AmberCard { edge, title, note, well, well_edge, .. } = card;
-        let screen = self.terminals.get(&row.id).and_then(|s| s.as_ref().ok()).map(|s| s.handle.screen_text()).unwrap_or_default();
-        let menu = menu_choices(&screen);
-
-        let why = match (self.agent_sessions.get(&row.id).and_then(|s| s.waiting_for.as_deref()), &menu) {
-            (Some(w), _) if w.contains("permission") => "Pediu permissão".to_string(),
-            (_, Some(_)) => "Escolha uma opção".into(),
-            (Some(w), None) if w.contains("input") => "Espera a sua resposta no terminal".into(),
-            (Some(w), None) => format!("Espera: {w}"),
-            (None, None) => "Uma pergunta ou um menu na tela do terminal".into(),
-        };
-
-        let why = match self.waiting_secs(&row.id) {
-            Some(s) => format!("{why} · há {}", elapsed(s)),
-            None => why,
-        };
-
+        let (screen, menu, why) = self.waiting_screen(&row.id);
         let size = if narrow { 13.5 } else { 14.0 };
         let mut click = None;
 
@@ -401,6 +386,28 @@ impl DrawingApp {
         });
 
         click
+    }
+
+    /// What the waiting card shows of terminal `id`: its screen, the menu on it, and why it waits ("Escolha uma opção ·
+    /// há 2 min").
+    pub(crate) fn waiting_screen(&self, id: &str) -> (String, Option<crate::terminal::Menu>, String) {
+        let screen = self.terminals.get(id).and_then(|s| s.as_ref().ok()).map(|s| s.handle.screen_text()).unwrap_or_default();
+        let menu = menu_choices(&screen);
+
+        let why = match (self.agent_sessions.get(id).and_then(|s| s.waiting_for.as_deref()), &menu) {
+            (Some(w), _) if w.contains("permission") => "Pediu permissão".to_string(),
+            (_, Some(_)) => "Escolha uma opção".into(),
+            (Some(w), None) if w.contains("input") => "Espera a sua resposta no terminal".into(),
+            (Some(w), None) => format!("Espera: {w}"),
+            (None, None) => "Uma pergunta ou um menu na tela do terminal".into(),
+        };
+
+        let why = match self.waiting_secs(id) {
+            Some(s) => format!("{why} · há {}", elapsed(s)),
+            None => why,
+        };
+
+        (screen, menu, why)
     }
 }
 
@@ -531,7 +538,7 @@ const CARD_LINES: usize = 40;
 
 /// The end of a long output, for the card (hundreds of lines made a block several screens tall):
 /// its last `CARD_LINES` lines under a line saying how many are above. `None` when it all fits.
-fn card_output(log: &str) -> Option<String> {
+pub(crate) fn card_output(log: &str) -> Option<String> {
     let lines: Vec<&str> = log.lines().collect();
     let above = lines.len().checked_sub(CARD_LINES).filter(|n| *n > 0)?;
 

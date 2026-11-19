@@ -161,29 +161,7 @@ impl DrawingApp {
     /// The agents `id` recruited (`boss_of`) at work now, a line each at the end of its conversation: who, for how long
     /// and the step it is on, as it happens; what each says at the end comes in as its answer.
     pub(crate) fn team_rows(&self, ui: &mut egui::Ui, id: &str, look: &Look, time: f64) {
-        let working: Vec<(String, f64)> = self
-            .chats
-            .iter()
-            .filter(|chat| chat.recruit && self.boss_of(&chat.id).as_deref() == Some(id))
-            .filter_map(|chat| match self.chat_state(&chat.id) {
-                Some(AgentState::Working(since)) => Some((chat.id.clone(), since)),
-                _ => None,
-            })
-            .collect();
-
-        for (recruit, since) in working {
-            let step = self.transcripts.get(&recruit).and_then(|transcript| {
-                transcript.items.iter().rev().find_map(|item| match item {
-                    ChatItem::Tool(step) => Some(format!("{} {}", crate::app::chat::steps::short_tool(&step.name), step.what)),
-                    _ => None,
-                })
-            });
-
-            let line = match step {
-                Some(step) => format!("{} trabalhando · {} · {step}", self.speaker(&recruit), elapsed(self.now - since)),
-                None => format!("{} trabalhando · {}", self.speaker(&recruit), elapsed(self.now - since)),
-            };
-
+        for line in self.team_lines(id) {
             let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
             let p = ui.painter();
 
@@ -193,6 +171,31 @@ impl DrawingApp {
             p.galley(Pos2::new(rect.left() + 16.0, rect.center().y - text.size().y / 2.0), text, look.muted);
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
         }
+    }
+
+    /// `team_rows`' lines: "Fulano trabalhando · 1m 12s · Bash cargo test".
+    pub(crate) fn team_lines(&self, id: &str) -> Vec<String> {
+        let working =
+            self.chats.iter().filter(|chat| chat.recruit && self.boss_of(&chat.id).as_deref() == Some(id)).filter_map(|chat| match self.chat_state(&chat.id) {
+                Some(AgentState::Working(since)) => Some((chat.id.clone(), since)),
+                _ => None,
+            });
+
+        working
+            .map(|(recruit, since)| {
+                let step = self.transcripts.get(&recruit).and_then(|transcript| {
+                    transcript.items.iter().rev().find_map(|item| match item {
+                        ChatItem::Tool(step) => Some(format!("{} {}", crate::app::chat::steps::short_tool(&step.name), step.what)),
+                        _ => None,
+                    })
+                });
+
+                match step {
+                    Some(step) => format!("{} trabalhando · {} · {step}", self.speaker(&recruit), elapsed(self.now - since)),
+                    None => format!("{} trabalhando · {}", self.speaker(&recruit), elapsed(self.now - since)),
+                }
+            })
+            .collect()
     }
 }
 
