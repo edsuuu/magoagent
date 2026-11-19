@@ -32,7 +32,7 @@ fn a_command_an_agent_runs_goes_to_comandos_not_the_canvas() {
     let php = terminal(&app, "php").clone();
 
     assert!(php.docked() && said.contains("Comandos"), "{said}");
-    assert_eq!(app.docked_ids(), [php.id.clone()]);
+    assert_eq!(app.docked_ids(), std::slice::from_ref(&php.id));
     assert!(app.panes.commands.open.contains(&php.id), "its row opens on its output");
     assert!(app.links().get(&luna).is_some_and(|links| links.contains(&php.id)), "still roped to who opened it");
     let rope = app.scene.elements.iter().find(|e| e.rope).unwrap();
@@ -113,6 +113,7 @@ fn the_panel_lists_each_command_as_a_row_that_folds() {
     assert!(has(&shown, "Parar") && has(&shown, "Reiniciar") && has(&shown, "Levar para o canvas"), "open: its buttons");
     // a click on its name folds it
     let row = app.pane_rect(Rect::from_min_size(Pos2::ZERO, SCREEN)).left_top() + Vec2::new(60.0, 46.0 + 12.0 + 18.0);
+
     pane_click(&mut app, &ctx, row);
     let folded = pane_frame(&mut app, &ctx, vec![]);
 

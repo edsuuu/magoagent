@@ -51,6 +51,7 @@ fn the_answers_go_back_as_one_message() {
         asked,
         [("Qual porta?".into(), vec![], String::new()), ("Qual banco?".into(), vec!["Postgres".to_string(), "SQLite".into()], "Postgres".into())]
     );
+
     assert_eq!(asked_questions(&json!({ "question": "Só esta?" })).len(), 1);
 }
 
@@ -109,6 +110,7 @@ fn the_doubts_panel_opens_over_the_chat() {
     // the agent's section, each question folds; the suggested answers are buttons, the recommendation folds apart
     assert!(shown.iter().any(|(role, text, _)| *role == Role::DisclosureTriangle && text.starts_with("Luna")), "{shown:?}");
     assert!(shown.iter().any(|(role, text, _)| *role == Role::Button && text == "Postgres"));
+
     let recommendation =
         shown.iter().find(|(role, text, _)| *role == Role::DisclosureTriangle && text == "Recomendação do agente").map(|(.., rect)| rect.center());
 

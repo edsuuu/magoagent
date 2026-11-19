@@ -222,6 +222,7 @@ impl DrawingApp {
                     let painter = ui.painter();
                     // the chevron: right when closed, down when open
                     let tip = head.left_center() + Vec2::new(5.0, 0.0);
+
                     let points = if open {
                         vec![tip + Vec2::new(-4.0, -2.0), tip + Vec2::new(4.0, -2.0), tip + Vec2::new(0.0, 3.0)]
                     } else {

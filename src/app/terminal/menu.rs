@@ -337,7 +337,7 @@ mod tests {
         let rows = app.terminal_entries(i);
 
         assert!(!enabled(&rows, "copy_sel") && enabled(&rows, "paste_text"));
-        let Entry::Sub { items, .. } = &rows[11] else { panic!() };
+        let Some(items) = rows.iter().find_map(|row| if let Entry::Sub { items, .. } = row { Some(items) } else { None }) else { panic!() };
 
         assert!(enabled(items, "use_size") && !enabled(items, "use_font") && !enabled(items, "use_theme"));
         // its own font and theme can be made the defaults; a blurred one offers to clear it
@@ -352,7 +352,7 @@ mod tests {
 
         assert!(outline.contains(&"Remover Desfoque".to_string()) && outline.contains(&"Desbloquear".to_string()));
         assert!(!enabled(&rows, "unload") && !enabled(&rows, "dup"));
-        let Entry::Sub { items, .. } = &rows[11] else { panic!() };
+        let Some(items) = rows.iter().find_map(|row| if let Entry::Sub { items, .. } = row { Some(items) } else { None }) else { panic!() };
 
         assert!(enabled(items, "use_font") && enabled(items, "use_theme"));
         // and adopting them changes the defaults, after which those rows go off
@@ -363,7 +363,8 @@ mod tests {
         assert_eq!((app.prefs.terminal.font_size, app.prefs.terminal.theme.as_str()), (18.0, "nord"));
         assert_eq!(app.prefs.terminal.size, Some([640.0, 400.0]));
         assert_eq!(app.new_terminal_size(), Vec2::new(640.0, 400.0));
-        let Entry::Sub { items, .. } = &app.terminal_entries(i)[11] else { panic!() };
+        let rows = app.terminal_entries(i);
+        let Some(items) = rows.iter().find_map(|row| if let Entry::Sub { items, .. } = row { Some(items) } else { None }) else { panic!() };
 
         assert!(!enabled(items, "use_size") && !enabled(items, "use_font") && !enabled(items, "use_theme"));
         // rows the app already knew are left to it

@@ -251,6 +251,7 @@ fn a_narrow_window_keeps_the_toolbar_clear_of_the_panel_buttons() {
 
     for _ in 0..4 {
         let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, narrow)), ..Default::default() };
+
         ctx.run_ui(raw, |_| app.floating_controls(&ctx)).textures_delta.clear();
     }
 

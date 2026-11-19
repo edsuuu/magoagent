@@ -210,6 +210,7 @@ impl DrawingApp {
 
         // the arrow: right when folded, down when open
         let center = Pos2::new(header.left() + indent + 7.0, header.center().y);
+
         let points = if open {
             [Vec2::new(-4.0, -2.0), Vec2::new(4.0, -2.0), Vec2::new(0.0, 3.0)]
         } else {
