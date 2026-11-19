@@ -400,3 +400,89 @@ fn abrir_shows_the_style_skill_in_a_tree_of_its_folder_with_the_file_selected_an
     assert_eq!(app.scene.elements.iter().filter(|element| element.filetree.is_some()).count(), 1);
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// The top bar is the card's, as the other cards' titles: the bare part of the tabs' strip and a tab drag the node on the
+/// canvas, as the tree's header does, and a double click puts it on the full screen and back.
+#[test]
+fn the_top_bar_drags_the_tree_and_a_double_click_enlarges_it() {
+    use crate::app::filetree::pane::parts;
+    let ctx = Context::default();
+    let dir = temp("strip-drag");
+
+    fs::write(dir.join("a.txt"), "um\n").unwrap();
+    let mut app = DrawingApp::default();
+
+    tree_frame(&mut app, &ctx, 0.0, vec![]);
+    let tree = tree_on(&mut app, &dir);
+
+    app.ft_open(&tree, dir.join("a.txt"), true);
+
+    for t in [1.0, 1.5, 2.0] {
+        tree_frame(&mut app, &ctx, t, vec![]);
+    }
+
+    let place = |app: &DrawingApp| local_bounds(app.scene.elements.iter().find(|e| e.id == tree).unwrap()).min;
+    let element = app.scene.elements.iter().find(|e| e.id == tree).unwrap().clone();
+    let (frame, z) = app.terminal_frame(&element);
+    let pane = parts(element.filetree.as_ref().unwrap(), frame, z).1.expect("the editor pane is shown");
+    let blank = Pos2::new(pane.left() + 160.0 * z, pane.top() + 15.0 * z);
+    let tab = Pos2::new(pane.left() + 40.0 * z, pane.top() + 15.0 * z);
+    let header = app.tree_grip(&ctx, &element, frame, z).unwrap().center();
+
+    let drag = |app: &mut DrawingApp, from: Pos2, t: f64| {
+        let steps = [(0.0, from, Some(true)), (0.1, from + Vec2::new(40.0, 0.0), None), (0.2, from + Vec2::new(80.0, 30.0), None)];
+
+        for (dt, at, pressed) in steps {
+            let mut events = vec![egui::Event::PointerMoved(at)];
+
+            events.extend(pressed.map(|pressed| button(at, pressed)));
+            tree_frame(app, &ctx, t + dt, events);
+        }
+
+        tree_frame(app, &ctx, t + 0.3, vec![button(from + Vec2::new(80.0, 30.0), false)]);
+        tree_frame(app, &ctx, t + 0.4, vec![]);
+    };
+
+    let origin = place(&app);
+
+    for (at, t, what) in [(blank, 3.0, "the strip's bare part"), (tab, 5.0, "a tab"), (header, 7.0, "the tree's header")] {
+        let before = place(&app);
+        // the node moved by the drags before: its bar is where it went
+        let at = at + (before - origin) * z;
+
+        drag(&mut app, at, t);
+        let moved = (place(&app) - before) * z;
+
+        assert!((moved - Vec2::new(80.0, 30.0)).length() < 1.0, "{what} moved the node by {moved:?}");
+        assert_eq!(app.selected.len(), 1, "{what} picks the node");
+    }
+
+    assert!(app.filetrees.editors[&tree].tabs.len() == 1, "the tab dragged is still there");
+    // back where it was, all on screen; a double click on the bare part: full screen, and again: back to the canvas
+    let shift = origin - place(&app);
+
+    app.scene.elements.iter_mut().find(|e| e.id == tree).unwrap().move_by(shift);
+    tree_frame(&mut app, &ctx, 9.0, vec![]);
+    let element = app.scene.elements.iter().find(|e| e.id == tree).unwrap().clone();
+    let (frame, z) = app.terminal_frame(&element);
+    let pane = parts(element.filetree.as_ref().unwrap(), frame, z).1.unwrap();
+    let blank = Pos2::new(pane.left() + 160.0 * z, pane.top() + 15.0 * z);
+
+    let double = |app: &mut DrawingApp, at: Pos2, t: f64| {
+        for (dt, pressed) in [(0.0, true), (0.05, false), (0.15, true), (0.2, false)] {
+            tree_frame(app, &ctx, t + dt, vec![egui::Event::PointerMoved(at), button(at, pressed)]);
+        }
+
+        tree_frame(app, &ctx, t + 1.0, vec![]);
+    };
+
+    double(&mut app, blank, 10.0);
+    assert_eq!(app.terminal_elevated.as_ref(), Some(&tree), "on the full screen");
+    let element = app.scene.elements.iter().find(|e| e.id == tree).unwrap().clone();
+    let (frame, z) = app.terminal_frame(&element);
+    let pane = parts(element.filetree.as_ref().unwrap(), frame, z).1.unwrap();
+
+    double(&mut app, Pos2::new(pane.left() + 160.0 * z, pane.top() + 15.0 * z), 12.0);
+    assert!(app.terminal_elevated.is_none(), "back on the canvas");
+    let _ = fs::remove_dir_all(&dir);
+}
