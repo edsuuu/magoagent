@@ -123,6 +123,11 @@ fn only_the_maestro_recruits_and_each_recruit_keeps_its_own_name_in_the_space_it
     let row = app.chat_rows().into_iter().find(|row| row.id == recruit).unwrap();
 
     assert_eq!(app.row_space(&row), "principal");
+    // the Maestro's own chat too, its card off view
+    app.scene.elements.retain(|element| element.id != boss);
+    let row = app.chat_rows().into_iter().find(|row| row.id == boss).unwrap();
+
+    assert_eq!(app.row_space(&row), "principal");
 
     // a recruit asking for another: refused, nothing made
     let recruit_with = |app: &mut DrawingApp, from: &str, name: &str| {

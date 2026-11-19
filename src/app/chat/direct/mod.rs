@@ -404,7 +404,8 @@ impl DrawingApp {
             effort: String::new(),
             recruit: false,
             named: false,
-            space: String::new(),
+            // the space it was made in: with its card off view the list still groups it there, not in "Sem espaço"
+            space: self.spaces.current.clone(),
             draft,
         });
 
