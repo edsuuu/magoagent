@@ -195,6 +195,7 @@ impl eframe::App for DrawingApp {
         wsl_choose(&self.prefs.wsl);
         self.check_agents();
         self.tasks_tick();
+        self.doubts_tick(&ctx);
         self.usage_tick();
         self.poll_chats();
         self.take_chat_titles();

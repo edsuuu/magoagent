@@ -318,6 +318,7 @@ fn every_app_action_is_a_tool_once() {
         "outside_message",
         "connection_history",
         "tasks",
+        "doubts",
         "flow",
         "binder",
         "minimap",

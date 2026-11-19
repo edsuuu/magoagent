@@ -12,6 +12,7 @@ mod chat_queue;
 mod chats_view;
 mod conflicts;
 mod dialogs;
+mod doubts;
 mod drops;
 mod file_links;
 mod filetree;
