@@ -897,3 +897,33 @@ fn the_work_band_says_the_turns_time_tokens_and_effort() {
     assert!(texts.iter().any(|text| text == "4m 22s · 23k tokens · esforço Extra"), "{texts:?}");
     let _ = fs::remove_dir_all(dir);
 }
+
+/// An agent's answer waits in a chat's queue while the chat still answers, and the person writes: the person's words
+/// go as a message of their own, after it, not inside the answer's bubble. A terminal joins only the person's words.
+#[test]
+fn the_persons_message_never_goes_inside_an_agents_answer() {
+    use crate::app::chat::ask::answer_message;
+
+    let mut app = DrawingApp::default();
+    let chat = push_chat(&mut app, "Luna");
+    let answer = answer_message("Revisor", "os testes passaram");
+
+    app.queue_message(&chat, answer.clone());
+    app.queue_message(&chat, "agora sobe a versão".into());
+    app.queue_message(&chat, "e o changelog".into());
+
+    assert_eq!(
+        app.chat_queue,
+        [(chat.clone(), answer.clone()), (chat.clone(), "agora sobe a versão".into()), (chat.clone(), "e o changelog".into())],
+        "a chat sends each as its own message"
+    );
+
+    assert!(app.act("chat_queue", &json!({ "agent": "Luna" })).unwrap().contains("e o changelog"), "the MCP lists them all");
+    // a terminal: the person's words together, an agent's answer apart
+    app.chat_queue.clear();
+    app.queue_message("terminal", "oi".into());
+    app.queue_message("terminal", "e o lint".into());
+    app.queue_message("terminal", answer.clone());
+    app.queue_message("terminal", "valeu".into());
+    assert_eq!(app.chat_queue, [("terminal".to_string(), "oi\n\ne o lint".to_string()), ("terminal".into(), answer), ("terminal".into(), "valeu".into())]);
+}
