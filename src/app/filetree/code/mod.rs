@@ -50,13 +50,18 @@ pub(crate) fn code_files(root: &Path) -> Vec<PathBuf> {
 pub(crate) fn files_under(root: &Path, max: usize, keep: impl Fn(&Path) -> bool) -> Vec<PathBuf> {
     let excluded = crate::editor::excluded::Excluded::load(root);
     let (mut out, mut stack, mut seen) = (vec![], vec![root.to_path_buf()], 0);
+
     while let Some(dir) = stack.pop() {
         // the disk hands a folder's entries in its own order (a hash of the name on Linux): by name, the same list on every system
         let mut entries: Vec<_> = fs::read_dir(&dir).into_iter().flatten().flatten().collect();
+
         entries.sort_by_key(|entry| entry.file_name());
+
         for entry in entries {
             let path = entry.path();
+
             seen += 1;
+
             if entry.file_type().is_ok_and(|t| t.is_dir()) {
                 // a folder with a .git of its own is another checkout (an agent's worktree, a nested repository), not this
                 // project's code: copies of it would be indexed many times over
@@ -66,11 +71,13 @@ pub(crate) fn files_under(root: &Path, max: usize, keep: impl Fn(&Path) -> bool)
             } else if keep(&path) {
                 out.push(path);
             }
+
             if out.len() >= max || seen >= WALK_MAX {
                 return out;
             }
         }
     }
+
     out
 }
 
@@ -79,6 +86,7 @@ pub(crate) fn files_under(root: &Path, max: usize, keep: impl Fn(&Path) -> bool)
 // ponytail: by the name alone, as the count over the declaration: another symbol of the same name is listed too
 pub(crate) fn usages_of(name: &str, files: &[PathBuf], decls: &[(PathBuf, usize, usize)], current: &Path) -> Vec<Hit> {
     let mut hits = find::search(files, name, true, true, &Default::default(), 0, USAGES_MAX);
+
     hits.retain(|h| !decls.iter().any(|d| d.0 == h.path && d.1 == h.line && d.2 == h.col));
     hits.sort_by_key(|h| h.path != current);
     hits
@@ -121,12 +129,16 @@ impl Project {
         if root == self.root || !root.is_dir() {
             return;
         }
+
         let (tx, rx) = channel();
+
         *self = Project { root: root.clone(), generation: self.generation + 1, index_rx: Some(rx), ..Default::default() };
         let ctx = ctx.clone();
+
         std::thread::spawn(move || {
             let files = code_files(&root);
             let _ = tx.send((Index::build(&files), files));
+
             ctx.request_repaint();
         });
     }
@@ -142,14 +154,17 @@ impl Project {
             (self.index, self.files, self.index_rx) = (index, files, None);
             self.generation += 1;
         }
+
         if let Some((path, lines, annot)) = self.blame_rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
             self.blame_rx = None;
             self.annot.insert(path.clone(), annot);
             self.blame.insert(path, lines);
             self.generation += 1;
         }
+
         let found = self.decl.as_ref()?.2.try_recv().ok()?;
         let (word, pressed, _) = self.decl.take()?;
+
         Some(match found {
             None => Found::Nowhere(word),
             Some((path, line, col)) if path == pressed.0 && line == pressed.1 && (pressed.2..pressed.3).contains(&col) => Found::Own(word, path, line, col),
@@ -166,7 +181,9 @@ impl Project {
             (false, true) => code_files(&self.root),
             (false, false) => self.files.clone(),
         };
+
         let known = self.index.symbols.iter().filter(|s| s.decl.name == name).map(|s| (s.path.clone(), s.decl.line, s.decl.col));
+
         (files, known.chain([(own.0.to_path_buf(), own.1, own.2)]).collect())
     }
 
@@ -185,6 +202,7 @@ impl Project {
         let fam = family(highlight::detect(current).id);
         let all = if self.files.is_empty() { code_files(&self.root) } else { self.files.clone() };
         let files: Vec<PathBuf> = all.into_iter().filter(|p| family(highlight::detect(p).id) == fam).collect();
+
         find_declaration(name, current, &files)
     }
 
@@ -193,14 +211,18 @@ impl Project {
         if self.blame_rx.is_some() || self.blame.contains_key(path) {
             return;
         }
+
         let (Some(dir), Some(name)) = (path.parent().map(Path::to_path_buf), path.file_name().map(|n| n.to_string_lossy().into_owned())) else { return };
         let (tx, rx) = channel();
         let (path, ctx) = (path.to_path_buf(), ctx.clone());
+
         std::thread::spawn(move || {
             let out = crate::editor::run_git(&dir, &["blame", "--porcelain", "--", name.as_str()]).unwrap_or_default();
             let _ = tx.send((path, crate::editor::parse_blame(&out), Annot::parse(&out)));
+
             ctx.request_repaint();
         });
+
         self.blame_rx = Some(rx);
     }
 
@@ -208,10 +230,12 @@ impl Project {
     pub(crate) fn saved(&mut self, path: &Path) {
         if index::indexable(path) {
             self.index.update(path);
+
             if !self.files.iter().any(|f| f == path) {
                 self.files.push(path.to_path_buf());
             }
         }
+
         self.blame.remove(path);
         self.annot.remove(path);
         self.generation += 1;
@@ -224,21 +248,28 @@ impl Project {
         if let Some((file, line)) = framework_target(&self.root, text, c) {
             return Some(Found::At(file, line, 0));
         }
+
         let (a, b) = word_at(text, c);
         let word = text.chars().skip(a).take(b - a).collect::<String>().trim_start_matches('$').to_string();
+
         if word.is_empty() {
             return None;
         }
+
         let fam = family(lang.id);
         let files: Vec<PathBuf> = self.files.iter().filter(|p| family(highlight::detect(p).id) == fam).cloned().collect();
         let (tx, rx) = channel();
         let (current, name, ctx) = (path.to_path_buf(), word.clone(), ctx.clone());
+
         std::thread::spawn(move || {
             let _ = tx.send(find_declaration(&name, &current, &files));
+
             ctx.request_repaint();
         });
+
         let line = line_of(text, a);
         let start = char_at(text, line, 0);
+
         self.decl = Some((word, (path.to_path_buf(), line, a - start, b - start), rx));
         None
     }
@@ -309,31 +340,40 @@ impl Laid {
         let cols: Vec<Option<usize>> = text.split('\n').map(indent_of).collect();
         let guides = indent_guides(text);
         let (mut hints, mut labels): (Vec<(Hint, usize, f32)>, Vec<Label>) = (vec![], vec![]);
+
         if lang.kind == Kind::Code && text.len() <= SMART_MAX {
             let (mut at, mut line) = (0, 0);
+
             for h in hints::finish(text, hints::from_index(&hints::calls(lang, text), &code.index, path)) {
                 line += text[at..h.byte].matches('\n').count();
                 at = h.byte;
                 let width = hints::width(ui, &h.label, label);
+
                 hints.push((h, line, width));
             }
+
             let gaps: Vec<(usize, f32)> = hints.iter().map(|(h, _, w)| (h.byte, w + (2.0 * hints::PAD + hints::AFTER) * z)).collect();
+
             hints::open(&mut job, &gaps);
+
             // an index still being read counts no usage: the labels wait for it
             if !code.indexing() {
                 let lines: Vec<&str> = text.split('\n').collect();
                 let blame = code.blame.get(path);
+
                 for d in index::declarations(lang.id, text) {
                     // "sem usos", as the reference IDE says it
                     let usages = code.index.vision(&d).unwrap_or_default().replace("nenhum uso", "sem usos");
                     let span = decl_span(&lines, d.line);
                     let author = blame.and_then(|b| decl_author(b, span)).unwrap_or_default();
+
                     if labels.last().is_none_or(|l| l.line != d.line) && !(usages.is_empty() && author.is_empty()) {
                         labels.push(Label { line: d.line, col: d.col, name: d.name, usages, author, span });
                     }
                 }
             }
         }
+
         Laid { key, job, cols, guides, hints, labels }
     }
 }

@@ -34,15 +34,19 @@ pub(crate) fn line(name: &str, since: f64, elapsed: f64) -> String {
     if elapsed < OPENING {
         return format!("{name} está trabalhando…");
     }
+
     let step = 1 + ((elapsed - OPENING) / DWELL) as usize;
     let mut pool: Vec<String> = LINES.iter().map(|l| l.to_string()).collect();
+
     pool.push(format!("{name} ainda está trabalhando…"));
     // Fisher-Yates on a tiny LCG seeded by the turn's start
     let mut seed = since.to_bits() | 1;
+
     for i in (1..pool.len()).rev() {
         seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         pool.swap(i, (seed >> 33) as usize % (i + 1));
     }
+
     pool[(step - 1) % pool.len()].clone()
 }
 
@@ -53,13 +57,17 @@ pub(crate) fn spinner(p: &Painter, center: Pos2, size: f32, color: Color32, t: f
     let i = (t / 0.12) as usize % 10;
     let (spokes, reach) = FRAMES[if i < 6 { i } else { 10 - i }];
     let r = size / 2.0 * reach;
+
     if spokes == 0 {
         p.circle_filled(center, r.max(1.5), color);
+
         return;
     }
+
     for k in 0..spokes {
         let a = std::f32::consts::TAU * k as f32 / spokes as f32 - std::f32::consts::FRAC_PI_2;
         let d = Vec2::angled(a);
+
         p.line_segment([center + d * r * 0.2, center + d * r], Stroke::new((size * 0.14).max(1.4), color));
     }
 }
@@ -69,9 +77,11 @@ pub(crate) fn spinner(p: &Painter, center: Pos2, size: f32, color: Color32, t: f
 pub(crate) fn shimmer(p: &Painter, left: Pos2, text: &str, font: FontId, base: Color32, bright: Color32, t: f64, max_width: f32) -> f32 {
     let galley = p.layout_no_wrap(text.into(), font.clone(), base);
     let mut letters: Vec<_> = text.chars().map(|ch| p.layout_no_wrap(ch.to_string(), font.clone(), base)).collect();
+
     if letters.iter().map(|letter| letter.size().x).sum::<f32>() > max_width {
         let ellipsis = p.layout_no_wrap("…".into(), font.clone(), base);
         let mut used = ellipsis.size().x;
+
         let kept = letters
             .iter()
             .take_while(|letter| {
@@ -79,23 +89,29 @@ pub(crate) fn shimmer(p: &Painter, left: Pos2, text: &str, font: FontId, base: C
                 used <= max_width
             })
             .count();
+
         letters.truncate(kept);
+
         // where not even the "…" fits, nothing
         if ellipsis.size().x <= max_width {
             letters.push(ellipsis);
         }
     }
+
     let width: f32 = letters.iter().map(|letter| letter.size().x).sum();
     let top = left.y - galley.size().y / 2.0;
     let sweep = ((t % 2.0) / 2.0) as f32 * (width + 80.0) - 40.0;
     let mut x = left.x;
+
     for g in letters {
         let mid = x - left.x + g.size().x / 2.0;
         let near = (1.0 - (mid - sweep).abs() / 40.0).clamp(0.0, 1.0);
         let w = g.size().x;
+
         p.galley(Pos2::new(x, top), g, base.lerp_to_gamma(bright, near));
         x += w;
     }
+
     width
 }
 
@@ -107,11 +123,13 @@ mod tests {
     fn the_line_opens_with_the_name_then_turns_and_keeps_its_order_in_a_turn() {
         assert_eq!(line("Claude", 1.0, 2.0), "Claude está trabalhando…");
         let a = line("Claude", 1.0, 7.0);
+
         assert_ne!(a, "Claude está trabalhando…");
         assert_eq!(line("Claude", 1.0, 15.9), a);
         assert_ne!(line("Claude", 1.0, 16.1), a);
         // all the lines come up within one round of the pool
         let seen: std::collections::HashSet<_> = (0..15).map(|k| line("Claude", 1.0, OPENING + DWELL * k as f64 + 0.1)).collect();
+
         assert_eq!(seen.len(), 15);
         assert!(seen.contains("Claude ainda está trabalhando…"));
     }

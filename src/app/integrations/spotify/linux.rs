@@ -13,6 +13,7 @@ thread_local! {
 
 pub(super) fn read(sources: Sources) -> Option<Now> {
     let shown = pick(sources.app.then(mpris::read).flatten(), sources.soloist.then(soloist::read).flatten());
+
     SHOWN.set(shown.as_ref().map(|now| (now.player, now.playing, now.through_soloist)));
     shown
 }

@@ -29,6 +29,7 @@ const SPEAKING: &str = "Fale em português do Brasil, com naturalidade, calor e 
 pub(crate) fn key(prefs: &Prefs) -> Option<String> {
     let key = prefs.openai_key.trim();
     let key = if key.is_empty() { std::env::var("OPENAI_API_KEY").unwrap_or_default() } else { key.to_string() };
+
     (!key.trim().is_empty()).then(|| key.trim().to_string())
 }
 
@@ -36,49 +37,61 @@ pub(crate) fn key(prefs: &Prefs) -> Option<String> {
 pub(super) fn config(key: &str, options: &[(&str, &str)]) -> String {
     use crate::app::integrations::http::{one_line, quote};
     let mut text = if key.is_empty() { String::new() } else { format!("header = \"Authorization: Bearer {}\"\n", quote(&one_line(key))) };
+
     for (name, value) in options {
         text += &format!("{name} = \"{}\"\n", quote(value));
     }
+
     text
 }
 
 /// curl with `config` on its standard input.
 pub(super) fn curl(args: &[&str], config: String) -> std::io::Result<std::process::Child> {
     let mut child = crate::editor::command("curl").args(args).args(["-K", "-"]).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(config.as_bytes())?;
     }
+
     Ok(child)
 }
 
 /// The words in `samples` (16 kHz mono); `language` is "pt", "en" or "auto".
 pub(crate) fn transcribe(key: &str, language: &str, vocabulary: &str, samples: &[f32]) -> Result<String, String> {
     let path = std::env::temp_dir().join(format!("magoagent-voz-{}.wav", uuid::Uuid::new_v4().simple()));
+
     fs::write(&path, crate::voice::wav(samples, crate::voice::SAMPLE_RATE)).map_err(|e| e.to_string())?;
     let file = format!("file=@{}", path.display());
     let url = format!("{API}/transcriptions");
     let prompt = (!vocabulary.is_empty()).then(|| format!("prompt={vocabulary}"));
+
     let ask = |language: Option<&str>| {
         let lang = language.map(|l| format!("languages[]={l}"));
         let mut options = vec![("url", url.as_str()), ("form", "model=gpt-transcribe"), ("form", "response_format=json"), ("form", file.as_str())];
+
         options.extend(lang.as_deref().map(|l| ("form", l)));
         options.extend(prompt.as_deref().map(|p| ("form", p)));
         let output = curl(&["-sS", "--fail-with-body"], config(key, &options)).and_then(|c| c.wait_with_output()).map_err(|e| format!("curl: {e}"))?;
+
         heard(&output.stdout, output.status.success(), &String::from_utf8_lossy(&output.stderr))
     };
+
     let lang = (language != "auto").then_some(language);
     // the language is a hint: without it, if the API doesn't take it
     let result = ask(lang).or_else(|e| if lang.is_some() { ask(None) } else { Err(e) });
     let _ = fs::remove_file(&path);
+
     result
 }
 
 /// The text of a transcription's answer, or its error's message.
 pub(super) fn heard(body: &[u8], ok: bool, stderr: &str) -> Result<String, String> {
     let json: Value = serde_json::from_slice(body).unwrap_or_default();
+
     if !ok {
         return Err(json["error"]["message"].as_str().map_or_else(|| stderr.trim().to_string(), str::to_string));
     }
+
     Ok(json["text"].as_str().unwrap_or_default().trim().to_string())
 }
 
@@ -88,6 +101,7 @@ pub(crate) fn say(key: &str, voice: &str, text: &str) -> Option<Player> {
     let url = format!("{API}/speech");
     let options = [("url", url.as_str()), ("header", "Content-Type: application/json"), ("data-binary", body.as_str())];
     let child = curl(&["-sS", "-N", "--fail"], config(key, &options)).ok()?;
+
     Some(Player::from_pcm(child, 24_000))
 }
 
@@ -98,6 +112,7 @@ mod tests {
     #[test]
     fn the_key_goes_in_curls_config_quoted() {
         let text = config("sk-1", &[("url", "https://x"), ("data-binary", r#"{"input":"a \"b\"\nc\\d"}"#)]);
+
         assert_eq!(text.lines().next(), Some(r#"header = "Authorization: Bearer sk-1""#));
         assert!(text.contains(r#"data-binary = "{\"input\":\"a \\\"b\\\"\\nc\\\\d\"}""#), "{text}");
     }
@@ -105,6 +120,7 @@ mod tests {
     #[test]
     fn a_key_or_value_with_a_line_break_adds_no_directive_of_its_own() {
         let text = config("sk-1\nurl = \"https://evil\"", &[("form", "a\nurl = \"https://evil\"")]);
+
         assert!(text.lines().all(|line| !line.starts_with("url")), "{text}");
         assert_eq!(text.lines().count(), 2, "{text}");
     }
@@ -119,6 +135,7 @@ mod tests {
     #[test]
     fn the_key_comes_from_ajustes() {
         let prefs = Prefs { openai_key: " sk-9 ".into(), ..Default::default() };
+
         assert_eq!(key(&prefs).as_deref(), Some("sk-9"));
     }
 }

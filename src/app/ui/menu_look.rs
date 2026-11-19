@@ -53,6 +53,7 @@ pub(crate) fn menu_colors(dark: bool) -> MenuColors {
 /// nothing in the app has one.
 pub(crate) fn menu_frame(dark: bool) -> egui::Frame {
     let colors = menu_colors(dark);
+
     egui::Frame::new()
         .fill(colors.bg)
         .corner_radius(MENU_RADIUS)
@@ -64,12 +65,14 @@ pub(crate) fn menu_frame(dark: bool) -> egui::Frame {
 /// A right click on `response` opens this menu, in the app's menu box (egui's own is the old look).
 pub(crate) fn context_menu<R>(response: &egui::Response, add: impl FnOnce(&mut egui::Ui) -> R) -> Option<R> {
     let dark = response.ctx.global_style().visuals.dark_mode;
+
     egui::Popup::context_menu(response).frame(menu_frame(dark)).show(|ui| menu_body(ui, add)).map(|r| r.inner)
 }
 
 /// A click on `response` (a ⋯ button) opens this menu, in the app's menu box.
 pub(crate) fn click_menu<R>(response: &egui::Response, add: impl FnOnce(&mut egui::Ui) -> R) -> Option<R> {
     let dark = response.ctx.global_style().visuals.dark_mode;
+
     egui::Popup::menu(response).frame(menu_frame(dark)).show(|ui| menu_body(ui, add)).map(|r| r.inner)
 }
 
@@ -77,6 +80,7 @@ pub(crate) fn click_menu<R>(response: &egui::Response, add: impl FnOnce(&mut egu
 /// so it opens inward instead of past the sidebar.
 pub(crate) fn dots_menu<R>(response: &egui::Response, add: impl FnOnce(&mut egui::Ui) -> R) -> Option<R> {
     let dark = response.ctx.global_style().visuals.dark_mode;
+
     egui::Popup::menu(response).align(egui::RectAlign::BOTTOM_END).frame(menu_frame(dark)).show(|ui| menu_body(ui, add)).map(|r| r.inner)
 }
 
@@ -95,17 +99,23 @@ pub(crate) fn menu_row(ui: &mut egui::Ui, icon: Option<Icon>, label: &str, short
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, ROW_HEIGHT), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let p = ui.painter();
+
     if response.hovered() {
         p.rect_filled(rect, ITEM_RADIUS, colors.hover);
     }
+
     let text = ink.unwrap_or(colors.text);
     let mut x = rect.left() + ROW_PAD;
+
     if let Some(icon) = icon {
         let tint = if ink.is_some() || response.hovered() { text } else { colors.muted };
+
         paint_icon_scaled(p, icon, Pos2::new(x + ICON_SIZE / 2.0, rect.center().y), tint, ICON_SIZE / 16.0, 0.0);
         x += ICON_SIZE + ROW_GAP;
     }
+
     p.text(Pos2::new(x, rect.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(MENU_TEXT_SIZE), text);
+
     if !shortcut.is_empty() {
         p.text(
             Pos2::new(rect.right() - ROW_PAD, rect.center().y),
@@ -115,6 +125,7 @@ pub(crate) fn menu_row(ui: &mut egui::Ui, icon: Option<Icon>, label: &str, short
             colors.muted,
         );
     }
+
     response.clicked()
 }
 
@@ -123,6 +134,7 @@ pub(crate) fn menu_row(ui: &mut egui::Ui, icon: Option<Icon>, label: &str, short
 fn row_width(ui: &egui::Ui, icon: bool, label: &str, shortcut: &str) -> f32 {
     let measure = |text: String| ui.painter().layout_no_wrap(text, FontId::proportional(MENU_TEXT_SIZE), Color32::WHITE).size().x;
     let keys = if shortcut.is_empty() { 0.0 } else { 24.0 + measure(keys_label(shortcut)) };
+
     2.0 * ROW_PAD + if icon { ICON_SIZE + ROW_GAP } else { 0.0 } + measure(label.to_string()) + keys
 }
 
@@ -134,14 +146,18 @@ pub(crate) fn menu_choice(ui: &mut egui::Ui, on: bool, label: &str, offered: boo
     let width = if ui.is_sizing_pass() { row_width(ui, true, label, "") } else { ui.available_width() };
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, ROW_HEIGHT), sense);
     let p = ui.painter();
+
     if offered && response.hovered() {
         p.rect_filled(rect, ITEM_RADIUS, colors.hover);
     }
+
     let text = if offered { colors.text } else { colors.muted.gamma_multiply(0.6) };
     let x = rect.left() + ROW_PAD;
+
     if on {
         paint_icon_scaled(p, Icon::Check, Pos2::new(x + ICON_SIZE / 2.0, rect.center().y), text, ICON_SIZE / 16.0, 0.0);
     }
+
     p.text(Pos2::new(x + ICON_SIZE + ROW_GAP, rect.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(MENU_TEXT_SIZE), text);
     offered && response.on_hover_cursor(CursorIcon::PointingHand).clicked()
 }
@@ -241,28 +257,36 @@ pub(crate) fn paint_menu_icon_sized(p: &Painter, icon: MenuIcon, c: Pos2, color:
     let k = size / 24.0;
     let s = Stroke::new(2.0 * k, color);
     let at = |x: f32, y: f32| c + Vec2::new(x - 12.0, y - 12.0) * k;
+
     let line = |pts: &[(f32, f32)]| {
         p.add(Shape::line(pts.iter().map(|&(x, y)| at(x, y)).collect(), s));
     };
+
     let closed = |pts: &[(f32, f32)]| {
         p.add(Shape::closed_line(pts.iter().map(|&(x, y)| at(x, y)).collect(), s));
     };
+
     let rect = |x: f32, y: f32, w: f32, h: f32, r: f32| {
         p.rect_stroke(Rect::from_min_max(at(x, y), at(x + w, y + h)), r * k, s, StrokeKind::Middle);
     };
+
     let circle = |x: f32, y: f32, r: f32| {
         p.circle_stroke(at(x, y), r * k, s);
     };
+
     // degrees clockwise from east, as the screen's y axis runs down
     let arc = |cx: f32, cy: f32, r: f32, from: f32, to: f32| -> Vec<(f32, f32)> {
         let n = 24;
+
         (0..=n)
             .map(|i| {
                 let a = (from + (to - from) * i as f32 / n as f32).to_radians();
+
                 (cx + r * a.cos(), cy + r * a.sin())
             })
             .collect()
     };
+
     let corners = || {
         for pts in [
             [(5.0, 3.0), (3.5, 3.5), (3.0, 5.0)],
@@ -272,6 +296,7 @@ pub(crate) fn paint_menu_icon_sized(p: &Painter, icon: MenuIcon, c: Pos2, color:
         ] {
             line(&pts);
         }
+
         for pts in [
             [(9.0, 3.0), (10.0, 3.0)],
             [(14.0, 3.0), (15.0, 3.0)],
@@ -285,15 +310,20 @@ pub(crate) fn paint_menu_icon_sized(p: &Painter, icon: MenuIcon, c: Pos2, color:
             line(&pts);
         }
     };
+
     let back_sheet = || line(&[(4.0, 16.0), (3.0, 16.0), (2.0, 15.0), (2.0, 3.0), (3.0, 2.0), (15.0, 2.0), (16.0, 3.0), (16.0, 4.0)]);
+
     let eye = || {
         let upper: Vec<(f32, f32)> = (0..=24)
             .map(|i| (12.0 - 10.0 * (i as f32 / 24.0 * std::f32::consts::PI).cos(), 12.0 - 6.5 * (i as f32 / 24.0 * std::f32::consts::PI).sin()))
             .collect();
+
         let lower: Vec<(f32, f32)> = upper.iter().map(|&(x, y)| (x, 24.0 - y)).collect();
+
         line(&upper);
         line(&lower);
     };
+
     match icon {
         MenuIcon::Plus => paint_icon_scaled(p, Icon::Plus, c, color, size / 16.0, 0.0),
         MenuIcon::Image => paint_icon_scaled(p, Icon::Image, c, color, size / 16.0, 0.0),
@@ -301,13 +331,17 @@ pub(crate) fn paint_menu_icon_sized(p: &Painter, icon: MenuIcon, c: Pos2, color:
         MenuIcon::Palette => {
             // lucide's palette: the blob with its thumb notch, four paint dots
             let mut blob = arc(12.0, 12.0, 10.0, 90.0, 270.0);
+
             blob.extend((1..=12).map(|i| {
                 let a = (270.0 + 90.0 * i as f32 / 12.0).to_radians();
+
                 (12.0 + 10.0 * a.cos(), 11.0 + 9.0 * a.sin())
             }));
+
             blob.extend(arc(17.0, 11.0, 5.0, 0.0, 90.0));
             blob.extend([(14.75, 16.0), (13.6, 16.5), (13.1, 17.5), (13.35, 18.8), (13.65, 19.2), (13.9, 20.2), (13.5, 21.4), (12.25, 22.0), (12.0, 22.0)]);
             line(&blob);
+
             for (x, y) in [(13.5, 6.5), (17.5, 10.5), (6.5, 12.5), (8.5, 7.5)] {
                 p.circle_filled(at(x, y), 1.5 * k, color);
             }
@@ -365,22 +399,26 @@ pub(crate) fn paint_menu_icon_sized(p: &Painter, icon: MenuIcon, c: Pos2, color:
         }
         MenuIcon::Reload => {
             let mut pts = arc(12.0, 12.0, 9.0, 0.0, 270.0);
+
             pts.extend([(14.5, 3.0), (18.74, 5.74), (21.0, 8.0)]);
             line(&pts);
             line(&[(21.0, 3.0), (21.0, 8.0), (16.0, 8.0)]);
         }
         MenuIcon::Refresh => {
             let mut top = arc(12.0, 12.0, 9.0, 180.0, 270.0);
+
             top.extend([(15.6, 3.7), (18.74, 5.74), (21.0, 8.0)]);
             line(&top);
             line(&[(21.0, 3.0), (21.0, 8.0), (16.0, 8.0)]);
             let mut bottom = arc(12.0, 12.0, 9.0, 0.0, 90.0);
+
             bottom.extend([(8.4, 20.3), (5.26, 18.26), (3.0, 16.0)]);
             line(&bottom);
             line(&[(8.0, 16.0), (3.0, 16.0), (3.0, 21.0)]);
         }
         MenuIcon::Moon => {
             let mut pts = arc(12.0, 12.0, 9.0, 3.1, 266.9);
+
             pts.push((11.91, 3.82));
             pts.extend(arc(16.98, 6.74, 6.0, 212.5, 57.7));
             pts.extend([(20.2, 12.1), (20.99, 12.49)]);
@@ -405,6 +443,7 @@ pub(crate) fn paint_menu_icon_sized(p: &Painter, icon: MenuIcon, c: Pos2, color:
         MenuIcon::LockOpen => {
             rect(3.0, 11.0, 18.0, 11.0, 2.0);
             let mut pts = vec![(7.0, 11.0), (7.0, 7.0)];
+
             pts.extend(arc(11.95, 7.0, 4.95, 180.0, 280.0));
             line(&pts);
         }
@@ -478,8 +517,10 @@ mod tests {
     #[test]
     fn every_icon_draws() {
         let ctx = Context::default();
+
         ctx.run_ui(Default::default(), |ui| {
             let p = ui.painter().clone();
+
             for icon in [
                 MenuIcon::Copy,
                 MenuIcon::CopyPlus,
@@ -521,17 +562,21 @@ mod choice_tests {
         let ctx = Context::default();
         let at = Pos2::new(60.0, ROW_HEIGHT / 2.0);
         let mut picked = false;
+
         for (k, events) in [vec![], vec![egui::Event::PointerMoved(at)], vec![button(at, true)], vec![button(at, false)]].into_iter().enumerate() {
             let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 300.0));
             let raw = egui::RawInput { events, screen_rect: Some(screen), time: Some(k as f64 * 0.05), ..Default::default() };
+
             let mut out = ctx.run_ui(raw, |ui| {
                 egui::Area::new(egui::Id::unique("choice")).fixed_pos(Pos2::ZERO).show(ui.ctx(), |ui| {
                     ui.set_width(200.0);
                     picked |= menu_choice(ui, true, "Automático", offered);
                 });
             });
+
             out.textures_delta.clear();
         }
+
         picked
     }
 

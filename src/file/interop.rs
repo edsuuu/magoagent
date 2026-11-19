@@ -3,31 +3,39 @@ use super::*;
 pub(crate) fn parse_hex(value: &Value) -> Option<[u8; 4]> {
     let s = value.as_str()?.trim_start_matches('#');
     let s: String = if s.len() == 3 { s.chars().flat_map(|c| [c, c]).collect() } else { s.into() };
+
     if s.len() < 6 {
         return None; // "transparent" and friends
     }
+
     let byte = |i: usize| u8::from_str_radix(s.get(i..i + 2)?, 16).ok();
+
     Some([byte(0)?, byte(2)?, byte(4)?, if s.len() >= 8 { byte(6)? } else { 255 }])
 }
 
 pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
     // targets list the arrows bound to them, so other whiteboards move those arrows too
     let mut bound: std::collections::HashMap<&str, Vec<Value>> = std::collections::HashMap::new();
+
     for e in elements {
         for b in [&e.ends.start, &e.ends.end].into_iter().flatten() {
             bound.entry(b.element_id.as_str()).or_default().push(json!({ "id": e.id, "type": "arrow" }));
         }
     }
+
     let binding = |b: &Option<Binding>| match b {
         Some(b) => json!({ "elementId": b.element_id, "fixedPoint": b.fixed, "mode": if b.inside { "inside" } else { "orbit" } }),
         None => Value::Null,
     };
+
     let head = |h: Option<Head>| serde_json::to_value(h).unwrap_or(Value::Null);
+
     elements
         .iter()
         .map(|e| {
             let b = local_bounds(e);
             let st = &e.style;
+
             let mut v = json!({
                 "id": e.id,
                 "x": b.min.x, "y": b.min.y, "width": b.width(), "height": b.height(),
@@ -51,13 +59,17 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                 "link": e.link,
                 "locked": e.locked,
             });
+
             let relative = |points: &[[f32; 2]]| -> Value {
                 let first = points.first().copied().unwrap_or([0.0, 0.0]);
+
                 points.iter().map(|p| json!([p[0] - first[0], p[1] - first[1]])).collect()
             };
+
             if let Some(name) = &e.frame {
                 v["name"] = name.clone().into();
             }
+
             match &e.kind {
                 ElementKind::Rectangle { .. } | ElementKind::Diamond { .. } | ElementKind::Ellipse { .. } => {
                     let kind = match e.kind {
@@ -72,53 +84,69 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         ElementKind::Diamond { .. } => "diamond",
                         _ => "ellipse",
                     };
+
                     v["type"] = kind.into();
+
                     if let Some(url) = &e.image {
                         v["dataURL"] = url.as_ref().into();
                     }
+
                     if let Some(created) = e.created {
                         v["created"] = created.into();
                     }
+
                     if let Some(t) = &e.terminal {
                         (v["name"], v["cwd"], v["command"]) = (t.name.clone().into(), t.cwd.clone().into(), t.command.clone().into());
                         // the look rides along, so an agent moving or resizing it keeps it
                         (v["icon"], v["color"], v["quiet"]) = (t.icon.clone().into(), json!(t.color), t.quiet.into());
                         (v["maestro"], v["chat"], v["unloaded"], v["resume"]) = (t.maestro.into(), t.chat.into(), t.unloaded.into(), t.resume.into());
+
                         if !t.claude_session.is_empty() {
                             (v["claudeSession"], v["claudeFolder"]) = (t.claude_session.clone().into(), t.claude_folder.clone().into());
                         }
+
                         if !t.look.is_default() {
                             v["termLook"] = json!(t.look);
                         }
                     }
+
                     if let Some(p) = &e.portal {
                         (v["name"], v["url"]) = (p.name.clone().into(), p.url.clone().into());
+
                         if p.tabs.len() > 1 {
                             (v["tabs"], v["active"]) = (json!(p.tabs), p.active.into());
                         }
+
                         (v["chrome_hidden"], v["unloaded"]) = (p.chrome_hidden.into(), p.unloaded.into());
+
                         if !p.user_agent.is_empty() {
                             v["user_agent"] = p.user_agent.clone().into();
                         }
+
                         if p.storage != Default::default() {
                             v["storage"] = json!(p.storage);
                         }
+
                         if p.muted {
                             v["muted"] = true.into();
                         }
                     }
+
                     if let Some(tree) = &e.filetree {
                         (v["root"], v["current"], v["hideHidden"]) = (tree.root.clone().into(), tree.current.clone().into(), tree.hide_hidden.into());
                         (v["sort"], v["reversed"]) = (json!(tree.sort), tree.reversed.into());
                         (v["editor"], v["treeWidth"]) = (tree.editor.into(), json!(tree.tree_width));
                         v["changes"] = tree.changes.into();
                     }
+
                     if let Some(chat) = &e.chat {
                         (v["name"], v["agent"], v["cwd"]) = (chat.name.clone().into(), chat.agent.clone().into(), chat.cwd.clone().into());
                     }
+
                     if !e.note.is_default() {
                         v["note"] = json!(e.note);
                     }
+
                     if st.round && kind != "ellipse" && kind != "image" {
                         v["roundness"] = json!({ "type": 3 });
                     }
@@ -129,13 +157,16 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                     v["y"] = points.first().map_or(0.0, |p| p[1]).into();
                     v["points"] = relative(points);
                     v["lastCommittedPoint"] = Value::Null;
+
                     if e.rope {
                         v["rope"] = true.into();
                     }
+
                     v["startBinding"] = binding(&e.ends.start);
                     v["endBinding"] = binding(&e.ends.end);
                     v["startArrowhead"] = if *arrow { head(e.ends.start_head) } else { Value::Null };
                     v["endArrowhead"] = if *arrow { head(e.ends.end_head) } else { Value::Null };
+
                     if st.round {
                         v["roundness"] = json!({ "type": 2 });
                     }
@@ -162,6 +193,7 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                     v["autoResize"] = true.into();
                 }
             }
+
             v
         })
         .collect()
@@ -173,6 +205,7 @@ pub(super) fn str_field(v: &Value, key: &str) -> String {
 
 pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
     let f = |v: &Value, k: &str| v[k].as_f64().unwrap_or(0.0) as f32;
+
     elements
         .as_array()
         .into_iter()
@@ -180,6 +213,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
         .filter(|v| v["isDeleted"] != true)
         .filter_map(|v| {
             let (x, y, width, height) = (f(v, "x"), f(v, "y"), f(v, "width"), f(v, "height"));
+
             let points = || -> Vec<[f32; 2]> {
                 v["points"]
                     .as_array()
@@ -188,6 +222,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     .map(|p| [x + p[0].as_f64().unwrap_or(0.0) as f32, y + p[1].as_f64().unwrap_or(0.0) as f32])
                     .collect()
             };
+
             let kind = match v["type"].as_str()? {
                 "rectangle" | "frame" | "image" | "stickynote" | "terminal" | "portal" | "ide" | "filetree" | "chat" => {
                     ElementKind::Rectangle { x, y, width, height }
@@ -200,6 +235,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                 "text" => ElementKind::Text { x, y, value: v["text"].as_str().unwrap_or_default().into() },
                 _ => return None,
             };
+
             let style = Style {
                 stroke: parse_hex(&v["strokeColor"]).unwrap_or(BLACK),
                 fill: parse_hex(&v["backgroundColor"]),
@@ -219,6 +255,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                 opacity: v["opacity"].as_u64().unwrap_or(100).min(100) as u8,
                 font_size: v["fontSize"].as_f64().unwrap_or(20.0) as f32,
             };
+
             let mut element = Element {
                 id: v["id"].as_str().map(String::from).unwrap_or_else(new_id),
                 // outermost group, so nested groups still move together
@@ -288,16 +325,21 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                 },
                 style,
             };
+
             // a note's color is one of the ten papers (an older note's turns into the nearest)
             if element.created.is_some() {
                 element.style.fill = Some(nearest_paper(element.style.fill.unwrap_or(STICKY_PAPER)));
             }
+
             let angle = v["angle"].as_f64().unwrap_or(0.0) as f32;
+
             if angle != 0.0 {
                 // Rotation is around the element center; lines get the rotation baked in
                 let center = element.center();
+
                 element.rotate_around(center, angle);
             }
+
             keep_app_buttons(&mut element);
             Some(element)
         })
@@ -308,5 +350,6 @@ pub(crate) fn parse_binding(v: &Value) -> Option<Binding> {
     let fixed = v["fixedPoint"]
         .as_array()
         .map_or([0.5, 0.5], |p| [p.first().and_then(Value::as_f64).unwrap_or(0.5) as f32, p.get(1).and_then(Value::as_f64).unwrap_or(0.5) as f32]);
+
     Some(Binding { element_id: v["elementId"].as_str()?.into(), fixed, inside: v["mode"] == "inside" })
 }

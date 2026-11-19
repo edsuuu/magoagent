@@ -62,6 +62,7 @@ impl MagoState {
         let turn = &items[items.iter().rposition(|item| matches!(item, ChatItem::User(_))).map_or(0, |at| at + 1)..];
         let last_step = turn.iter().rev().find_map(|item| if let ChatItem::Tool(step) = item { Some(step) } else { None });
         let error_after = turn.iter().rev().take_while(|item| !matches!(item, ChatItem::Tool(_))).any(|item| matches!(item, ChatItem::Error(_)));
+
         match base {
             Self::Working | Self::Done if last_step.is_some_and(|step| step.failed) || error_after => Self::Error,
             Self::Working if matches!(turn.last(), Some(ChatItem::Agent(_))) => Self::Speaking,
@@ -123,6 +124,7 @@ impl Look {
 
     pub(crate) fn of(state: MagoState) -> Look {
         let base = Self::BASE;
+
         match state {
             MagoState::Idle => base,
             MagoState::Working => Look { eye: EyeKind::Focus, mouth_curve: 0.0, mouth_width: 0.05, badge: Some('…'), sway: (0.9, 5.0), ..base },
@@ -161,11 +163,13 @@ pub(crate) fn paint_mago(
 ) {
     // a pointer that is not a number would make the gaze NaN, which the eyes never recover from
     let toward = pointer.map(|pointer| gaze_toward(center, pointer)).filter(|toward| toward.x.is_finite() && toward.y.is_finite());
+
     motion.advance(state, time, toward);
     draw::paint(painter, center, size, color, motion, time);
     // at rest it only sways slowly and blinks (0.12 s): 15 frames a second show it, and a wizard always on screen (the
     // island's) no longer keeps the whole app at 30 while nothing happens; a click or the pointer bring frames anyway
     let frame = if matches!(state, MagoState::Idle | MagoState::Sleeping) { std::time::Duration::from_millis(66) } else { crate::app::update::AMBIENT };
+
     painter.ctx().request_repaint_after(frame);
 }
 
@@ -174,21 +178,28 @@ pub(crate) fn paint_scaled(painter: &Painter, center: Pos2, scale: Vec2, paint: 
     if scale == Vec2::splat(1.0) {
         return paint(painter);
     }
+
     let (ctx, layer) = (painter.ctx(), painter.layer_id());
     let start = ctx.graphics_mut(|graphics| graphics.entry(layer).next_idx().0);
+
     paint(painter);
     let end = ctx.graphics_mut(|graphics| graphics.entry(layer).next_idx().0);
     let font_size = ctx.fonts(|fonts| fonts.font_image_size());
     let mut tessellator = egui::epaint::Tessellator::new(ctx.pixels_per_point(), ctx.tessellation_options(|options| *options), font_size, Vec::new());
+
     ctx.graphics_mut(|graphics| {
         let list = graphics.entry(layer);
+
         for index in start..end {
             list.mutate_shape(egui::layers::ShapeIdx(index), |clipped| {
                 let mut mesh = egui::Mesh::default();
+
                 tessellator.tessellate_shape(std::mem::replace(&mut clipped.shape, egui::Shape::Noop), &mut mesh);
+
                 for vertex in &mut mesh.vertices {
                     vertex.pos = center + (vertex.pos - center) * scale;
                 }
+
                 clipped.shape = egui::Shape::mesh(mesh);
             });
         }
@@ -224,14 +235,18 @@ pub(crate) fn paint_mini(painter: &Painter, id: &str, center: Pos2, body: f32, c
     if body < 1.0 {
         return;
     }
+
     let key = motion_key(id);
+
     MOTIONS.with(|motions| {
         let mut motions = motions.borrow_mut();
         let motion = motions.entry(key).or_insert_with(|| MagoMotion::seeded(key));
         let glance = motion.glance(time);
+
         motion.advance(state, time, Some(glance));
         draw::paint_mini(painter, center, body, color, motion, time);
     });
+
     painter.ctx().request_repaint_after(crate::app::update::AMBIENT);
 }
 
@@ -241,7 +256,9 @@ pub(crate) fn paint_mini_still(painter: &Painter, id: &str, center: Pos2, body: 
     if body < 1.0 {
         return;
     }
+
     let mut motion = MagoMotion::seeded(motion_key(id));
+
     motion.advance(state, 0.0, Some(Vec2::ZERO));
     draw::paint_mini(painter, center, body, color, &motion, 0.0);
 }
@@ -249,6 +266,7 @@ pub(crate) fn paint_mini_still(painter: &Painter, id: &str, center: Pos2, body: 
 /// A poke on the wizard under `id` without drawing it (while it dances its motion is another): it counts towards dizziness.
 pub(crate) fn mago_poke(id: &str, time: f64) {
     let key = motion_key(id);
+
     MOTIONS.with(|motions| motions.borrow_mut().entry(key).or_insert_with(|| MagoMotion::seeded(key)).poke(time));
 }
 
@@ -265,15 +283,20 @@ pub(crate) fn paint_mago_toward(painter: &Painter, id: &str, center: Pos2, size:
 fn paint_mago_tinted(painter: &Painter, id: &str, color: Color32, center: Pos2, size: f32, state: MagoState, time: f64, pointer: Option<Pos2>) {
     let poked = pointer.is_some_and(|at| at.distance(center) < size * 0.45) && painter.ctx().input(|input| input.pointer.primary_pressed());
     let key = motion_key(id);
+
     MOTIONS.with(|motions| {
         let mut motions = motions.borrow_mut();
+
         if motions.len() > 64 {
             motions.retain(|_, motion| motion.idle_for(time) < 10.0);
         }
+
         let motion = motions.entry(key).or_insert_with(|| MagoMotion::seeded(key));
+
         if poked {
             motion.poke(time);
         }
+
         paint_mago(painter, center, size, color, state, motion, time, pointer);
     });
 }

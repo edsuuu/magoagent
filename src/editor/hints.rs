@@ -59,42 +59,54 @@ fn is_id(b: u8) -> bool {
 pub(crate) fn calls(lang: &highlight::Lang, text: &str) -> Vec<Call> {
     let quoted: Vec<(usize, usize)> =
         highlight::tokens(lang, text).into_iter().filter(|t| matches!(t.2, St::Str | St::Comment | St::Doc)).map(|t| (t.0, t.1)).collect();
+
     let b = text.as_bytes();
     let mut out = vec![];
+
     for open in 0..b.len() {
         if b[open] != b'(' || quoted.iter().any(|&(x, y)| x <= open && open < y) {
             continue;
         }
+
         let start = b[..open].iter().rposition(|c| !is_id(*c)).map_or(0, |p| p + 1);
+
         // `$fn(...)` calls a variable, not a function of that name
         if start == open || b[start].is_ascii_digit() || (start > 0 && b[start - 1] == b'$') {
             continue;
         }
+
         let Some(close) = close_of(b, open) else { continue };
+
         if is_decl(text, start, close) {
             continue;
         }
+
         let args = parts(&text[open + 1..close])
             .into_iter()
             .filter_map(|(at, part)| {
                 let t = part.trim();
+
                 (!t.is_empty() && !is_named(t)).then(|| (open + 1 + at + (part.len() - part.trim_start().len()), t.to_string()))
             })
             .collect();
+
         out.push(Call { name: text[start..open].to_string(), args });
     }
+
     out
 }
 
 /// `function name(` (or `def`, `fn`, `func`, `sub`) and `name(...) {`: a declaration, not a call.
 fn is_decl(text: &str, start: usize, close: usize) -> bool {
     let word = text[..start].trim_end().rsplit(|c: char| !(c.is_alphanumeric() || c == '_')).next().unwrap_or("");
+
     matches!(word, "function" | "fn" | "def" | "func" | "sub") || text[close + 1..].trim_start().starts_with('{')
 }
 
 /// The byte of the `)` closing the `(` at `open`, strings skipped (a quote ends at its line's end too).
 fn close_of(b: &[u8], open: usize) -> Option<usize> {
     let (mut depth, mut quote, mut i) = (0usize, None::<u8>, open);
+
     while i < b.len() {
         match (quote, b[i]) {
             (Some(_), b'\\') => i += 1,
@@ -104,14 +116,17 @@ fn close_of(b: &[u8], open: usize) -> Option<usize> {
             (None, b'(' | b'[' | b'{') => depth += 1,
             (None, b')' | b']' | b'}') => {
                 depth = depth.saturating_sub(1);
+
                 if depth == 0 {
                     return Some(i);
                 }
             }
             _ => {}
         }
+
         i += 1;
     }
+
     None
 }
 
@@ -119,6 +134,7 @@ fn close_of(b: &[u8], open: usize) -> Option<usize> {
 fn parts(inner: &str) -> Vec<(usize, &str)> {
     let b = inner.as_bytes();
     let (mut out, mut depth, mut quote, mut start, mut i) = (vec![], 0usize, None::<u8>, 0usize, 0usize);
+
     while i < b.len() {
         match (quote, b[i]) {
             (Some(_), b'\\') => i += 1,
@@ -133,8 +149,10 @@ fn parts(inner: &str) -> Vec<(usize, &str)> {
             }
             _ => {}
         }
+
         i += 1;
     }
+
     out.push((start, &inner[start..]));
     out
 }
@@ -143,6 +161,7 @@ fn parts(inner: &str) -> Vec<(usize, &str)> {
 fn is_named(arg: &str) -> bool {
     let id = arg.bytes().take_while(|c| is_id(*c)).count();
     let rest = arg[id..].trim_start();
+
     id > 0 && rest.starts_with(':') && !rest.starts_with("::")
 }
 
@@ -152,8 +171,10 @@ pub(super) fn params_at(lang_id: &str, text: &str, at: usize) -> Option<Vec<Stri
     if lang_id == "go" {
         return None;
     }
+
     let open = at + text[at..].find('(')?;
     let close = close_of(text.as_bytes(), open)?;
+
     let mut names: Vec<String> = parts(&text[open + 1..close])
         .into_iter()
         .map(|(_, p)| p.trim())
@@ -162,6 +183,7 @@ pub(super) fn params_at(lang_id: &str, text: &str, at: usize) -> Option<Vec<Stri
             if p.starts_with(['{', '[', '(']) {
                 return String::new();
             }
+
             // the name is the last word before the type's `:` or the default's `=`
             let b = p.as_bytes();
             let cut = (0..b.len()).find(|&i| b[i] == b'=' || (b[i] == b':' && b.get(i + 1) != Some(&b':') && (i == 0 || b[i - 1] != b':'))).unwrap_or(b.len());
@@ -169,17 +191,21 @@ pub(super) fn params_at(lang_id: &str, text: &str, at: usize) -> Option<Vec<Stri
             let name = head.rsplit(|c: char| !(c.is_alphanumeric() || c == '_')).find(|w| !w.is_empty()).unwrap_or("");
             // PHP: `&$x` is by reference and `...$x` variadic, and the hint's name carries that mark
             let before = head.trim_end().trim_end_matches(|c: char| c.is_alphanumeric() || c == '_').trim_end_matches('$').trim_end();
+
             let mark = match lang_id {
                 "php" if before.ends_with("...") => "...",
                 "php" if before.ends_with('&') => "&",
                 _ => "",
             };
+
             format!("{mark}{name}")
         })
         .collect();
+
     if matches!(names.first().map(String::as_str), Some("self" | "this" | "cls")) {
         names.remove(0);
     }
+
     Some(names)
 }
 
@@ -190,6 +216,7 @@ pub(super) fn wanted(call: &str, lone: bool, param: &str, arg: &str, all: bool) 
     let var = arg.strip_prefix('$').unwrap_or(arg);
     let bare = param.trim_start_matches(['&', '.']);
     let setter = call == "set" || call.strip_prefix("set").is_some_and(|r| r.starts_with(char::is_uppercase));
+
     !bare.is_empty() && var != bare && !(lone && (setter || call.to_lowercase().ends_with(&bare.to_lowercase()))) && (all || obscure(arg))
 }
 
@@ -198,8 +225,10 @@ pub(super) fn wanted(call: &str, lone: bool, param: &str, arg: &str, all: bool) 
 fn obscure(arg: &str) -> bool {
     const BINARY: [&str; 19] =
         [" + ", " - ", " * ", " / ", " % ", " . ", " && ", " || ", " ?? ", " == ", " != ", " === ", " !== ", " < ", " > ", " <= ", " >= ", " and ", " or "];
+
     let a = arg.trim().trim_start_matches(['-', '+']);
     let constant = a.len() > 1 && a.bytes().any(|b| b.is_ascii_uppercase()) && a.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_');
+
     a.starts_with(|c: char| c.is_ascii_digit() || c == '\'' || c == '"')
         || matches!(a.to_ascii_lowercase().as_str(), "null" | "true" | "false")
         || constant
@@ -215,7 +244,9 @@ fn excluded(call: &str, params: &[String]) -> bool {
             Some((n, a)) => (n, Some(a.trim_end_matches(')').split(',').map(str::trim).collect::<Vec<_>>())),
             None => (*pat, None),
         };
+
         let name = name.rsplit(['.', '\\']).next().unwrap_or(name);
+
         (name.is_empty() || glob(name, call))
             && args.is_none_or(|a| a.len() == params.len() && a.iter().zip(params).all(|(p, n)| glob(p, n.trim_start_matches(['&', '.']))))
     })
@@ -224,20 +255,26 @@ fn excluded(call: &str, params: &[String]) -> bool {
 /// Glob match where `*` is any run of characters.
 fn glob(pat: &str, s: &str) -> bool {
     let parts: Vec<&str> = pat.split('*').collect();
+
     if parts.len() == 1 {
         return pat == s;
     }
+
     let (first, last) = (parts[0], parts[parts.len() - 1]);
+
     if s.len() < first.len() + last.len() || !s.starts_with(first) || !s.ends_with(last) {
         return false;
     }
+
     let mut rest = &s[first.len()..s.len() - last.len()];
+
     for mid in &parts[1..parts.len() - 1] {
         match rest.find(mid) {
             Some(i) => rest = &rest[i + mid.len()..],
             None => return false,
         }
     }
+
     true
 }
 
@@ -250,23 +287,28 @@ pub(super) fn byte_starts(text: &str) -> Vec<usize> {
 pub(super) fn byte_of(text: &str, starts: &[usize], line: usize, col: usize) -> usize {
     let Some(&start) = starts.get(line) else { return text.len() };
     let end = starts.get(line + 1).map_or(text.len(), |n| n - 1);
+
     text[start..end].char_indices().nth(col).map_or(end, |(b, _)| start + b)
 }
 
 /// Hints from the project index: the parameter names of each call's function.
 pub(crate) fn from_index(calls: &[Call], index: &index::Index, path: &Path) -> Vec<Hint> {
     let mut out = vec![];
+
     for c in calls {
         let Some(params) = index.params_for(&c.name, path) else { continue };
+
         if highlight::detect(path).id == "php" && excluded(&c.name, params) {
             continue;
         }
+
         for ((byte, arg), param) in c.args.iter().zip(params) {
             if wanted(&c.name, c.args.len() == 1, param, arg, ALL_ARGS) {
                 out.push(Hint { byte: *byte, ch: 0, label: format!("{param}:") });
             }
         }
     }
+
     out
 }
 
@@ -275,11 +317,13 @@ pub(crate) fn finish(text: &str, mut hints: Vec<Hint>) -> Vec<Hint> {
     hints.sort_by_key(|h| h.byte);
     hints.dedup_by_key(|h| h.byte);
     let (mut at, mut ch) = (0, 0);
+
     for h in &mut hints {
         ch += text[at..h.byte].chars().count();
         at = h.byte;
         h.ch = ch;
     }
+
     hints
 }
 
@@ -293,6 +337,7 @@ pub(crate) fn width(ui: &Ui, label: &str, font: &FontId) -> f32 {
 pub(crate) fn open(job: &mut LayoutJob, marks: &[(usize, f32)]) {
     for &(at, width) in marks {
         split_at(job, at);
+
         if let Some(s) = job.sections.iter_mut().find(|s| s.byte_range.start.0 == at) {
             s.leading_space += width;
         }
@@ -303,6 +348,7 @@ pub(crate) fn open(job: &mut LayoutJob, marks: &[(usize, f32)]) {
 pub(crate) fn split_at(job: &mut LayoutJob, at: usize) {
     let Some(i) = job.sections.iter().position(|s| s.byte_range.start.0 < at && at < s.byte_range.end.0) else { return };
     let tail = LayoutSection { leading_space: 0.0, byte_range: ByteIndex(at)..job.sections[i].byte_range.end, format: job.sections[i].format.clone() };
+
     job.sections[i].byte_range.end = ByteIndex(at);
     job.sections.insert(i + 1, tail);
 }
@@ -352,12 +398,15 @@ mod tests {
     #[test]
     fn constructor_hints_come_from_the_class() {
         let dir = std::env::temp_dir().join(format!("magoagent-ctor-{}", std::process::id()));
+
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("caixa.php");
+
         std::fs::write(&file, "<?php\nclass Caixa {\n    public function __construct(int $largura, string $titulo) {}\n}\n$c = new Caixa(10, 'x');\n").unwrap();
         let ix = index::Index::build(std::slice::from_ref(&file));
         let text = std::fs::read_to_string(&file).unwrap();
         let found = finish(&text, from_index(&calls(&highlight::PHP, &text), &ix, &file));
+
         assert_eq!(found.iter().map(|h| h.label.as_str()).collect::<Vec<_>>(), ["largura:", "titulo:"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -366,12 +415,14 @@ mod tests {
     fn calls_skip_declarations_strings_and_named_arguments() {
         let src = "<?php\nfunction montar($a, $b) {}\nmontar(10, 'x, y', nome: 2);\n$s = 'soma(1)';";
         let found: Vec<_> = calls(&highlight::PHP, src).into_iter().map(|c| (c.name, c.args.into_iter().map(|a| a.1).collect::<Vec<_>>())).collect();
+
         assert_eq!(found, vec![("montar".to_string(), strs(&["10", "'x, y'"]))]);
     }
 
     #[test]
     fn parameter_names_come_from_the_declaration() {
         let php = "<?php\nfunction montar(int $largura, string $titulo = 'a, b', ...$resto): string {";
+
         assert_eq!(params_at("php", php, php.find("montar").unwrap()), Some(strs(&["largura", "titulo", "...resto"])));
         assert_eq!(params_at("typescript", "function f(a: number, b?: string, {c}: O) {}", 9), Some(strs(&["a", "b", ""])));
         assert_eq!(params_at("rust", "fn f(&self, mut x: i32) {}", 3), Some(strs(&["x"])));
@@ -381,12 +432,15 @@ mod tests {
     #[test]
     fn hints_come_from_the_index_of_the_project() {
         let dir = std::env::temp_dir().join(format!("magoagent-hints-{}", std::process::id()));
+
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("dicas.php");
+
         std::fs::write(&file, "<?php\nfunction montar(int $largura, string $titulo, bool $ativo = true) {}\n$x = montar($largura, 'x', true);\n").unwrap();
         let ix = index::Index::build(std::slice::from_ref(&file));
         let text = std::fs::read_to_string(&file).unwrap();
         let found = finish(&text, from_index(&calls(&highlight::PHP, &text), &ix, &file));
+
         assert_eq!(found.iter().map(|h| h.label.as_str()).collect::<Vec<_>>(), ["titulo:", "ativo:"]);
         assert_eq!(&text[found[0].byte..found[0].byte + 3], "'x'");
         assert_eq!(found[0].ch, text[..found[0].byte].chars().count());
@@ -397,26 +451,35 @@ mod tests {
     fn a_gap_moves_the_glyphs_not_the_text_or_the_clicks() {
         let ctx = egui::Context::default();
         let mut out = ctx.run_ui(egui::RawInput::default(), |_| {}); // sets the fonts up
+
         out.textures_delta.clear();
         let font = egui::FontId::monospace(14.0);
+
         let layout = |marks: &[(usize, f32)]| {
             let mut job = LayoutJob::simple("funcao(10, 'x')".into(), font.clone(), Color32::WHITE, f32::INFINITY);
+
             open(&mut job, marks);
             ctx.fonts_mut(|f| f.layout_job(job))
         };
+
         let (plain, gap) = (layout(&[]), layout(&[(7, 40.0)]));
+
         assert_eq!(gap.text(), plain.text());
         let x = |g: &egui::Galley, i: usize| g.pos_from_cursor(CCursor::new(i)).min.x;
+
         // the `1` (char 7) moves by the gap, the `(` before it does not
         assert!((x(&gap, 7) - x(&plain, 7) - 40.0).abs() < 0.01);
         assert!((x(&gap, 6) - x(&plain, 6)).abs() < 0.01);
         // the caret stops at the same boundaries: each char's left edge clicks back to its own index
         let y = gap.pos_from_cursor(CCursor::new(0)).center().y;
+
         for i in 0..plain.text().chars().count() {
             assert_eq!(gap.cursor_from_pos(vec2(x(&gap, i) + 0.5, y)).index.0, i, "char {i}");
         }
+
         // a click in the gap lands next to the argument, never past it
         let mid = x(&gap, 7) - 20.0;
+
         assert!((6..=7).contains(&gap.cursor_from_pos(vec2(mid, y)).index.0));
     }
 }

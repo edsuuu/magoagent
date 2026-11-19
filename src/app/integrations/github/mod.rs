@@ -112,6 +112,7 @@ pub(crate) enum Alert {
 fn text_at(value: &Value, key: &str, most: usize) -> Option<String> {
     let text: String = value.get(key)?.as_str()?.chars().filter(|letter| !letter.is_control()).take(most).collect();
     let text = text.trim().to_string();
+
     (!text.is_empty()).then_some(text)
 }
 
@@ -124,8 +125,10 @@ fn branch_ci(node: &Value) -> Option<BranchCi> {
     if node.get("isArchived").and_then(Value::as_bool).unwrap_or(false) {
         return None;
     }
+
     let branch = node.get("defaultBranchRef").filter(|branch| branch.is_object())?;
     let target = branch.get("target");
+
     Some(BranchCi {
         repo: text_at(node, "nameWithOwner", 140)?,
         url: text_at(node, "url", 400).filter(|url| url.starts_with("https://github.com/"))?,
@@ -141,23 +144,28 @@ impl Pulse {
         let data = root.get("data")?;
         let viewer = data.get("viewer").filter(|viewer| viewer.is_object())?;
         let mut pulse = Pulse { login: text_at(viewer, "login", 60).unwrap_or_default(), ..Default::default() };
+
         pulse.remaining = data.get("rateLimit").and_then(|limit| limit.get("remaining")).and_then(Value::as_i64);
+
         for request in nodes(viewer.get("pullRequests")).iter().filter_map(pull_request) {
             if !pulse.mine.iter().any(|known| known.id == request.id) {
                 pulse.mine.push(request);
             }
         }
+
         for mut request in nodes(data.get("reviewRequested")).iter().filter_map(pull_request) {
             if !pulse.to_review.iter().any(|known| known.id == request.id) {
                 request.review_requested_of_me = true;
                 pulse.to_review.push(request);
             }
         }
+
         for branch in nodes(viewer.get("repositories")).iter().filter_map(branch_ci) {
             if !pulse.main.iter().any(|known| known.repo == branch.repo) {
                 pulse.main.push(branch);
             }
         }
+
         Some(pulse)
     }
 
@@ -169,17 +177,21 @@ impl Pulse {
     /// "3 PRs abertos · 1 com checks falhando · 2 para revisar" (the merged and closed ones left out).
     pub(crate) fn summary(&self) -> String {
         let failed = self.open().filter(|request| request.ci == CiState::Failure).count();
+
         let mut parts = vec![match self.open().count() {
             0 => "nenhum PR aberto".to_string(),
             1 => "1 PR aberto".to_string(),
             count => format!("{count} PRs abertos"),
         }];
+
         if failed > 0 {
             parts.push(format!("{failed} com checks falhando"));
         }
+
         if !self.to_review.is_empty() {
             parts.push(format!("{} para revisar", self.to_review.len()));
         }
+
         parts.join(" · ")
     }
 }
@@ -191,6 +203,7 @@ impl Pulse {
 pub(crate) fn alerts(old: Option<&Pulse>, new: &Pulse) -> Vec<Alert> {
     let Some(old) = old else { return Vec::new() };
     let mut found = Vec::new();
+
     for request in new.open() {
         match old.mine.iter().find(|known| known.id == request.id) {
             Some(before) if before.head == request.head => {
@@ -207,20 +220,24 @@ pub(crate) fn alerts(old: Option<&Pulse>, new: &Pulse) -> Vec<Alert> {
             },
         }
     }
+
     for branch in &new.main {
         let failed = match old.main.iter().find(|known| known.repo == branch.repo) {
             Some(before) if before.head == branch.head => branch.ci == CiState::Failure && before.ci != CiState::Failure,
             _ => branch.ci == CiState::Failure,
         };
+
         if failed {
             found.push(Alert::MainFailed(branch.repo.clone()));
         }
     }
+
     for request in &new.to_review {
         if !old.to_review.iter().any(|known| known.id == request.id) {
             found.push(Alert::ReviewRequested(request.id.clone()));
         }
     }
+
     found
 }
 
@@ -231,6 +248,7 @@ pub(crate) fn foremost(alerts: &[Alert]) -> Option<&Alert> {
         Alert::ReviewRequested(_) => 1,
         Alert::CheckPassed(_) => 2,
     };
+
     alerts.iter().min_by_key(|alert| rank(alert))
 }
 
@@ -274,9 +292,11 @@ pub(crate) struct Failure {
 
 fn request<'a>(token: &str, method: &'a str, url: &'a str, body: Option<String>) -> Request<'a> {
     let mut headers = vec![format!("Authorization: Bearer {token}"), "Accept: application/vnd.github+json".into(), "User-Agent: MagoAgent".into()];
+
     if body.is_some() {
         headers.push("Content-Type: application/json".into());
     }
+
     Request { method, url, headers, body, timeout_seconds: 15 }
 }
 
@@ -284,6 +304,7 @@ fn request<'a>(token: &str, method: &'a str, url: &'a str, body: Option<String>)
 fn read(answer: Result<http::Answer, String>) -> Result<Value, Failure> {
     let failure = |message: &str, unauthorized| Failure { message: message.to_string(), unauthorized };
     let answer = answer.map_err(|_| failure("Sem conexão com o GitHub.", false))?;
+
     match answer.status {
         200 => serde_json::from_str(&answer.body).map_err(|_| failure("A resposta do GitHub não foi entendida.", false)),
         401 => Err(failure("Token inválido ou expirado.", true)),
@@ -299,10 +320,13 @@ fn graphql(token: &str, query: &str) -> Result<Value, Failure> {
 /// A GraphQL request (`payload`: its query and variables) and its answer, which must have data.
 fn post(token: &str, payload: &Value) -> Result<Value, Failure> {
     let root = read(http::send(&request(token, "POST", GRAPHQL, Some(payload.to_string()))))?;
+
     if root.get("data").is_none_or(Value::is_null) {
         let why = text_at(&root["errors"][0], "message", 160).unwrap_or_else(|| "sem dados".into());
+
         return Err(Failure { message: format!("O GitHub recusou a consulta: {why}"), unauthorized: false });
     }
+
     Ok(root)
 }
 
@@ -378,15 +402,19 @@ impl GitHub {
     fn load_token(&mut self) {
         #[cfg(test)]
         mock_keyring();
+
         // a test scene's GitHub has no token of the person's
         if fake::pulse().is_some() {
             self.token.get_or_insert_with(|| "cena-de-teste".into());
             self.pulse.get_or_insert_with(|| fake::pulse().cloned().unwrap_or_default());
+
             if self.activity.is_none() {
                 self.activity = fake::activity();
             }
+
             return;
         }
+
         if self.token.is_none() {
             self.token = Some(take_secret(TOKEN_ID).unwrap_or_default());
         }
@@ -397,13 +425,17 @@ impl GitHub {
         if !self.has_token() {
             return "GitHub: sem token. A pessoa cola um em Ajustes › Integrações (ele nunca passa pelo MCP).".into();
         }
+
         if let Some(error) = &self.error {
             return format!("GitHub: {error}");
         }
+
         let Some(pulse) = &self.pulse else { return "GitHub: token no cofre, ainda sem resposta.".into() };
         let mut lines = vec![format!("GitHub: conectado como @{} · {}", pulse.login, pulse.summary())];
+
         lines.extend(pulse.open().map(|request| format!("- {} {} ({}) {}", request.id, request.title, request.state_words(), request.url)));
         lines.extend(pulse.to_review.iter().map(|request| format!("- revisar {} {} {}", request.id, request.title, request.url)));
+
         lines.extend(
             pulse
                 .main
@@ -411,15 +443,18 @@ impl GitHub {
                 .filter(|branch| branch.ci != CiState::Unknown)
                 .map(|branch| format!("- {} ({}): {}", branch.repo, branch.branch, branch.ci.label().1)),
         );
+
         if let Some(activity) = &self.activity {
             lines.push(format!("{}; {} hoje.", activity.summary(), activity.today));
         }
+
         match (self.writing, &self.last_write) {
             (true, _) => lines.push("Uma escrita está a caminho do GitHub.".into()),
             (false, Some(Ok(done))) => lines.push(format!("Última escrita: {done}")),
             (false, Some(Err(why))) => lines.push(format!("A última escrita falhou: {why}")),
             (false, None) => {}
         }
+
         lines.join("\n")
     }
 
@@ -454,6 +489,7 @@ impl GitHub {
         match message {
             Message::Pulse(result) => {
                 self.busy_pulse = false;
+
                 match result {
                     Ok(pulse) => return self.take_pulse(pulse, now).and(self.notice.as_ref().map(|notice| format!("GitHub: {}.", notice.text))),
                     Err(failure) => self.failed(failure, now),
@@ -466,6 +502,7 @@ impl GitHub {
             }
             Message::Login(result) => {
                 self.testing = false;
+
                 return Some(match result {
                     Ok(login) => {
                         self.error = None;
@@ -473,6 +510,7 @@ impl GitHub {
                     }
                     Err(failure) => {
                         let message = format!("GitHub: {}", failure.message);
+
                         self.failed(failure, now);
                         message
                     }
@@ -481,41 +519,49 @@ impl GitHub {
             Message::Detail(id, result) => self.take_detail(id, result, now),
             Message::Wrote(write, id, result) => self.take_write(write, id, result, now),
         }
+
         None
     }
 
     fn spawn(&mut self, work: impl FnOnce(&str) -> Message + Send + 'static) {
         let sender = self.channel.get_or_insert_with(channel).0.clone();
         let (generation, token) = (self.generation, self.token.clone().unwrap_or_default());
+
         std::thread::spawn(move || sender.send((generation, work(&token))));
     }
 
     /// A good pulse: the alert it brings, and when the next one is due.
     pub(crate) fn take_pulse(&mut self, pulse: Pulse, now: i64) -> Option<Alert> {
         let alert = foremost(&alerts(self.pulse.as_ref(), &pulse)).cloned();
+
         if let Some(alert) = &alert {
             let (id, text, failure) = match alert {
                 Alert::CheckFailed(id) => (id, format!("Os checks de {id} falharam"), true),
                 Alert::MainFailed(repo) => {
                     let branch = pulse.main.iter().find(|branch| &branch.repo == repo).map_or("principal", |branch| branch.branch.as_str());
+
                     (repo, format!("O CI da {branch} de {repo} falhou"), true)
                 }
                 Alert::ReviewRequested(id) => (id, format!("Pediram a sua revisão em {id}"), false),
                 Alert::CheckPassed(id) => (id, format!("Os checks de {id} passaram"), false),
             };
+
             let url = match alert {
                 // the repository's Actions, where the failed run is
                 Alert::MainFailed(_) => pulse.main.iter().find(|branch| &branch.repo == id).map(BranchCi::actions_page),
                 _ => pulse.mine.iter().chain(&pulse.to_review).find(|request| &request.id == id).map(PullRequest::page),
             };
+
             self.notice = Some(Notice { text, failure, url: url.unwrap_or_default(), at: now, seen: None });
             self.ring = Some((alert.clone(), now));
         }
+
         let wait = match (pulse.remaining.is_some_and(|left| left < LOW_BUDGET), pulse.has_pending()) {
             (true, _) => SPARING_EVERY,
             (_, true) => PENDING_EVERY,
             _ => IDLE_EVERY,
         };
+
         (self.next_pulse, self.error, self.pulse) = (now + wait, None, Some(pulse));
         alert
     }
@@ -525,51 +571,66 @@ impl DrawingApp {
     /// Each frame: the token read once, the answers taken, the polls that are due sent. Off, nothing reaches the network.
     pub(crate) fn github_tick(&mut self, ctx: &Context) {
         let enabled = self.prefs.integrations.github;
+
         if !enabled {
             let github = &mut self.integrations.github;
+
             if github.pulse.is_some() || github.error.is_some() || github.busy() || !github.details.is_empty() || github.last_write.is_some() {
                 github.forget();
             }
+
             return;
         }
+
         let github = &mut self.integrations.github;
+
         github.load_token();
+
         if fake::pulse().is_some() {
             return;
         }
+
         let now = now_ms();
         let mut toast = None;
+
         while let Some((generation, message)) = github.channel.as_ref().and_then(|(_, receiver)| receiver.try_recv().ok()) {
             if generation == github.generation {
                 toast = github.receive(message, now).or(toast);
             }
         }
+
         if let Some(notice) = &github.notice
             && (now - notice.at > NOTICE_FOR || notice.seen.is_some_and(|seen| now - seen > SEEN_FOR))
         {
             github.notice = None;
         }
+
         // never the network in a test
         if github.has_token() && !cfg!(test) {
             if !github.busy_pulse && now >= github.next_pulse {
                 github.busy_pulse = true;
+
                 github.spawn(|token| {
                     Message::Pulse(graphql(token, PULSE_QUERY).and_then(|root| {
                         Pulse::parse(&root).ok_or(Failure { message: "A resposta do GitHub veio sem os seus dados.".into(), unauthorized: false })
                     }))
                 });
             }
+
             if !github.busy_activity && now >= github.next_activity && !github.refused() {
                 github.busy_activity = true;
+
                 github.spawn(|token| {
                     Message::Activity(
                         graphql(token, ACTIVITY_QUERY).and_then(|root| Activity::parse(&root).ok_or(Failure { message: String::new(), unauthorized: false })),
                     )
                 });
             }
+
             // the answers come by the clock, with nobody moving the mouse
             ctx.request_repaint_after(std::time::Duration::from_secs(if github.busy() { 1 } else { 30 }));
         }
+
         if let Some(message) = toast {
             self.toast(message);
         }
@@ -580,7 +641,9 @@ impl DrawingApp {
         if !self.prefs.integrations.github {
             return "GitHub: desligado.".into();
         }
+
         let github = &mut self.integrations.github;
+
         github.load_token();
         github.report()
     }

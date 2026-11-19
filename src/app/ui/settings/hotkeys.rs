@@ -23,6 +23,7 @@ enum Ask {
 /// Whether a shortcut answers to the search: its name or its keys as shown, any case.
 fn shortcut_matches(label: &str, keys: &str, query: &str) -> bool {
     let query = query.trim().to_lowercase();
+
     query.is_empty() || label.to_lowercase().contains(&query) || keys.to_lowercase().contains(&query)
 }
 
@@ -39,40 +40,52 @@ impl DrawingApp {
         let id = egui::Id::unique("settings_shortcut_search");
         let mut query = ui.ctx().data(|data| data.get_temp::<String>(id)).unwrap_or_default();
         let width = ui.available_width();
+
         input(ui, k, id.with("field"), "Buscar atalho", &mut query, "Buscar pelo nome ou pela tecla", width, false);
         ui.ctx().data_mut(|data| data.insert_temp(id, query.clone()));
         ui.add_space(16.25);
         let mut groups: Vec<&str> = hotkeys::every().map(|def| def.group).collect();
+
         groups.dedup();
         let mut shown = 0;
+
         for group in groups {
             let rows: Vec<&'static ShortcutDef> = hotkeys::every()
                 .filter(|def| def.group == group && shortcut_matches(def.label, &hotkeys::shown_keys(def, &self.prefs.shortcuts), &query))
                 .collect();
+
             if rows.is_empty() {
                 continue;
             }
+
             if shown > 0 {
                 divider(ui, k);
             }
+
             shown += rows.len();
             title(ui, k, group);
+
             if group == GLOBAL_GROUP {
                 note(ui, k, "Valem com qualquer programa na frente. Clique nas teclas de um atalho para gravar outras.");
+
                 if !self.prefs.island {
                     note(ui, k, "A ilha está desligada: eles voltam a valer quando ela for ligada em Ajustes › Geral.");
                 }
             }
+
             for def in rows {
                 self.shortcut_row(ui, k, def);
             }
+
             if group == GLOBAL_GROUP && self.hotkeys.statuses.contains(&Status::Unsupported) {
                 note(ui, k, Status::Unsupported.label());
             }
         }
+
         if shown == 0 {
             note(ui, k, "Nenhum atalho com esse nome ou essa tecla.");
         }
+
         divider(ui, k);
         title(ui, k, "TECLAS FIXAS");
         note(ui, k, &keys_label(FIXED));
@@ -86,6 +99,7 @@ impl DrawingApp {
         let editing = self.hotkeys.recording.clone().filter(|editing| editing.id == def.id);
         let global = def.scope() == Scope::Global;
         let app = def.scope() == Scope::App;
+
         let hint = match &editing {
             Some(editing) => {
                 let warning = match editing.pending {
@@ -93,6 +107,7 @@ impl DrawingApp {
                     Some(Pending::Keys(combo)) if global && editing.problem.is_none() => altgr_warning(&keys::format(&combo)).unwrap_or_default(),
                     _ => String::new(),
                 };
+
                 format!("{} {warning}", editing.hint()).trim().to_string()
             }
             None if global => {
@@ -100,11 +115,13 @@ impl DrawingApp {
                 let status = index.and_then(|index| self.hotkeys.statuses.get(index)).map_or("", |status| status.label());
                 let binding = hotkeys::effective(def, stored);
                 let warning = altgr_warning(&binding.keys).filter(|_| binding.enabled).unwrap_or_default();
+
                 format!("{status} {warning}").trim().to_string()
             }
             None if matches!(def.act, hotkeys::Act::App(action) if action.everywhere()) => "Vale até com o teclado num terminal ou num chat.".into(),
             None => String::new(),
         };
+
         let keys_text = match editing.as_ref().map(|editing| editing.pending) {
             Some(Some(Pending::Keys(combo))) => keys::combo_label(&combo, app),
             Some(Some(Pending::Clear)) => keys::display(""),
@@ -115,42 +132,58 @@ impl DrawingApp {
             },
             None => hotkeys::shown_keys(def, stored),
         };
+
         let (has_keys, changed) = (!hotkeys::keys_of(def, stored).is_empty(), stored.contains_key(def.id));
         let mut on = hotkeys::enabled(def, stored);
+
         let ask = row(ui, k, def.label, &hint, |ui| {
             let mut ask = None;
+
             // from the right edge inwards
             if let Some(editing) = &editing {
                 if button(ui, k, "Cancelar").clicked() {
                     ask = Some(Ask::Cancel);
                 }
+
                 if editing.pending.is_some() && save_button(ui, k, editing.problem.is_none()).clicked() {
                     ask = Some(Ask::Save);
                 }
+
                 let edge = if editing.problem.is_some() { k.destructive } else { k.primary };
+
                 keys_button(ui, k, &keys_text, Some(edge));
+
                 return ask;
             }
+
             if global {
                 let (rect, _) = ui.allocate_exact_size(Vec2::new(38.0, 22.0), Sense::hover());
+
                 if switch(ui, k, rect.min, def.label, &mut on) {
                     ask = Some(Ask::Switch(on));
                 }
             }
+
             if ghost_button(ui, k, Icon::Restart, &format!("Voltar ao padrão: {}", def.label), changed, false).tip("Voltar ao padrão").clicked() {
                 ask = Some(Ask::Default);
             }
+
             if ghost_button(ui, k, Icon::Trash, &format!("Limpar: {}", def.label), has_keys, true).tip("Limpar: deixar sem tecla").clicked() {
                 ask = Some(Ask::Clear);
             }
+
             let keys = keys_button(ui, k, &keys_text, None).tip("Clique para gravar outras teclas");
+
             if keys.clicked() {
                 keys.surrender_focus();
                 ask = Some(Ask::Record);
             }
+
             ask
         });
+
         let stored = &mut self.prefs.shortcuts;
+
         match ask {
             Some(Ask::Record) => self.hotkeys.recording = Some(Editing::new(def.id)),
             Some(Ask::Cancel) => self.hotkeys.recording = None,
@@ -163,6 +196,7 @@ impl DrawingApp {
             }
             Some(Ask::Clear) => {
                 let _ = editor::apply(def, Pending::Clear, stored);
+
                 self.hotkeys.recording = None;
             }
             // the default keys back, unless another shortcut took them since: then they wait, with whose they are
@@ -175,6 +209,7 @@ impl DrawingApp {
             }
             Some(Ask::Switch(on)) => {
                 let binding = Binding { enabled: on, ..hotkeys::effective(def, stored) };
+
                 hotkeys::set_binding(stored, def, binding);
             }
             None => {}
@@ -185,15 +220,19 @@ impl DrawingApp {
     /// and Colar come as their own events, and are told apart as Ctrl+C, Ctrl+X and Ctrl+V).
     fn record_hotkey(&mut self, ui: &egui::Ui) {
         let Some(mut editing) = self.hotkeys.recording.take() else { return };
+
         let taken: Vec<egui::Event> = ui.ctx().input_mut(|input| {
             let (keys, rest) = std::mem::take(&mut input.events).into_iter().partition(|event| {
                 matches!(event, egui::Event::Key { .. } | egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_) | egui::Event::PasteImage(_))
             });
+
             input.events = rest;
             keys
         });
+
         for event in taken {
             let clipboard = |keys: &str| keys::parse_keys(keys).map(Recorded::Keys);
+
             let recorded = match event {
                 egui::Event::Key { key, pressed: true, repeat: false, modifiers, .. } => Some(keys::record(key, modifiers)),
                 egui::Event::Copy => clipboard("Ctrl+C"),
@@ -201,12 +240,14 @@ impl DrawingApp {
                 egui::Event::Paste(_) | egui::Event::PasteImage(_) => clipboard("Ctrl+V"),
                 _ => None,
             };
+
             if let Some(recorded) = recorded
                 && editing.press(recorded, &mut self.prefs.shortcuts)
             {
                 return;
             }
         }
+
         self.hotkeys.recording = Some(editing);
     }
 }
@@ -219,8 +260,10 @@ fn keys_button(ui: &mut egui::Ui, k: &K, text: &str, edge: Option<Color32>) -> e
     let galley = ui.painter().layout_no_wrap(text.into(), FontId::proportional(12.5), color);
     let (rect, response) = ui.allocate_exact_size(Vec2::new((galley.size().x + 24.0).max(96.0), 30.0), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
+
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, text));
     let fill = if response.hovered() { k.button.lerp_to_gamma(k.fg, 0.06) } else { k.button };
+
     ui.painter().rect_filled(rect, 8.0, fill);
     ui.painter().rect_stroke(rect, 8.0, Stroke::new(if edge.is_some() { 1.5 } else { 1.0 }, edge.unwrap_or(k.button_line)), StrokeKind::Inside);
     ui.painter().galley(rect.center() - galley.size() / 2.0, galley, color);
@@ -232,14 +275,18 @@ fn save_button(ui: &mut egui::Ui, k: &K, enabled: bool) -> egui::Response {
     let galley = ui.painter().layout_no_wrap("Salvar".into(), FontId::proportional(12.5), Color32::WHITE);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(galley.size().x + 24.0, 30.0), if enabled { Sense::click() } else { Sense::hover() });
     let response = if enabled { response.on_hover_cursor(CursorIcon::PointingHand) } else { response };
+
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, "Salvar"));
+
     let fill = match (enabled, response.hovered()) {
         (false, _) => k.primary.gamma_multiply(0.35),
         (true, true) => k.primary.lerp_to_gamma(Color32::WHITE, 0.12),
         (true, false) => k.primary,
     };
+
     ui.painter().rect_filled(rect, 8.0, fill);
     let text = if enabled { Color32::WHITE } else { Color32::WHITE.gamma_multiply(0.6) };
+
     ui.painter().galley(rect.center() - galley.size() / 2.0, galley, text);
     response
 }

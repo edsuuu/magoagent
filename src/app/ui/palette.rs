@@ -231,6 +231,7 @@ pub(crate) fn shortcut_keys(keys: &str) -> Vec<&str> {
     if keys.is_empty() {
         return Vec::new();
     }
+
     match keys.strip_suffix("++") {
         Some(rest) => rest.split('+').chain(["+"]).collect(),
         None => keys.split('+').collect(),
@@ -256,6 +257,7 @@ pub(crate) fn fold(text: &str) -> String {
 pub(crate) fn key_chip(ui: &mut egui::Ui, key: &str, c: &UiColors) {
     let galley = ui.painter().layout_no_wrap(key.to_string(), FontId::proportional(11.0), c.text);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(galley.size().x + 8.0, 16.0), Sense::hover());
+
     ui.painter().rect_filled(rect, 4, c.selected);
     ui.painter().galley(rect.center() - galley.size() / 2.0, galley, c.text);
 }
@@ -273,12 +275,14 @@ impl DrawingApp {
     pub(crate) fn palette_items(&self) -> Vec<Command> {
         let query = fold(&self.palette_query);
         let words: Vec<&str> = query.split_whitespace().collect();
+
         Command::ALL
             .iter()
             .copied()
             .filter(|cmd| cmd.group() != "Elementos" || !self.selected.is_empty())
             .filter(|cmd| {
                 let label = fold(cmd.label());
+
                 words.iter().all(|w| label.contains(w))
             })
             .collect()
@@ -290,20 +294,24 @@ impl DrawingApp {
             let Some(source) = self.active_node().map(|e| e.id.clone()) else { return Vec::new() };
             let query = fold(&self.palette_query);
             let words: Vec<&str> = query.split_whitespace().collect();
+
             return self
                 .link_candidates(&source, action)
                 .into_iter()
                 .filter(|(_, _, name)| {
                     let name = fold(name);
+
                     words.iter().all(|w| name.contains(w))
                 })
                 .map(|(id, icon, label)| Row { group: "", icon, label, keys: String::new(), run: Run::Node(id) })
                 .collect();
         }
+
         self.palette_items()
             .into_iter()
             .map(|cmd| {
                 let keys = cmd.shortcut().map_or_else(|| cmd.fixed_keys().to_string(), |action| self.app_keys_text(action));
+
                 Row { group: cmd.group(), icon: cmd.icon(), label: cmd.label().into(), keys, run: Run::Command(cmd) }
             })
             .collect()
@@ -322,6 +330,7 @@ impl DrawingApp {
             Command::ZoomOut => self.zoom_step(-0.1),
             Command::ZoomReset => {
                 let center = self.canvas_rect.center();
+
                 self.zoom_at(1.0, center);
             }
             Command::ZoomFit => self.zoom_to_fit(false),
@@ -347,6 +356,7 @@ impl DrawingApp {
             }
             Command::RemoveConnections => {
                 let ids: Vec<String> = self.selected.iter().filter_map(|i| self.scene.elements.get(*i)).map(|e| e.id.clone()).collect();
+
                 self.unlink_all(&ids);
             }
             // as Ajustes presets it; its card lands near the middle of the view, selected
@@ -360,7 +370,9 @@ impl DrawingApp {
     pub(crate) fn command_palette(&mut self, ctx: &Context) {
         let c = self.colors();
         let rows = self.palette_rows();
+
         self.palette_index = self.palette_index.min(rows.len().saturating_sub(1));
+
         let (down, up, enter, escape) = ctx.input_mut(|i| {
             (
                 i.consume_key(Modifiers::NONE, Key::ArrowDown),
@@ -369,13 +381,17 @@ impl DrawingApp {
                 i.consume_key(Modifiers::NONE, Key::Escape),
             )
         });
+
         if down && !rows.is_empty() {
             self.palette_index = (self.palette_index + 1) % rows.len();
         }
+
         if up && !rows.is_empty() {
             self.palette_index = (self.palette_index + rows.len() - 1) % rows.len();
         }
+
         let mut run = enter.then(|| rows.get(self.palette_index).map(|r| r.run.clone())).flatten();
+
         let (hint, empty) = match self.palette_links {
             Some(LinkAction::Connect) => ("Buscar nós para conectar…", "Nenhum nó para conectar"),
             Some(LinkAction::Disconnect) => ("Buscar nós conectados…", "Nenhum nó conectado"),
@@ -383,12 +399,15 @@ impl DrawingApp {
         };
 
         let screen = ctx.content_rect();
+
         ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("palette_dim"))).rect_filled(
             screen,
             0.0,
             Color32::from_rgba_unmultiplied(12, 12, 14, 89),
         );
+
         let selected_bg = if self.dark() { Color32::from_rgb(24, 24, 27) } else { Color32::from_rgb(0xf6, 0xf6, 0xf9) };
+
         let dialog =
             egui::Area::new(egui::Id::unique("command_palette")).anchor(egui::Align2::CENTER_TOP, (0.0, 47.0)).order(egui::Order::Tooltip).show(ctx, |ui| {
                 egui::Frame::new()
@@ -399,6 +418,7 @@ impl DrawingApp {
                     .show(ui, |ui| {
                         ui.set_width(672.0);
                         ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
+
                         egui::Frame::new()
                             .fill(c.surface_high)
                             .stroke(Stroke::new(1.0, PRIMARY))
@@ -413,34 +433,44 @@ impl DrawingApp {
                                         .hint_text(egui::RichText::new(hint).size(16.0).color(c.muted))
                                         .desired_width(f32::INFINITY),
                                 );
+
                                 if input.changed() {
                                     self.palette_index = 0;
                                 }
+
                                 if !self.palette_focused {
                                     input.request_focus();
                                     self.palette_focused = true;
                                 }
                             });
+
                         ui.add_space(8.0);
+
                         ui.horizontal(|ui| {
                             let hints = [("↑↓", "Selecionar"), ("↵", "Confirmar"), ("Esc", "Fechar")];
                             let width = 230.0;
+
                             ui.add_space((ui.available_width() - width) / 2.0);
+
                             for (key, label) in hints {
                                 key_chip(ui, key, &c);
                                 ui.label(egui::RichText::new(label).size(11.0).color(c.muted));
                                 ui.add_space(12.0);
                             }
                         });
+
                         ui.add_space(12.0);
                         let max_height = (screen.height() - 230.0).max(120.0);
+
                         egui::ScrollArea::vertical().max_height(max_height).auto_shrink([false, true]).show(ui, |ui| {
                             ui.set_width(ui.available_width());
                             let mut group = "";
+
                             if rows.is_empty() {
                                 ui.add_space(8.0);
                                 ui.label(egui::RichText::new(empty).size(14.0).color(c.muted));
                             }
+
                             for (k, row) in rows.iter().enumerate() {
                                 if row.group != group {
                                     group = row.group;
@@ -448,19 +478,26 @@ impl DrawingApp {
                                     ui.label(egui::RichText::new(group).size(16.0).strong().color(c.text));
                                     ui.add_space(6.0);
                                 }
+
                                 let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::click());
                                 let response = response.on_hover_cursor(CursorIcon::PointingHand);
+
                                 if response.hovered() && ui.input(|i| i.pointer.delta() != Vec2::ZERO) {
                                     self.palette_index = k;
                                 }
+
                                 let p = ui.painter();
+
                                 if k == self.palette_index {
                                     p.rect_filled(rect, 8, selected_bg);
+
                                     if down || up {
                                         ui.scroll_to_rect(rect, None);
                                     }
                                 }
+
                                 paint_icon(p, row.icon, Pos2::new(rect.left() + 16.0, rect.center().y), c.text);
+
                                 p.text(
                                     Pos2::new(rect.left() + 36.0, rect.center().y),
                                     egui::Align2::LEFT_CENTER,
@@ -468,16 +505,21 @@ impl DrawingApp {
                                     FontId::proportional(16.0),
                                     c.text,
                                 );
+
                                 let mut x = rect.right() - 8.0;
                                 let keys = keys_label(&row.keys);
+
                                 for key in shortcut_keys(&keys).iter().rev() {
                                     let galley = p.layout_no_wrap(key.to_string(), FontId::proportional(11.0), c.text);
+
                                     let chip =
                                         Rect::from_min_max(Pos2::new(x - galley.size().x - 8.0, rect.center().y - 8.0), Pos2::new(x, rect.center().y + 8.0));
+
                                     p.rect_filled(chip, 4, c.selected);
                                     p.galley(chip.center() - galley.size() / 2.0, galley, c.text);
                                     x = chip.left() - 4.0;
                                 }
+
                                 if response.clicked() {
                                     run = Some(row.run.clone());
                                 }
@@ -485,14 +527,18 @@ impl DrawingApp {
                         });
                     });
             });
+
         let clicked_outside =
             ctx.input(|i| i.pointer.any_pressed()) && ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !dialog.response.rect.contains(p));
+
         let picked = run.is_some();
+
         match run {
             Some(Run::Command(cmd)) => self.run_command(cmd),
             Some(Run::Node(id)) => self.pick_link_node(&id),
             None => {}
         }
+
         // a connect / disconnect command keeps the palette up for its node search
         if escape || clicked_outside || (picked && self.palette_links.is_none()) {
             self.palette_open = false;

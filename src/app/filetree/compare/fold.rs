@@ -23,17 +23,21 @@ pub(crate) enum Plan {
 pub(crate) fn visible_plan(keys: &[Option<usize>], opened: &HashSet<usize>, collapse: bool) -> Vec<Plan> {
     let mut plan = vec![];
     let mut index = 0;
+
     while index < keys.len() {
         let Some(key) = keys[index] else {
             plan.push(Plan::Show(index));
             index += 1;
+
             continue;
         };
+
         let end = index + keys[index..].iter().take_while(|key| key.is_some()).count();
         let head = if index > 0 { CONTEXT } else { 0 };
         let tail = if end < keys.len() { CONTEXT } else { 0 };
         let hidden = (end - index).saturating_sub(head + tail);
         let whole = index == 0 && end == keys.len();
+
         if collapse && !whole && hidden >= LEAST && !opened.contains(&key) {
             plan.extend((index..index + head).map(Plan::Show));
             plan.push(Plan::Fold { key, first: index + head, count: hidden });
@@ -41,7 +45,9 @@ pub(crate) fn visible_plan(keys: &[Option<usize>], opened: &HashSet<usize>, coll
         } else {
             plan.extend((index..end).map(Plan::Show));
         }
+
         index = end;
     }
+
     plan
 }

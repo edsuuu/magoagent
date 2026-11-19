@@ -51,6 +51,7 @@ impl TermHandle {
         let mut term = self.term.lock();
         let (from, to) = (Point::new(term.topmost_line(), Column(0)), Point::new(term.bottommost_line(), term.last_column()));
         let mut selection = Selection::new(SelectionType::Simple, from, Side::Left);
+
         selection.update(to, Side::Right);
         term.selection = Some(selection);
     }
@@ -61,18 +62,22 @@ impl TermHandle {
 
     fn point_of(term: &Term<Listener>, cell: GridCell) -> Point {
         let row = cell.row.clamp(0, term.screen_lines() as i32 - 1);
+
         Point::new(Line(row - term.grid().display_offset() as i32), Column(cell.col.min(term.columns() - 1)))
     }
 
     /// A press on `cell` starts a selection there.
     pub(crate) fn begin_selection(&self, cell: GridCell, pick: Pick) {
         let mut term = self.term.lock();
+
         let ty = match pick {
             Pick::Chars => SelectionType::Simple,
             Pick::Word => SelectionType::Semantic,
             Pick::Line => SelectionType::Lines,
         };
+
         let side = if cell.right { Side::Right } else { Side::Left };
+
         term.selection = Some(Selection::new(ty, Self::point_of(&term, cell), side));
     }
 
@@ -81,12 +86,15 @@ impl TermHandle {
     pub(crate) fn extend_selection(&self, cell: GridCell) {
         let mut term = self.term.lock();
         let rows = term.screen_lines() as i32;
+
         if cell.row < 0 {
             term.scroll_display(Scroll::Delta(1));
         } else if cell.row >= rows {
             term.scroll_display(Scroll::Delta(-1));
         }
+
         let (point, side) = (Self::point_of(&term, cell), if cell.right { Side::Right } else { Side::Left });
+
         if let Some(selection) = term.selection.as_mut() {
             selection.update(point, side);
         }
@@ -96,26 +104,36 @@ impl TermHandle {
     /// ignores the case, as the grid's search does.
     pub(crate) fn find_all(&self, query: &str, regex: bool) -> Found {
         let mut found = Found::default();
+
         if query.is_empty() {
             return found;
         }
+
         let pattern = if regex { query.to_string() } else { escape(query) };
+
         let Ok(mut search) = RegexSearch::new(&pattern) else {
             found.invalid = true;
+
             return found;
         };
+
         let term = self.term.lock();
         let end = Point::new(term.bottommost_line(), term.last_column());
         let mut start = Point::new(term.topmost_line(), Column(0));
+
         while let Some(m) = term.regex_search_right(&mut search, start, end) {
             let next = m.end().add(&*term, Boundary::None, 1);
             let last = *m.end() == end || next <= start;
+
             found.matches.push(m);
+
             if last || found.matches.len() >= MAX_MATCHES {
                 break;
             }
+
             start = next;
         }
+
         found
     }
 
@@ -123,9 +141,11 @@ impl TermHandle {
     pub(crate) fn reveal(&self, m: &Match) {
         let mut term = self.term.lock();
         let (top, rows) = (-(term.grid().display_offset() as i32), term.screen_lines() as i32);
+
         if m.start().line.0 < top || m.start().line.0 >= top + rows {
             let to = Point::new(Line(m.start().line.0 - rows / 2), m.start().column);
             let to = to.grid_clamp(&*term, Boundary::Grid);
+
             term.scroll_to_point(to);
         }
     }
@@ -135,14 +155,18 @@ impl TermHandle {
         let term = self.term.lock();
         let (offset, rows, last) = (term.grid().display_offset() as i32, term.screen_lines(), term.columns() - 1);
         let mut by_row = vec![Vec::new(); rows];
+
         for (k, m) in matches.iter().enumerate() {
             let (from, to) = (m.start().line.0 + offset, m.end().line.0 + offset);
+
             for line in from.max(0)..=to.min(rows as i32 - 1) {
                 let a = if line == from { m.start().column.0 } else { 0 };
                 let b = if line == to { m.end().column.0 } else { last };
+
                 by_row[line as usize].push((a, b, current == Some(k)));
             }
         }
+
         by_row
     }
 }
@@ -153,6 +177,7 @@ fn escape(text: &str) -> String {
         if "\\.+*?()|[]{}^$#&-~".contains(c) {
             out.push('\\');
         }
+
         out.push(c);
         out
     })
@@ -161,6 +186,7 @@ fn escape(text: &str) -> String {
 /// The cell under `pos` (screen) for a grid whose top-left is `origin` and whose cells are `cell`.
 pub(crate) fn cell_at(pos: Pos2, origin: Pos2, cell: Vec2) -> GridCell {
     let (dx, dy) = ((pos.x - origin.x) / cell.x, (pos.y - origin.y) / cell.y);
+
     GridCell { row: dy.floor() as i32, col: dx.max(0.0).floor() as usize, right: dx.rem_euclid(1.0) >= 0.5 }
 }
 
@@ -174,12 +200,15 @@ mod tests {
         let args: Vec<&str> = if cfg!(windows) { vec!["/c", &line] } else { vec!["-c", &line] };
         let program = if cfg!(windows) { "cmd" } else { "sh" };
         let session = TerminalSession::spawn("", "", (40, 6), None, vec![], Some((program, &args)), 100).unwrap();
+
         for _ in 0..100 {
             if session.handle.screen_text().contains(text) {
                 return session;
             }
+
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
+
         panic!("the shell printed nothing");
     }
 
@@ -187,6 +216,7 @@ mod tests {
     fn finds_text_with_smart_case_and_as_a_regex() {
         let session = printed("zebra stripes ZEBRA");
         let h = &session.handle;
+
         assert_eq!(h.find_all("zebra", false).matches.len(), 2, "lower case ignores the case");
         assert_eq!(h.find_all("ZEBRA", false).matches.len(), 1, "a capital does not");
         assert_eq!(h.find_all("z.bra", false).matches.len(), 0, "plain text is no regex");
@@ -194,8 +224,10 @@ mod tests {
         assert!(h.find_all("(", true).invalid);
         assert!(h.find_all("", false).matches.is_empty());
         let found = h.find_all("stripes", false);
+
         assert_eq!(found.matches.len(), 1);
         let marks = h.marks(&found.matches, Some(0));
+
         assert!(marks.iter().flatten().any(|&(a, b, current)| b - a == 6 && current), "{marks:?}");
     }
 
@@ -203,6 +235,7 @@ mod tests {
     fn selects_all_and_a_cell_range_and_clears() {
         let session = printed("alpha beta");
         let h = &session.handle;
+
         assert!(!h.has_selection());
         h.select_all();
         assert!(h.has_selection() && h.selected_text().contains("alpha beta"));
@@ -210,6 +243,7 @@ mod tests {
         assert!(!h.has_selection());
         let row = (0..6).find(|r| h.screen_text().lines().nth(*r).is_some_and(|l| l.contains("alpha"))).unwrap() as i32;
         let col = h.screen_text().lines().nth(row as usize).unwrap().find("alpha").unwrap();
+
         h.begin_selection(GridCell { row, col, right: false }, Pick::Chars);
         h.extend_selection(GridCell { row, col: col + 4, right: true });
         assert_eq!(h.selected_text(), "alpha");
@@ -221,6 +255,7 @@ mod tests {
     fn a_pointer_maps_to_its_cell_and_half() {
         let cell = Vec2::new(10.0, 20.0);
         let c = cell_at(Pos2::new(37.0, 65.0), Pos2::new(10.0, 5.0), cell);
+
         assert_eq!(c, GridCell { row: 3, col: 2, right: true });
         assert_eq!(cell_at(Pos2::new(0.0, 0.0), Pos2::new(10.0, 5.0), cell).row, -1);
     }

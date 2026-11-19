@@ -1,8 +1,9 @@
 [package]
 name = "magoagent"
-version = "0.0.33"
+version = "0.0.34"
 edition = "2024"
 authors = ["edsuuu"]
+license = "MIT"
 description = "MagoAgent: quadro branco nativo em Rust"
 # an app, not a library: never goes to crates.io
 publish = false
@@ -41,6 +42,11 @@ cpal = "0.16"
 # portals (web pages on the canvas) use the system's own webview: WebKit on macOS, WebView2 on Windows, WebKitGTK on
 # Linux (X11 only, on GTK's thread: app/browser/webkit.rs); the .deb depends on libwebkit2gtk-4.1-0
 wry = "0.57"
+
+# the spacing test (src/tests/spacing.rs) reads the code with the lines of its statements
+[dev-dependencies]
+proc-macro2 = { version = "1", features = ["span-locations"] }
+syn = { version = "2", features = ["full", "visit"] }
 
 # macOS: the window buttons move onto the toolbar row (already in the tree through winit)
 [target.'cfg(target_os = "macos")'.dependencies]

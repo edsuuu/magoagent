@@ -3,85 +3,112 @@ use super::*;
 #[test]
 fn the_chat_reads_claude_code_files() {
     use crate::transcript::{ChatItem, Session, Transcript, assign, chat_items, project_folder};
+
     assert_eq!(project_folder("/Users/eu/.claude/my_proj"), "-Users-eu--claude-my-proj");
     let line = |v: Value| chat_items(&v);
+
     assert_eq!(line(json!({"type": "user", "message": {"content": "oi"}})), vec![ChatItem::User("oi".into())]);
+
     let reply = json!({"type": "assistant", "message": {"content": [
         {"type": "thinking", "thinking": "x"},
         {"type": "text", "text": "Feito."},
         {"type": "tool_use", "name": "Bash", "input": {"command": "ls -la\npwd", "description": "lista"}},
     ]}});
+
     let bash = crate::transcript::Step { name: "Bash".into(), what: "ls -la".into(), input: "ls -la\npwd".into(), ..Default::default() };
+
     assert_eq!(line(reply), vec![ChatItem::Agent("Feito.".into()), ChatItem::Tool(bash)]);
     // tool results, side conversations and bookkeeping lines stay out
     assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": "ok"}]}})).is_empty());
     // but an image a tool gave back (a PNG read, a page's print) is the agent showing it
     let png = json!({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "iVBO"}});
     let read = json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone(), {"type": "text", "text": "x"}]}]}});
+
     assert_eq!(line(read), vec![ChatItem::Image { data: "iVBO".into(), media: "image/png".into(), user: false, at: 0 }]);
+
     assert!(
         line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": [png.clone()]}]}}))
             .iter()
             .all(|i| !matches!(i, ChatItem::Image { .. }))
     );
+
     // in the order of their blocks
     let both = json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone()]}, {"type": "tool_result", "is_error": true, "content": "Permission to use Bash denied by plugin x"}]}});
+
     assert!(matches!(line(both).as_slice(), [ChatItem::Image { .. }, ChatItem::Error(_)]), "the image first, as it came");
     // MagoAgent's own print of the canvas stays out: the canvas is behind the chat
     let note = format!("3 elemento(s); área x=0 y=0 largura=10 altura=10 ({}, escala 1.00)", crate::transcript::VIEW_MARK);
+
     assert!(
         line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": [png.clone(), {"type": "text", "text": note}]}]}})).is_empty()
     );
+
     assert!(line(json!({"type": "assistant", "isSidechain": true, "message": {"content": "x"}})).is_empty());
     assert!(line(json!({"type": "api-request", "message": {"content": "x"}})).is_empty());
     // a slash command shows as Claude Code's note, its other notes not at all; a "<" of the person's stays
     let command = "<command-message>model</command-message>\n<command-name>/model</command-name>\n<command-args>opus</command-args>";
+
     assert_eq!(line(json!({"type": "user", "message": {"content": command}})), vec![ChatItem::System("/model opus".into())]);
     assert!(line(json!({"type": "user", "message": {"content": "<local-command-stdout>ok</local-command-stdout>"}})).is_empty());
     assert_eq!(line(json!({"type": "user", "message": {"content": "<div> some"}})), vec![ChatItem::User("<div> some".into())]);
     let summary = json!({"type": "user", "isCompactSummary": true, "message": {"content": "This session is being continued..."}});
+
     assert_eq!(line(summary), vec![ChatItem::System("A conversa foi resumida para caber no contexto.".into())]);
     // what failed: the API, a tool
     let api = |n: u64| json!({"type": "system", "subtype": "api_error", "error": {"formatted": "529 Overloaded\nmais"}, "retryAttempt": n, "maxRetries": 10});
+
     assert_eq!(line(api(2)), vec![ChatItem::Error("Erro da API (tentativa 2 de 10): 529 Overloaded".into())]);
     // a tool that failed: on its step, no line of its own; a permission it did not get is said
     let failed = json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": "<tool_use_error>File has not been read yet.</tool_use_error>"}]}});
+
     assert!(line(failed).is_empty());
     let denied = "Permission for this action was denied by the Claude Code auto mode classifier. Reason: deletes files";
     let denied = json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": denied}]}});
+
     assert_eq!(
         line(denied),
         vec![ChatItem::Error("Permissão negada: Permission for this action was denied by the Claude Code auto mode classifier. Reason: deletes files".into())]
     );
+
     let last = json!({"type": "assistant", "isApiErrorMessage": true, "message": {"model": "<synthetic>", "content": [{"type": "text", "text": "API Error: 529 Overloaded"}]}});
+
     assert_eq!(line(last.clone()), vec![ChatItem::Error("Erro da API: 529 Overloaded".into())]);
     // the person's refusal and interruption are no failure
     let refused = json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": "The user doesn't want to proceed with this tool use. The tool use was rejected."}]}});
+
     assert_eq!(line(refused), vec![ChatItem::System("Você recusou o uso da ferramenta.".into())]);
     let stopped = json!({"type": "user", "message": {"content": [{"type": "text", "text": "[Request interrupted by user for tool use]"}]}});
+
     assert_eq!(line(stopped), vec![ChatItem::System("Interrompido pela pessoa.".into())]);
     // what was pasted, without its marks; what was typed while it worked; tags with words after them
     let pasted = json!({"type": "user", "message": {"content": "veja <pasted_content id=\"1\">o log\n</pasted_content id=\"1\"> isso"}});
+
     assert_eq!(line(pasted), vec![ChatItem::User("veja o log\n isso".into())]);
     let queued = json!({"type": "attachment", "attachment": {"type": "queued_command", "commandMode": "prompt", "prompt": "e os testes?"}});
+
     assert_eq!(line(queued), vec![ChatItem::User("e os testes?".into())]);
     // typed while it worked with a picture pasted: the words and the picture, the person's
     let picture = json!({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "iVBOR"}});
     let prompt = json!([{"type": "text", "text": "[Image #17] pode ajustar?"}, picture]);
     let queued = json!({"type": "attachment", "attachment": {"type": "queued_command", "commandMode": "prompt", "prompt": prompt, "timestamp": "1970-01-01T00:00:01.000Z"}});
     let picture = ChatItem::Image { data: "iVBOR".into(), media: "image/png".into(), user: true, at: 1000 };
+
     assert_eq!(line(queued), vec![ChatItem::User("[Image #17] pode ajustar?".into()), picture]);
     assert_eq!(line(json!({"type": "user", "message": {"content": "<b>oi</b> e mais"}})), vec![ChatItem::User("<b>oi</b> e mais".into())]);
 
     let dir = std::env::temp_dir().join(format!("mago-chat-{}", std::process::id()));
     let sessions = dir.join("sessions");
+
     std::fs::create_dir_all(&sessions).unwrap();
     let write = |name: &str, v: Value| std::fs::write(sessions.join(name), v.to_string()).unwrap();
+
     write("1.json", json!({"sessionId": "velha", "cwd": "/p", "startedAt": 1000, "status": "idle"}));
     let pid = std::process::id();
+
     write("2.json", json!({"sessionId": "nova", "cwd": "/p", "startedAt": 9000, "status": "busy", "entrypoint": "cli", "pid": pid, "statusUpdatedAt": 9100}));
     // a claude that crashed left its file saying busy: its process is gone
     let mut gone = if cfg!(windows) { crate::editor::command("cmd").args(["/c", "exit"]).spawn() } else { std::process::Command::new("true").spawn() }.unwrap();
+
     gone.wait().unwrap();
     write("6.json", json!({"sessionId": "caiu", "cwd": "/p", "startedAt": 9900, "status": "busy", "pid": gone.id()}));
     write("5.json", json!({"sessionId": "espera", "cwd": "/r", "startedAt": 9000, "status": "waiting", "waitingFor": "input needed"}));
@@ -89,17 +116,21 @@ fn the_chat_reads_claude_code_files() {
     // the desktop app's session in the same folder is not in any terminal
     write("4.json", json!({"sessionId": "mesa", "cwd": "/p", "startedAt": 9999, "entrypoint": "claude-desktop"}));
     let found = crate::transcript::sessions(&sessions);
+
     assert_eq!(found.len(), 4);
     let session = |id: &str, cwd: &str, started| Session { id: id.into(), cwd: cwd.into(), started, ..Default::default() };
     // what it says it is doing, and since when
     let nova = found.iter().find(|s| s.id == "nova").unwrap();
+
     assert_eq!((nova.pid, nova.status.as_str(), nova.status_at, nova.waiting_for.as_deref()), (pid, "busy", 9100, None));
     assert_eq!(found.iter().find(|s| s.id == "espera").unwrap().waiting_for.as_deref(), Some("input needed"));
     // two Claude terminals in one folder: the newer takes the newer session, the older the other
     let terminals = [("velho".to_string(), "/p".to_string(), 500, 0), ("novo".to_string(), "/p".to_string(), 8000, 0)];
     let mut pairs = assign(&terminals, &found, std::collections::HashMap::new);
+
     pairs.sort_by(|a, b| a.0.cmp(&b.0));
     let ids: Vec<(&str, &str)> = pairs.iter().map(|(t, s)| (t.as_str(), s.id.as_str())).collect();
+
     assert_eq!(ids, [("novo", "nova"), ("velho", "velha")]);
     // nothing started in that folder since the terminal opened: no conversation
     assert!(assign(&[("t".to_string(), "/p".to_string(), 20000, 0)], &found, std::collections::HashMap::new).is_empty());
@@ -107,6 +138,7 @@ fn the_chat_reads_claude_code_files() {
     let typed = std::env::temp_dir().to_str().unwrap().to_string();
     let resolved = std::env::temp_dir().canonicalize().unwrap().to_str().unwrap().to_string();
     let real = assign(&[("t".to_string(), typed, 0, 0)], &[session("real", &resolved, 1)], std::collections::HashMap::new);
+
     assert_eq!(real.len(), 1);
     // resuming a conversation took Claude Code to its folder: the session whose process descends
     // from the terminal's shell (claude 30 ← shell 20 ← the app 10) is the terminal's
@@ -114,49 +146,64 @@ fn the_chat_reads_claude_code_files() {
     let other = Session { pid: 31, ..session("alheia", "/outra", 6) };
     let tree = || std::collections::HashMap::from([(30, 20), (20, 10), (31, 99)]);
     let pairs = assign(&[("t".to_string(), "/macropad".to_string(), 0, 20)], &[moved, other], tree);
+
     assert_eq!(pairs.iter().map(|(t, s)| (t.as_str(), s.id.as_str())).collect::<Vec<_>>(), [("t", "retomada")]);
     assert!(crate::transcript::parents().contains_key(&std::process::id()), "this test's own process is listed");
     // a Claude Code in WSL: its sessions in the distro's folder, the folder in Linux's name and a Linux pid; the
     // terminal (folder in Windows' name) takes it by the folder, never by a Windows process of the same pid
     let wsl = dir.join("wsl-claude");
+
     std::fs::create_dir_all(wsl.join("sessions")).unwrap();
     let file = serde_json::json!({ "sessionId": "linux", "cwd": "/mnt/c/proj", "startedAt": 7, "pid": 0, "entrypoint": "cli" });
+
     std::fs::write(wsl.join("sessions").join("0.json"), file.to_string()).unwrap();
     let found = crate::transcript::wsl_sessions(&wsl, "Ubuntu");
+
     assert_eq!(
         (found[0].cwd.as_str(), found[0].transcript(std::path::Path::new("x"))),
         (r"C:\proj", wsl.join("projects").join("-mnt-c-proj").join("linux.jsonl"))
     );
+
     assert_eq!(crate::transcript::all_sessions(None, Some(&(wsl.clone(), "Ubuntu".into()))), found);
     let pairs = assign(&[("t".to_string(), r"C:\proj".to_string(), 0, 0)], &found, std::collections::HashMap::new);
+
     assert_eq!(pairs.iter().map(|(t, s)| (t.as_str(), s.id.as_str())).collect::<Vec<_>>(), [("t", "linux")]);
     let kin = Session { pid: 30, ..found[0].clone() };
+
     assert!(assign(&[("t".to_string(), "/outra".to_string(), 0, 20)], &[kin], tree).is_empty());
 
     // read from where it stopped; an unfinished line waits for the rest, even cut inside a character
     let file = dir.join("t.jsonl");
+
     let head =
         b"{\"type\":\"ai-title\",\"aiTitle\":\"Plano\"}\n{\"type\":\"user\",\"message\":{\"content\":\"um\"}}\n{\"type\":\"user\",\"message\":{\"content\":\"a";
+
     std::fs::write(&file, [head.as_slice(), &"ç".as_bytes()[..1]].concat()).unwrap();
     let mut transcript = Transcript::new(file.clone());
+
     transcript.poll();
     assert_eq!((transcript.title.as_deref(), transcript.items.len()), (Some("Plano"), 1));
     let mut more = std::fs::OpenOptions::new().append(true).open(&file).unwrap();
+
     std::io::Write::write_all(&mut more, &[&"ç".as_bytes()[1..], "ão\"}}\n".as_bytes()].concat()).unwrap();
     transcript.poll();
     assert_eq!(transcript.items.last(), Some(&ChatItem::User("ação".into())));
+
     // the person's title stays over the summaries'; a retry's error replaces the one before
     let lines: String = [json!({"type": "custom-title", "customTitle": "Meu"}), json!({"type": "ai-title", "aiTitle": "Outro"}), api(1), api(2)]
         .iter()
         .map(|v| format!("{v}\n"))
         .collect();
+
     std::io::Write::write_all(&mut more, lines.as_bytes()).unwrap();
     transcript.poll();
     assert_eq!(transcript.title.as_deref(), Some("Meu"));
+
     assert_eq!(
         transcript.items[transcript.items.len() - 2..],
         [ChatItem::User("ação".into()), ChatItem::Error("Erro da API (tentativa 2 de 10): 529 Overloaded".into())]
     );
+
     // and the last word after the retries replaces them too, as the answer an ask reads
     std::io::Write::write_all(&mut more, format!("{last}\n").as_bytes()).unwrap();
     transcript.poll();
@@ -166,6 +213,7 @@ fn the_chat_reads_claude_code_files() {
     // the tools called stay running until their answers come
     let call = |id: &str, file: &str| json!({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": id, "name": "Read", "input": {"file_path": file}}]}});
     let answer = |id: &str| json!({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": id, "content": "ok"}]}});
+
     std::io::Write::write_all(
         &mut more,
         format!(
@@ -178,8 +226,10 @@ fn the_chat_reads_claude_code_files() {
         .as_bytes(),
     )
     .unwrap();
+
     transcript.poll();
     assert_eq!(transcript.running, [("a".to_string(), "Read a.rs".to_string()), ("b".into(), "Read b.rs".into())]);
+
     std::io::Write::write_all(
         &mut more,
         format!(
@@ -190,12 +240,14 @@ fn the_chat_reads_claude_code_files() {
         .as_bytes(),
     )
     .unwrap();
+
     transcript.poll();
     assert_eq!(transcript.running, [("a".to_string(), "Read a.rs".to_string())]);
     // a step takes what its answer says: lines read, lines changed, a new file; a command's output so far
     let at = |s: u32| format!("2026-10-28T20:05:{s:02}.500Z");
     let call_at = |id: &str, name: &str, s| json!({"type": "assistant", "timestamp": at(s), "message": {"content": [{"type": "tool_use", "id": id, "name": name, "input": {"file_path": "x"}}]}});
     let answer_at = |id: &str, s, result: Value| json!({"type": "user", "timestamp": at(s), "toolUseResult": result, "message": {"content": [{"type": "tool_result", "tool_use_id": id, "content": "ok"}]}});
+
     let lines = [
         call_at("r", "Read", 1),
         answer_at("r", 2, json!({"type": "text", "file": {"numLines": 212}})),
@@ -206,10 +258,12 @@ fn the_chat_reads_claude_code_files() {
         call_at("x", "Bash", 10),
         json!({"type": "progress", "parentToolUseID": "x", "data": {"type": "bash_progress", "output": "PHPUnit\n....   14 / 23 ( 60%)\n\n"}}),
     ];
+
     std::io::Write::write_all(&mut more, lines.iter().map(|v| format!("{v}\n")).collect::<String>().as_bytes()).unwrap();
     transcript.poll();
     let steps: Vec<&crate::transcript::Step> = transcript.items.iter().filter_map(|i| if let ChatItem::Tool(s) = i { Some(s) } else { None }).collect();
     let [.., read, edit, write, bash] = steps.as_slice() else { panic!("{steps:?}") };
+
     assert_eq!((read.note.as_deref(), edit.diff, write.note.as_deref()), (Some("212 linhas"), Some((3, 1)), Some("novo")));
     // the lines of the change as the answer gives them, for the island's diff
     assert_eq!((edit.patch.clone(), edit.patch_line), (vec![" a".to_string(), "+b".into(), "+c".into(), "-d".into(), "+e".into()], 1));
@@ -220,6 +274,7 @@ fn the_chat_reads_claude_code_files() {
     transcript.running.retain(|(id, _)| id == "a");
     // a side conversation's calls aren't this agent's; the person's next message ends what was left
     let side = json!({"type": "assistant", "isSidechain": true, "message": {"content": [{"type": "tool_use", "id": "s", "name": "Bash", "input": {"command": "ls"}}]}});
+
     std::io::Write::write_all(
         &mut more,
         format!(
@@ -229,8 +284,10 @@ fn the_chat_reads_claude_code_files() {
         .as_bytes(),
     )
     .unwrap();
+
     transcript.poll();
     assert_eq!(transcript.running.len(), 1);
+
     std::io::Write::write_all(
         &mut more,
         format!(
@@ -241,10 +298,12 @@ fn the_chat_reads_claude_code_files() {
         .as_bytes(),
     )
     .unwrap();
+
     transcript.poll();
     assert!(transcript.running.is_empty());
     // the newest 20 images keep their pixels, the ones before a note
     let print = json!({"type": "user", "message": {"content": [{"type": "image", "source": {"media_type": "image/png", "data": "iVBO"}}]}});
+
     std::io::Write::write_all(
         &mut more,
         format!(
@@ -255,16 +314,20 @@ fn the_chat_reads_claude_code_files() {
         .as_bytes(),
     )
     .unwrap();
+
     transcript.poll();
     let images = transcript.items.iter().filter(|i| matches!(i, ChatItem::Image { .. })).count();
+
     assert_eq!(images, 20);
     assert!(matches!(&transcript.items[transcript.items.len() - 21], ChatItem::System(_)));
     // a 3 MB print at the end hides the messages before it from the first 2 MB read: it reads further back
     let big = dir.join("big.jsonl");
     let said: String = (0..60).map(|n| format!("{}\n", json!({"type": "user", "message": {"content": format!("m{n}")}}))).collect();
     let huge = json!({"type": "user", "message": {"content": [{"type": "image", "source": {"media_type": "image/png", "data": "A".repeat(3 << 20)}}]}});
+
     std::fs::write(&big, format!("{said}{huge}\n")).unwrap();
     let mut opened = Transcript::new(big);
+
     opened.poll();
     assert_eq!(opened.items.len(), 61, "the 60 messages and the print");
     let _ = std::fs::remove_dir_all(dir);
@@ -274,21 +337,27 @@ fn the_chat_reads_claude_code_files() {
 fn claude_resumes_the_conversation_its_terminal_remembers_while_the_file_is_there() {
     let dir = std::env::temp_dir().join(format!("mago-retomar-{}", uuid::Uuid::new_v4().simple()));
     let spec = TerminalSpec { command: "claude".into(), claude_session: "0b6c-41".into(), claude_folder: "-p".into(), ..Default::default() };
+
     assert_eq!(spec.launch_command(Some(&dir)), "claude", "its file is gone: a new conversation");
     let file = crate::transcript::transcript_path(&dir, "-p", "0b6c-41");
+
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
     std::fs::write(&file, "{}\n").unwrap();
     assert_eq!(spec.launch_command(Some(&dir)), "claude --resume 0b6c-41");
     assert_eq!(TerminalSpec { resume: false, ..spec.clone() }.launch_command(Some(&dir)), "claude", "Retomar off");
     // a recruit's options stay (the app restarted under the agents: they come back where they were)
     let recruit = TerminalSpec { command: "claude --model sonnet".into(), ..spec.clone() };
+
     assert_eq!(recruit.launch_command(Some(&dir)), "claude --model sonnet --resume 0b6c-41");
+
     for picked in ["claude --resume x", "claude -c", "claude --session-id=y", "codex", "claudex"] {
         assert_eq!(TerminalSpec { command: picked.into(), ..spec.clone() }.launch_command(Some(&dir)), picked, "{picked} stays");
     }
+
     assert_eq!(spec.launch_command(None), "claude");
     // typed into a shell: an id that isn't one stays out
     let odd = "x;rm";
+
     std::fs::write(crate::transcript::transcript_path(&dir, "-p", odd), "{}\n").unwrap();
     assert_eq!(TerminalSpec { claude_session: odd.into(), ..spec }.launch_command(Some(&dir)), "claude");
     let _ = std::fs::remove_dir_all(dir);
@@ -298,18 +367,23 @@ fn claude_resumes_the_conversation_its_terminal_remembers_while_the_file_is_ther
 fn a_bash_step_keeps_its_whole_command_its_folder_and_the_end_of_its_output() {
     use crate::transcript::{ChatItem, LOG_MAX, Transcript};
     let dir = std::env::temp_dir().join(format!("mago-card-{}", uuid::Uuid::new_v4().simple()));
+
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("s.jsonl");
+
     let call = |id: &str, command: &str| {
         json!({"type": "assistant", "cwd": "/p/web", "timestamp": "2026-10-28T20:05:01.000Z", "message": {"content": [
             {"type": "tool_use", "id": id, "name": "Bash", "input": {"command": command, "description": "testes"}}]}})
     };
+
     let answer = |id: &str, result: Value, error: bool, said: &str| {
         json!({"type": "user", "timestamp": "2026-10-28T20:05:04.000Z", "toolUseResult": result, "message": {"content": [
             {"type": "tool_result", "tool_use_id": id, "is_error": error, "content": said}]}})
     };
+
     let huge = format!("primeira\n{}\núltima", "y".repeat(3 * LOG_MAX));
     let read = json!({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "r", "name": "Read", "input": {"file_path": "/p/a.rs"}}]}});
+
     let lines = [
         call("a", "cd web\nnpm test"),
         answer("a", json!({"stdout": "ok 3 testes\n", "stderr": "aviso: lento", "interrupted": false}), false, "ok"),
@@ -319,11 +393,14 @@ fn a_bash_step_keeps_its_whole_command_its_folder_and_the_end_of_its_output() {
         answer("c", json!("Error: Exit code 1"), true, "Exit code 1\nfalhou feio"),
         read,
     ];
+
     std::fs::write(&file, lines.iter().map(|v| format!("{v}\n")).collect::<String>()).unwrap();
     let mut t = Transcript::new(file);
+
     t.poll();
     let steps: Vec<_> = t.items.iter().filter_map(|i| if let ChatItem::Tool(s) = i { Some(s) } else { None }).collect();
     let [a, b, c, r] = steps.as_slice() else { panic!("{:?}", t.items) };
+
     assert_eq!((a.what.as_str(), a.input.as_str(), a.cwd.as_deref()), ("cd web", "cd web\nnpm test", Some("/p/web")));
     assert_eq!((a.log.as_str(), a.error.as_deref(), a.ended.map(|e| e - a.started.unwrap())), ("ok 3 testes\naviso: lento", None, Some(3.0)));
     assert!(b.log.starts_with("… (cortado") && b.log.ends_with("última") && !b.log.contains("primeira"), "only its end");
@@ -336,6 +413,7 @@ fn a_bash_step_keeps_its_whole_command_its_folder_and_the_end_of_its_output() {
 #[test]
 fn a_chat_is_named_by_its_first_message() {
     use crate::transcript::prompt_title;
+
     assert_eq!(prompt_title("\n  limpar   o SSD\nresto").as_deref(), Some("limpar o SSD"));
     assert_eq!(prompt_title(&"a".repeat(60)).map(|title| title.chars().count()), Some(51));
     assert_eq!(prompt_title(" \n "), None);
@@ -346,10 +424,13 @@ fn a_chat_resuming_a_session_is_named_by_that_session() {
     use crate::transcript::resumed_in;
     let projects = std::env::temp_dir().join(format!("magoagent-resumed-{}", std::process::id()));
     let folder = projects.join("C--projeto");
+
     fs::create_dir_all(&folder).unwrap();
     let line = json!({"type": "user", "message": {"role": "user", "content": "arrumar o login do app"}});
+
     fs::write(folder.join("7147b520-345f-42a3-b061-137f2e231c97.jsonl"), format!("{line}\n")).unwrap();
     let pasted = "claude --resume 7147b520-345f-42a3-b061-137f2e231c97 veja essa sessao";
+
     assert_eq!(resumed_in(&projects, pasted).map(|(_, first)| first).as_deref(), Some("arrumar o login do app"));
     assert_eq!(resumed_in(&projects, "claude -r 7147b520").map(|(id, _)| id).as_deref(), Some("7147b520"), "the short id too");
     assert_eq!(resumed_in(&projects, "veja essa sessao"), None, "no resume, no session");
@@ -360,16 +441,21 @@ fn a_chat_resuming_a_session_is_named_by_that_session() {
 #[test]
 fn a_tool_that_fails_says_why_on_its_step_and_in_json_by_its_message_whole_after_its_action() {
     use crate::transcript::{Step, chat_items, failure_note};
+
     let failed = |content: &str| {
         let mut step = Step::default();
+
         step.finish(&Value::Null, true, content, Some(1.0));
         assert!(chat_items(&json!({"type": "user", "message": {"content": [{"type": "tool_result", "is_error": true, "content": content}]}})).is_empty());
         (step.note.unwrap_or_default(), step.error.unwrap_or_default())
     };
+
     let why = "X11 input verification failed after typing; text may have been sent. Inspect the target before submitting or retrying, \
                or press Escape to clear the field and type it again with a slower delay between the keys.";
+
     let answer = json!({"action": "type_text", "implemented": true, "message": why, "details": {"display": ":0"}}).to_string();
     let (note, error) = failed(&answer);
+
     assert_eq!(error, format!("type_text: {why}"), "its card: the message whole, no JSON");
     assert!(note.starts_with("type_text: X11 input") && note.chars().count() <= 121, "{note}");
     // `error` when there is no `message`, as a string or an object; JSON with nothing that says why, as it came

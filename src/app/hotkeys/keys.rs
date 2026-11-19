@@ -35,6 +35,7 @@ impl Combo {
         if let Some((_, under)) = SHIFTED.iter().find(|(symbol, _)| *symbol == self.key) {
             (self.key, self.shift) = (*under, true);
         }
+
         self
     }
 
@@ -71,15 +72,18 @@ pub(crate) fn hits(event: &egui::Event, combo: &Combo) -> bool {
 /// its name or its symbol ("Ctrl+Comma" or "Ctrl+,", "Ctrl++"), in any case. None for anything else.
 pub(crate) fn parse_keys(text: &str) -> Option<Combo> {
     let text = text.trim();
+
     // the plus key is the last "+" of "Ctrl++"
     let (modifiers, name) = match text.strip_suffix("++") {
         Some(rest) => (rest, "+"),
         None if text == "+" => ("", "+"),
         None => text.rsplit_once('+').unwrap_or(("", text)),
     };
+
     let name = name.trim();
     let key = Key::from_name(name).or_else(|| Key::ALL.iter().copied().find(|key| key.name().eq_ignore_ascii_case(name))).filter(|key| !is_modifier(*key))?;
     let mut combo = Combo { ctrl: false, alt: false, shift: false, win: false, key };
+
     for part in modifiers.split('+').filter(|_| !modifiers.trim().is_empty()) {
         match part.trim().to_lowercase().as_str() {
             "ctrl" | "control" | "cmd" | "command" => combo.ctrl = true,
@@ -89,6 +93,7 @@ pub(crate) fn parse_keys(text: &str) -> Option<Combo> {
             _ => return None,
         }
     }
+
     Some(combo.canonical())
 }
 
@@ -101,6 +106,7 @@ pub(crate) fn parse(text: &str) -> Option<Combo> {
 /// The combination as it is kept: "Ctrl+Alt+Shift+Win+Key".
 pub(crate) fn format(combo: &Combo) -> String {
     let modifiers = [(combo.ctrl, "Ctrl"), (combo.alt, "Alt"), (combo.shift, "Shift"), (combo.win, "Win")];
+
     modifiers.into_iter().filter(|(held, _)| *held).map(|(_, name)| name).chain([combo.key.name()]).collect::<Vec<_>>().join("+")
 }
 
@@ -124,11 +130,14 @@ pub(crate) fn combo_label(combo: &Combo, command: bool) -> String {
     let mut combo = *combo;
     // "+" and "?" are read as the symbols, not as Shift and the key under them
     let symbol = SHIFTED.iter().take(2).find(|(_, under)| combo.shift && *under == combo.key).map(|(symbol, _)| *symbol);
+
     if let Some(symbol) = symbol {
         (combo.key, combo.shift) = (symbol, false);
     }
+
     let control = if command && cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
     let modifiers = [(combo.ctrl, control), (combo.alt, "Alt"), (combo.shift, "Shift"), (combo.win, "Win")];
+
     modifiers.into_iter().filter(|(held, _)| *held).map(|(_, name)| name).chain([key_name(combo.key)]).collect::<Vec<_>>().join("+")
 }
 
@@ -145,15 +154,18 @@ pub(crate) fn display(keys: &str) -> String {
 /// and the named keys below. None for the rest (Esc is never one: it cancels).
 pub(crate) fn virtual_key(key: Key) -> Option<u32> {
     let name = key.name();
+
     if let [byte] = name.as_bytes()
         && byte.is_ascii_alphanumeric()
     {
         // 'A'..'Z' and '0'..'9' are their own virtual keys
         return Some(u32::from(*byte));
     }
+
     if let Some(number) = name.strip_prefix('F').and_then(|digits| digits.parse::<u32>().ok()) {
         return (1..=12).contains(&number).then_some(0x70 + number - 1);
     }
+
     Some(match key {
         Key::Space => 0x20,
         Key::Enter => 0x0D,
@@ -201,6 +213,7 @@ pub(crate) const ALTGR_NOTE: &str = "No teclado ABNT2, Ctrl+Alt é o AltGr: uma 
 pub(crate) fn altgr_warning(keys: &str) -> Option<String> {
     let combo = parse(keys).filter(is_altgr)?;
     let (_, typed) = ABNT2_ALTGR.iter().find(|(key, _)| *key == combo.key)?;
+
     Some(format!("No teclado ABNT2 esta combinação é o AltGr e digita «{typed}»: o atalho toma o lugar dela."))
 }
 
@@ -222,6 +235,7 @@ pub(crate) enum Recorded {
 /// `editor::check`'s.
 pub(crate) fn record(key: Key, modifiers: Modifiers) -> Recorded {
     let bare = !modifiers.ctrl && !modifiers.alt && !modifiers.shift && !modifiers.command;
+
     match key {
         Key::Escape if bare => Recorded::Cancel,
         Key::Enter if bare => Recorded::Save,
@@ -235,6 +249,7 @@ pub(crate) fn record(key: Key, modifiers: Modifiers) -> Recorded {
 pub(crate) fn held_label(modifiers: Modifiers) -> String {
     let held = [(command_held(modifiers), "Ctrl"), (modifiers.alt, "Alt"), (modifiers.shift, "Shift")];
     let names: Vec<&str> = held.into_iter().filter(|(down, _)| *down).map(|(_, name)| name).collect();
+
     if names.is_empty() { String::new() } else { format!("{}+…", names.join("+")) }
 }
 
@@ -257,16 +272,20 @@ mod tests {
         assert_eq!(parse("Ctrl+Hyper+A"), None);
         assert_eq!(parse("Ctrl+Shift+Questionmark"), None, "the system takes no key for a question mark");
         let parsed = parse("ctrl + alt + space").unwrap();
+
         assert_eq!(parsed, combo(true, true, false, Key::Space));
         assert_eq!(format(&parsed), "Ctrl+Alt+Space");
         assert_eq!(format(&parse("Win+Shift+Control+F5").unwrap()), "Ctrl+Shift+Win+F5");
         assert_eq!(parse("Ctrl+Alt+ArrowRight"), parse("Ctrl+Alt+Right"), "either spelling of an arrow");
+
         // what the system is asked for
         assert_eq!(
             (virtual_key(Key::A), virtual_key(Key::Z), virtual_key(Key::Num0), virtual_key(Key::Num9)),
             (Some(0x41), Some(0x5A), Some(0x30), Some(0x39))
         );
+
         assert_eq!((virtual_key(Key::F1), virtual_key(Key::F12), virtual_key(Key::F13)), (Some(0x70), Some(0x7B), None));
+
         assert_eq!(
             (virtual_key(Key::Space), virtual_key(Key::ArrowLeft), virtual_key(Key::ArrowRight), virtual_key(Key::Escape)),
             (Some(0x20), Some(0x25), Some(0x27), None)
@@ -286,14 +305,18 @@ mod tests {
         assert_eq!(format(&parse_keys("Ctrl++").unwrap()), "Ctrl+Shift+Equals", "kept by the key's name");
         // the keys that come: "!" with Shift is Shift+1, "+" from the keypad has no Shift and is still Shift and =
         let shift = Modifiers::SHIFT;
+
         assert_eq!(pressed(Key::Exclamationmark, shift), parse_keys("Shift+1").unwrap());
         assert_eq!(pressed(Key::Plus, Modifiers::COMMAND), parse_keys("Ctrl++").unwrap());
+
         // off the Mac the app's Ctrl is either flag; on it only ⌘ is
         if !cfg!(target_os = "macos") {
             assert_eq!(pressed(Key::S, Modifiers::CTRL), pressed(Key::S, Modifiers::COMMAND), "Ctrl from either flag");
         }
+
         let event = |key, modifiers| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
         let save = parse_keys("Ctrl+S").unwrap();
+
         assert!(hits(&event(Key::S, Modifiers::COMMAND), &save));
         assert!(!hits(&event(Key::S, Modifiers::COMMAND | Modifiers::SHIFT), &save), "Ctrl+Shift+S is another one");
         assert!(!hits(&event(Key::S, Modifiers::NONE), &save));
@@ -317,6 +340,7 @@ mod tests {
     #[test]
     fn the_recorder_reads_a_combination_and_its_own_keys() {
         let (ctrl_alt, none) = (Modifiers { command: true, alt: true, ..Modifiers::NONE }, Modifiers::NONE);
+
         assert_eq!(record(Key::Escape, none), Recorded::Cancel);
         assert_eq!(record(Key::Enter, none), Recorded::Save);
         assert_eq!(record(Key::Backspace, none), Recorded::Clear);
@@ -333,6 +357,7 @@ mod tests {
     fn altgr_on_abnt2_is_warned_of() {
         // Ctrl+Alt is AltGr: on ABNT2 AltGr+E types the degree sign
         let typed = altgr_warning("Ctrl+Alt+E").unwrap();
+
         assert!(typed.contains("ABNT2") && typed.contains("AltGr") && typed.contains("«°»"), "{typed}");
         assert_eq!(altgr_warning("Ctrl+Alt+K"), None, "AltGr+K types nothing there");
         assert_eq!(altgr_warning("Ctrl+Shift+E"), None, "not AltGr without Alt");

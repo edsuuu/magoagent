@@ -88,11 +88,13 @@ pub(crate) fn style(s: &mut Style) {
         (TextStyle::Monospace, mono(EDITOR_SIZE)),
     ]
     .into();
+
     s.spacing.item_spacing = egui::vec2(6.0, 2.0);
     s.spacing.button_padding = egui::vec2(6.0, 3.0);
     s.spacing.interact_size.y = 24.0;
 
     let v = &mut s.visuals;
+
     *v = egui::Visuals::dark();
     v.panel_fill = FRAME;
     v.window_fill = POPUP;
@@ -114,9 +116,11 @@ pub(crate) fn style(s: &mut Style) {
 
     let r = CornerRadius::same(6); // Component.arc.compact
     let w = &mut v.widgets;
+
     w.noninteractive.bg_fill = ISLAND;
     w.noninteractive.bg_stroke = Stroke::new(1.0, POPUP_BORDER);
     w.noninteractive.fg_stroke = Stroke::new(1.0, TEXT);
+
     for (wv, fill) in [(&mut w.inactive, Color32::TRANSPARENT), (&mut w.hovered, HOVER), (&mut w.active, PRESSED), (&mut w.open, PRESSED)] {
         wv.bg_fill = fill;
         wv.weak_bg_fill = fill;
@@ -125,6 +129,7 @@ pub(crate) fn style(s: &mut Style) {
         wv.corner_radius = r;
         wv.expansion = 0.0;
     }
+
     w.inactive.fg_stroke = Stroke::new(1.0, MUTED);
     // buttons and checkboxes get the New UI control border (menus hide button frames anyway)
     w.inactive.bg_stroke = Stroke::new(1.0, CONTROL_BORDER);
@@ -138,21 +143,26 @@ pub(crate) fn add_fonts(fonts: &mut FontDefinitions, ligatures: bool) {
     let mut dirs: Vec<PathBuf> = vec![];
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from);
     let roots = [PathBuf::from("C:/Program Files/JetBrains"), PathBuf::from("/opt/JetBrains"), PathBuf::from("/Applications")];
+
     // Toolbox installs into ~/Applications on macOS
     for root in roots.into_iter().chain(home.map(|h| h.join("Applications"))) {
         if let Ok(rd) = std::fs::read_dir(root) {
             dirs.extend(rd.flatten().flat_map(|e| [e.path().join("jbr/lib/fonts"), e.path().join("Contents/jbr/Contents/Home/lib/fonts")]));
         }
     }
+
     let find = |name: &str| dirs.iter().find_map(|d| std::fs::read(d.join(name)).ok());
+
     for (key, file, family, base) in
         [("inter", "Inter-Regular.otf", "ide", FontFamily::Proportional), ("jbmono", "JetBrainsMono-Regular.ttf", "ide-mono", FontFamily::Monospace)]
     {
         let mut list = fonts.families.get(&base).cloned().unwrap_or_default();
+
         if let Some(bytes) = find(file).map(|b| if ligatures || key != "jbmono" { b } else { without_ligatures(b) }) {
             fonts.font_data.insert(key.into(), Arc::new(FontData::from_owned(bytes)));
             list.insert(0, key.into());
         }
+
         fonts.families.insert(FontFamily::Name(family.into()), list);
     }
 }
@@ -166,12 +176,15 @@ pub(crate) fn without_ligatures(mut font: Vec<u8>) -> Vec<u8> {
     let gsub = (0..u16_at(&font, 4)).map(|i| 12 + 16 * i).find(|r| font.get(*r..*r + 4) == Some(b"GSUB")).map(|r| u32_at(&font, r + 8));
     let Some(gsub) = gsub.filter(|g| *g > 0) else { return font };
     let list = gsub + u16_at(&font, gsub + 6);
+
     for k in 0..u16_at(&font, list) {
         let tag = list + 2 + 6 * k;
+
         if matches!(font.get(tag..tag + 4), Some(b"calt" | b"liga" | b"clig" | b"dlig")) {
             font[tag..tag + 4].copy_from_slice(b"zzzz");
         }
     }
+
     font
 }
 
@@ -182,6 +195,7 @@ mod tests {
     #[test]
     fn the_style_has_no_shadows_and_the_islands_colors() {
         let mut s = Style::default();
+
         style(&mut s);
         assert_eq!((s.visuals.popup_shadow, s.visuals.window_shadow), (egui::Shadow::NONE, egui::Shadow::NONE));
         assert_eq!((s.visuals.panel_fill, s.visuals.window_fill), (hex(0x26282C), hex(0x26282C)));

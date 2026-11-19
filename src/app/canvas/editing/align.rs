@@ -8,20 +8,27 @@ pub(crate) fn tidy_deltas(boxes: &[Rect], layout: usize) -> Option<Vec<Vec2>> {
     if boxes.len() < 2 {
         return None;
     }
+
     let union = boxes.iter().copied().reduce(|first, second| first.union(second))?;
     let cell = boxes.iter().fold(Vec2::ZERO, |largest, bounds| largest.max(bounds.size())) + Vec2::splat(GRID);
+
     let columns = match layout {
         1 => boxes.len(),
         2 => 1,
         _ => (boxes.len() as f32).sqrt().ceil() as usize,
     };
+
     let mut order: Vec<usize> = (0..boxes.len()).collect();
+
     order.sort_by(|&first, &second| boxes[first].min.y.total_cmp(&boxes[second].min.y).then(boxes[first].min.x.total_cmp(&boxes[second].min.x)));
     let mut deltas = vec![Vec2::ZERO; boxes.len()];
+
     for (position, &index) in order.iter().enumerate() {
         let at = union.min + Vec2::new((position % columns) as f32 * cell.x, (position / columns) as f32 * cell.y);
+
         deltas[index] = at - boxes[index].min;
     }
+
     Some(deltas)
 }
 
@@ -35,16 +42,20 @@ pub(crate) fn arrange_deltas(boxes: &[Rect], order: &[usize], gap: f32) -> Vec<V
     let row_width = (area * 1.6).sqrt().max(widest);
     let mut deltas = vec![Vec2::ZERO; boxes.len()];
     let (mut at, mut row_height) = (union.min, 0.0_f32);
+
     for &index in order {
         let size = boxes[index].size();
+
         if at.x > union.min.x && at.x + size.x > union.min.x + row_width {
             at = Pos2::new(union.min.x, at.y + row_height + gap);
             row_height = 0.0;
         }
+
         deltas[index] = at - boxes[index].min;
         at.x += size.x + gap;
         row_height = row_height.max(size.y);
     }
+
     deltas
 }
 
@@ -54,7 +65,9 @@ pub(crate) fn align_deltas(boxes: &[Rect], how: usize) -> Option<Vec<Vec2>> {
     if boxes.len() < 2 {
         return None;
     }
+
     let union = boxes.iter().copied().reduce(|first, second| first.union(second))?;
+
     match how {
         0..=5 => Some(
             boxes
@@ -74,16 +87,20 @@ pub(crate) fn align_deltas(boxes: &[Rect], how: usize) -> Option<Vec<Vec2>> {
             let start = |bounds: &Rect| if horizontal { bounds.min.x } else { bounds.min.y };
             let span = |bounds: &Rect| if horizontal { bounds.width() } else { bounds.height() };
             let mut order: Vec<usize> = (0..boxes.len()).collect();
+
             order.sort_by(|first, second| start(&boxes[*first]).total_cmp(&start(&boxes[*second])));
             let total: f32 = boxes.iter().map(span).sum();
             let gap = (span(&union) - total) / (boxes.len() - 1) as f32;
             let mut deltas = vec![Vec2::ZERO; boxes.len()];
             let mut at = start(&union);
+
             for index in order {
                 let distance = at - start(&boxes[index]);
+
                 deltas[index] = if horizontal { Vec2::new(distance, 0.0) } else { Vec2::new(0.0, distance) };
                 at += span(&boxes[index]) + gap;
             }
+
             Some(deltas)
         }
         _ => None,

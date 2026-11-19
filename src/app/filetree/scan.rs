@@ -30,6 +30,7 @@ impl Scanned {
     pub(crate) fn poll(&mut self) -> bool {
         let answers: Vec<Answer> = self.channel.1.try_iter().collect();
         let changed = !answers.is_empty();
+
         self.found.extend(answers);
         changed
     }
@@ -39,11 +40,14 @@ impl Scanned {
         if self.started || cfg!(test) || !root.is_dir() {
             return;
         }
+
         self.started = true;
         let (root, sender, ctx) = (root.to_path_buf(), self.channel.0.clone(), ctx.clone());
+
         std::thread::spawn(move || {
             let files =
                 files_under(&root, FILES, |path| syntax::handles(highlight::detect(path).id) && std::fs::metadata(path).is_ok_and(|m| m.len() <= BIGGEST));
+
             read_all(files, &sender, &ctx);
         });
     }
@@ -53,7 +57,9 @@ impl Scanned {
         if cfg!(test) || !syntax::handles(highlight::detect(path).id) {
             return;
         }
+
         let (files, sender, ctx) = (vec![path.to_path_buf()], self.channel.0.clone(), ctx.clone());
+
         std::thread::spawn(move || read_all(files, &sender, &ctx));
     }
 
@@ -71,9 +77,11 @@ fn read_all(files: Vec<PathBuf>, sender: &Sender<Answer>, ctx: &Context) {
     for path in files {
         let Ok(text) = std::fs::read_to_string(&path) else { continue };
         let diags = check(&path, highlight::detect(&path), &text.replace("\r\n", "\n"));
+
         if sender.send((path, diags)).is_err() {
             return;
         }
+
         ctx.request_repaint();
     }
 }

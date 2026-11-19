@@ -26,6 +26,7 @@ pub(crate) fn with_tuning(command: &str, model: &str, effort: &str) -> String {
     let effort = if named.effort.is_some() { "" } else { effort };
     let flags = tuning_args(if program == "codex" { "codex" } else { "claude" }, model, effort).join(" ");
     let words = if agent { [program, flags.as_str(), rest.trim()] } else { ["", flags.as_str(), command] };
+
     words.into_iter().filter(|word| !word.is_empty()).collect::<Vec<_>>().join(" ")
 }
 
@@ -36,6 +37,7 @@ pub(crate) fn of_command(command: &str, fallback: &str) -> (String, String, Stri
     let (program, rest) = command.split_once(char::is_whitespace).unwrap_or((command, ""));
     let (agent, rest) = if matches!(program, "claude" | "codex") { (program, rest) } else { (fallback, command) };
     let (flags, _) = crate::app::maestro::recruit_flags(rest);
+
     (agent.to_string(), flags.model.unwrap_or_default(), flags.effort.unwrap_or_default())
 }
 
@@ -45,20 +47,25 @@ pub(crate) fn names(agent: &str, model: &str, effort: &str) -> (String, String) 
     let (default_model, default_effort) = agent_default(agent);
     let model = if model.is_empty() { default_model } else { model.to_string() };
     let effort = if effort.is_empty() { default_effort } else { effort.to_string() };
+
     let model = match model.as_str() {
         "" => "padrão".to_string(),
         id => {
             let id = if agent == "codex" { id.to_string() } else { claude_alias(id) };
+
             label(&models(agent).into_iter().chain(more_models(agent)).collect::<Vec<_>>(), &id)
         }
     };
+
     let effort = if effort.is_empty() { "padrão".to_string() } else { effort_name(&effort) };
+
     (model, effort)
 }
 
 /// What the dispatch says of them: "modelo Sonnet 5.5 · esforço Alto".
 pub(crate) fn describe(agent: &str, model: &str, effort: &str) -> String {
     let (model, effort) = names(agent, model, effort);
+
     format!("modelo {model} · esforço {effort}")
 }
 
@@ -70,6 +77,7 @@ pub(crate) fn recruit_brief(prefs: &Prefs) -> String {
         AgentMode::Chat => ("num chat do app (um cartão no canvas)", "terminal"),
         AgentMode::Terminal => ("num terminal com o Claude Code completo", "chat"),
     };
+
     format!(
         " Recrutar: a pessoa escolheu em Ajustes › Agentes › Invocação dos agentes que os agentes rodem {mode}. Chame recruit_agent sem mode e ele \
          segue esse ajuste; só passe mode \"{other}\" quando ela pedir com essas palavras para aquele agente. Um agente (claude, codex) é sempre \
@@ -98,6 +106,7 @@ mod tests {
         assert_eq!(with_tuning("claude", "opus[1m]; rm -rf ~", "max"), "claude --effort max", "never more than a word to the shell");
         // and read back, Codex's flags too
         let tuned = |command: &str| of_command(command, "claude");
+
         assert_eq!(tuned("claude --model sonnet --effort high \"x\""), ("claude".into(), "sonnet".into(), "high".into()));
         assert_eq!(tuned("codex -m gpt-5-codex -c model_reasoning_effort=low \"x\""), ("codex".into(), "gpt-5-codex".into(), "low".into()));
         assert_eq!(of_command("--model haiku revise", "codex"), ("codex".into(), "haiku".into(), String::new()));
@@ -112,37 +121,48 @@ mod tests {
     #[test]
     fn a_recruit_follows_the_setting_and_says_its_model_and_effort() {
         let mut app = DrawingApp::default();
+
         app.prefs.agent_mode = AgentMode::Chat;
         let mut luna = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 600.0, height: 400.0 });
+
         luna.terminal = Some(TerminalSpec { name: "Luna".into(), cwd: "/p".into(), maestro: true, ..Default::default() });
         let from = luna.id.clone();
+
         app.scene.elements.push(luna);
+
         let recruit = |app: &mut DrawingApp, command: &str, mode: Option<AgentMode>| {
             let (reply, said) = std::sync::mpsc::channel();
+
             app.recruit_in(&from, command, false, mode, reply);
             said.recv().unwrap().unwrap()
         };
+
         let terminals = |app: &DrawingApp| app.scene.elements.iter().filter_map(|e| e.terminal.clone()).filter(|t| !t.maestro).collect::<Vec<_>>();
         // as the bridge has it from recruit_agent: no mode, its model and effort
         let said = recruit(&mut app, &with_tuning("claude \"revise o diff\"", "sonnet", "high"), None);
         let chat = app.chats.iter().find(|chat| chat.recruit).expect("a chat, as the setting says");
+
         assert_eq!((chat.model.as_str(), chat.effort.as_str()), ("sonnet", "high"));
         assert!(terminals(&app).is_empty(), "no terminal");
         assert!(said.contains("e conectado (um chat do app; modelo Sonnet 5.5 · esforço Alto)"), "{said}");
         let event = app.agent_events.back().unwrap();
+
         assert_eq!((event.kind, event.what.as_str()), (EventKind::Started, "recrutado por Luna (um chat do app): modelo Sonnet 5.5 · esforço Alto"));
         // a terminal only when asked in so many words; its header says them too
         let said = recruit(&mut app, &with_tuning("claude", "opus", "xhigh"), Some(AgentMode::Terminal));
+
         assert!(said.contains("(um terminal; modelo Opus 5.5 · esforço Extra)"), "{said}");
         let spec = terminals(&app).pop().unwrap();
         // and the temporary folder's rule after them (maestro/temp_folder.rs)
         let told = |command: &str, prefs: &Prefs| crate::app::maestro::temp_folder::with_temp_rule(command, prefs);
+
         assert_eq!(spec.command, told("claude --model opus --effort xhigh", &app.prefs));
         assert!(spec.command.contains("--append-system-prompt"));
         assert_eq!(crate::app::terminal::card::recruit_tag(&spec).as_deref(), Some("Opus 5.5 · Extra"));
         // no model picked: Ajustes' for the recruits, read back all the same
         app.prefs.recruit_model = "haiku".into();
         let said = recruit(&mut app, "claude --effort low \"x\"", Some(AgentMode::Terminal));
+
         assert_eq!(terminals(&app).pop().unwrap().command, told("claude --model haiku --effort low \"x\"", &app.prefs));
         assert!(said.contains("modelo Haiku 5.5 · esforço Baixo"), "{said}");
         // a shell or a Maestro's terminal has no tag
@@ -154,11 +174,14 @@ mod tests {
     fn the_maestro_is_told_how_the_person_set_the_agents_and_to_pick_the_model_and_effort() {
         let mut prefs = Prefs { agent_mode: AgentMode::Chat, ..Default::default() };
         let brief = recruit_brief(&prefs);
+
         assert!(brief.contains("rodem num chat do app") && brief.contains("só passe mode \"terminal\" quando ela pedir"), "{brief}");
         assert!(brief.contains("create_terminal e add_elements") && brief.contains("escolha model e effort"), "{brief}");
         prefs.agent_mode = AgentMode::Terminal;
         let brief = recruit_brief(&prefs);
+
         assert!(brief.contains("num terminal com o Claude Code") && brief.contains("só passe mode \"chat\""), "{brief}");
+
         // in the Maestro's own prompt, not in a recruit's
         let chat = |recruit: bool| crate::app::chat::direct::Chat {
             id: "c".into(),
@@ -173,6 +196,7 @@ mod tests {
             named: false,
             draft: false,
         };
+
         assert!(crate::app::chat::tools::system_prompt(&prefs, &chat(false)).contains(&brief));
         assert!(!crate::app::chat::tools::system_prompt(&prefs, &chat(true)).contains(&brief));
     }

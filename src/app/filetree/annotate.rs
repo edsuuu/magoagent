@@ -36,6 +36,7 @@ fn civil(days: i64) -> (i64, i64, i64) {
     let mp = (5 * doy + 2) / 153;
     let day = doy - (153 * mp + 2) / 5 + 1;
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
+
     (yoe + era * 400 + i64::from(month <= 2), month, day)
 }
 
@@ -43,18 +44,21 @@ fn civil(days: i64) -> (i64, i64, i64) {
 fn local(time: i64, zone: &str) -> i64 {
     let sign = if zone.starts_with('-') { -1 } else { 1 };
     let digits: i64 = zone.trim_start_matches(['+', '-']).parse().unwrap_or(0);
+
     time + sign * ((digits / 100) * 3600 + (digits % 100) * 60)
 }
 
 /// `time` at `zone` as dd/mm/aaaa.
 pub(crate) fn date(time: i64, zone: &str) -> String {
     let (y, m, d) = civil(local(time, zone).div_euclid(86_400));
+
     format!("{d:02}/{m:02}/{y:04}")
 }
 
 /// `time` at `zone` as hh:mm.
 fn clock(time: i64, zone: &str) -> String {
     let s = local(time, zone).rem_euclid(86_400);
+
     format!("{:02}:{:02}", s / 3600, s % 3600 / 60)
 }
 
@@ -73,6 +77,7 @@ impl Annot {
     pub(crate) fn parse(out: &str) -> Annot {
         let mut commits: HashMap<&str, Meta> = HashMap::new();
         let (mut sha, mut lines) = ("", vec![]);
+
         for l in out.lines() {
             if l.starts_with('\t') {
                 lines.push(sha);
@@ -93,35 +98,44 @@ impl Annot {
                 sha = first;
             }
         }
+
         // a line not committed yet is all zeros
         let mut order: Vec<&str> = Vec::new();
+
         let at: Vec<Option<usize>> = lines
             .iter()
             .map(|s| {
                 commits.get(s).filter(|_| !s.bytes().all(|b| b == b'0'))?;
+
                 Some(order.iter().position(|o| o == s).unwrap_or_else(|| {
                     order.push(s);
                     order.len() - 1
                 }))
             })
             .collect();
+
         let lines: Vec<Option<String>> = at
             .iter()
             .map(|k| {
                 let m = commits[order[(*k)?]];
+
                 Some(format!("{}  {}", date(m.time, m.zone), m.name))
             })
             .collect();
+
         let commits: Vec<(Commit, String)> = order
             .iter()
             .map(|s| {
                 let m = commits[s];
                 let commit = Commit { hash: s.to_string(), author: m.name.into(), time: m.time, subject: m.summary.into() };
                 let hint = format!("commit {s}\nAutor: {} {}\nData: {} {}\n\n{}", m.name, m.mail, date(m.time, m.zone), clock(m.time, m.zone), m.summary);
+
                 (commit, hint)
             })
             .collect();
+
         let widest = lines.iter().flatten().max_by_key(|l| l.chars().count()).cloned().unwrap_or_default();
+
         Annot { lines, widest, at, commits }
     }
 
@@ -141,6 +155,7 @@ impl DrawingApp {
     pub(crate) fn ft_annotate(&mut self, id: &str, path: &std::path::Path, want: Option<bool>) -> Option<bool> {
         let tab = self.filetrees.editors.get_mut(id)?.tabs.iter_mut().find(|t| t.path == path)?;
         let crate::app::filetree::editor::Body::Text(text) = &mut tab.body else { return None };
+
         text.annotate = want.unwrap_or(!text.annotate);
         Some(text.annotate)
     }
@@ -149,6 +164,7 @@ impl DrawingApp {
     pub(crate) fn act_tree_annotate(&mut self, id: &str, path: std::path::PathBuf, show: Option<bool>) -> Result<String, String> {
         self.ft_open(id, path.clone(), true);
         let on = self.ft_annotate(id, &path, Some(show.unwrap_or(true))).ok_or("só um arquivo de texto tem anotação de autor.")?;
+
         Ok(format!("Anotação de autor {} em {}.", if on { "ligada" } else { "desligada" }, path.display()))
     }
 }
@@ -162,6 +178,7 @@ pub(crate) fn line_commit(path: &std::path::Path, line: usize) -> Result<String,
     let (commit, hint) = a.commit_at(0).ok_or(format!("A linha {line} ainda não foi commitada."))?;
     let files = crate::app::filetree::vision::commit_files(path, &commit.hash)?;
     let list: String = files.iter().map(|(s, _, rel)| format!("{} {rel}\n", crate::app::filetree::ui::badge(*s))).collect();
+
     Ok(format!("{hint}\n\nArquivos ({}):\n{list}", files.len()))
 }
 
@@ -180,17 +197,22 @@ pub(crate) fn paint_column(
     z: f32,
 ) -> Option<usize> {
     let mut over = None;
+
     for line in visible {
         let (top, bottom) = (origin_y + spans[line].0, origin_y + spans[line].1);
+
         if pointer.is_some_and(|q| rect.x_range().contains(q.x) && (top..bottom).contains(&q.y)) {
             over = Some(line);
         }
+
         if let Some(Some(text)) = a.lines.get(line) {
             let color = if over == Some(line) { t::TEXT } else { t::AUTHOR };
             let shown = crate::app::filetree::ui::fit(p, text, font, rect.width() - 12.0 * z);
+
             p.text(Pos2::new(rect.left() + 6.0 * z, (top + bottom) / 2.0), egui::Align2::LEFT_CENTER, shown, font.clone(), color);
         }
     }
+
     p.vline(rect.right(), rect.y_range(), Stroke::new(1.0, t::POPUP_BORDER));
     over
 }
@@ -200,14 +222,17 @@ pub(crate) fn paint_column(
 pub(crate) fn gutter_menu(ui: &mut egui::Ui, gutter: Rect, id: egui::Id, on: &mut bool) -> egui::Response {
     let r = ui.interact(gutter.intersect(ui.clip_rect()), id.with("gutter_menu"), Sense::click());
     let dark = ui.visuals().dark_mode;
+
     egui::Popup::context_menu(&r).frame(menu_frame(dark)).show(|ui| {
         ui.set_width(190.0);
         ui.spacing_mut().item_spacing.y = 0.0;
+
         if menu_row(ui, Row { lead: Lead::Tick(*on), ..Row::new(None, "Anotar com Git Blame") }).clicked() {
             *on = !*on;
             ui.close();
         }
     });
+
     r
 }
 
@@ -218,17 +243,21 @@ mod tests {
     #[test]
     fn blame_becomes_a_date_and_an_author_per_line() {
         let sha = |c: char| c.to_string().repeat(40);
+
         let out = format!(
             "{a} 1 1 2\nauthor Maria\nauthor-mail <maria@x>\nauthor-time 1793102400\nauthor-tz -0300\nsummary x\nfilename f.rs\n\tlinha um\n{a} 2 2\n\tlinha dois\n{z} 3 3 1\nauthor Not Committed Yet\nauthor-time 0\nauthor-tz +0000\n\tnova\n",
             a = sha('a'),
             z = "0".repeat(40)
         );
+
         let a = Annot::parse(&out);
+
         // 1793102400 is 2026-10-27 12:00 UTC; at -0300 it is still the 27th
         assert_eq!(a.lines, vec![Some("27/10/2026  Maria".to_string()), Some("27/10/2026  Maria".to_string()), None]);
         assert_eq!(a.widest, "27/10/2026  Maria");
         // the commit of a line, and what the pointer over it shows (the time at the commit's zone)
         let (commit, hint) = a.commit_at(1).unwrap();
+
         assert_eq!((commit.hash.as_str(), commit.subject.as_str()), (sha('a').as_str(), "x"));
         assert_eq!(hint, &format!("commit {}\nAutor: Maria <maria@x>\nData: 27/10/2026 09:00\n\nx", sha('a')));
         assert!(a.commit_at(2).is_none() && a.commit_at(9).is_none());

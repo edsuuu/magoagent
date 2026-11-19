@@ -47,19 +47,25 @@ pub(super) fn check(text: &str) -> Vec<Diag> {
     let mut mask: Vec<u8> = bytes.iter().map(|byte| if *byte == b'\n' { b'\n' } else { b' ' }).collect();
     let mut found: Vec<Found> = vec![];
     let starts: Vec<usize> = std::iter::once(0).chain(bytes.iter().enumerate().filter(|(_, byte)| **byte == b'\n').map(|(at, _)| at + 1)).collect();
+
     let place = |offset: usize| {
         let row = starts.partition_point(|start| *start <= offset) - 1;
+
         (row, offset - starts[row])
     };
+
     let mut stack: Vec<(&str, usize)> = vec![];
     let mut at = 0;
+
     while at < bytes.len() {
         let rest = &text[at..];
+
         if rest.starts_with("{{--") {
             match rest.find("--}}") {
                 Some(end) => at += end + 4,
                 None => {
                     found.push((place(at), place(at + 4), "Comentário não fechado".into()));
+
                     break;
                 }
             }
@@ -67,6 +73,7 @@ pub(super) fn check(text: &str) -> Vec<Diag> {
             at += rest.find("}}").map_or(rest.len(), |end| end + 2);
         } else if rest.starts_with("{{") || rest.starts_with("{!!") {
             let (open, close) = if rest.starts_with("{{") { (2, "}}") } else { (3, "!!}") };
+
             match rest[open..].find(close) {
                 Some(end) => {
                     mask[at] = b';';
@@ -84,14 +91,19 @@ pub(super) fn check(text: &str) -> Vec<Diag> {
             at += 2 + escaped.bytes().take_while(|byte| byte.is_ascii_alphabetic() || *byte == b'_').count();
         } else if bytes[at] == b'@' && (at == 0 || !(bytes[at - 1].is_ascii_alphanumeric() || bytes[at - 1] == b'_')) {
             let word: String = rest[1..].chars().take_while(|c| c.is_ascii_alphabetic() || *c == '_').collect();
+
             if word.is_empty() {
                 at += 1;
+
                 continue;
             }
+
             let name = word.to_ascii_lowercase();
             let (start, after) = (at, at + 1 + word.len());
             let parens = paren_span(text, after);
+
             at = after;
+
             match name.as_str() {
                 "php" if parens.is_none() => match text[after..].find("@endphp") {
                     Some(end) => {
@@ -109,6 +121,7 @@ pub(super) fn check(text: &str) -> Vec<Diag> {
                 _ => {
                     let closes = name.strip_prefix("end").and_then(|rest| OPENERS.iter().find(|opener| **opener == rest));
                     let name = if IF_LIKE.contains(&name.as_str()) { "if".to_string() } else { name };
+
                     let opens = OPENERS.iter().find(|opener| **opener == name).filter(|opener| match **opener {
                         // `@section('a', 'b')` and `@slot('a', 'b')` are whole; `@empty($x)` opens, a bare `@empty` is the
                         // middle of a forelse
@@ -116,6 +129,7 @@ pub(super) fn check(text: &str) -> Vec<Diag> {
                         "empty" => parens.is_some(),
                         _ => true,
                     });
+
                     if let Some(opener) = opens {
                         stack.push((opener, start));
                     } else if let Some(opener) = closes.or_else(|| SECTION_CLOSERS.contains(&name.as_str()).then_some(&OPENERS[7])) {
@@ -128,11 +142,13 @@ pub(super) fn check(text: &str) -> Vec<Diag> {
                             None => found.push((place(start), place(after), format!("`@{word}` sem `@{opener}`"))),
                         }
                     }
+
                     if let Some((open, close)) = parens {
                         if WITH_EXPRESSION.contains(&name.as_str()) {
                             mask[start] = b';';
                             mask[open..=close].copy_from_slice(&bytes[open..=close]);
                         }
+
                         at = close + 1;
                     } else if text[after..].trim_start_matches([' ', '\t']).starts_with('(') {
                         found.push((place(after), place(after + 1), "`(` sem `)`".into()));
@@ -143,15 +159,19 @@ pub(super) fn check(text: &str) -> Vec<Diag> {
             at += rest.chars().next().map_or(1, char::len_utf8);
         }
     }
+
     for (open, from) in stack {
         found.push((place(from), place(from + open.len() + 1), format!("`@{open}` sem `@end{open}`")));
     }
+
     mask.push(b';');
     let lines: Vec<&str> = text.split('\n').collect();
     let mut all: Vec<Diag> = found.into_iter().map(|(from, to, message)| diag(&lines, from, to, message)).collect();
+
     if mask.iter().any(|byte| !byte.is_ascii_whitespace() && *byte != b';') {
         all.extend(parse(&tree_sitter_php::LANGUAGE_PHP_ONLY.into(), &mask, text));
     }
+
     all.sort_by_key(|d| (d.line, d.col));
     all.truncate(CAP);
     all
@@ -161,12 +181,16 @@ pub(super) fn check(text: &str) -> Vec<Diag> {
 fn paren_span(text: &str, from: usize) -> Option<(usize, usize)> {
     let bytes = text.as_bytes();
     let open = from + text[from..].bytes().take_while(|byte| *byte == b' ' || *byte == b'\t').count();
+
     if bytes.get(open) != Some(&b'(') {
         return None;
     }
+
     let (mut depth, mut quote, mut at) = (0, None::<u8>, open);
+
     while at < bytes.len() {
         let byte = bytes[at];
+
         match quote {
             Some(_) if byte == b'\\' => at += 1,
             Some(q) if byte == q => quote = None,
@@ -175,20 +199,24 @@ fn paren_span(text: &str, from: usize) -> Option<(usize, usize)> {
             None if byte == b'(' => depth += 1,
             None if byte == b')' => {
                 depth -= 1;
+
                 if depth == 0 {
                     return Some((open, at));
                 }
             }
             None => {}
         }
+
         at += 1;
     }
+
     None
 }
 
 /// A comma at the top level of `args`, outside strings and brackets: the second argument of an inline `@section`.
 fn has_comma(args: &str) -> bool {
     let (mut depth, mut quote) = (0, None::<char>);
+
     for ch in args.chars() {
         match (quote, ch) {
             (Some(q), c) if c == q => quote = None,
@@ -200,5 +228,6 @@ fn has_comma(args: &str) -> bool {
             _ => {}
         }
     }
+
     false
 }

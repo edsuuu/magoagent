@@ -6,18 +6,23 @@ impl DrawingApp {
     pub(crate) fn open_context(&mut self, pos: Pos2, world: Pos2) {
         if let Some(gid) = self.group_pill_at(pos) {
             self.context = Some(ContextMenu::new(pos, Target::Group(gid), None));
+
             return;
         }
+
         // a rope's right click is its connections popover (ui/links.rs)
         if self.hit(world).is_some_and(|i| self.scene.elements[i].rope) {
             self.open_rope_popover(pos, world);
+
             return;
         }
+
         let target = match self.hit(world) {
             Some(i) => {
                 if !self.selected.contains(&i) {
                     self.selected = self.group_members(i).into_iter().filter(|j| !self.is_card_text(*j)).collect();
                 }
+
                 Target::Element(self.scene.elements[i].id.clone())
             }
             None => {
@@ -25,6 +30,7 @@ impl DrawingApp {
                 Target::Canvas(world)
             }
         };
+
         self.context = Some(ContextMenu::new(pos, target, None));
     }
 
@@ -35,16 +41,21 @@ impl DrawingApp {
         // no tips over an open menu (Tip reads this). The frame is read first: asking the context
         // for it inside `data_mut` takes its lock twice and the app stops for good
         let frame = ctx.cumulative_frame_nr();
+
         ctx.data_mut(|d| d.insert_temp(egui::Id::unique("menu_frame"), frame));
         let outside = ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !menu.rects.iter().any(|r| r.contains(p))));
+
         if ctx.input(|i| i.key_pressed(Key::Escape)) || (outside && !menu.rects.is_empty()) {
             return;
         }
+
         let entries = menu.items.clone().unwrap_or_else(|| self.context_entries(&menu.target));
         let mut rects = Vec::new();
+
         match panel(ctx, "context_menu", menu.at, &entries, &mut menu.path, 0, &mut rects) {
             Some(id) => {
                 let target = menu.target.clone();
+
                 self.context_action(ctx, &target, &id);
             }
             None => {
@@ -60,12 +71,14 @@ impl DrawingApp {
             Target::Canvas(_) => {
                 let presets: Vec<Entry> =
                     self.prefs.presets.iter().enumerate().filter(|(_, p)| p.on).take(10).map(|(k, p)| item(&format!("preset:{k}"), &p.name)).collect();
+
                 // as the reference app: a plain row without presets, a submenu with "Novo Terminal…" above them
                 let terminal = if presets.is_empty() {
                     item("add_terminal", "Terminal")
                 } else {
                     sub("Terminal", [vec![item("add_terminal", "Novo Terminal…"), Entry::Sep], presets].concat())
                 };
+
                 vec![
                     sub(
                         "Adicionar",
@@ -94,8 +107,10 @@ impl DrawingApp {
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return Vec::new() };
         // several elements, not a repeated index or a note's own text: a lone image gets no Agrupar
         let mut chosen: Vec<usize> = self.selected.iter().copied().filter(|j| !self.is_card_text(*j)).collect();
+
         chosen.sort_unstable();
         chosen.dedup();
+
         if chosen.len() >= 2 && chosen.contains(&i) {
             let mut rows = vec![sub(
                 "Alinhar",
@@ -108,29 +123,39 @@ impl DrawingApp {
                     })
                     .collect(),
             )];
+
             rows.push(keyed("tidy", "Organizar", self.app_keys_text(crate::app::hotkeys::local::AppAction::Tidy)));
             rows.push(Entry::Sep);
             let (loose, piles) = (self.loose_selected_notes().len(), chosen.iter().filter(|j| self.scene.elements[**j].note.stacked).count());
+
             if piles == 0 && loose >= 2 {
                 rows.push(item("stack", "Colocar no Fichário"));
             } else if piles == 1 && loose >= 1 {
                 rows.push(item("stack", "Adicionar ao Fichário"));
             }
+
             rows.push(item("group", "Grupo"));
+
             if self.selected_has_group() {
                 rows.push(item("ungroup", "Desagrupar"));
             }
+
             rows.extend([Entry::Sep, item("front", "Trazer para Frente"), item("back", "Enviar para Trás")]);
+
             return rows;
         }
+
         if self.scene.elements[i].terminal.is_some() {
             return self.terminal_entries(i);
         }
+
         if self.scene.elements[i].chat.is_some() {
             return self.chat_node_entries(id);
         }
+
         let e = &self.scene.elements[i];
         let lock = if e.locked { "Desbloquear" } else { "Bloquear" };
+
         // the common rows of every element: copy, duplicate, lock, then apagar
         let common = || {
             vec![
@@ -143,6 +168,7 @@ impl DrawingApp {
                 red("delete", "Apagar"),
             ]
         };
+
         let mut rows = if let Some(t) = &e.terminal {
             // the reference app's order: name and focus, the buffer, monitoring
             vec![
@@ -183,6 +209,7 @@ impl DrawingApp {
         } else {
             vec![]
         };
+
         rows.extend(self.disconnect_rows(id).unwrap_or_default());
         rows.extend(common());
         rows
@@ -195,6 +222,7 @@ impl DrawingApp {
         let paper = e.style.fill;
         let colors = NOTE_PAPERS.iter().enumerate().map(|(k, (c, name))| tick(&format!("color:{k}"), name, paper == Some(*c))).collect();
         let has_text = !self.note_text(i).trim().is_empty();
+
         let head = vec![
             item("rename", "Renomear"),
             item("lock_content", if e.note.content_locked { "Desbloquear Conteúdo" } else { "Bloquear Conteúdo" }),
@@ -204,10 +232,13 @@ impl DrawingApp {
             entry("show_folder", "Mostrar na Pasta", None, false, self.autosave.is_some()),
             entry("note_move", if e.note.file.is_some() { "Salvar no MagoAgent" } else { "Mover Arquivo para…" }, None, false, self.autosave.is_some()),
         ];
+
         if e.note.stacked {
             return [head, vec![sub("Cor", colors), Entry::Sep], self.stack_rows(i)].concat();
         }
+
         let lock = if e.locked { "Desbloquear" } else { "Bloquear" };
+
         let mut rows = [
             head,
             vec![
@@ -221,9 +252,11 @@ impl DrawingApp {
             ],
         ]
         .concat();
+
         if let Some(cut) = self.disconnect_rows(id) {
             rows.splice(11..11, cut);
         }
+
         rows
     }
 
@@ -231,10 +264,12 @@ impl DrawingApp {
     pub(crate) fn disconnect_rows(&self, id: &str) -> Option<Vec<Entry>> {
         let joined = self.links().remove(id).filter(|j| !j.is_empty())?;
         let nodes = self.agent_nodes();
+
         let cuts = joined
             .iter()
             .map(|other| item(&format!("disconnect:{other}"), &nodes.iter().find(|n| &n.id == other).map(|n| n.name.clone()).unwrap_or_default()))
             .collect();
+
         Some(vec![sub("Desconectar", cuts), Entry::Sep])
     }
 }

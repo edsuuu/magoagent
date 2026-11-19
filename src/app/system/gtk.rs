@@ -24,21 +24,27 @@ thread_local! {
 /// which a Wayland GTK could not reach (and wry would stop the thread over).
 fn start() {
     static STARTED: std::sync::Once = std::sync::Once::new();
+
     STARTED.call_once(|| {
         let thread = std::thread::Builder::new().name("gtk".into()).spawn(|| {
             ON_GTK.with(|on| on.set(true));
             // the app's number formats stay C's: GTK would take the system's locale for the whole process
             gtk::disable_setlocale();
+
             if island::x11::active() {
                 gtk::gdk::set_allowed_backends("x11");
             }
+
             if gtk::init().is_err() {
                 STATE.store(FAILED, Ordering::Release);
+
                 return;
             }
+
             STATE.store(READY, Ordering::Release);
             gtk::main();
         });
+
         if thread.is_err() {
             STATE.store(FAILED, Ordering::Release);
         }
@@ -54,6 +60,7 @@ pub(crate) fn alive() -> bool {
 /// On GTK's thread: whether GTK's display is X11's (the X11 webviews of wry stop the thread on any other).
 pub(crate) fn on_x11() -> bool {
     use gtk::prelude::ObjectExt;
+
     ON_GTK.with(|on| on.get()) && gtk::gdk::Display::default().is_some_and(|display| display.type_().name() == "GdkX11Display")
 }
 
@@ -63,12 +70,17 @@ pub(crate) fn run(job: impl FnOnce() + Send + 'static) -> bool {
     if !alive() {
         return false;
     }
+
     JOBS.fetch_add(1, Ordering::Relaxed);
+
     if ON_GTK.with(|on| on.get()) {
         job();
+
         return true;
     }
+
     let mut job = Some(job);
+
     // the default context is GTK's loop: only GTK's thread ever runs it. At the default priority, with the windows'
     // events, so a busy page does not hold the app's asks back as an idle one would be
     gtk::glib::idle_add_full(gtk::glib::Priority::DEFAULT, move || {
@@ -76,8 +88,10 @@ pub(crate) fn run(job: impl FnOnce() + Send + 'static) -> bool {
             // a panic must not cross GTK's loop (that aborts the app): the job is lost, the thread and the tray go on
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
         }
+
         gtk::glib::ControlFlow::Break
     });
+
     true
 }
 
@@ -85,10 +99,12 @@ pub(crate) fn run(job: impl FnOnce() + Send + 'static) -> bool {
 /// panicked or it took longer.
 pub(crate) fn call<T: Send + 'static>(timeout: std::time::Duration, job: impl FnOnce() -> T + Send + 'static) -> Option<T> {
     let (answer, answered) = std::sync::mpsc::sync_channel(1);
+
     if !run(move || {
         let _ = answer.send(job());
     }) {
         return None;
     }
+
     answered.recv_timeout(timeout).ok()
 }

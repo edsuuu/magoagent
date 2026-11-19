@@ -4,12 +4,14 @@ use super::*;
 
 fn hover(app: &mut DrawingApp, ctx: &Context, world: Pos2) -> CursorIcon {
     let at = app.to_screen(world);
+
     frame(app, ctx, vec![egui::Event::PointerMoved(at)])
 }
 
 /// A box at `rect`, made into a window by `make`; gives its index.
 fn window(app: &mut DrawingApp, rect: Rect, make: impl FnOnce(&mut Element)) -> usize {
     let mut e = app.new_element(ElementKind::Rectangle { x: rect.min.x, y: rect.min.y, width: rect.width(), height: rect.height() });
+
     make(&mut e);
     app.scene.elements.push(e);
     app.scene.elements.len() - 1
@@ -27,14 +29,19 @@ fn space(pressed: bool) -> egui::Event {
 fn the_cursor_shows_move_only_where_a_press_drags() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     window(&mut app, Rect::from_min_size(Pos2::new(40.0, 150.0), Vec2::new(300.0, 200.0)), shell);
+
     window(&mut app, Rect::from_min_size(Pos2::new(420.0, 150.0), Vec2::new(300.0, 200.0)), |e| {
         e.filetree = Some(FileTreeSpec { root: "/nonexistent-magoagent".into(), ..Default::default() });
     });
+
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(40.0, 400.0), Vec2::splat(160.0)), "# Plano".into());
+
     app.scene.elements.extend([note, label]);
     window(&mut app, Rect::from_min_size(Pos2::new(420.0, 420.0), Vec2::new(120.0, 80.0)), |_| {});
+
     for (world, icon, what) in [
         (Pos2::new(190.0, 160.0), CursorIcon::Move, "a terminal's title strip drags it"),
         (Pos2::new(190.0, 260.0), CursorIcon::Text, "a terminal's body takes the keys"),
@@ -51,13 +58,16 @@ fn the_cursor_shows_move_only_where_a_press_drags() {
     ] {
         assert_eq!(hover(&mut app, &ctx, world), icon, "{what}");
     }
+
     // a rope is clicked (its popover), not dragged
     let (a, b) = (app.scene.elements[0].id.clone(), app.scene.elements[1].id.clone());
+
     app.connect(&a, &b);
     frame(&mut app, &ctx, vec![]);
     let rope = app.scene.elements.iter().position(|e| e.rope).unwrap();
     let path = crate::geometry::line_path(&app.scene.elements[rope]);
     let mid = Pos2::new(path[path.len() / 2][0], path[path.len() / 2][1]);
+
     assert_eq!(hover(&mut app, &ctx, mid), CursorIcon::PointingHand);
 }
 
@@ -65,10 +75,13 @@ fn the_cursor_shows_move_only_where_a_press_drags() {
 fn a_file_tree_card_keeps_the_normal_cursor() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
+
     window(&mut app, Rect::from_min_size(Pos2::new(200.0, 150.0), Vec2::new(300.0, 300.0)), |e| {
         e.filetree = Some(FileTreeSpec { root: "/nonexistent-magoagent".into(), ..Default::default() });
     });
+
     assert_eq!(hover(&mut app, &ctx, Pos2::new(350.0, 160.0)), CursorIcon::Default, "its header");
     assert_eq!(hover(&mut app, &ctx, Pos2::new(350.0, 300.0)), CursorIcon::Default, "its rows");
 }
@@ -77,10 +90,13 @@ fn a_file_tree_card_keeps_the_normal_cursor() {
 fn a_portal_drags_by_its_header_and_conectar_aims() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
+
     let i = window(&mut app, Rect::from_min_size(Pos2::new(200.0, 150.0), Vec2::new(400.0, 300.0)), |e| {
         e.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
     });
+
     assert_eq!(hover(&mut app, &ctx, Pos2::new(400.0, 166.0)), CursorIcon::Move, "its header drags it");
     assert_eq!(hover(&mut app, &ctx, Pos2::new(400.0, 350.0)), CursorIcon::Default, "its page is the page's");
     app.connecting = Some(app.scene.elements[i].id.clone());
@@ -91,9 +107,11 @@ fn a_portal_drags_by_its_header_and_conectar_aims() {
 fn space_pans_unless_a_terminal_has_the_keys() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let i = window(&mut app, Rect::from_min_size(Pos2::new(40.0, 150.0), Vec2::new(300.0, 200.0)), shell);
     let (at, to) = (Pos2::new(500.0, 400.0), Pos2::new(530.0, 420.0));
+
     assert_eq!(frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), space(true)]), DrawingApp::hand_cursor(false));
     assert_eq!(frame(&mut app, &ctx, vec![button(at, true)]), DrawingApp::hand_cursor(true));
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(to)]);
@@ -109,9 +127,11 @@ fn space_pans_unless_a_terminal_has_the_keys() {
     // nor while a note is typed into: the space is its text
     app.terminal_focus = None;
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(400.0, 150.0), Vec2::splat(160.0)), String::new());
+
     app.scene.elements.extend([note, label]);
     app.editing = Some(app.scene.elements.len() - 1);
     let before = app.pan;
+
     assert_eq!(frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), space(true)]), CursorIcon::Default);
     frame(&mut app, &ctx, vec![button(at, true)]);
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(to)]);
@@ -123,10 +143,12 @@ fn space_pans_unless_a_terminal_has_the_keys() {
 fn esc_mid_drag_puts_it_back_and_other_keys_wait() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     window(&mut app, Rect::from_min_size(Pos2::new(100.0, 150.0), Vec2::new(300.0, 200.0)), shell);
     let before = local_bounds(&app.scene.elements[0]);
     let start = app.to_screen(Pos2::new(250.0, 160.0));
+
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start), button(start, true)]);
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start + Vec2::new(80.0, 60.0))]);
     assert_ne!(local_bounds(&app.scene.elements[0]), before, "the title strip drags it");
@@ -138,6 +160,7 @@ fn esc_mid_drag_puts_it_back_and_other_keys_wait() {
     assert!(app.undo.is_empty(), "and leaves no undo step");
     // the rest of that press moves nothing
     let end = start + Vec2::new(120.0, 90.0);
+
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(end)]);
     frame(&mut app, &ctx, vec![button(end, false)]);
     assert_eq!(local_bounds(&app.scene.elements[0]), before);
@@ -147,10 +170,12 @@ fn esc_mid_drag_puts_it_back_and_other_keys_wait() {
 fn a_press_that_trembles_is_still_a_click() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     window(&mut app, Rect::from_min_size(Pos2::new(100.0, 150.0), Vec2::new(300.0, 200.0)), shell);
     let before = local_bounds(&app.scene.elements[0]);
     let start = app.to_screen(Pos2::new(250.0, 160.0));
+
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start), button(start, true)]);
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start + Vec2::new(3.0, 2.0))]);
     frame(&mut app, &ctx, vec![button(start + Vec2::new(3.0, 2.0), false)]);
@@ -163,11 +188,14 @@ fn a_press_that_trembles_is_still_a_click() {
 fn a_note_drags_by_its_top_strip_and_its_body_types() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 150.0), Vec2::splat(200.0)), "abc".into());
+
     app.scene.elements.extend([note, label]);
     let before = local_bounds(&app.scene.elements[0]);
     let body = app.to_screen(Pos2::new(160.0, 260.0));
+
     drag(&mut app, &ctx, body, body + Vec2::new(100.0, 0.0));
     assert_eq!(local_bounds(&app.scene.elements[0]), before, "the body does not drag");
     assert_eq!((app.editing, app.selected.clone()), (None, vec![0]), "nor does a drag on it type: it selects");
@@ -175,6 +203,7 @@ fn a_note_drags_by_its_top_strip_and_its_body_types() {
     assert_eq!(app.editing, Some(1), "a click on its text puts the text in focus");
     app.finish_text();
     let strip = app.to_screen(Pos2::new(160.0, 156.0));
+
     drag(&mut app, &ctx, strip, strip + Vec2::new(100.0, 40.0));
     assert_eq!(local_bounds(&app.scene.elements[0]), before.translate(Vec2::new(100.0, 40.0)), "the strip drags");
 }
@@ -183,6 +212,7 @@ fn a_note_drags_by_its_top_strip_and_its_body_types() {
 fn a_drag_whose_release_never_came_ends_on_the_next_frame() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     app.panning = true;
     frame(&mut app, &ctx, vec![]);
@@ -192,14 +222,19 @@ fn a_drag_whose_release_never_came_ends_on_the_next_frame() {
 #[test]
 fn keeping_selection_follows_the_ids() {
     let mut app = DrawingApp::default();
+
     for x in [0.0, 100.0, 200.0] {
         window(&mut app, Rect::from_min_size(Pos2::new(x, 0.0), Vec2::splat(50.0)), |_| {});
     }
+
     let last = app.scene.elements[2].id.clone();
+
     app.selected = vec![0, 2];
+
     app.keeping_selection(|app| {
         app.scene.elements.remove(0);
     });
+
     assert_eq!(app.selected, vec![1], "the removed one leaves, the other follows its element");
     assert_eq!(app.scene.elements[1].id, last);
 }
@@ -208,15 +243,19 @@ fn keeping_selection_follows_the_ids() {
 fn a_press_on_the_margin_of_an_enlarged_window_only_puts_it_back() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let i = window(&mut app, Rect::from_min_size(Pos2::new(300.0, 100.0), Vec2::new(300.0, 200.0)), shell);
+
     // a filled shape under the margin, where the press lands
     window(&mut app, Rect::from_min_size(Pos2::new(5.0, 250.0), Vec2::new(30.0, 100.0)), |e| e.style.fill = Some([200, 0, 0, 255]));
     let id = app.scene.elements[i].id.clone();
+
     app.set_elevated(Some(id.clone()));
     app.terminal_focus = Some(id);
     app.selected.clear();
     let margin = app.to_screen(Pos2::new(20.0, 300.0));
+
     click(&mut app, &ctx, margin);
     assert_eq!(app.terminal_elevated, None, "the margin puts it back");
     assert_eq!(app.terminal_focus, None);
@@ -225,13 +264,16 @@ fn a_press_on_the_margin_of_an_enlarged_window_only_puts_it_back() {
     let top = window(&mut app, Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(40.0, 40.0)), shell);
     let bottom = window(&mut app, Rect::from_min_size(Pos2::new(0.0, 540.0), Vec2::new(40.0, 40.0)), shell);
     let (top, bottom) = (app.scene.elements[top].id.clone(), app.scene.elements[bottom].id.clone());
+
     app.connect(&top, &bottom);
     let rope = app.scene.elements.iter().find(|e| e.rope).unwrap();
     let near = |p: &[f32; 2]| (p[1] - 200.0).abs();
     let on_rope = crate::geometry::line_path(rope).into_iter().min_by(|a, b| near(a).total_cmp(&near(b))).unwrap();
     let on_rope = Pos2::new(on_rope[0], on_rope[1]);
+
     assert!(app.hit(on_rope).is_some_and(|k| app.scene.elements[k].rope), "the press lands on the rope");
     let on_rope = app.to_screen(on_rope);
+
     app.set_elevated(Some(app.scene.elements[i].id.clone()));
     click(&mut app, &ctx, on_rope);
     assert_eq!(app.terminal_elevated, None);
@@ -242,14 +284,19 @@ fn a_press_on_the_margin_of_an_enlarged_window_only_puts_it_back() {
 fn a_pan_press_keeps_the_enlarged_window() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
+
     let i = window(&mut app, Rect::from_min_size(Pos2::new(300.0, 100.0), Vec2::new(300.0, 200.0)), |e| {
         e.filetree = Some(FileTreeSpec { root: "/nonexistent-magoagent".into(), ..Default::default() });
     });
+
     let id = app.scene.elements[i].id.clone();
+
     app.set_elevated(Some(id.clone()));
     let at = app.to_screen(Pos2::new(20.0, 300.0));
     let middle = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Middle, pressed, modifiers: Modifiers::NONE };
+
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), middle(true)]);
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at + Vec2::new(30.0, 0.0))]);
     frame(&mut app, &ctx, vec![middle(false)]);
@@ -267,14 +314,17 @@ fn a_pan_press_keeps_the_enlarged_window() {
 fn just_outside_a_terminal_resizes_it_instead_of_typing() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let i = window(&mut app, Rect::from_min_size(Pos2::new(100.0, 150.0), Vec2::new(300.0, 200.0)), shell);
     // 6 below its bottom edge: in the resize band, 10 px outside as the reference app's edge handle
     let below = Pos2::new(250.0, 356.0);
+
     assert_eq!(hover(&mut app, &ctx, below), CursorIcon::ResizeVertical);
     assert_eq!(hover(&mut app, &ctx, Pos2::new(250.0, 365.0)), CursorIcon::Default, "past the band");
     assert_eq!(hover(&mut app, &ctx, Pos2::new(406.0, 356.0)), CursorIcon::ResizeNwSe, "the corner");
     let at = app.to_screen(below);
+
     click(&mut app, &ctx, at);
     assert_eq!(app.terminal_focus, None, "no typing from outside the window");
     assert_eq!(app.selected, vec![i]);
@@ -284,6 +334,7 @@ fn just_outside_a_terminal_resizes_it_instead_of_typing() {
 fn notes_and_windows_get_no_rotation_handle() {
     let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 150.0), Vec2::splat(200.0)), "abc".into());
+
     app.scene.elements.extend([note, label]);
     window(&mut app, Rect::from_min_size(Pos2::new(400.0, 150.0), Vec2::splat(100.0)), |_| {});
     app.selected = vec![0];
@@ -296,18 +347,24 @@ fn notes_and_windows_get_no_rotation_handle() {
 fn esc_on_a_file_tree_lets_the_arrows_go_without_pushing_the_node() {
     let ctx = Context::default();
     let dir = std::env::temp_dir().join(format!("magoagent-esc-card-{}", std::process::id()));
+
     fs::create_dir_all(&dir).unwrap();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
+
     let i = window(&mut app, Rect::from_min_size(Pos2::new(100.0, 100.0), FILETREE_SIZE), |e| {
         e.filetree = Some(FileTreeSpec { root: dir.to_string_lossy().into(), ..Default::default() });
     });
+
     frame(&mut app, &ctx, vec![]);
     let id = app.scene.elements[i].id.clone();
+
     app.filetrees.views.insert(id, crate::app::filetree::view::TreeView::new());
     (app.card_focus, app.selected) = (Some(app.scene.elements[i].id.clone()), vec![i]);
     let before = local_bounds(&app.scene.elements[i]);
     let key = |key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+
     frame(&mut app, &ctx, vec![key(Key::Escape)]);
     frame(&mut app, &ctx, vec![key(Key::ArrowRight)]);
     assert_eq!((app.card_focus.as_ref(), local_bounds(&app.scene.elements[i])), (None, before));
@@ -319,9 +376,11 @@ fn tab_on_the_canvas_leaves_the_shortcuts_on() {
     use eframe::App as _;
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let tab = egui::Event::Key { key: Key::Tab, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
     let mut raw = egui::RawInput { events: vec![tab.clone(), tab], ..Default::default() };
+
     app.raw_input_hook(&ctx, &mut raw);
     frame(&mut app, &ctx, raw.events);
     frame(&mut app, &ctx, vec![]);
@@ -332,8 +391,10 @@ fn tab_on_the_canvas_leaves_the_shortcuts_on() {
 fn composer_areas(app: &mut DrawingApp, ctx: &Context) -> Vec<Rect> {
     for _ in 0..2 {
         let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), ..Default::default() };
+
         ctx.run_ui(raw, |_| app.composer_ui(ctx)).textures_delta.clear();
     }
+
     ctx.memory(|m| m.areas().visible_layer_ids().into_iter().filter(|l| l.order == egui::Order::Foreground).filter_map(|l| m.area_rect(l.id)).collect())
 }
 
@@ -341,11 +402,14 @@ fn composer_areas(app: &mut DrawingApp, ctx: &Context) -> Vec<Rect> {
 fn the_composer_stays_in_view_and_waits_under_the_chat() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     // its terminal panned far off: it stays at the edge of the view, where its keys go
     let i = window(&mut app, Rect::from_min_size(Pos2::new(2000.0, 2000.0), Vec2::new(400.0, 300.0)), shell);
+
     app.composer = Some((app.scene.elements[i].id.clone(), String::new()));
     let areas = composer_areas(&mut app, &ctx);
+
     assert_eq!(areas.len(), 1);
     assert!(app.canvas_rect.contains_rect(areas[0]), "{:?} in {:?}", areas[0], app.canvas_rect);
     // a margin of its own, not pushed against the edge by egui
@@ -360,10 +424,12 @@ fn the_composer_stays_in_view_and_waits_under_the_chat() {
 fn a_duplicated_terminal_gets_a_name_of_its_own() {
     let mut app = DrawingApp::default();
     let i = window(&mut app, Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 300.0)), shell);
+
     app.selected = vec![i];
     app.duplicate();
     app.duplicate();
     let names: Vec<&str> = app.scene.elements.iter().filter_map(|e| e.terminal.as_ref().map(|t| t.name.as_str())).collect();
+
     // each copy is numbered after the one it came from (agents' names are the Maestro's recruits')
     assert_eq!(names, ["Shell", "Shell 2", "Shell 3"]);
 }
@@ -371,19 +437,25 @@ fn a_duplicated_terminal_gets_a_name_of_its_own() {
 #[test]
 fn agents_draw_free_names_and_number_them_once_all_are_taken() {
     let mut app = DrawingApp::default();
+
     for n in 0..AGENT_NAMES.len() {
         let name = app.agent_name();
+
         assert!(AGENT_NAMES.contains(&name.as_str()), "{name}");
         let mut e = app.new_element(ElementKind::Rectangle { x: n as f32 * 500.0, y: 0.0, width: 400.0, height: 300.0 });
+
         e.terminal = Some(TerminalSpec { name, ..Default::default() });
         app.scene.elements.push(e);
     }
+
     // none drawn twice; then a taken one, numbered
     let mut names: Vec<&str> = app.scene.elements.iter().filter_map(|e| e.terminal.as_ref().map(|t| t.name.as_str())).collect();
+
     names.sort();
     names.dedup();
     assert_eq!(names.len(), AGENT_NAMES.len());
     let next = app.agent_name();
+
     assert!(next.ends_with(" 2") && AGENT_NAMES.contains(&next.trim_end_matches(" 2")), "{next}");
 }
 
@@ -391,9 +463,11 @@ fn agents_draw_free_names_and_number_them_once_all_are_taken() {
 fn the_hand_tool_shows_a_hand_over_the_canvas() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     app.tool = Tool::Hand;
     frame(&mut app, &ctx, vec![]);
     assert_eq!(hover(&mut app, &ctx, Pos2::new(400.0, 400.0)), DrawingApp::hand_cursor(false));
+
     if cfg!(windows) {
         assert_eq!(DrawingApp::hand_cursor(true), CursorIcon::PointingHand, "not the four-way arrow winit gives Grabbing there");
     }
@@ -404,6 +478,7 @@ fn a_scroll_tells_a_mouse_wheel_from_a_touchpad() {
     use crate::app::update::wheel_from_mouse;
     let wheel = |unit, delta: Vec2, source| egui::Event::MouseWheel { unit, delta, phase: egui::TouchPhase::Move, source, modifiers: Modifiers::NONE };
     let line = |x, y| wheel(egui::MouseWheelUnit::Line, Vec2::new(x, y), egui::MouseWheelSource::Unknown);
+
     assert_eq!(wheel_from_mouse(&[line(0.0, 1.0)]), Some(true), "a notch of the wheel");
     assert_eq!(wheel_from_mouse(&[line(-1.0, 0.0)]), Some(true), "the side wheel (tilt) is the mouse too");
     assert_eq!(wheel_from_mouse(&[line(0.0, 0.35)]), Some(false), "Windows' touchpad: fractions of a line");

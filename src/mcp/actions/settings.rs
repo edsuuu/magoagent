@@ -2,6 +2,7 @@ use super::*;
 
 fn parse_island_color(value: &str) -> Option<[u8; 3]> {
     let hex = value.trim().strip_prefix('#').unwrap_or(value.trim());
+
     (hex.len() == 6).then(|| u32::from_str_radix(hex, 16).ok()).flatten().map(|rgb| [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8])
 }
 
@@ -10,6 +11,7 @@ fn gnome_cursor(action: &str) -> Result<String, String> {
     #[cfg(target_os = "linux")]
     if crate::app::island::gnome::wanted() {
         use crate::app::island::gnome::{Status, install, remove, status};
+
         return match action {
             "install" | "instalar" => install(),
             "remove" | "remover" => remove(),
@@ -21,7 +23,9 @@ fn gnome_cursor(action: &str) -> Result<String, String> {
             .into()),
         };
     }
+
     let _ = action;
+
     Err("A extensão é do GNOME com Wayland; nos outros sistemas os olhos já veem o mouse.".into())
 }
 
@@ -42,6 +46,7 @@ impl DrawingApp {
             ("voice_studio_key", key) => self.prefs.voice_studio_key = key.trim().to_string(),
             ("run_at_login", "on" | "ligado" | "off" | "desligado") => {
                 let enabled = matches!(value, "on" | "ligado");
+
                 crate::app::system::run_at_login::set_run_at_login(enabled)?;
                 self.prefs.run_at_login = enabled;
             }
@@ -53,6 +58,7 @@ impl DrawingApp {
             ("codex_hooks", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return self.act_codex_hooks(action),
             // by the bridge it runs on a thread (`act_later`)
             ("register_mcp", agent) => return crate::app::system::mcp_register::mcp_register(agent),
+            ("unregister_mcp", agent) => return crate::app::system::mcp_register::mcp_remove(agent),
             ("island", "on" | "ligado") => self.prefs.island = true,
             ("island", "off" | "desligado") => self.prefs.island = false,
             ("island_sound", "on" | "ligado") => self.prefs.island_sound = true,
@@ -61,7 +67,13 @@ impl DrawingApp {
                 self.prefs.island_volume = volume.parse().unwrap_or(0.1)
             }
             ("frame_rate", rate) if rate.parse::<u16>().is_ok_and(|rate| FRAME_RATES.contains(&rate)) => self.prefs.frame_rate = rate.parse().unwrap_or(60),
-            ("gnome_cursor", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return gnome_cursor(action),
+            // the preference follows: on, the app puts the extension back at the next start
+            ("gnome_cursor", action @ ("install" | "instalar" | "remove" | "remover")) => {
+                self.prefs.gnome_cursor = matches!(action, "install" | "instalar");
+
+                return gnome_cursor(action);
+            }
+            ("gnome_cursor", "status") => return gnome_cursor("status"),
             ("island_place", "top" | "topo") => self.put_island(crate::app::island::Place::Top),
             ("island_place", "bottom" | "embaixo" | "baixo") => self.put_island(crate::app::island::Place::Bottom),
             ("island_place", "left" | "esquerda") => self.put_island(crate::app::island::Place::Left),
@@ -101,11 +113,14 @@ impl DrawingApp {
             ("voice_mic", "auto" | "automático" | "") => self.prefs.voice_mic.clear(),
             ("voice_mic", mic) => {
                 let mics = crate::voice::input_names();
+
                 let found = mics
                     .iter()
                     .find(|m| m.to_lowercase().contains(&mic.to_lowercase()))
                     .ok_or_else(|| format!("Microfone \"{mic}\" não encontrado. Há: {}.", mics.join("; ")))?;
+
                 self.prefs.voice_mic = found.clone();
+
                 return Ok(format!("O microfone agora é {found}."));
             }
             ("chat_agent", agent @ ("claude" | "codex")) => self.prefs.chat_agent = agent.into(),
@@ -118,27 +133,30 @@ impl DrawingApp {
             }
             ("chat_panel", "on" | "ligado") => self.prefs.chat_panel = true,
             ("chat_panel", "off" | "desligado") => self.prefs.chat_panel = false,
+            // Conversas' Exibição (chat/list/display.rs)
+            ("chat_list_density" | "chat_list_group" | "chat_list_order" | "chat_list_agent", _) => return self.prefs.chat_list.set(name, value),
             ("wsl", choice) => {
                 self.prefs.wsl = match choice.trim() {
                     "" | "auto" | "automático" | "automatico" => String::new(),
                     "off" | "desligado" => WSL_OFF.into(),
                     name => name.to_string(),
                 };
+
                 wsl_choose(&self.prefs.wsl);
                 self.chat_installed = None;
             }
-            ("agent_hooks", "on" | "ligado") => self.prefs.agent_hooks = true,
-            ("agent_hooks", "off" | "desligado") => self.prefs.agent_hooks = false,
             ("ok_mago", "on" | "ligado") => self.prefs.ok_mago = true,
             ("ok_mago", "off" | "desligado") => self.prefs.ok_mago = false,
             ("speak_answers", "on" | "ligado") => self.prefs.speak_answers = true,
             ("speak_answers", "off" | "desligado") => self.prefs.speak_answers = false,
             ("favorite_folder", path) if !path.trim().is_empty() => {
                 let on = self.prefs.folders.toggle_favorite(path);
+
                 return Ok(format!("{} {} pastas favoritas.", path.trim(), if on { "entrou nas" } else { "saiu das" }));
             }
             _ => return Err(format!("ajuste desconhecido: {name} = {value}")),
         }
+
         Ok(format!("{name} agora é {value}."))
     }
 
@@ -146,34 +164,43 @@ impl DrawingApp {
         let at = self.node_named(portal)?;
         let spec = self.scene.elements[at].portal.as_ref().ok_or_else(|| format!("{portal} não é um navegador"))?;
         let (mut tabs, active) = (spec.tab_urls(), spec.active_tab());
+
         let (tabs, active) = match action {
             "new" => {
                 tabs.push(crate::app::browser::normalize_url(url));
                 let last = tabs.len() - 1;
+
                 (tabs, last)
             }
             "close" if tabs.len() == 1 => return Err("é a única aba; feche o navegador com close_window".into()),
             "close" => {
                 let i = index.unwrap_or(active).min(tabs.len() - 1);
+
                 tabs.remove(i);
                 // the one after the closed tab moves into its place
                 let next = if active > i { active - 1 } else { active };
                 let last = tabs.len() - 1;
+
                 (tabs, next.min(last))
             }
             "select" => {
                 let i = index.ok_or("diga o index da aba")?;
+
                 if i >= tabs.len() {
                     return Err(format!("o navegador tem {} aba(s)", tabs.len()));
                 }
+
                 (tabs, i)
             }
             other => return Err(format!("ação desconhecida: {other}")),
         };
+
         self.snapshot();
+
         if let Some(spec) = self.scene.elements[at].portal.as_mut() {
             spec.set_tabs(tabs, active);
         }
+
         Ok(format!("Abas de {portal} ajustadas."))
     }
 
@@ -183,9 +210,11 @@ impl DrawingApp {
         for (id, text) in std::mem::take(&mut self.chat_outbox) {
             self.chat_send(ctx, &id, &text);
         }
+
         for (id, text) in std::mem::take(&mut self.chat_cmd_outbox) {
             self.chat_submit(ctx, &id, &text, &text);
         }
+
         // the app's own window, whichever window draws now
         for command in std::mem::take(&mut self.viewport_commands) {
             ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, command);
@@ -200,6 +229,7 @@ mod tests {
     #[test]
     fn style_skill_sets_the_path_as_given() {
         let mut app = DrawingApp::default();
+
         assert!(app.act_setting("style_skill", " C:/Skill/SKILL.md ").is_ok());
         assert_eq!(app.prefs.style_skill, "C:/Skill/SKILL.md");
     }
@@ -212,12 +242,12 @@ mod chat_tests {
     #[test]
     fn the_chat_settings_answer_to_the_mcp() {
         let mut app = DrawingApp::default();
+
         app.act_setting("chat_agent", "codex").unwrap();
         app.act_setting("chat_mode", "bypass").unwrap();
         app.act_setting("chat_folder", " C:/Projetos ").unwrap();
         app.act_setting("chat_autocompact", "200k").unwrap();
         app.act_setting("chat_panel", "on").unwrap();
-        app.act_setting("agent_hooks", "on").unwrap();
         // the WSL distro the agents run in (system/wsl.rs)
         app.act_setting("wsl", "Ubuntu").unwrap();
         assert_eq!(app.prefs.wsl, "Ubuntu");
@@ -226,8 +256,9 @@ mod chat_tests {
         app.act_setting("wsl", "auto").unwrap();
         assert_eq!(app.prefs.wsl, "");
         let prefs = &app.prefs;
+
         assert_eq!((prefs.chat_agent.as_str(), prefs.chat_mode, prefs.chat_folder.as_str()), ("codex", 1, "C:/Projetos"));
-        assert_eq!((prefs.chat_autocompact.as_str(), prefs.chat_panel, prefs.agent_hooks), ("200k", true, true));
+        assert_eq!((prefs.chat_autocompact.as_str(), prefs.chat_panel), ("200k", true));
         app.act_setting("chat_autocompact", "1m").unwrap();
         assert_eq!(app.prefs.chat_autocompact, "1M");
         app.act_setting("chat_autocompact", "padrão").unwrap();

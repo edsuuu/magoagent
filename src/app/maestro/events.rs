@@ -109,12 +109,15 @@ pub(crate) struct EventStore {
 impl EventStore {
     pub(crate) fn open(path: PathBuf) -> EventStore {
         let (tx, rx) = mpsc::channel::<AgentEvent>();
+
         let writer = std::thread::spawn(move || {
             let Ok(db) = connect(&path) else { return };
+
             for event in rx {
                 let _ = insert(&db, &event);
             }
         });
+
         EventStore { tx: Some(tx), writer: Some(writer) }
     }
 
@@ -128,6 +131,7 @@ impl EventStore {
 impl Drop for EventStore {
     fn drop(&mut self) {
         self.tx = None;
+
         if let Some(writer) = self.writer.take() {
             let _ = writer.join();
         }
@@ -137,14 +141,18 @@ impl Drop for EventStore {
 /// Opens (or makes) the database and drops what is older than `KEEP_DAYS`.
 fn connect(path: &Path) -> rusqlite::Result<Connection> {
     let db = Connection::open(path)?;
+
     db.busy_timeout(Duration::from_secs(2))?;
+
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS events (at INTEGER NOT NULL, agent TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, \
          tool TEXT NOT NULL, what TEXT NOT NULL, cwd TEXT NOT NULL, session TEXT NOT NULL, data TEXT NOT NULL);
          CREATE INDEX IF NOT EXISTS events_by_agent ON events (agent, at);",
     )?;
+
     // a database from before messages had a receiver: the column comes in empty (fails once it's there)
     let _ = db.execute("ALTER TABLE events ADD COLUMN target TEXT NOT NULL DEFAULT ''", []);
+
     db.execute("CREATE INDEX IF NOT EXISTS events_by_target ON events (target, at)", [])?;
     db.execute("DELETE FROM events WHERE at < ?1", [now_ms() - KEEP_DAYS * 86_400_000])?;
     Ok(db)
@@ -161,9 +169,11 @@ fn insert(db: &Connection, e: &AgentEvent) -> rusqlite::Result<usize> {
 fn read_events(path: &Path, filter: &str, a: Option<&str>, b: &str, n: usize, since: Option<i64>) -> Vec<AgentEvent> {
     let read = || -> rusqlite::Result<Vec<AgentEvent>> {
         let db = connect(path)?;
+
         let mut query = db.prepare(&format!(
             "SELECT at, agent, name, kind, tool, what, cwd, session, data, target FROM events WHERE {filter} ORDER BY at DESC, rowid DESC LIMIT ?4"
         ))?;
+
         let rows = query.query_map(rusqlite::params![a, b, since, n as i64], |r| {
             Ok(AgentEvent {
                 at: r.get(0)?,
@@ -178,9 +188,12 @@ fn read_events(path: &Path, filter: &str, a: Option<&str>, b: &str, n: usize, si
                 to: r.get(9)?,
             })
         })?;
+
         rows.collect()
     };
+
     let mut events = read().unwrap_or_default();
+
     events.reverse();
     events
 }
@@ -212,7 +225,9 @@ pub(crate) fn tool_summary(tool: &str, input: &Value) -> String {
         .find_map(|k| input[*k].as_str().map(str::trim).filter(|s| !s.is_empty()))
         .and_then(|s| s.lines().next())
         .unwrap_or_default();
+
     let line = if detail.is_empty() { tool.to_string() } else { format!("{tool}: {detail}") };
+
     match line.char_indices().nth(90) {
         Some((cut, _)) => format!("{}…", &line[..cut]),
         None => line,
@@ -230,9 +245,11 @@ pub(crate) fn hook_event(payload: &Value) -> Option<(EventKind, String, String)>
     let summary = tool_summary(&tool, &payload["tool_input"]);
     let message = payload["message"].as_str().unwrap_or_default().trim().to_string();
     let response = &payload["tool_response"];
+
     let failed = response["is_error"] == true
         || response["error"].as_str().is_some_and(|e| !e.trim().is_empty())
         || ["exit_code", "exitCode"].iter().any(|k| response[*k].as_i64().is_some_and(|c| c != 0));
+
     Some(match hook_name(payload) {
         "PreToolUse" => (EventKind::ToolStarted, tool, summary),
         "PostToolUse" if failed => (EventKind::Error, tool, format!("falhou: {summary}")),
@@ -242,6 +259,7 @@ pub(crate) fn hook_event(payload: &Value) -> Option<(EventKind, String, String)>
         "Notification" => {
             let permission = payload["notification_type"].as_str().is_some_and(|t| t.contains("permission")) || message.to_lowercase().contains("permission");
             let what = if message.is_empty() { "precisa de você".to_string() } else { format!("precisa de você: {message}") };
+
             (if permission { EventKind::Permission } else { EventKind::Question }, tool, what)
         }
         "Stop" => (EventKind::Finished, tool, "terminou a vez".into()),
@@ -254,6 +272,7 @@ pub(crate) fn hook_event(payload: &Value) -> Option<(EventKind, String, String)>
 /// What `magoagent hook` prints to answer a permission request (allow or deny).
 pub(crate) fn permission_answer(allow: bool, reason: &str) -> String {
     let decision = if allow { json!({ "behavior": "allow" }) } else { json!({ "behavior": "deny", "message": reason }) };
+
     json!({ "hookSpecificOutput": { "hookEventName": "PermissionRequest", "decision": decision } }).to_string()
 }
 
@@ -263,6 +282,7 @@ pub(crate) fn refusal(event: &str, reason: &str) -> String {
         return json!({ "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": reason } })
             .to_string();
     }
+
     permission_answer(false, reason)
 }
 
@@ -270,10 +290,13 @@ pub(crate) fn refusal(event: &str, reason: &str) -> String {
 /// else changed), in the event's own shape; empty (the CLI asks in its terminal) unless the answers fit the questions.
 pub(crate) fn question_answer(event: &str, input: &Value, answers: &serde_json::Map<String, Value>) -> String {
     let Some(mut updated) = input.as_object().filter(|_| answers_fit(input, answers)).cloned() else { return String::new() };
+
     updated.insert("answers".into(), Value::Object(answers.clone()));
+
     if event == "PreToolUse" {
         return json!({ "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "allow", "updatedInput": updated } }).to_string();
     }
+
     json!({ "hookSpecificOutput": { "hookEventName": "PermissionRequest", "decision": { "behavior": "allow", "updatedInput": updated } } }).to_string()
 }
 
@@ -281,16 +304,20 @@ pub(crate) fn question_answer(event: &str, input: &Value, answers: &serde_json::
 /// one of its option labels (a string), a multi-select one a non-empty list of distinct labels (Claude Code 2.1.136+).
 pub(crate) fn answers_fit(input: &Value, answers: &serde_json::Map<String, Value>) -> bool {
     let Some(items) = input["questions"].as_array().filter(|items| !items.is_empty() && items.len() == answers.len()) else { return false };
+
     items.iter().all(|item| {
         let labels: Vec<&str> = item["options"].as_array().into_iter().flatten().filter_map(|option| option["label"].as_str()).collect();
         let Some(answer) = item["question"].as_str().and_then(|text| answers.get(text)) else { return false };
+
         match (answer, item["multiSelect"] == true) {
             (Value::String(pick), false) => labels.contains(&pick.as_str()),
             (Value::Array(picks), true) => {
                 let picks: Vec<&str> = picks.iter().filter_map(Value::as_str).collect();
                 let mut seen = picks.clone();
+
                 seen.sort_unstable();
                 seen.dedup();
+
                 !picks.is_empty()
                     && seen.len() == picks.len()
                     && picks.len() == answer.as_array().map_or(0, Vec::len)
@@ -308,8 +335,10 @@ pub(crate) fn answers_fit(input: &Value, answers: &serde_json::Map<String, Value
 pub(crate) fn hook_settings_json(exe: &str) -> Value {
     let hook = |timeout: u64, matcher: bool| {
         let run = json!({ "type": "command", "command": format!("\"{exe}\" hook"), "timeout": timeout });
+
         if matcher { json!([{ "matcher": "*", "hooks": [run] }]) } else { json!([{ "hooks": [run] }]) }
     };
+
     // the status line tells the app the plan's limits and what the session spends (app/usage.rs)
     json!({ "statusLine": { "type": "command", "command": format!("\"{exe}\" statusline") }, "hooks": {
         "PreToolUse": hook(10, true),
@@ -326,6 +355,7 @@ pub(crate) fn hook_settings_json(exe: &str) -> Value {
 /// stays as it is.
 pub(crate) fn with_hooks(command: String, settings: Option<&Path>) -> String {
     let Some(settings) = settings else { return command };
+
     match command.trim_start().strip_prefix("claude") {
         Some(rest) if rest.is_empty() || rest.starts_with(' ') => format!("claude --settings \"{}\"{rest}", settings.display()),
         _ => command,
@@ -337,6 +367,7 @@ pub(crate) fn with_hooks(command: String, settings: Option<&Path>) -> String {
 /// flag takes several values, and a prompt written after it would be read as one of them.
 pub(crate) fn with_mcp(command: String, config: Option<&Path>) -> String {
     let Some(config) = config else { return command };
+
     match command.trim_start().strip_prefix("claude") {
         Some(rest) if (rest.is_empty() || rest.starts_with(' ')) && !rest.contains("--mcp-config") => {
             format!("{} --mcp-config \"{}\"", command.trim_end(), config.display())
@@ -369,20 +400,25 @@ pub(crate) fn hook_cli() -> i32 {
     let Ok(payload) = serde_json::from_str::<Value>(&input) else { return 0 };
     let env = |key: &str| std::env::var(key).ok().filter(|v| !v.is_empty());
     let args: Vec<String> = std::env::args().collect();
+
     let answer = if args.get(2).map(String::as_str) == Some("external") {
         if own_run(&env) {
             return 0;
         }
+
         super::relay::external(payload, args.get(3).map(String::as_str) == Some("wait"), &env)
     } else {
         let (Some(address), Some(token)) = (env("MAGOAGENT_BRIDGE"), env("MAGOAGENT_TOKEN")) else { return 0 };
         let Some(from) = env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID")) else { return 0 };
         let wait = if hook_name(&payload) == "PermissionRequest" { PERMISSION_WAIT } else { 0 };
+
         super::relay::ask_app(address, token, from, json!({ "cmd": "hook", "payload": payload, "wait": wait }), wait)
     };
+
     if !answer.is_empty() {
         println!("{answer}");
     }
+
     0
 }
 
@@ -402,6 +438,7 @@ mod tests {
     fn the_apps_own_runs_are_not_sessions_outside() {
         let with =
             |pairs: &'static [(&'static str, &'static str)]| move |key: &str| pairs.iter().find(|(name, _)| *name == key).map(|(_, value)| value.to_string());
+
         // the plan's reading of a test instance in its scene's folder came as a session outside, with no conversation
         // file (--no-session-persistence)
         assert!(own_run(&with(&[("MAGOAGENT_OWN", "1")])), "a CLI the app ran, with no bridge");
@@ -414,17 +451,22 @@ mod tests {
     #[test]
     fn events_are_kept_in_sqlite_and_old_ones_go() {
         let dir = std::env::temp_dir().join(format!("mago-events-{}", new_id()));
+
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("eventos.db");
         let mut old = AgentEvent::new("t1", "Revisor", EventKind::Finished, "terminou");
+
         old.at -= 31 * 86_400_000;
         let mut asked = AgentEvent::new("t1", "Revisor", EventKind::Permission, "pede permissão: Bash: ls");
+
         asked.data = json!({ "command": "ls" });
         let other = AgentEvent::new("t2", "Front", EventKind::Started, "iniciado");
         let store = EventStore::open(path.clone());
+
         for e in [&old, &asked, &other] {
             store.save(e);
         }
+
         drop(store);
         // the next opening drops the event older than 30 days
         assert_eq!(recent_events(&path, 10, None), [asked.clone(), other.clone()]);
@@ -436,35 +478,44 @@ mod tests {
     #[test]
     fn messages_keep_who_sent_and_who_got_them() {
         let dir = std::env::temp_dir().join(format!("mago-conversa-{}", new_id()));
+
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("eventos.db");
         // a database from before the receiver's column
         let old = Connection::open(&path).unwrap();
+
         old.execute_batch(
             "CREATE TABLE events (at INTEGER NOT NULL, agent TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, tool TEXT NOT NULL, \
              what TEXT NOT NULL, cwd TEXT NOT NULL, session TEXT NOT NULL, data TEXT NOT NULL);",
         )
         .unwrap();
+
         old.execute("INSERT INTO events VALUES (?1, 'dev', 'Dev', 'started', '', 'iniciado', '', '', 'null')", [now_ms() - 5000]).unwrap();
         drop(old);
+
         let said = |from: &str, name: &str, to: &str, what: &str, at: i64| {
             let mut e = AgentEvent::new(from, name, EventKind::Message, what);
+
             (e.to, e.at) = (to.into(), now_ms() - at);
             e
         };
+
         let asked = said("rev", "Revisor", "dev", "pergunta: e os testes?", 3000);
         let answered = said("dev", "Dev", "rev", "respondeu", 2000);
         let elsewhere = said("rev", "Revisor", "front", "pergunta: e a tela?", 1000);
         let store = EventStore::open(path.clone());
+
         for e in [&asked, &answered, &elsewhere] {
             store.save(e);
         }
+
         drop(store);
         assert_eq!(conversation(&path, "dev", "rev", 10), [asked, answered.clone()], "either way, oldest first, only that pair");
         assert_eq!(conversation(&path, "rev", "dev", 1), [answered], "the last n");
         assert!(conversation(&path, "dev", "front", 10).is_empty());
         // the old row reads with no receiver; an agent's own history has what it got too
         let dev = recent_events(&path, 10, Some("dev"));
+
         assert_eq!(dev.len(), 3);
         assert_eq!((dev[0].what.as_str(), dev[0].to.as_str()), ("iniciado", ""));
         let _ = fs::remove_dir_all(&dir);
@@ -473,29 +524,37 @@ mod tests {
     #[test]
     fn hooks_read_tolerantly_and_answer_permissions() {
         let pre = json!({ "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": { "command": "cargo test\nmais" } });
+
         assert_eq!(hook_event(&pre), Some((EventKind::ToolStarted, "Bash".into(), "Bash: cargo test".into())));
         let failed = json!({ "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {}, "tool_response": { "exit_code": 2 } });
+
         assert_eq!(hook_event(&failed).map(|e| e.0), Some(EventKind::Error));
         let asks = json!({ "hook_event_name": "Notification", "message": "Claude needs your permission to use Bash" });
+
         assert_eq!(hook_event(&asks).map(|e| e.0), Some(EventKind::Permission));
         assert_eq!(hook_event(&json!({ "hook_event_name": "Stop" })).map(|e| e.0), Some(EventKind::Finished));
         // fields missing or unknown: no panic, nothing followed
         assert_eq!(hook_event(&json!({})), None);
         assert_eq!(hook_event(&json!({ "hook_event_name": "PermissionRequest" })).map(|e| e.2), Some("pede permissão: ".into()));
         let allow: Value = serde_json::from_str(&permission_answer(true, "")).unwrap();
+
         assert_eq!(allow["hookSpecificOutput"]["decision"]["behavior"], "allow");
         let deny: Value = serde_json::from_str(&permission_answer(false, "não")).unwrap();
+
         assert_eq!(deny["hookSpecificOutput"]["decision"], json!({ "behavior": "deny", "message": "não" }));
         let settings = hook_settings_json("C:/MagoAgent/magoagent.exe");
+
         assert_eq!(settings["hooks"]["PermissionRequest"][0]["hooks"][0]["command"], "\"C:/MagoAgent/magoagent.exe\" hook");
         assert!(settings["hooks"]["PermissionRequest"][0]["hooks"][0]["timeout"].as_u64() > Some(PERMISSION_WAIT));
         let file = Path::new("/dados/hooks-claude.json");
+
         assert_eq!(with_hooks("claude --resume 1".into(), Some(file)), format!("claude --settings \"{}\" --resume 1", file.display()));
         assert_eq!(with_hooks("claude".into(), Some(file)), format!("claude --settings \"{}\"", file.display()));
         assert_eq!(with_hooks("claudette".into(), Some(file)), "claudette");
         assert_eq!(with_hooks("codex".into(), Some(file)), "codex");
         assert_eq!(with_hooks("claude".into(), None), "claude");
         let config = Path::new("/dados/chat-mcp.json");
+
         assert_eq!(with_mcp("claude --model sonnet".into(), Some(config)), "claude --model sonnet --mcp-config \"/dados/chat-mcp.json\"");
         assert_eq!(with_mcp("claude \"faça x\"".into(), Some(config)), "claude \"faça x\" --mcp-config \"/dados/chat-mcp.json\"");
         assert_eq!(with_mcp("claude --mcp-config a.json".into(), Some(config)), "claude --mcp-config a.json");

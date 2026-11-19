@@ -98,6 +98,7 @@ const DEFAULT_AGENT: &str = if cfg!(windows) { "Padrão (Chromium)" } else { "Pa
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn chrome_agent(version: Option<&str>) -> String {
     let preset = USER_AGENTS[0].2;
+
     match version.and_then(|v| v.split('.').next()).filter(|major| !major.is_empty() && major.bytes().all(|b| b.is_ascii_digit())) {
         Some(major) => preset.replace("Chrome/125.0.0.0", &format!("Chrome/{major}.0.0.0")),
         None => preset.into(),
@@ -108,6 +109,7 @@ pub(crate) fn chrome_agent(version: Option<&str>) -> String {
 /// the text itself (Personalizado).
 pub(crate) fn resolve_user_agent(text: &str) -> String {
     let text = text.trim();
+
     match USER_AGENTS.iter().find(|(label, ..)| label.eq_ignore_ascii_case(text)) {
         Some((.., agent)) => (*agent).into(),
         None if text.eq_ignore_ascii_case("padrão") || text.eq_ignore_ascii_case("padrao") => String::new(),
@@ -146,9 +148,11 @@ pub(crate) fn size_text(width: f32, height: f32) -> String {
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn store_id(name: &str) -> [u8; 16] {
     let mut out = [0u8; 16];
+
     for (half, seed) in out.chunks_mut(8).zip([0xcbf29ce484222325u64, 0x84222325cbf29ce4]) {
         half.copy_from_slice(&fnv1a_from(seed, name).to_le_bytes());
     }
+
     out
 }
 
@@ -171,15 +175,20 @@ pub(crate) fn tune<'a>(mut builder: wry::WebViewBuilder<'a>, extras: &TabExtras)
         // visit: the default is Chrome's agent at the engine's real version
         builder = builder.with_user_agent(chrome_agent(wry::webview_version().ok().as_deref()));
     }
+
     if extras.muted {
         builder = builder.with_initialization_script(mute_script(true));
     }
+
     #[cfg(target_os = "macos")]
     {
         use wry::WebViewBuilderExtDarwin;
+
         builder = builder.with_data_store_identifier(store_id(&extras.store));
     }
+
     let _ = &extras.store;
+
     builder
 }
 
@@ -199,14 +208,17 @@ impl DrawingApp {
     pub(crate) fn tab_extras(&self, id: &str) -> TabExtras {
         let spec = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.clone()).unwrap_or_default();
         let space = self.current_space().map_or("principal", |s| s.id.as_str());
+
         let (store, profile) = match spec.storage {
             StorageScope::Isolated => (portal_profile_name(id), portal_profile_path(id)),
             StorageScope::Workspace => {
                 let name = format!("espaco-{}", portal_profile_name(space));
+
                 (name.clone(), autosave_path().map(|p| p.with_file_name("perfis").join(name)))
             }
             StorageScope::Global => ("global".into(), data_dir().map(|d| d.join("perfis").join("global"))),
         };
+
         TabExtras { user_agent: spec.user_agent, muted: spec.muted, store, profile }
     }
 
@@ -214,9 +226,11 @@ impl DrawingApp {
     /// a page is made. The mute only needs its script run again.
     pub(crate) fn portal_extras_changed(&mut self, id: &str, old: Option<&PortalSpec>, new: &PortalSpec) {
         let Some(old) = old else { return };
+
         if old.user_agent != new.user_agent || old.storage != new.storage {
             self.portals.remove(id);
         }
+
         if old.muted != new.muted {
             self.portal_extras.mute.push(id.to_string());
         }
@@ -226,6 +240,7 @@ impl DrawingApp {
     pub(crate) fn portal_apply_mute(&self, id: &str) {
         let Some(spec) = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.as_ref()) else { return };
         let script = mute_script(spec.muted);
+
         for tab in self.portals.get(id).into_iter().flat_map(|v| &v.tabs) {
             let _ = tab.webview.evaluate_script(&script);
         }
@@ -236,10 +251,13 @@ impl DrawingApp {
         for id in std::mem::take(&mut self.portal_extras.mute) {
             self.portal_apply_mute(&id);
         }
+
         for id in std::mem::take(&mut self.portal_extras.copy) {
             let (events, ctx) = (self.portal_events.0.clone(), ctx.clone());
+
             self.page_picture(&id, move |picture| {
                 let _ = events.send(PortalEvent::Copied { picture });
+
                 ctx.request_repaint();
             });
         }
@@ -248,9 +266,11 @@ impl DrawingApp {
     /// Copiar Captura de Tela: the open page's picture on the clipboard, once the system has it.
     pub(crate) fn portal_copy_shot(&mut self, id: &str) -> Result<String, String> {
         let spec = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.as_ref()).ok_or("não é um navegador")?;
+
         if spec.unloaded {
             return Err("o navegador está descarregado".into());
         }
+
         self.portal_extras.copy.push(id.to_string());
         Ok("Captura de tela copiada.".into())
     }
@@ -273,10 +293,12 @@ impl DrawingApp {
                 if let Err(error) = self.portal_copy_shot(id) {
                     self.toast(error);
                 }
+
                 return;
             }
             _ => ("muted", json!(!self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.as_ref()).is_some_and(|p| p.muted))),
         };
+
         if let Err(error) = self.act_portal_settings(&json!({ "portal": id, key: value })) {
             self.toast(error);
         }
@@ -290,23 +312,29 @@ impl DrawingApp {
         let id = self.scene.elements[at].id.clone();
         let old = self.scene.elements[at].portal.clone().ok_or_else(|| format!("{name} não é um navegador"))?;
         let mut spec = old.clone();
+
         if let Some(agent) = args["user_agent"].as_str() {
             spec.user_agent = resolve_user_agent(agent);
         }
+
         if let Some(text) = args["storage"].as_str() {
             spec.storage = StorageScope::parse(text).ok_or("storage: isolated, workspace ou global")?;
         }
+
         if let Some(on) = args["muted"].as_bool() {
             spec.muted = on;
         }
+
         if let Some(text) = args["size_readout"].as_str() {
             self.prefs.portal_size = SizeReadout::parse(text).ok_or("size_readout: never, onresize ou always")?;
         }
+
         if spec != old {
             self.snapshot();
             self.portal_extras_changed(&id, Some(&old), &spec);
             self.scene.elements[at].portal = Some(spec);
         }
+
         Ok(format!("{name} ajustado."))
     }
 }
@@ -317,10 +345,12 @@ pub(crate) fn dialog_extras(ui: &mut egui::Ui, spec: &mut PortalSpec, editing: b
         ui.add_space(6.0);
         dialog_caption(ui, text, c);
     };
+
     label(ui, "Agente de Usuário");
     let custom_id = ui.scope_id().with("portal_ua_custom");
     let preset = spec.user_agent.is_empty() || USER_AGENTS.iter().any(|(.., s)| *s == spec.user_agent);
     let custom = !preset || ui.data(|d| d.get_temp::<bool>(custom_id)).unwrap_or(false);
+
     egui::ComboBox::from_id_salt("portal_user_agent")
         .selected_text(if custom { "Personalizado…".into() } else { user_agent_label(&spec.user_agent) })
         .width(DIALOG_WIDTH)
@@ -331,28 +361,37 @@ pub(crate) fn dialog_extras(ui: &mut egui::Ui, spec: &mut PortalSpec, editing: b
                     ui.data_mut(|d| d.insert_temp(custom_id, false));
                 }
             };
+
             pick(ui, DEFAULT_AGENT, "");
+
             for (group, phone) in [("Computador", false), ("Celular", true)] {
                 ui.label(egui::RichText::new(group).size(12.0).color(dialog_label(c)));
+
                 for (name, _, agent) in USER_AGENTS.iter().filter(|(_, p, _)| *p == phone) {
                     pick(ui, name, agent);
                 }
             }
+
             if ui.selectable_label(custom, "Personalizado…").clicked() {
                 ui.data_mut(|d| d.insert_temp(custom_id, true));
+
                 if preset {
                     spec.user_agent.clear();
                 }
             }
         });
+
     if custom {
         dialog_field(ui, "Agente de usuário personalizado", &mut spec.user_agent, "Mozilla/5.0 …", DIALOG_WIDTH, c);
     }
+
     label(ui, "Armazenamento");
     let mut chosen = StorageScope::ALL.iter().position(|s| *s == spec.storage).unwrap_or(0);
+
     if segmented(ui, &mut chosen, &StorageScope::ALL.map(StorageScope::label), c) {
         spec.storage = StorageScope::ALL[chosen];
     }
+
     if editing {
         dialog_note(ui, "O agente de usuário e o armazenamento só valem quando a página carrega, então salvar recarrega este navegador.", c);
     }
@@ -362,6 +401,7 @@ pub(crate) fn dialog_extras(ui: &mut egui::Ui, spec: &mut PortalSpec, editing: b
 pub(crate) fn paint_muted(painter: &Painter, center: Pos2, zoom: f32, color: Color32) {
     let s = zoom;
     let at = |x: f32, y: f32| center + Vec2::new(x, y) * s;
+
     painter.add(Shape::convex_polygon(vec![at(-5.0, -2.0), at(-2.0, -2.0), at(2.0, -5.0), at(2.0, 5.0), at(-2.0, 2.0), at(-5.0, 2.0)], color, Stroke::NONE));
     painter.line_segment([at(4.0, -3.0), at(8.0, 3.0)], Stroke::new(1.2 * s, color));
     painter.line_segment([at(8.0, -3.0), at(4.0, 3.0)], Stroke::new(1.2 * s, color));
@@ -374,6 +414,7 @@ mod tests {
     #[test]
     fn the_default_agent_is_chrome_at_the_engines_version() {
         let agent = chrome_agent(Some("131.0.2903.70"));
+
         assert!(agent.contains("Chrome/131.0.0.0") && !agent.contains("Edg/"), "{agent}");
         assert_eq!(chrome_agent(None), USER_AGENTS[0].2);
         assert_eq!(chrome_agent(Some("x")), USER_AGENTS[0].2);
@@ -413,12 +454,15 @@ mod tests {
     fn the_spec_keeps_and_reads_back_what_a_portal_adds() {
         let spec = PortalSpec { user_agent: "X/1".into(), storage: StorageScope::Global, muted: true, ..Default::default() };
         let json = serde_json::to_string(&spec).unwrap();
+
         assert!(json.contains("\"global\""), "{json}");
         assert_eq!(serde_json::from_str::<PortalSpec>(&json).unwrap(), spec);
         // a plain portal writes none of it, and an old file reads as isolated, loud, default agent
         let plain = serde_json::to_string(&PortalSpec::default()).unwrap();
+
         assert!(!plain.contains("storage") && !plain.contains("muted") && !plain.contains("user_agent"), "{plain}");
         let old: PortalSpec = serde_json::from_str(r#"{"name":"a","url":"https://a.dev"}"#).unwrap();
+
         assert_eq!((old.storage, old.muted, old.user_agent.as_str()), (StorageScope::Isolated, false, ""));
     }
 
@@ -426,25 +470,32 @@ mod tests {
     fn settings_change_the_portal_and_the_readout() {
         let mut app = DrawingApp::default();
         let mut portal = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 600.0, height: 400.0 });
+
         portal.portal = Some(PortalSpec { name: "Docs".into(), url: "https://example.com".into(), ..Default::default() });
         app.scene.elements.push(portal);
+
         app.act(
             "portal_settings",
             &json!({ "portal": "Docs", "user_agent": "chrome (android)", "storage": "workspace", "muted": true, "size_readout": "always" }),
         )
         .unwrap();
+
         let spec = app.scene.elements[0].portal.clone().unwrap();
+
         assert!(spec.user_agent.contains("Pixel 8") && spec.storage == StorageScope::Workspace && spec.muted);
         assert_eq!(app.prefs.portal_size, SizeReadout::Always);
         assert!(app.size_shown(&app.scene.elements[0].clone()));
         assert!(app.act("portal_settings", &json!({ "portal": "Docs", "storage": "nuvem" })).is_err());
         // the menu has the rows
         let rows = format!("{:?}", app.context_entries(&crate::app::ui::context::Target::Element(app.scene.elements[0].id.clone())));
+
         for text in ["Mostrar Tamanho", "Copiar Captura de Tela", "Ativar som", "Armazenamento", "portal:storage:global"] {
             assert!(rows.contains(text), "{text}");
         }
+
         // the menu rows reach the same place
         let id = app.scene.elements[0].id.clone();
+
         app.portal_menu(&id, "mute");
         assert!(!app.scene.elements[0].portal.as_ref().unwrap().muted, "the row toggles the mute");
         app.portal_menu(&id, "storage:global");

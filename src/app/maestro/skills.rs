@@ -23,11 +23,13 @@ pub(crate) fn skills_path() -> Option<PathBuf> {
 /// The plugin as Claude Code wants it: `.claude-plugin/plugin.json` and `skills/`. What is there stays.
 pub(crate) fn ensure(path: &Path) -> std::io::Result<()> {
     fs::create_dir_all(path.join(".claude-plugin"))?;
+
     match fs::OpenOptions::new().write(true).create_new(true).open(path.join(".claude-plugin/plugin.json")) {
         Ok(mut file) => file.write_all(b"{\"name\":\"magoagent\"}\n")?,
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(error) => return Err(error),
     }
+
     fs::create_dir_all(path.join("skills"))
 }
 
@@ -35,6 +37,7 @@ pub(crate) fn ensure(path: &Path) -> std::io::Result<()> {
 pub(crate) fn open(path: &Path) -> Result<(), String> {
     ensure(path).map_err(|e| e.to_string())?;
     let url = format!("file:///{}", path.to_string_lossy().replace('\\', "/").trim_start_matches('/'));
+
     crate::app::browser::open_external(&url);
     Ok(())
 }
@@ -43,9 +46,12 @@ pub(crate) fn open(path: &Path) -> Result<(), String> {
 pub(crate) fn list(path: &Path) -> Vec<Skill> {
     let skill = |entry: fs::DirEntry| {
         let text = fs::read_to_string(entry.path().join("SKILL.md")).ok()?;
+
         Some(Skill { name: entry.file_name().to_string_lossy().into_owned(), description: description(&text) })
     };
+
     let mut skills: Vec<Skill> = fs::read_dir(path.join("skills")).ok().into_iter().flatten().flatten().filter_map(skill).collect();
+
     skills.sort_by(|a, b| a.name.cmp(&b.name));
     skills
 }
@@ -54,6 +60,7 @@ pub(crate) fn list(path: &Path) -> Vec<Skill> {
 /// first line of text; cut at a whole character.
 fn description(text: &str) -> String {
     let lines: Vec<&str> = text.lines().map(str::trim).collect();
+
     // the front matter between the two `---`, then the text
     let (head, body) = match lines.first() {
         Some(&"---") => match lines.iter().skip(1).position(|l| *l == "---") {
@@ -62,12 +69,15 @@ fn description(text: &str) -> String {
         },
         _ => (&lines[..0], &lines[..]),
     };
+
     let named = head.iter().find_map(|l| l.strip_prefix("description:")).map(|d| d.trim().trim_matches(['\'', '"']));
     let raw = named.filter(|d| !d.is_empty()).or_else(|| body.iter().copied().find(|l| !l.is_empty())).unwrap_or_default();
     let mut end = raw.len().min(DESCRIPTION);
+
     while !raw.is_char_boundary(end) {
         end -= 1;
     }
+
     raw[..end].to_string()
 }
 
@@ -84,6 +94,7 @@ pub(crate) fn plugin_args(agent: &str, path: Option<&Path>) -> Vec<String> {
 /// folder has a skill; anything else, or a claude that already names a plugin folder, stays as it is.
 pub(crate) fn with_skills(command: String, path: Option<&Path>) -> String {
     let Some(path) = path.filter(|p| !list(p).is_empty() && ensure(p).is_ok()) else { return command };
+
     match command.trim_start().strip_prefix("claude") {
         Some(rest) if (rest.is_empty() || rest.starts_with(' ')) && !rest.contains("--plugin-dir") => {
             format!("claude --plugin-dir \"{}\"{rest}", path.display())
@@ -96,6 +107,7 @@ pub(crate) fn with_skills(command: String, path: Option<&Path>) -> String {
 /// follows it too (nothing is copied into `~/.claude`); without the file, the project's own guide.
 pub(crate) fn style_brief(path: &str) -> String {
     let path = path.trim();
+
     if Path::new(path).is_file() {
         format!("Padronização: leia o arquivo {path} (a skill de estilo style-edsu) e confira o diff regra a regra, corrigindo o que fugir.")
     } else {
@@ -120,9 +132,11 @@ pub(crate) fn act(path: &Path, action: &str) -> Result<String, String> {
         }
         "" | "list" => {
             let skills = list(path);
+
             if skills.is_empty() {
                 return Ok(format!("Nenhuma skill ainda: ponha uma pasta com SKILL.md em {}.", path.join("skills").display()));
             }
+
             Ok(format!("Pasta: {}\n{}", path.display(), skills.iter().map(|s| format!("{}: {}", s.name, s.description)).collect::<Vec<_>>().join("\n")))
         }
         other => Err(format!("ação desconhecida: {other} (use list ou open)")),
@@ -135,6 +149,7 @@ mod tests {
 
     fn temp() -> PathBuf {
         let path = std::env::temp_dir().join(format!("mago-skills-{}", new_id()));
+
         fs::create_dir_all(&path).unwrap();
         path
     }
@@ -147,6 +162,7 @@ mod tests {
     #[test]
     fn the_skills_are_listed_by_name_with_what_they_are_for() {
         let temp = temp();
+
         skill(&temp, "zeta", "---\nname: zeta\ndescription: \"entre aspas\"\n---\ncorpo");
         skill(&temp, "alpha", "---\ndescription: sem aspas\n---");
         skill(&temp, "fallback", "\n  Primeira linha\nresto");
@@ -155,12 +171,15 @@ mod tests {
         fs::create_dir_all(temp.join("skills/missing")).unwrap();
         let found: Vec<(String, String)> = list(&temp).into_iter().map(|s| (s.name, s.description)).collect();
         let expected = [("alpha", "sem aspas"), ("empty", ""), ("fallback", "Primeira linha"), ("sem-campo", "O texto depois"), ("zeta", "entre aspas")];
+
         assert_eq!(found, expected.map(|(n, d)| (n.to_string(), d.to_string())));
         // a long description is cut at a whole character
         let long = description(&format!("---\ndescription: {}\n---", "é".repeat(100)));
+
         assert_eq!((long.chars().count(), long.len()), (80, 160));
         assert!(list(&temp.join("nowhere")).is_empty());
         let said = act(&temp, "list").unwrap();
+
         assert!(said.starts_with(&format!("Pasta: {}\nalpha: sem aspas\n", temp.display())), "{said}");
         assert!(act(&temp, "delete").is_err());
         fs::remove_dir_all(temp).unwrap();
@@ -170,11 +189,14 @@ mod tests {
     fn the_style_brief_carries_the_path_or_says_it_found_none() {
         let temp = temp();
         let file = temp.join("SKILL.md");
+
         fs::write(&file, "---\nname: style-edsu\n---").unwrap();
         let path = file.to_string_lossy().into_owned();
         let found = style_brief(&path);
+
         assert!(found.contains(&path) && found.contains("regra a regra"), "{found}");
         let missing = style_brief(&temp.join("nada.md").to_string_lossy());
+
         assert!(missing.contains("não achei") && missing.contains("AGENTS.md") && missing.contains("CLAUDE.md"), "{missing}");
         assert!(PONYTAIL_BRIEF.contains("/ponytail-review") && CODE_REVIEW_BRIEF.contains("/code-review"));
         fs::remove_dir_all(temp).unwrap();
@@ -183,6 +205,7 @@ mod tests {
     #[test]
     fn the_plugin_is_made_once_and_goes_to_claude_only_with_a_skill() {
         let temp = temp();
+
         assert!(act(&temp, "").unwrap().starts_with("Nenhuma skill ainda"));
         assert!(plugin_args("claude", Some(&temp)).is_empty(), "no skill, no argument: nothing changes for who has none");
         skill(&temp, "revisar", "---\ndescription: revisa um diff\n---");
@@ -191,11 +214,14 @@ mod tests {
         assert!(plugin_args("codex", Some(&temp)).is_empty() && plugin_args("claude", None).is_empty());
         // a terminal's claude gets the folder too; a shell, a codex or a claude with its own plugin folder don't
         let quoted = format!("\"{}\"", temp.display());
+
         assert_eq!(with_skills("claude".into(), Some(&temp)), format!("claude --plugin-dir {quoted}"));
         assert_eq!(with_skills("claude --resume x".into(), Some(&temp)), format!("claude --plugin-dir {quoted} --resume x"));
+
         for other in ["", "codex", "claudette", "claude --plugin-dir /meu"] {
             assert_eq!(with_skills(other.into(), Some(&temp)), other);
         }
+
         assert_eq!(with_skills("claude".into(), None), "claude");
         assert_eq!(with_skills("claude".into(), Some(&temp.join("nowhere"))), "claude", "no skill, nothing added");
         // what is there stays

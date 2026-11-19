@@ -6,51 +6,63 @@ impl DrawingApp {
         if !CALL_ON && !self.voice.on {
             return;
         }
+
         if self.voice.on {
             self.voice.shut();
             self.voice.status.clear();
             // the bar goes back to rest: the call's last state (listening, muted) ended with it
             self.avatar_set(AvatarState::Idle);
             self.ring(crate::voice::CALL_END);
+
             return;
         }
+
         let codex = self.prefs.voice_codex && cfg!(not(target_os = "linux"));
         let openai = crate::voice::openai::key(&self.prefs);
         let studio = crate::voice::studio::StudioServer::from_prefs(&self.prefs);
         let engine = call_engine(codex, codex && crate::voice::codex::codex_program().is_some(), self.prefs.voice_openai, openai.is_some());
+
         match engine {
             CallEngine::Codex if !CODEX_CALL_UP => {
                 self.voice.status = "A voz do Codex está fora do ar (a ChatGPT responde 404). Escolha VoiceStudio ou OpenAI em Ajustes › Voz.".into();
+
                 return;
             }
             CallEngine::Codex => return self.codex_call(),
             CallEngine::NoKey => {
                 self.voice.status = "Ponha a chave da OpenAI em Ajustes › Voz, ou escolha o VoiceStudio.".into();
+
                 return;
             }
             CallEngine::Studio => {
                 // up before the microphone: without the server the call says how to start it
                 if let Err(why) = studio.voices() {
                     self.voice.status = why;
+
                     return;
                 }
             }
             CallEngine::OpenAi => {}
         }
+
         self.voice = Voice::default();
         self.voice.on = true;
         self.voice.state = VoiceState::Preparing;
         self.voice.speakers_off = !self.prefs.speak_answers;
+
         // Codex's voice was the choice and Codex isn't here: the call goes on without it
         if codex {
             let other = if engine == CallEngine::OpenAi { "da OpenAI" } else { "do VoiceStudio" };
+
             self.voice.status = format!("O Codex não foi encontrado: a chamada usa a voz {other}.");
         }
+
         // with no chat shown what is heard would reach no one
         self.call_chat(false);
         self.voice_follow();
         // one microphone at a time
         self.dictation = None;
+
         let setup = VoiceSetup {
             language: self.voice_language().into(),
             pause: self.prefs.voice_pause,
@@ -59,6 +71,7 @@ impl DrawingApp {
             dictionary: self.prefs.dictionary.clone(),
             mic: self.prefs.voice_mic.clone(),
         };
+
         self.voice.events = Some(crate::voice::start(self.voice.shared.clone(), setup));
     }
 
@@ -76,11 +89,13 @@ impl DrawingApp {
         self.voice.state = VoiceState::Preparing;
         self.voice.speakers_off = !self.prefs.speak_answers;
         let chat = self.call_chat(true);
+
         // a Claude chat (or a terminal) stays its agent's: the voice only speaks for it
         self.voice.relay = chat.as_ref().is_none_or(|c| c.agent != "codex");
         self.voice_follow();
         let cwd = chat.as_ref().and_then(|c| crate::app::chat::direct::folder(&c.cwd)).or_else(projects_dir).unwrap_or_else(std::env::temp_dir);
         let _ = fs::create_dir_all(&cwd);
+
         let setup = crate::voice::codex::CodexSetup {
             cwd,
             resume: chat.as_ref().filter(|c| c.agent == "codex").and_then(|c| c.session.clone()),
@@ -89,6 +104,7 @@ impl DrawingApp {
             full_access: chat.as_ref().is_some_and(|c| c.mode == 1),
             relay: self.voice.relay,
         };
+
         match crate::voice::codex::CodexVoice::start(&setup) {
             Ok(codex) => self.voice.codex = Some(codex),
             Err(why) => self.voice_fail(why),
@@ -103,13 +119,17 @@ impl DrawingApp {
         if self.chat_agent.is_none() {
             self.start_draft_chat(true);
         }
+
         if let Some(id) = &self.chat_agent {
             return self.chats.iter().find(|c| &c.id == id).cloned();
         }
+
         if !codex {
             return None;
         }
+
         let cwd = projects_dir().map(|p| p.display().to_string()).unwrap_or_default();
+
         let chat = crate::app::chat::direct::Chat {
             id: uuid::Uuid::new_v4().simple().to_string(),
             agent: "codex".into(),
@@ -123,6 +143,7 @@ impl DrawingApp {
             named: false,
             draft: false,
         };
+
         self.chats.push(chat.clone());
         self.chat_agent = Some(chat.id.clone());
         self.save_chats();
@@ -135,7 +156,9 @@ impl DrawingApp {
         if cfg!(test) {
             return;
         }
+
         let end = self.now + crate::voice::sound_length(sound) as f64;
+
         self.voice.tone = crate::voice::chime(sound).map(|s| (s, end));
     }
 
@@ -143,8 +166,10 @@ impl DrawingApp {
     /// One that couldn't start shows why over the conversation (voice/orb.rs).
     pub(crate) fn voice_fail(&mut self, why: String) {
         let launching = self.voice.on && self.voice.state == VoiceState::Preparing;
+
         self.voice.shut();
         self.avatar_set(AvatarState::Idle);
+
         if launching {
             self.voice.launch_failed = Some(if why == crate::voice::MIC_DENIED {
                 ("Permissão do microfone negada".into(), "Permita o acesso ao microfone nas configurações do sistema para iniciar um chat por voz".into(), true)
@@ -152,6 +177,7 @@ impl DrawingApp {
                 ("Não foi possível iniciar o chat por voz".into(), if why.is_empty() { "Tente novamente ou volte".into() } else { why.clone() }, false)
             });
         }
+
         self.voice.status = why;
         self.ring(crate::voice::CALL_ERROR);
     }
@@ -162,6 +188,7 @@ impl DrawingApp {
         use crate::transcript::ChatItem;
         use crate::voice::codex::CodexEvent;
         let events: Vec<CodexEvent> = self.voice.codex.as_ref().map(|c| c.events.try_iter().collect()).unwrap_or_default();
+
         for event in events {
             match event {
                 CodexEvent::Thread(id) => {
@@ -172,6 +199,7 @@ impl DrawingApp {
                     {
                         chat.session = Some(id.clone());
                     }
+
                     if let Some(codex) = self.voice.codex.as_mut() {
                         codex.thread = Some(id);
                     }
@@ -191,11 +219,13 @@ impl DrawingApp {
                 CodexEvent::Heard(text) => {
                     // the voice itself asks before muting; the app shows where the call stands
                     self.mute_step(&text);
+
                     if self.voice.standby
                         && matches!(crate::voice::voice_command(&text, &self.voice_name(), self.prefs.ok_mago), Some(VoiceCmd::Unmute | VoiceCmd::Ask(_)))
                     {
                         self.voice.standby = false;
                     }
+
                     self.voice_note(ChatItem::User(text));
                 }
                 CodexEvent::Answered(text) => self.voice_note(ChatItem::Agent(text)),
@@ -209,26 +239,31 @@ impl DrawingApp {
                 CodexEvent::Failed(why) if self.voice.connected_at.is_some() => self.voice.status = format!("Aviso da voz: {why}"),
                 CodexEvent::Failed(why) => {
                     self.voice_fail(format!("Erro no chat por voz: {why}"));
+
                     return false;
                 }
                 CodexEvent::Closed(reason) => {
                     // closed on "error": the error said before is the why
                     let said = self.voice.status.strip_prefix("Aviso da voz: ").map(str::to_string);
                     let reason = if reason.as_deref() == Some("error") { said.or(reason) } else { reason };
+
                     self.voice_fail(match reason {
                         Some(reason) => format!("Chat por voz encerrado: {reason}"),
                         None => "Chat por voz encerrado inesperadamente".into(),
                     });
+
                     return false;
                 }
             }
         }
+
         if let Some(codex) = self.voice.codex.as_mut()
             && codex.thread.is_some()
             && let Some(offer) = self.voice.offer.take()
         {
             codex.call(&offer, &self.prefs.codex_voice);
         }
+
         true
     }
 
@@ -236,6 +271,7 @@ impl DrawingApp {
     pub(super) fn voice_note(&mut self, item: crate::transcript::ChatItem) {
         let Some(id) = self.voice.agent.clone() else { return };
         let transcript = self.transcripts.entry(id.clone()).or_insert_with(|| crate::transcript::Transcript::new(PathBuf::new()));
+
         transcript.items.push(item);
         self.voice.spoken = transcript.items.len();
         self.save_chat_items(&id);
@@ -243,6 +279,7 @@ impl DrawingApp {
 
     pub(crate) fn voice_mute(&mut self) {
         let muted = !self.voice.shared.muted.load(Ordering::Relaxed);
+
         self.voice.shared.muted.store(muted, Ordering::Relaxed);
         self.ring(if muted { crate::voice::CALL_MUTE } else { crate::voice::CALL_UNMUTE });
     }
@@ -250,9 +287,11 @@ impl DrawingApp {
     /// Silenciar / Ativar som dos alto-falantes: what is being said stops.
     pub(crate) fn voice_speakers(&mut self) {
         self.voice.speakers_off = !self.voice.speakers_off;
+
         if self.voice.speakers_off {
             self.voice.hush();
         }
+
         self.ring(if self.voice.speakers_off { crate::voice::CALL_MUTE } else { crate::voice::CALL_UNMUTE });
     }
 

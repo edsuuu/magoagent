@@ -31,6 +31,7 @@ fn desktop(name: &str) -> Option<String> {
 
 fn island_app() -> DrawingApp {
     let mut app = DrawingApp::default();
+
     app.prefs.island = true;
     app
 }
@@ -38,15 +39,18 @@ fn island_app() -> DrawingApp {
 /// A hook process that waits for the app: what it prints comes back on the channel.
 fn hook_process(endpoint: (String, String), payload: Value, may_wait: bool) -> mpsc::Receiver<String> {
     let (printed, output) = mpsc::channel();
+
     std::thread::spawn(move || {
         let _ = printed.send(relay::send(endpoint, payload, may_wait, &desktop));
     });
+
     output
 }
 
 /// The app takes what the hook sent over the bridge, as its loop does.
 fn take(app: &mut DrawingApp, bridge: &Bridge) {
     let Ok(UiCommand::Hook { from, payload, reply }) = bridge.commands.recv_timeout(Duration::from_secs(5)) else { panic!("the hook did not arrive") };
+
     app.take_hook(&from, &payload, reply);
 }
 
@@ -64,12 +68,15 @@ fn the_hook_prints_what_claude_code_takes() {
     let both = answers(json!({ "Qual cor?": "Verde", "Quais frutas?": ["Maçã", "Uva"] }));
     let printed: Value = serde_json::from_str(&question_answer("PermissionRequest", &input, &both)).unwrap();
     let decision = &printed["hookSpecificOutput"]["decision"];
+
     assert_eq!((printed["hookSpecificOutput"]["hookEventName"].as_str(), decision["behavior"].as_str()), (Some("PermissionRequest"), Some("allow")));
     assert_eq!(decision["updatedInput"]["answers"], json!({ "Qual cor?": "Verde", "Quais frutas?": ["Maçã", "Uva"] }));
     assert_eq!(decision["updatedInput"]["questions"], input["questions"], "the questions go back as they came");
     let printed: Value = serde_json::from_str(&question_answer("PreToolUse", &input, &both)).unwrap();
+
     assert_eq!(printed["hookSpecificOutput"]["permissionDecision"], "allow");
     assert_eq!(printed["hookSpecificOutput"]["updatedInput"]["answers"]["Qual cor?"], "Verde");
+
     // what does not fit prints nothing, and the terminal asks: an unknown label, a missing answer, a list for one choice, repeats, a string for many
     for wrong in [
         json!({ "Qual cor?": "Roxo", "Quais frutas?": ["Maçã"] }),
@@ -82,19 +89,24 @@ fn the_hook_prints_what_claude_code_takes() {
     ] {
         assert_eq!(question_answer("PermissionRequest", &input, &answers(wrong.clone())), "", "{wrong}");
     }
+
     assert_eq!(question_answer("PermissionRequest", &json!({ "command": "ls" }), &answers(json!({}))), "", "no questions, no answer");
     // permissions
     let allow: Value = serde_json::from_str(&permission_answer(true, "")).unwrap();
+
     assert_eq!(allow["hookSpecificOutput"]["decision"], json!({ "behavior": "allow" }));
     let deny: Value = serde_json::from_str(&refusal("PermissionRequest", "não")).unwrap();
+
     assert_eq!(deny["hookSpecificOutput"]["decision"], json!({ "behavior": "deny", "message": "não" }));
     let deny: Value = serde_json::from_str(&refusal("PreToolUse", "não")).unwrap();
+
     assert_eq!(deny["hookSpecificOutput"], json!({ "hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "não" }));
 }
 
 #[test]
 fn a_hook_sends_its_origin_and_not_the_weight() {
     let mut payload = hook("PostToolUse", "Bash", json!({ "command": "x".repeat(5000) }));
+
     payload["tool_response"] = json!("saída enorme");
     payload["transcript_path"] = json!("C:/t.jsonl");
     relay::tag(&mut payload, &desktop);
@@ -109,10 +121,12 @@ fn a_hook_sends_its_origin_and_not_the_weight() {
     assert_eq!(payload["tool_input"]["command"].as_str().unwrap().len(), 2000);
     // a question's input goes whole: it is what comes back with the answers
     let mut ask = hook("PermissionRequest", "AskUserQuestion", json!({ "questions": [{ "question": "q".repeat(3000), "options": [] }] }));
+
     relay::tag(&mut ask, &|name| (name == "CURSOR_TRACE_ID").then(|| "1".to_string()));
     assert_eq!(ask["mago_origin"], "cursor");
     assert_eq!(ask["tool_input"]["questions"][0]["question"].as_str().unwrap().len(), 3000);
     let mut plain = hook("Stop", "", Value::Null);
+
     relay::tag(&mut plain, &|_| None);
     assert_eq!(plain["mago_origin"], "");
 }
@@ -120,31 +134,40 @@ fn a_hook_sends_its_origin_and_not_the_weight() {
 /// The pills' names after `events`, each (session, folder, what the hook's environment says of the entrypoint).
 fn pill_names(events: &[(&str, &str, &str)]) -> Vec<String> {
     let mut app = island_app();
+
     for (session, cwd, entrypoint) in events {
         let mut payload = json!({ "hook_event_name": "UserPromptSubmit", "session_id": session, "cwd": cwd, "prompt": "oi" });
+
         relay::tag(&mut payload, &|name| (name == "CLAUDE_CODE_ENTRYPOINT").then(|| entrypoint.to_string()));
         app.take_hook(&format!("ext:{session}"), &payload, None);
     }
+
     app.outside_pills().into_iter().map(|pill| pill.name).collect()
 }
 
 #[test]
 fn claude_desktop_and_the_cli_are_told_apart_one_pill_per_folder() {
     assert_eq!(pill_names(&[("s1", "C:/Users/eu/loja", "claude-desktop"), ("s2", "C:/Users/eu/loja", "cli")]), ["loja", "loja 2"]);
+
     // two sessions of the Desktop in two folders are two pills, as the CLI's are; one folder, one pill
     assert_eq!(
         pill_names(&[("s1", "C:/Users/eu/loja", "claude-desktop"), ("s2", "C:/Users/eu/site", "claude-desktop"), ("s3", "C:/Users/eu/loja", "claude-desktop")]),
         ["loja", "site"]
     );
+
     assert_eq!(pill_names(&[("s1", "C:/Users/eu/loja", "cli"), ("s2", "C:/Users/eu/site", "cli")]), ["loja", "site"]);
     // the Desktop's pills keep its colour and take no messages from the app (it is answered in its window)
     let mut app = island_app();
+
     for (session, cwd) in [("s1", "/a"), ("s2", "/b")] {
         let mut payload = json!({ "hook_event_name": "UserPromptSubmit", "session_id": session, "cwd": cwd });
+
         payload["mago_origin"] = "claude-desktop".into();
         app.take_hook(&format!("ext:{session}"), &payload, None);
     }
+
     let pills = app.outside_pills();
+
     assert_eq!(pills.iter().map(|pill| pill.id.as_str()).collect::<Vec<_>>(), ["pill:desktop:/a", "pill:desktop:/b"]);
     assert!(pills.iter().all(|pill| pill.color == Color32::from_rgb(0xd9, 0x77, 0x57) && !app.outside_takes_messages(&pill.id)));
 }
@@ -152,13 +175,16 @@ fn claude_desktop_and_the_cli_are_told_apart_one_pill_per_folder() {
 #[test]
 fn a_hook_without_the_entrypoint_asks_the_sessions_file() {
     let dir = std::env::temp_dir().join(format!("mago-entrypoint-{}", new_id()));
+
     std::fs::create_dir_all(&dir).unwrap();
     let write = |name: &str, value: Value| std::fs::write(dir.join(name), value.to_string()).unwrap();
+
     write("10.json", json!({ "sessionId": "mesa", "cwd": "/p", "entrypoint": "claude-desktop" }));
     write("11.json", json!({ "sessionId": "term", "cwd": "/p", "entrypoint": "cli" }));
     std::fs::write(dir.join("10.abc.key"), [0u8, 159, 146, 150]).unwrap();
     let session = |id: &str| json!({ "session_id": id });
     let none = |_: &str| None;
+
     assert_eq!(relay::origin(&session("mesa"), &none, Some(&dir)), "claude-desktop", "the Desktop's file says so");
     assert_eq!(relay::origin(&session("term"), &none, Some(&dir)), "");
     assert_eq!(relay::origin(&session("sumiu"), &none, Some(&dir)), "", "no file: Claude Code");
@@ -173,26 +199,36 @@ fn a_question_from_claude_desktop_reaches_the_island_and_the_answer_goes_back() 
     let mut app = island_app();
     let input = questions();
     let output = hook_process(endpoint(&bridge), hook("PreToolUse", "AskUserQuestion", input.clone()), true);
+
     take(&mut app, &bridge);
     let id = first_ask_id(&app);
+
     {
         let asks = app.person_asks.borrow();
+
         assert_eq!(asks.len(), 1);
         let source = asks[0].source.as_ref().unwrap();
+
         assert_eq!((source.label.as_str(), source.event.as_str(), source.session.as_str()), ("Claude Desktop · loja", "PreToolUse", "s1"));
         assert_eq!(asks[0].questions.len(), 2);
     }
+
     let pills = app.outside_pills();
+
     assert_eq!((pills[0].label().as_str(), pills[0].color), ("Claude Desktop · loja", Color32::from_rgb(0xd9, 0x77, 0x57)));
     assert_eq!(pills[0].badge, Some(Badge::Approval), "the dot while something waits");
     assert_eq!(pills[0].state, crate::app::ui::agents::AgentState::Waiting);
     assert!(output.recv_timeout(Duration::from_millis(200)).is_err(), "the hook waits");
+
     {
         let mut asks = app.person_asks.borrow_mut();
+
         asks[0].picked = vec![vec![1], vec![0, 1]];
     }
+
     app.answer_person(&id, true);
     let printed: Value = serde_json::from_str(&output.recv_timeout(Duration::from_secs(5)).unwrap()).unwrap();
+
     assert_eq!(printed["hookSpecificOutput"]["updatedInput"]["answers"], json!({ "Qual cor?": "Verde", "Quais frutas?": ["Maçã", "Uva"] }));
     assert!(app.person_asks.borrow().is_empty());
 }
@@ -204,17 +240,23 @@ fn words_of_ones_own_reach_a_session_outside_as_the_reason_it_reads() {
     let bridge = Bridge::start(None).unwrap();
     let mut app = island_app();
     let output = hook_process(endpoint(&bridge), hook("PreToolUse", "AskUserQuestion", questions()), true);
+
     take(&mut app, &bridge);
     let id = first_ask_id(&app);
+
     {
         let mut asks = app.person_asks.borrow_mut();
+
         asks[0].other = vec!["Roxo".into(), String::new()];
         asks[0].picked[1] = vec![0];
     }
+
     app.answer_person(&id, true);
     let printed: Value = serde_json::from_str(&output.recv_timeout(Duration::from_secs(5)).unwrap()).unwrap();
+
     assert_eq!(printed["hookSpecificOutput"]["permissionDecision"], "deny");
     let reason = printed["hookSpecificOutput"]["permissionDecisionReason"].as_str().unwrap();
+
     assert!(reason.contains("- Qual cor?: Roxo") && reason.contains("- Quais frutas?: Maçã"), "{reason}");
 }
 
@@ -222,21 +264,27 @@ fn words_of_ones_own_reach_a_session_outside_as_the_reason_it_reads() {
 fn a_permission_is_allowed_or_denied_and_the_terminal_answers_nothing() {
     let bridge = Bridge::start(None).unwrap();
     let mut app = island_app();
+
     for (allow, behavior) in [(true, "allow"), (false, "deny")] {
         let output = hook_process(endpoint(&bridge), hook("PermissionRequest", "Bash", json!({ "command": "rm -rf build" })), false);
+
         take(&mut app, &bridge);
         assert_eq!(app.person_asks.borrow()[0].summary(), "rm -rf build");
         app.answer_person(&first_ask_id(&app), allow);
         let printed: Value = serde_json::from_str(&output.recv_timeout(Duration::from_secs(5)).unwrap()).unwrap();
+
         assert_eq!(printed["hookSpecificOutput"]["decision"]["behavior"], behavior);
     }
+
     // "Responder no terminal": nothing printed
     let output = hook_process(endpoint(&bridge), hook("PermissionRequest", "Bash", json!({ "command": "ls" })), false);
+
     take(&mut app, &bridge);
     app.person_asks.borrow_mut().remove(0).send_terminal();
     assert_eq!(output.recv_timeout(Duration::from_secs(5)).unwrap(), "");
     // events that wait for nobody come back at once, and an app that is not there is no wait at all
     let output = hook_process(endpoint(&bridge), hook("Stop", "", Value::Null), false);
+
     take(&mut app, &bridge);
     assert_eq!(output.recv_timeout(Duration::from_secs(5)).unwrap(), "");
     assert_eq!(relay::send(("127.0.0.1:1".into(), "x".into()), hook("PermissionRequest", "Bash", Value::Null), false, &|_| None), "");
@@ -246,27 +294,33 @@ fn a_permission_is_allowed_or_denied_and_the_terminal_answers_nothing() {
 fn only_the_hook_that_waits_holds_a_question_and_it_answers_in_its_own_shape() {
     let bridge = Bridge::start(None).unwrap();
     let mut app = island_app();
+
     // o PreToolUse geral e o PermissionRequest da pergunta voltam na hora e nem chegam ao app
     for (event, may_wait) in [("PreToolUse", false), ("PermissionRequest", false), ("PermissionRequest", true)] {
         assert_eq!(relay::send(endpoint(&bridge), hook(event, "AskUserQuestion", questions()), may_wait, &desktop), "", "{event}");
         assert!(bridge.commands.try_recv().is_err(), "{event}: nada foi ao app");
     }
+
     // um relay antigo que ainda os mande: nem cartão, nem pílula trabalhando, e o hook é solto na hora
     let (reply, output) = mpsc::channel();
+
     app.take_hook("ext:s1", &hook("PermissionRequest", "AskUserQuestion", questions()), Some(reply));
     app.take_hook("ext:s1", &hook("PreToolUse", "AskUserQuestion", questions()), None);
     assert!(output.recv().is_err(), "solto sem resposta");
     assert!(app.person_asks.borrow().is_empty() && app.outside_pills().is_empty());
     let output = hook_process(endpoint(&bridge), hook("PreToolUse", "AskUserQuestion", questions()), true);
+
     take(&mut app, &bridge);
     assert_eq!(app.person_asks.borrow().len(), 1);
     app.person_asks.borrow_mut()[0].picked = vec![vec![0], vec![1]];
     app.answer_person(&first_ask_id(&app), true);
     let printed: Value = serde_json::from_str(&output.recv_timeout(Duration::from_secs(5)).unwrap()).unwrap();
+
     assert_eq!(printed["hookSpecificOutput"]["permissionDecision"], "allow");
     assert_eq!(printed["hookSpecificOutput"]["updatedInput"]["answers"], json!({ "Qual cor?": "Azul", "Quais frutas?": ["Uva"] }));
     // "Responder no terminal": nada impresso, e o Claude Code pergunta lá
     let output = hook_process(endpoint(&bridge), hook("PreToolUse", "AskUserQuestion", questions()), true);
+
     take(&mut app, &bridge);
     app.person_asks.borrow_mut().remove(0).send_terminal();
     assert_eq!(output.recv_timeout(Duration::from_secs(5)).unwrap(), "");
@@ -277,13 +331,16 @@ fn only_the_hook_that_waits_holds_a_question_and_it_answers_in_its_own_shape() {
 fn the_queue_holds_five_and_the_oldest_is_the_card() {
     let mut app = island_app();
     let mut outputs = Vec::new();
+
     for count in 0..MAX_ASKS + 1 {
         let (reply, output) = mpsc::channel();
         let mut payload = hook("PermissionRequest", "Bash", json!({ "command": format!("cmd {count}") }));
+
         payload["session_id"] = format!("s{count}").into();
         app.take_hook(&format!("ext:s{count}"), &payload, Some(reply));
         outputs.push(output);
     }
+
     assert_eq!(app.person_asks.borrow().len(), MAX_ASKS);
     assert_eq!(outputs[MAX_ASKS].try_recv(), Ok(Ok(String::new())), "the sixth goes back to the terminal");
     assert!(outputs[0].try_recv().is_err(), "the others wait");
@@ -295,6 +352,7 @@ fn the_queue_holds_five_and_the_oldest_is_the_card() {
     // the island shows one card and says how many wait behind it
     let ctx = Context::default();
     let texts = settle(&mut app, &ctx);
+
     assert!(texts.iter().any(|(text, _)| text == "+3 na fila"), "{texts:?}");
     assert!(texts.iter().any(|(text, _)| text.contains("cmd 1")) && !texts.iter().any(|(text, _)| text.contains("cmd 2")));
 }
@@ -303,7 +361,9 @@ fn the_queue_holds_five_and_the_oldest_is_the_card() {
 fn frame(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>) -> Vec<(String, Rect)> {
     let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(time), events, ..Default::default() };
     let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
+
     output.textures_delta.clear();
+
     output
         .shapes
         .iter()
@@ -321,14 +381,17 @@ fn a_new_card_ignores_clicks_for_600_ms() {
     let ctx = Context::default();
     let mut app = island_app();
     let (reply, output) = mpsc::channel();
+
     app.take_hook("ext:s1", &hook("PermissionRequest", "Bash", json!({ "command": "ls" })), Some(reply));
     let at = settle(&mut app, &ctx).iter().find(|(text, _)| text == "Responder no terminal").map(|(_, rect)| rect.center()).expect("the button");
     let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+
     let click = |app: &mut DrawingApp, from: f64| {
         for (step, events) in [vec![egui::Event::PointerMoved(at)], vec![press(true)], vec![press(false)]].into_iter().enumerate() {
             frame(app, &ctx, from + step as f64 * 0.05, events);
         }
     };
+
     // the card is 0.15 s old at the release: nothing happens
     app.person_asks.borrow_mut()[0].shown = Some(3.0 + 0.1 - 0.05);
     click(&mut app, 3.0);
@@ -346,6 +409,7 @@ fn a_new_card_ignores_clicks_for_600_ms() {
 fn the_turn_going_on_or_ending_drops_the_card_and_the_badge_comes_and_goes() {
     let mut app = island_app();
     let (reply, output) = mpsc::channel();
+
     app.take_hook("ext:s1", &hook("PreToolUse", "Bash", json!({ "command": "ls" })), None);
     assert_eq!(app.outside_pills()[0].state, crate::app::ui::agents::AgentState::Working(0.0));
     assert_eq!((app.outside_pills()[0].name.as_str(), app.outside_pills()[0].label().as_str()), ("loja", "Claude Code · loja"));
@@ -386,15 +450,19 @@ fn the_turn_going_on_or_ending_drops_the_card_and_the_badge_comes_and_goes() {
 #[test]
 fn the_island_off_or_a_plan_goes_back_to_the_terminal() {
     let mut app = DrawingApp::default();
+
     app.prefs.island = false;
     let (reply, output) = mpsc::channel();
+
     app.take_hook("ext:s1", &hook("PermissionRequest", "Bash", json!({ "command": "ls" })), Some(reply));
     assert_eq!(output.try_recv(), Ok(Ok(String::new())), "no island, no wait");
     app.prefs.island = true;
     let (reply, output) = mpsc::channel();
+
     app.take_hook("ext:s1", &hook("PermissionRequest", "ExitPlanMode", json!({ "plan": "x" })), Some(reply));
     assert_eq!(output.try_recv(), Ok(Ok(String::new())), "a plan needs the terminal's own screen");
     let (reply, output) = mpsc::channel();
+
     app.take_hook("ext:s1", &hook("PreToolUse", "AskUserQuestion", json!({ "questions": [] })), Some(reply));
     assert_eq!(output.try_recv(), Ok(Ok(String::new())), "a question with nothing to pick");
 }
@@ -403,12 +471,16 @@ fn the_island_off_or_a_plan_goes_back_to_the_terminal() {
 fn a_notification_is_a_question_or_the_plan_limit_and_subagents_show_in_the_activity() {
     use crate::app::ui::agents::AgentState;
     let mut app = island_app();
+
     let notification = |message: &str| {
         let mut payload = hook("Notification", "", Value::Null);
+
         payload["message"] = message.into();
         payload
     };
+
     let mut prompt = hook("UserPromptSubmit", "", Value::Null);
+
     prompt["prompt"] = "arruma o teste\ne roda de novo".into();
     app.take_hook("ext:s1", &prompt, None);
     assert_eq!((app.outside_pills()[0].activity.as_str(), app.outside_pills()[0].state), ("arruma o teste", AgentState::Working(0.0)));
@@ -429,19 +501,24 @@ fn a_notification_is_a_question_or_the_plan_limit_and_subagents_show_in_the_acti
     // o limite do plano: estado próprio, que some quando a sessão volta a trabalhar
     app.take_hook("ext:s1", &notification("You've hit your usage limit · resets 3pm"), None);
     let pills = app.outside_pills();
+
     assert!(pills[0].limited && pills[0].state == AgentState::Idle(None));
     app.take_hook("ext:s1", &hook("PostToolUseFailure", "Bash", json!({ "command": "cargo test" })), None);
     let pills = app.outside_pills();
+
     assert!(!pills[0].limited);
     assert_eq!(pills[0].activity, "falhou: Bash: cargo test");
     // a vez acaba com a última frase da resposta; o ajudante que o Claude Code roda depois (agent_type vazio) não reabre a pílula
     let mut stop = hook("Stop", "", Value::Null);
+
     stop["last_assistant_message"] = "Pronto: os 12 testes passam.".into();
     app.take_hook("ext:s1", &stop, None);
     let mut helper = hook("SubagentStop", "", Value::Null);
+
     helper["agent_type"] = "".into();
     app.take_hook("ext:s1", &helper, None);
     let pills = app.outside_pills();
+
     assert_eq!((pills[0].activity.as_str(), pills[0].badge, pills[0].state), ("Pronto: os 12 testes passam.", Some(Badge::Finished), AgentState::Idle(None)));
     // um prompt que o próprio Claude Code injeta (em tags) não vira atividade
     prompt["prompt"] = "<task-notification>x</task-notification>".into();
@@ -452,8 +529,10 @@ fn a_notification_is_a_question_or_the_plan_limit_and_subagents_show_in_the_acti
 #[test]
 fn paused_alerts_return_permission_requests_to_the_terminal_immediately() {
     let mut app = island_app();
+
     app.prefs.pause_alerts_until = Some(crate::app::system::tray::unix_seconds() + 60);
     let (reply, output) = mpsc::channel();
+
     app.take_hook("ext:s1", &hook("PermissionRequest", "Bash", json!({ "command": "ls" })), Some(reply));
     assert_eq!(output.try_recv(), Ok(Ok(String::new())));
     assert!(app.person_asks.borrow().is_empty());
@@ -464,16 +543,21 @@ fn a_relay_that_hangs_up_takes_its_card_away() {
     use std::io::Write;
     let bridge = Bridge::start(None).unwrap();
     let mut app = island_app();
+
     // o relay de verdade é um processo; aqui, a conexão dele
     let ask = |command: &str| {
         let mut relay = std::net::TcpStream::connect(&bridge.address).unwrap();
         let payload = hook("PermissionRequest", "Bash", json!({ "command": command }));
+
         writeln!(relay, "{}", json!({ "cmd": "hook", "token": bridge.token, "from": "ext:s1", "payload": payload, "wait": 60 })).unwrap();
         relay
     };
+
     let answered_in_terminal = ask("rm -rf build");
+
     take(&mut app, &bridge);
     let waiting = ask("ls");
+
     take(&mut app, &bridge);
     assert_eq!(app.person_asks.borrow().len(), 2);
     assert!(!app.person_asks.borrow()[0].source.as_ref().unwrap().request.is_empty(), "a ponte numerou o pedido");
@@ -486,6 +570,7 @@ fn a_relay_that_hangs_up_takes_its_card_away() {
     // o que ainda espera é respondido pela ilha como sempre
     app.answer_person(&first_ask_id(&app), true);
     let mut printed = String::new();
+
     std::io::BufRead::read_line(&mut std::io::BufReader::new(waiting), &mut printed).unwrap();
     assert!(printed.contains("allow"), "{printed}");
 }
@@ -494,14 +579,18 @@ fn a_relay_that_hangs_up_takes_its_card_away() {
 fn the_ui_goes_on_when_a_bridge_thread_died_holding_the_shared_state() {
     let mut app = DrawingApp { bridge: Bridge::start(None).ok(), ..Default::default() };
     let shared = app.bridge.as_ref().unwrap().shared.clone();
+
     let _ = std::thread::spawn({
         let shared = shared.clone();
+
         move || {
             let _held = shared.lock().unwrap();
+
             panic!("a request thread died");
         }
     })
     .join();
+
     assert!(shared.is_poisoned());
     app.log_agent_events();
 }
@@ -512,20 +601,25 @@ fn a_permission_of_another_tool_reads_as_text_and_opens_whole_on_a_click() {
     let mut app = island_app();
     let (reply, _output) = mpsc::channel();
     let input = json!({ "title": "Vídeo do app", "remaining_plan": "Gravar a cena de teste.\nMontar o vídeo." });
+
     app.take_hook("ext:s1", &hook("PermissionRequest", "mcp__ccd_session__hand_off_to_session", input), Some(reply));
     app.person_asks.borrow_mut()[0].shown = Some(0.0);
     let drawn = settle(&mut app, &ctx);
     let texts: Vec<&str> = drawn.iter().map(|(text, _)| text.as_str()).collect();
+
     assert!(texts.contains(&"Vídeo do app"), "the title, not the JSON: {texts:?}");
     assert!(texts.iter().any(|text| text.contains("hand off to session")), "the tool, readable: {texts:?}");
     assert!(!texts.iter().any(|text| text.contains('{')), "no raw JSON: {texts:?}");
     let at = drawn.iter().find(|(text, _)| text == "ver tudo").map(|(_, rect)| rect.center()).expect("ver tudo");
     let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+
     for (step, events) in [vec![egui::Event::PointerMoved(at)], vec![press(true)], vec![press(false)]].into_iter().enumerate() {
         frame(&mut app, &ctx, 3.0 + step as f64 * 0.05, events);
     }
+
     assert!(app.person_asks.borrow()[0].open, "the click opened it");
     let drawn = settle(&mut app, &ctx);
+
     assert!(drawn.iter().any(|(text, _)| text.contains("Montar o vídeo.")), "the whole request shows");
     assert!(drawn.iter().any(|(text, _)| text == "recolher"));
 }
@@ -533,22 +627,27 @@ fn a_permission_of_another_tool_reads_as_text_and_opens_whole_on_a_click() {
 #[test]
 fn a_new_versions_card_waits_for_the_agents_to_finish() {
     let mut app = island_app();
+
     let release =
         crate::app::system::updates::Release { version: "99.0.0".into(), notes: String::new(), page: String::new(), installer: None, digest: None, size: None };
+
     app.updates.state = crate::app::system::updates::UpdateState::Available(release.clone());
     app.updates.offer = Some(release);
     // a session outside the app at work
     app.take_hook("ext:s1", &hook("PreToolUse", "Bash", json!({ "command": "ls" })), None);
     assert!(app.agents_working());
     let ctx = Context::default();
+
     crate::app::ui::install_fonts(&ctx, false);
     let screen = Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)));
     let _ = ctx.run_ui(egui::RawInput { screen_rect: screen, ..Default::default() }, |_| app.changelog_ui(&ctx));
+
     assert!(app.changelog.is_none() && app.updates.offer.is_some(), "held");
     assert!(app.status.contains("quando os agentes terminarem"), "{}", app.status);
     // its turn over: the card opens
     app.take_hook("ext:s1", &hook("Stop", "", json!({})), None);
     assert!(!app.agents_working());
     let _ = ctx.run_ui(egui::RawInput { screen_rect: screen, ..Default::default() }, |_| app.changelog_ui(&ctx));
+
     assert!(app.changelog.is_some());
 }

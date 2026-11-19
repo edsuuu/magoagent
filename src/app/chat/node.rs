@@ -41,6 +41,7 @@ pub(crate) fn app_path() -> Option<(String, String)> {
     // then, on Windows, the folder of the `magoagent` WSL runs (system/wsl.rs): nothing to PowerShell or cmd
     let shim = shim_dir().filter(|dir| cfg!(windows) && dir.join("magoagent").is_file());
     let dirs = exe.parent().map(PathBuf::from).into_iter().chain(shim).chain(std::env::split_paths(&path));
+
     Some(("PATH".into(), std::env::join_paths(dirs).ok()?.to_string_lossy().into()))
 }
 
@@ -65,6 +66,7 @@ impl DrawingApp {
         if let Some(c) = self.chats.iter().find(|c| c.recruit && (c.name == chat || c.id == chat)) {
             return c.name.clone();
         }
+
         if self.scene.elements.iter().filter(|e| e.chat.is_some() && !self.is_recruit_chat(&e.id)).count() > 1 {
             format!("Luna ({})", chat.trim())
         } else {
@@ -79,8 +81,10 @@ impl DrawingApp {
         let step = CHAT_NODE_SIZE + Vec2::splat(40.0);
         // ponytail: four cards each way, nearest first; past that, straight down like a recruit (`free_spot`)
         let mut places: Vec<Vec2> = (-4..=4).flat_map(|i| (-4..=4).map(move |j| Vec2::new(i as f32 * step.x, j as f32 * step.y))).collect();
+
         places.sort_by(|a, b| a.length_sq().total_cmp(&b.length_sq()));
         let free = places.into_iter().map(|d| Rect::from_center_size(middle + d, CHAT_NODE_SIZE)).find(|r| !taken.iter().any(|t| t.intersects(*r)));
+
         free.unwrap_or_else(|| self.free_spot(Rect::from_center_size(middle, CHAT_NODE_SIZE)))
     }
 
@@ -90,15 +94,19 @@ impl DrawingApp {
         if let Some(i) = self.chat_node(id) {
             return Some(i);
         }
+
         let chat = self.chats.iter().find(|c| c.id == id)?;
         let spec = ChatSpec { name: chat.name.clone(), agent: chat.agent.clone(), cwd: chat.cwd.clone(), folded: None };
         // a canvas not laid out yet (the first frame, a test) has no middle: the drawing's origin
         let middle = if self.canvas_rect.is_positive() { self.to_world(self.canvas_rect.center()) } else { Pos2::ZERO };
+
         let want = match at {
             Some(at) => Rect::from_center_size(at, CHAT_NODE_SIZE),
             None => self.chat_spot(middle),
         };
+
         let mut node = self.new_element(ElementKind::Rectangle { x: want.min.x, y: want.min.y, width: want.width(), height: want.height() });
+
         node.id = id.to_string();
         node.style = node_style(node.style);
         node.chat = Some(spec);
@@ -112,10 +120,12 @@ impl DrawingApp {
     pub(crate) fn show_chat_on_canvas(&mut self, id: &str) -> Result<String, String> {
         let had = self.chat_node(id).is_some();
         let i = self.add_chat_node(id, None).ok_or("Esse chat não existe mais.")?;
+
         self.show_canvas();
         self.selected = vec![i];
         self.glide_to(self.scene.elements[i].center());
         let name = self.agent_label(id);
+
         Ok(if had { format!("Canvas no cartão do chat {name}.") } else { format!("Chat {name} agora tem um cartão no canvas.") })
     }
 
@@ -135,24 +145,31 @@ impl DrawingApp {
     pub(crate) fn chat_nodes_tick(&mut self, ctx: &Context) {
         let chats = &self.chats;
         let orphan = |e: &Element| e.chat.is_some() && !chats.iter().any(|c| c.id == e.id);
+
         if !self.in_gesture() && self.scene.elements.iter().any(orphan) {
             self.keeping_selection(|app| {
                 let chats = &app.chats;
+
                 app.scene.elements.retain(|e| e.chat.is_none() || chats.iter().any(|c| c.id == e.id));
             });
+
             self.dirty = true;
         }
+
         for e in &mut self.scene.elements {
             let Some(spec) = e.chat.as_mut() else { continue };
             let Some(chat) = self.chats.iter().find(|c| c.id == e.id) else { continue };
+
             if spec.name != chat.name || spec.agent != chat.agent || spec.cwd != chat.cwd {
                 (spec.name, spec.agent, spec.cwd) = (chat.name.clone(), chat.agent.clone(), chat.cwd.clone());
                 self.dirty = true;
             }
         }
+
         if !self.chat_open && self.now - self.chat_nodes_read >= 1.0 {
             self.chat_nodes_read = self.now;
             let view = self.canvas_rect;
+
             let seen: Vec<String> = self
                 .scene
                 .elements
@@ -160,37 +177,48 @@ impl DrawingApp {
                 .filter(|e| e.chat.is_some() && (self.terminal_frame(e).0.intersects(view) || self.is_recruit_chat(&e.id)))
                 .map(|e| e.id.clone())
                 .collect();
+
             for id in seen {
                 self.chat_refresh(&id);
             }
         }
+
         // a recruit's first message, once its chat is free (a failure is said once by `chat_send`, not retried)
         let mut i = 0;
+
         while i < self.chat_starts.len() {
             let (id, prompt) = self.chat_starts[i].clone();
+
             if self.chat_runs.contains_key(&id) {
                 i += 1;
+
                 continue;
             }
+
             self.chat_starts.remove(i);
+
             // what it says at the end of it goes to the chat that recruited it (ask.rs)
             if self.is_chat(&id) && self.chat_send(ctx, &id, &prompt) {
                 self.task_sent(&id, &prompt);
             }
         }
+
         // what was written while a chat answered, once it is done (`chat_send`); while WSL's first probe runs, it waits
         let (chats, runs) = (&self.chats, &self.chat_runs);
         let waits_for_chat = |id: &String| chats.iter().any(|chat| &chat.id == id) && !runs.contains_key(id);
+
         if self.chat_queue.iter().any(|(id, _)| waits_for_chat(id)) {
             if wsl_settling() {
                 ctx.request_repaint_after(std::time::Duration::from_millis(250));
             } else {
                 let free: Vec<(String, String)> = self.chat_queue.extract_if(.., |(id, _)| waits_for_chat(id)).collect();
+
                 for (id, prompt) in free {
                     self.chat_send(ctx, &id, &prompt);
                 }
             }
         }
+
         // a text file's card clicked in a conversation: its note on the canvas (notes/file.rs); a file the note can't
         // hold opens in the system's program, as before
         if let Some((path, chat)) = crate::app::chat::media::take_note_ask(ctx)
@@ -199,6 +227,7 @@ impl DrawingApp {
             self.toast(why);
             crate::app::browser::open_external(&path.to_string_lossy());
         }
+
         self.file_links_tick(ctx);
         self.chat_asks_tick(ctx);
         self.recruit_popups_tick();
@@ -210,16 +239,20 @@ impl DrawingApp {
         self.moving = false;
         self.chat_agent = Some(id.to_string());
         self.chat_open = false;
+
         // with the island on, the small conversation is the island's: no panel of its own over the canvas
         if self.prefs.island {
             self.island.chat_asked = true;
+
             return;
         }
+
         self.mini_set(true);
     }
 
     pub(crate) fn open_chat_node(&mut self, index: usize) {
         let id = self.scene.elements[index].id.clone();
+
         self.moving = false;
         self.chat_on(&id);
     }
@@ -230,12 +263,15 @@ impl DrawingApp {
     /// that terminal's id down), and what it draws through the MCP is signed by the Maestro.
     pub(crate) fn chat_env(&self, id: &str) -> Vec<(String, String)> {
         let name = self.chats.iter().find(|c| c.id == id).map(|c| self.maestro_name(&c.name)).unwrap_or_default();
+
         let mut env =
             vec![("MAGOAGENT_CHAT_ID".to_string(), id.to_string()), ("MAGOAGENT_TERMINAL_ID".into(), String::new()), ("MAGOAGENT_TERMINAL_NAME".into(), name)];
+
         if let Some(bridge) = &self.bridge {
             env.push(("MAGOAGENT_BRIDGE".into(), bridge.address.clone()));
             env.push(("MAGOAGENT_TOKEN".into(), locked(&bridge.shared).terminal_token(id)));
         }
+
         env.extend(app_path());
         env
     }
@@ -249,9 +285,11 @@ impl DrawingApp {
             ChatItem::Error(text) => Some(("Erro", text.as_str())),
             _ => None,
         })?;
+
         // ponytail: the first 60 words, cut again by the picture's rows; a longer look is the chat itself (the card made
         // bigger shows its conversation whole)
         let words = tight(text, 60);
+
         Some(if who.is_empty() { words } else { format!("{who}: {words}") })
     }
 
@@ -264,81 +302,103 @@ impl DrawingApp {
         let (look, _) = self.terminal_look(&as_terminal);
         let radius = (8.0 * zoom).min(255.0) as u8;
         let outline = if look == Look::default() { Color32::from_gray(0x3a) } else { look.fg.gamma_multiply(0.2) };
+
         painter.rect(rect, radius, look.bg, Stroke::new(1.0, outline), StrokeKind::Inside);
         let painter = painter.with_clip_rect(rect.shrink(1.0).intersect(painter.clip_rect()));
         let (strip, muted, light) = (look.strip(), look.muted(), look.fg);
         // the reference app's terminal strip: 8.125 in from the edge, 4.875 between its parts
         let (pad, gap) = (8.125 * zoom, 4.875 * zoom);
         let header = Rect::from_min_size(rect.min, Vec2::new(rect.width(), TERMINAL_HEADER * zoom));
+
         painter.rect_filled(header, egui::CornerRadius { nw: radius, ne: radius, sw: 0, se: 0 }, strip);
         painter.hline(header.x_range(), header.bottom() - 0.5, Stroke::new(1.0, look.rule()));
         let state = self.chat_state(&element.id).unwrap_or(AgentState::Idle(None));
         let working = matches!(state, AgentState::Working(_));
         let dot = if working { PRIMARY } else { Color32::from_rgb(0x2f, 0x9e, 0x44) };
+
         painter.circle_filled(Pos2::new(header.right() - pad - 3.25 * zoom, header.center().y), 3.25 * zoom, dot);
         let mut x = header.left() + pad;
+
         if zoom >= 0.6 {
             terminal_icon_scaled(&painter, &as_terminal, Pos2::new(x + 5.5 * zoom, header.center().y), light, zoom);
         }
+
         x += 11.0 * zoom + gap;
         // who it is on the canvas, then which chat
         let recruit = self.is_recruit_chat(&element.id);
         let who = if recruit { "Agente" } else { "Luna" };
         let title = painter.text(Pos2::new(x, header.center().y), egui::Align2::LEFT_CENTER, who, FontId::proportional(9.75 * zoom), light);
+
         x = title.right() + gap;
+
         if zoom >= 0.6 && !recruit {
             maestro_crown(&painter, Pos2::new(x + 6.5 * zoom, header.center().y), zoom, AMBER);
             x += 13.0 * zoom + gap;
         }
+
         // room left for the mini chat's button (chat/node_ui.rs) before the dot, and a recruit's fold
         let buttons = if recruit { 50.0 } else { 30.0 };
         // as the lists say it: no other chat's name
         let shown = self.chat_card_name(&element.id).unwrap_or_else(|| spec.name.clone());
         let name = clipped(&painter, shown, FontId::proportional(9.75 * zoom), muted, (header.right() - pad - buttons * zoom - x).max(0.0));
+
         painter.galley(Pos2::new(x, header.center().y - name.size().y / 2.0), name, muted);
+
         if recruit {
             // no folder strip: its work goes to the bottom (chat/recruit_card.rs), or its task when small or folded
             if spec.folded.is_some() || !crate::app::chat::node_ui::chat_live(rect, zoom, true) {
                 self.paint_recruit_task(&painter, &element.id, Rect::from_min_max(header.left_bottom(), rect.max).shrink(pad), zoom, light, muted);
             }
+
             return;
         }
+
         let footer = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - TERMINAL_FOOTER * zoom), rect.max);
         let body = Rect::from_min_max(header.left_bottom(), footer.right_top()).shrink(pad);
+
         if crate::app::chat::node_ui::chat_live(rect, zoom, false) {
             // the conversation itself goes there (chat_node_overlay)
             self.paint_chat_footer(&painter, footer, radius, strip, muted, pad, &spec.cwd, look.rule());
+
             return;
         }
+
         // the agent: Claude's mascot (idle, or what it does while it works), Codex's mark
         let figure = (body.height().min(64.0 * zoom)).max(0.0);
         let at = Pos2::new(body.left() + figure / 2.0, body.center().y);
         let time = self.now;
         // its squares under ~1 px blur into marks that read as letters: too small, no figure
         let painter = painter.with_clip_rect(body.intersect(painter.clip_rect()));
+
         if figure < MIN_FIGURE {
         } else if crate::app::mascot::claude(&as_terminal) {
             paint_agent_mago(&painter, &format!("{}-card", element.id), self.agent_color(&element.id), at, figure, MagoState::from_agent(state, time), time);
         } else {
             crate::editor::icons::paint_tint(&painter, crate::editor::icons::OPENAI, Rect::from_center_size(at, Vec2::splat(figure * 0.55)), light);
         }
+
         if working {
             // the mascot taps its feet, the time runs
             painter.ctx().request_repaint_after(std::time::Duration::from_millis(80));
         }
+
         // its state, then the last message as far as the card has room for
         let text_left = body.left() + if figure < MIN_FIGURE { 0.0 } else { figure + gap * 2.0 };
         let width = (body.right() - text_left).max(0.0);
         let waiting = self.chat_asks.iter().filter(|a| a.chat == element.id).count();
+
         let status = match state {
             AgentState::Working(since) => format!("Respondendo… {}", ago(time - since)),
             _ if waiting > 0 => "Pergunta na fila".to_string(),
             _ => "Pronto".to_string(),
         };
+
         let status = clipped(&painter, status, FontId::proportional(10.5 * zoom), if working { PRIMARY } else { muted }, width);
         let line = status.size().y;
+
         painter.galley(Pos2::new(text_left, body.top()), status, muted);
         let rows = ((body.height() - line - gap) / (12.5 * zoom)).floor();
+
         if rows >= 1.0 && width > 24.0 * zoom {
             let preview = self.chat_preview(&element.id);
             let ink = if preview.is_some() { light.gamma_multiply(0.85) } else { muted };
@@ -346,9 +406,12 @@ impl DrawingApp {
             // in the chat's Markdown (no ** nor ` painted), in the card's own ink
             let colors = UiColors { text: ink, surface_low: light.gamma_multiply(0.1), code: crate::app::ui::code_ink(light), ..self.colors() };
             let galleys = md_galleys(&painter, &text, 10.5 * zoom, ink, width, rows as usize, &colors);
+
             paint_md(&painter, Pos2::new(text_left, body.top() + line + gap), galleys, ink);
         }
+
         let painter = painter.with_clip_rect(rect.shrink(1.0).intersect(painter.clip_rect()));
+
         self.paint_chat_footer(&painter, footer, radius, strip, muted, pad, &spec.cwd, look.rule());
     }
 
@@ -356,9 +419,11 @@ impl DrawingApp {
     #[allow(clippy::too_many_arguments)]
     fn paint_chat_footer(&self, painter: &Painter, footer: Rect, radius: u8, strip: Color32, muted: Color32, pad: f32, cwd: &str, rule: Color32) {
         let zoom = footer.height() / TERMINAL_FOOTER;
+
         painter.rect_filled(footer, egui::CornerRadius { nw: 0, ne: 0, sw: radius, se: radius }, strip);
         painter.hline(footer.x_range(), footer.top() + 0.5, Stroke::new(1.0, rule));
         let folder = clipped(painter, display_folder(cwd), FontId::monospace(10.0 * zoom), muted, footer.width() - 2.0 * pad);
+
         painter.galley(Pos2::new(footer.left() + pad, footer.center().y - folder.size().y / 2.0), folder, muted);
     }
 
@@ -366,39 +431,51 @@ impl DrawingApp {
     /// there, selected; the tool goes back to Seleção.
     pub(crate) fn place_chat(&mut self, at: Pos2) {
         let before = self.chats.len();
+
         if self.start_chat(false)
             && let Some(chat) = self.chats.get(before).map(|c| c.id.clone())
             && let Some(i) = self.chat_node(&chat)
         {
             let from = self.scene.elements[i].center();
+
             self.scene.elements[i].move_by(at - from);
             self.selected = vec![i];
         }
+
         self.tool = Tool::Select;
     }
 
     /// The new-terminal dialog's Chat: a chat with `command`'s agent (when installed) in `cwd`, its card at `at`.
     pub(crate) fn place_chat_with(&mut self, at: Pos2, command: &str, cwd: &str) {
         let installed = self.installed_agents();
+
         if installed.is_empty() {
             self.toast("Nenhum agente instalado: instale o claude ou o codex e volte aqui.");
+
             return;
         }
+
         let program = command.split_whitespace().next().unwrap_or_default();
         let mut form = NewChat::from_prefs(&self.prefs, &installed);
+
         if let Some(agent) = installed.iter().position(|preset| preset.command.split_whitespace().next() == Some(program)) {
             form.agent = agent;
             form.mode = crate::app::chat::footer::agent_mode(program).unwrap_or(self.prefs.chat_mode).min(CHAT_MODES.len() - 1);
         }
+
         if !cwd.trim().is_empty() {
             form.cwd = cwd.trim().to_string();
         }
+
         let before = self.chats.len();
+
         self.create_chat(&form, &installed);
+
         if let Some(chat) = self.chats.get(before).map(|chat| chat.id.clone())
             && let Some(index) = self.chat_node(&chat)
         {
             let from = self.scene.elements[index].center();
+
             self.scene.elements[index].move_by(at - from);
             self.selected = vec![index];
         }
@@ -407,6 +484,7 @@ impl DrawingApp {
     /// Adicionar › Chat, in the canvas's menu: a new chat, or one of the list that has no card here.
     pub(crate) fn chat_add_entry(&self) -> Entry {
         let off: Vec<Entry> = self.chats.iter().filter(|c| self.chat_node(&c.id).is_none()).map(|c| item(&format!("chat_node:{}", c.id), &c.name)).collect();
+
         if off.is_empty() { item("add_chat", "Chat") } else { sub("Chat", [vec![item("add_chat", "Novo Chat"), Entry::Sep], off].concat()) }
     }
 
@@ -415,7 +493,9 @@ impl DrawingApp {
     pub(crate) fn chat_node_entries(&self, id: &str) -> Vec<Entry> {
         let locked = self.scene.elements.iter().any(|e| e.id == id && e.locked);
         let mut rows = vec![item("open_chat", "Abrir chat"), item("open_mini_chat", "Abrir no mini chat"), Entry::Sep];
+
         rows.extend(self.disconnect_rows(id).unwrap_or_default());
+
         rows.extend([
             item("lock", if locked { "Desbloquear" } else { "Bloquear" }),
             item("front", "Trazer para Frente"),
@@ -423,6 +503,7 @@ impl DrawingApp {
             Entry::Sep,
             entry("delete", "Tirar do canvas", None, true, true),
         ]);
+
         rows
     }
 
@@ -432,11 +513,13 @@ impl DrawingApp {
             (Target::Canvas(at), "add_chat") => {
                 // as Ajustes presets it, with its card where the menu opened
                 let before = self.chats.len();
+
                 if self.start_chat(false)
                     && let Some(chat) = self.chats.get(before).map(|c| c.id.clone())
                     && let Some(i) = self.chat_node(&chat)
                 {
                     let from = self.scene.elements[i].center();
+
                     self.scene.elements[i].move_by(*at - from);
                 }
             }
@@ -453,6 +536,7 @@ impl DrawingApp {
             (Target::Element(node), "open_mini_chat") => self.open_mini_chat(node),
             _ => return false,
         }
+
         true
     }
 
@@ -460,15 +544,18 @@ impl DrawingApp {
     /// its card there (`new`), or the card taken off the canvas, the conversation kept (`remove`).
     pub(crate) fn act_chat_node(&mut self, args: &Value) -> Result<String, String> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
+
         match text("action").as_str() {
             "" | "show" => {
                 let id = self.chat_named(&text("chat"))?;
+
                 self.show_chat_on_canvas(&id)
             }
             "new" => {
                 // `chat_new` opens the chat's screen; here the canvas stays, on the new card
                 self.act("chat_new", args)?;
                 let id = self.chat_agent.clone().ok_or("o chat não foi criado")?;
+
                 self.show_chat_on_canvas(&id)?;
                 Ok(format!("Chat novo no canvas: {}.", self.agent_label(&id)))
             }
@@ -476,6 +563,7 @@ impl DrawingApp {
                 let id = self.chat_named(&text("chat"))?;
                 let name = self.agent_label(&id);
                 let i = self.chat_node(&id).ok_or_else(|| format!("O chat {name} não tem cartão neste canvas."))?;
+
                 self.selected = vec![i];
                 self.delete_selected();
                 Ok(format!("Cartão do chat {name} tirado do canvas (dá para desfazer); a conversa continua na lista de chats."))
@@ -483,9 +571,11 @@ impl DrawingApp {
             "fold" => {
                 let id = self.chat_named(&text("chat"))?;
                 let name = self.agent_label(&id);
+
                 if !self.is_recruit_chat(&id) {
                     return Err(format!("{name} não é um agente recrutado: só o cartão de um recruta se recolhe."));
                 }
+
                 match self.fold_chat_card(&id) {
                     Some(true) => Ok(format!("Cartão de {name} recolhido: só o nome e a tarefa.")),
                     Some(false) => Ok(format!("Cartão de {name} aberto: mostra o que ele faz.")),
@@ -501,14 +591,18 @@ impl DrawingApp {
     pub(crate) fn act_disconnect(&mut self, a: &str, b: &str) -> Result<String, String> {
         let (first, second) = (self.node_named(a)?, self.node_named(b)?);
         let (first, second) = (self.scene.elements[first].id.clone(), self.scene.elements[second].id.clone());
+
         if !self.links().get(&first).is_some_and(|l| l.contains(&second)) {
             return Err(format!("{a} e {b} não estão conectados."));
         }
+
         self.unlink(&first, &second);
+
         // a locked rope stays (`unlink` says so)
         if self.links().get(&first).is_some_and(|l| l.contains(&second)) {
             return Err(format!("A conexão entre {a} e {b} está bloqueada."));
         }
+
         self.publish_nodes();
         Ok(format!("{a} e {b} desconectados (dá para desfazer)."))
     }

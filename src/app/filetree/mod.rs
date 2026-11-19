@@ -114,6 +114,7 @@ impl FileTreeSpec {
     /// The header's name: the shown folder's.
     pub(crate) fn name(&self) -> String {
         let shown = self.shown();
+
         shown.file_name().map_or_else(|| shown.to_string_lossy().into_owned(), |n| n.to_string_lossy().into_owned())
     }
 }
@@ -167,8 +168,10 @@ impl DrawingApp {
             Rect::from_center_size(start, FILETREE_SIZE)
         } else {
             let r = Rect::from_two_pos(start, end);
+
             Rect::from_min_size(r.min, r.size().max(FILETREE_MIN))
         };
+
         self.filetrees.dialog = Some(FileTreeDialog { target: None, at, root: self.new_folder() });
         self.tool = Tool::Select;
     }
@@ -177,21 +180,28 @@ impl DrawingApp {
     pub(crate) fn confirm_filetree_dialog(&mut self) {
         let Some(FileTreeDialog { target, at, root }) = self.filetrees.dialog.clone() else { return };
         let root = root.trim().to_string();
+
         if let Err(why) = self.check_root(&root) {
             self.toast(match target {
                 Some(_) => format!("Não foi possível alterar o local: {why}"),
                 None => format!("Não foi possível criar a árvore de arquivos: {why}"),
             });
+
             return;
         }
+
         self.filetrees.dialog = None;
         self.prefs.folders.remember(&root);
         self.snapshot();
+
         if let Some(id) = target {
             self.ft_set_root(&id, root);
+
             return;
         }
+
         let mut node = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
+
         // what exports and the AI's view show; the app paints the tree itself
         node.style = node_style(node.style);
         node.filetree = Some(FileTreeSpec { root, ..Default::default() });
@@ -206,31 +216,38 @@ impl DrawingApp {
         if path.trim().is_empty() {
             return Err("Nenhum arquivo indicado: escreva o caminho dele.".into());
         }
+
         let file = folder(path).filter(|file| file.is_file()).ok_or_else(|| format!("O arquivo {} não existe.", path.trim()))?;
         let dir = file.parent().map(Path::to_path_buf).unwrap_or_default();
         let kept = self.scene.elements.iter().find(|element| element.filetree.as_ref().is_some_and(|tree| tree.root_path() == dir));
+
         let id = match kept {
             Some(element) => element.id.clone(),
             None => {
                 let at = self.free_spot(Rect::from_center_size(self.to_world(self.canvas_rect.center()), FILETREE_SIZE));
                 let mut node = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
+
                 node.style = node_style(node.style);
                 node.filetree = Some(FileTreeSpec { root: dir.to_string_lossy().into_owned(), ..Default::default() });
                 let id = node.id.clone();
+
                 self.snapshot();
                 self.scene.elements.push(node);
                 id
             }
         };
+
         (self.settings_open, self.settings_edit) = (false, None);
         self.show_canvas();
         self.filetrees.views.entry(id.clone()).or_insert_with(TreeView::new);
         self.ft_reveal(&id, &file);
         self.ft_activate(&id, file.clone());
+
         if let Some(index) = self.scene.elements.iter().position(|element| element.id == id) {
             self.glide_to(element_bounds(&self.scene.elements[index]).center());
             self.selected = vec![index];
         }
+
         Ok(format!("{} aberto na árvore.", file.display()))
     }
 
@@ -246,6 +263,7 @@ impl DrawingApp {
         if let Some(spec) = self.scene.elements.iter_mut().find(|e| e.id == id).and_then(|e| e.filetree.as_mut()) {
             (spec.root, spec.current) = (root, String::new());
         }
+
         if let Some(view) = self.filetrees.views.get_mut(id) {
             *view = TreeView::new();
         }
@@ -254,14 +272,19 @@ impl DrawingApp {
     /// A view for each file tree node, and the readers' news; views of nodes that went are dropped.
     pub(crate) fn sync_filetrees(&mut self, ctx: &Context) {
         let now = ctx.input(|i| i.time);
+
         self.filetrees.ctx = Some(ctx.clone());
         self.filetrees.editors.retain(|id, _| self.scene.elements.iter().any(|e| &e.id == id && e.filetree.is_some()));
         let views = &mut self.filetrees.views;
+
         views.retain(|id, _| self.scene.elements.iter().any(|e| &e.id == id && e.filetree.is_some()));
+
         for e in &self.scene.elements {
             let Some(spec) = &e.filetree else { continue };
             let view = views.entry(e.id.clone()).or_insert_with(TreeView::new);
+
             view.poll(spec, ctx, now);
+
             if view.dirty || view.kept != self.prefs.hidden_shown {
                 view.kept.clone_from(&self.prefs.hidden_shown);
                 view.rebuild(spec);
@@ -280,24 +303,29 @@ impl DrawingApp {
     /// Opens or closes a folder of tree `id`.
     pub(crate) fn ft_toggle(&mut self, id: &str, path: &Path) {
         let Some(view) = self.filetrees.views.get_mut(id) else { return };
+
         if !view.expanded.remove(path) {
             view.expanded.insert(path.to_path_buf());
             // read before the next frame shows it
             view.read_now(path);
             view.stale = true;
         }
+
         view.dirty = true;
     }
 
     /// Goes into folder `path` (inside the root); "Voltar" goes up again.
     pub(crate) fn ft_navigate(&mut self, id: &str, path: PathBuf) {
         let root = self.ft_spec(id).map(FileTreeSpec::root_path).unwrap_or_default();
+
         if !path.starts_with(&root) || !path.is_dir() {
             return;
         }
+
         if let Some(spec) = self.ft_spec_mut(id) {
             spec.current = if path == root { String::new() } else { path.to_string_lossy().into_owned() };
         }
+
         if let Some(view) = self.filetrees.views.get_mut(id) {
             (view.forward, view.selected, view.scroll, view.stale, view.dirty) = (Vec::new(), None, 0.0, true, true);
         }
@@ -309,8 +337,10 @@ impl DrawingApp {
         let (root, shown) = (spec.root_path(), spec.shown());
         let Some(parent) = shown.parent().filter(|p| shown != root && p.starts_with(&root)).map(Path::to_path_buf) else { return };
         let mut forward = self.filetrees.views.get(id).map(|v| v.forward.clone()).unwrap_or_default();
+
         forward.push(shown);
         self.ft_navigate(id, parent);
+
         if let Some(view) = self.filetrees.views.get_mut(id) {
             view.forward = forward;
         }
@@ -319,7 +349,9 @@ impl DrawingApp {
     pub(crate) fn ft_forward(&mut self, id: &str) {
         let Some(next) = self.filetrees.views.get_mut(id).and_then(|v| v.forward.pop()) else { return };
         let rest = self.filetrees.views.get(id).map(|v| v.forward.clone()).unwrap_or_default();
+
         self.ft_navigate(id, next);
+
         if let Some(view) = self.filetrees.views.get_mut(id) {
             view.forward = rest;
         }
@@ -338,18 +370,23 @@ impl DrawingApp {
         if path.is_dir() {
             return self.ft_toggle(id, &path);
         }
+
         // a file left in conflict by a merge opens in the merge window, mine | result | theirs
         let root = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.filetree.as_ref()).map(|t| t.root_path());
+
         let conflicted = root.as_ref().is_some_and(|root| {
             crate::editor::merge::unmerged(root)
                 .is_ok_and(|files| files.iter().any(|(f, _)| crate::editor::lsp::path_key(&root.join(f)) == crate::editor::lsp::path_key(&path)))
         });
+
         if let (true, Some(root)) = (conflicted, root) {
             if let Err(why) = self.filetrees.conflicts.merge(&root, &path) {
                 self.toast(why);
             }
+
             return;
         }
+
         self.ft_open(id, path, true);
     }
 
@@ -364,15 +401,19 @@ impl DrawingApp {
     pub(crate) fn tree_named(&self, name: &str) -> Result<String, String> {
         let trees: Vec<&Element> = self.scene.elements.iter().filter(|e| e.filetree.is_some()).collect();
         let wanted = name.trim().trim_end_matches(['/', '\\']).to_lowercase();
+
         let pick = if wanted.is_empty() {
             let selected = self.selected.iter().filter_map(|i| self.scene.elements.get(*i)).find(|e| e.filetree.is_some());
+
             selected.or(if trees.len() == 1 { trees.first().copied() } else { None })
         } else {
             trees.iter().copied().find(|e| {
                 let spec = e.filetree.as_ref().unwrap();
+
                 e.id == name.trim() || spec.name().to_lowercase() == wanted || spec.root.trim_end_matches(['/', '\\']).to_lowercase() == wanted
             })
         };
+
         pick.map(|e| e.id.clone())
             .ok_or_else(|| if trees.is_empty() { "Não há árvore de arquivos no canvas.".to_string() } else { "Diga qual árvore de arquivos.".to_string() })
     }

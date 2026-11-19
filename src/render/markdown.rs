@@ -36,6 +36,7 @@ pub(crate) enum Line<'a> {
 /// The heading level of a line (1-6), or 0 when it is not a heading.
 pub(crate) fn heading_level(line: &str) -> usize {
     let hashes = line.bytes().take_while(|b| *b == b'#').count();
+
     if (1..=6).contains(&hashes) && line[hashes..].starts_with(' ') { hashes } else { 0 }
 }
 
@@ -54,15 +55,20 @@ pub(crate) fn size_of(level: usize, base: f32) -> f32 {
 pub(crate) fn lines(text: &str) -> Vec<Line<'_>> {
     let mut code = false;
     let mut out = Vec::new();
+
     for raw in text.lines() {
         let t = raw.trim_start();
+
         if t.starts_with("```") {
             code = !code;
+
             continue;
         }
+
         let depth = (raw.len() - t.len()) / 2;
         let compact: String = t.chars().filter(|c| !c.is_whitespace()).collect();
         let level = heading_level(t);
+
         out.push(if code {
             Line::Code(raw)
         } else if t.is_empty() {
@@ -84,12 +90,14 @@ pub(crate) fn lines(text: &str) -> Vec<Line<'_>> {
             Line::Para(t)
         });
     }
+
     out
 }
 
 /// The digit count of an ordered item's number ("12. text" gives 2), when the line is one.
 fn ordered(t: &str) -> Option<usize> {
     let digits = t.bytes().take_while(u8::is_ascii_digit).count();
+
     matches!(t.get(digits..digits + 2), Some(". " | ") ")).then_some(digits)
 }
 
@@ -110,10 +118,12 @@ pub(crate) fn inline(text: &str, bold: bool) -> Vec<Span> {
     let mut style = Span { bold, ..Span::default() };
     let mut buf = String::new();
     let mut rest = text;
+
     while !rest.is_empty() {
         let special = code(rest)
             .map(|(t, after)| (Span { text: t.into(), code: true, ..style.clone() }, after))
             .or_else(|| link(rest).map(|(t, after)| (Span { text: t.into(), link: true, ..style.clone() }, after)));
+
         if let Some((span, after)) = special {
             flush(&mut out, &mut buf, &style);
             out.push(span);
@@ -132,10 +142,12 @@ pub(crate) fn inline(text: &str, bold: bool) -> Vec<Span> {
             rest = after;
         } else {
             let c = rest.chars().next().unwrap_or_default();
+
             buf.push(c);
             rest = &rest[c.len_utf8()..];
         }
     }
+
     flush(&mut out, &mut buf, &style);
     out
 }
@@ -150,6 +162,7 @@ fn flush(out: &mut Vec<Span>, buf: &mut String, style: &Span) {
 fn code(rest: &str) -> Option<(&str, &str)> {
     let inner = rest.strip_prefix('`')?;
     let end = inner.find('`')?;
+
     Some((&inner[..end], &inner[end + 1..]))
 }
 
@@ -158,6 +171,7 @@ fn link(rest: &str) -> Option<(&str, &str)> {
     let inner = rest.strip_prefix('[')?;
     let mid = inner.find("](")?;
     let close = inner[mid..].find(')')? + mid;
+
     Some((&inner[..mid], &inner[close + 1..]))
 }
 
@@ -166,9 +180,12 @@ fn link(rest: &str) -> Option<(&str, &str)> {
 /// that layer twice, slightly apart.
 pub(crate) fn job(spans: &[Span], size: f32, ink: Color32, wrap: f32, bold_only: bool) -> LayoutJob {
     let mut job = LayoutJob::default();
+
     job.wrap.max_width = wrap;
+
     for s in spans {
         let color = if bold_only && !s.bold { Color32::TRANSPARENT } else { ink };
+
         job.append(
             &s.text,
             0.0,
@@ -184,17 +201,22 @@ pub(crate) fn job(spans: &[Span], size: f32, ink: Color32, wrap: f32, bold_only:
             },
         );
     }
+
     job
 }
 
 /// The raw text while the editor types over it: each line at its heading's size, the markers as typed.
 pub(crate) fn edit_job(text: &str, size: f32, ink: Color32, wrap: f32) -> LayoutJob {
     let mut job = LayoutJob::default();
+
     job.wrap.max_width = wrap;
+
     for line in text.split_inclusive('\n') {
         let s = size_of(heading_level(line.trim_start()), size);
+
         job.append(line, 0.0, TextFormat { font_id: FontId::monospace(s), color: ink, line_height: Some(s * NOTE_LINE), ..Default::default() });
     }
+
     job
 }
 
@@ -253,6 +275,7 @@ pub(crate) fn live_text(text: &str, size: f32, ink: Color32, wrap: f32, caret: O
     let on_line = |from: usize, to: usize| caret.is_some_and(|c| c.head == c.anchor && (from..=to).contains(&c.head));
     let mut code = false;
     let mut start = 0;
+
     while start <= chars.len() {
         let end = (start..chars.len()).find(|&i| chars[i].1 == '\n').unwrap_or(chars.len());
         let body: String = chars[start..end].iter().map(|(_, c)| c).collect();
@@ -262,6 +285,7 @@ pub(crate) fn live_text(text: &str, size: f32, ink: Color32, wrap: f32, caret: O
         let here = on_line(start, end);
         let compact: String = trimmed.chars().filter(|c| !c.is_whitespace()).collect();
         let level = heading_level(trimmed);
+
         if trimmed.starts_with("```") {
             code = !code;
             line.iter_mut().for_each(|look| look.dim = true);
@@ -281,9 +305,11 @@ pub(crate) fn live_text(text: &str, size: f32, ink: Color32, wrap: f32, caret: O
             inline_looks(&chars, &mut looks, at + level + 1, end, Look { level, bold: true, ..Look::default() }, caret);
         } else if let Some(rest) = ["- ", "* ", "+ "].iter().find_map(|m| trimmed.strip_prefix(m)) {
             let task = ["[ ] ", "[x] ", "[X] "].iter().position(|t| rest.starts_with(t)).map(|kind| kind > 0);
+
             match task {
                 Some(done) => {
                     mark(&mut looks[at..at + 2], here);
+
                     if here {
                         looks[at + 2..at + 5].iter_mut().for_each(|look| look.dim = true);
                     } else {
@@ -291,7 +317,9 @@ pub(crate) fn live_text(text: &str, size: f32, ink: Color32, wrap: f32, caret: O
                         (looks[at + 2].hidden, looks[at + 3].clear, looks[at + 4].hidden) = (true, true, true);
                         ornaments.push(Ornament::Task(at + 3, done));
                     }
+
                     let base = if done { Look { strike: true, fade: Some(0.5), ..Look::default() } } else { Look::default() };
+
                     inline_looks(&chars, &mut looks, at + 6, end, base, caret);
                 }
                 None => {
@@ -301,6 +329,7 @@ pub(crate) fn live_text(text: &str, size: f32, ink: Color32, wrap: f32, caret: O
                         looks[at].clear = true;
                         ornaments.push(Ornament::Bullet(at));
                     }
+
                     inline_looks(&chars, &mut looks, at + 2, end, Look::default(), caret);
                 }
             }
@@ -314,31 +343,41 @@ pub(crate) fn live_text(text: &str, size: f32, ink: Color32, wrap: f32, caret: O
                 looks[at].clear = true;
                 ornaments.push(Ornament::Quote(at));
             }
+
             looks[at + 1..end].iter_mut().for_each(|look| look.fade = Some(0.7));
             inline_looks(&chars, &mut looks, at + 1, end, Look { fade: Some(0.7), ..Look::default() }, caret);
         } else {
             inline_looks(&chars, &mut looks, at, end, Look::default(), caret);
         }
+
         // the line's end keeps its line's height
         let line_level = looks[start..end].first().map_or(0, |look| look.level);
+
         if let Some(look) = looks.get_mut(end) {
             *look = Look { level: line_level, ..Look::default() };
         }
+
         start = end + 1;
     }
+
     let build = |bold_only: bool| {
         let mut job = LayoutJob::default();
+
         job.wrap.max_width = wrap;
         let mut from = 0;
+
         while from < chars.len() {
             let look = looks[from];
             let to = (from..chars.len()).find(|&i| looks[i] != look).unwrap_or(chars.len());
             let bytes = chars[from].0..chars.get(to).map_or(text.len(), |(byte, _)| *byte);
+
             job.append(&text[bytes], 0.0, format_of(look, size, ink, bold_only));
             from = to;
         }
+
         job
     };
+
     LiveText { job: build(false), bold: build(true), ornaments }
 }
 
@@ -358,6 +397,7 @@ fn mark(looks: &mut [Look], here: bool) {
 fn inline_looks(chars: &[(usize, char)], looks: &mut [Look], from: usize, to: usize, base: Look, caret: Option<Caret>) {
     let in_range =
         |from: usize, to: usize| caret.is_some_and(|c| if c.head == c.anchor { (from..=to).contains(&c.head) } else { c.anchor > from && c.anchor < to });
+
     let reveal = |looks: &mut [Look], marks: &[std::ops::Range<usize>], shown: bool| {
         for range in marks {
             for look in &mut looks[range.clone()] {
@@ -365,15 +405,19 @@ fn inline_looks(chars: &[(usize, char)], looks: &mut [Look], from: usize, to: us
             }
         }
     };
+
     let find = |from: usize, wanted: &str| {
         let pattern: Vec<char> = wanted.chars().collect();
+
         (from..to).find(|&i| i + pattern.len() <= to && chars[i..i + pattern.len()].iter().map(|(_, c)| *c).eq(pattern.iter().copied()))
     };
+
     let starts = |i: usize, wanted: &str| find(i, wanted) == Some(i);
     let mut style = base;
     // where the open runs started: bold, strike, italic
     let mut open: [Option<usize>; 3] = [None; 3];
     let mut i = from;
+
     while i < to {
         if chars[i].1 == '`'
             && let Some(close) = find(i + 1, "`")
@@ -394,25 +438,30 @@ fn inline_looks(chars: &[(usize, char)], looks: &mut [Look], from: usize, to: us
             i = close + 1;
         } else if let Some((kind, width)) = [("**", 0), ("~~", 1), ("*", 2)].iter().find(|(m, _)| starts(i, m)).map(|(m, kind)| (*kind, m.len())) {
             looks[i..i + width].iter_mut().for_each(|look| *look = style);
+
             match open[kind].take() {
                 Some(opened) => reveal(looks, &[opened..opened + width, i..i + width], in_range(opened, i + width)),
                 None => open[kind] = Some(i),
             }
+
             match kind {
                 0 => style.bold = !style.bold,
                 1 => style.strike = !style.strike,
                 _ => style.italic = !style.italic,
             }
+
             i += width;
         } else {
             looks[i] = style;
             i += 1;
         }
     }
+
     // a run never closed goes to the line's end
     for (kind, opened) in open.iter().enumerate() {
         if let Some(opened) = *opened {
             let width = if kind == 2 { 1 } else { 2 };
+
             reveal(looks, std::slice::from_ref(&(opened..opened + width)), in_range(opened, to));
         }
     }
@@ -421,14 +470,17 @@ fn inline_looks(chars: &[(usize, char)], looks: &mut [Look], from: usize, to: us
 /// A character's format: its heading's size and line, faint, faded or out of sight.
 fn format_of(look: Look, size: f32, ink: Color32, bold_only: bool) -> TextFormat {
     let line_size = size_of(look.level, size);
+
     let mut color = match look.fade {
         Some(share) => ink.gamma_multiply(share),
         None if look.dim => ink.gamma_multiply(0.4),
         None => ink,
     };
+
     if look.clear || look.hidden || (bold_only && !look.bold) {
         color = Color32::TRANSPARENT;
     }
+
     let font = if look.hidden {
         0.1
     } else if look.code {
@@ -436,7 +488,9 @@ fn format_of(look: Look, size: f32, ink: Color32, bold_only: bool) -> TextFormat
     } else {
         line_size
     };
+
     let painted = !bold_only && !look.hidden && !look.clear;
+
     TextFormat {
         font_id: FontId::monospace(font),
         color,

@@ -104,6 +104,7 @@ mod tests {
     fn every_icon_is_an_svg_resvg_reads() {
         for (name, svg) in [HOUSE, BUBBLE, PLUS, XMARK, GEAR_FILL, TIMER, GEAR_LINE, SPEAKER, SPEAKER_SLASH, MIC, LIST] {
             let tree = resvg::usvg::Tree::from_str(svg, &resvg::usvg::Options::default()).unwrap_or_else(|error| panic!("{name}: {error}"));
+
             assert!(tree.root().has_children(), "{name} draws something");
         }
     }

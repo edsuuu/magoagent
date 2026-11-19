@@ -19,31 +19,41 @@ impl DrawingApp {
         if cfg!(test) {
             return;
         }
+
         let Some(cli) = agent_cli("claude") else { return };
         let Some(asked) = self.chats.iter().find(|chat| chat.id == id).map(|chat| chat.name.clone()) else { return };
         let (titles, ctx, id) = (self.chat_titles.clone(), ctx.cloned(), id.to_string());
         let message: String = message.chars().take(2000).collect();
+
         std::thread::spawn(move || {
             let mut command = cli.command();
+
             // no tools, no MCP, no settings (their hooks), no session left in the person's list
             command.args(["-p", "--model", "haiku", "--no-session-persistence", "--tools", "", "--strict-mcp-config", "--setting-sources", ""]);
             command.args(["--system-prompt", TITLE_PROMPT]);
             command.current_dir(std::env::temp_dir());
             let mut command = cli.finish(command);
+
             command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
             let Ok(mut child) = command.spawn() else { return };
+
             if let Some(mut stdin) = child.stdin.take() {
                 let _ = stdin.write_all(message.as_bytes());
             }
+
             let Ok(output) = child.wait_with_output() else { return };
+
             if !output.status.success() {
                 return;
             }
+
             let text = String::from_utf8_lossy(&output.stdout);
             let Some(title) = crate::transcript::prompt_title(text.trim().trim_matches(['"', '\u{201c}', '\u{201d}', '.'])) else { return };
+
             if let Ok(mut arrived) = titles.lock() {
                 arrived.push((id, asked, title));
             }
+
             if let Some(ctx) = ctx {
                 ctx.request_repaint();
             }
@@ -54,14 +64,17 @@ impl DrawingApp {
     /// renamed in between keeps the person's).
     pub(crate) fn take_chat_titles(&mut self) {
         let arrived = self.chat_titles.lock().map(|mut arrived| std::mem::take(&mut *arrived)).unwrap_or_default();
+
         if arrived.is_empty() {
             return;
         }
+
         for (id, asked, title) in arrived {
             if let Some(chat) = self.chats.iter_mut().find(|chat| chat.id == id && chat.name == asked) {
                 (chat.name, chat.named) = (title, true);
             }
         }
+
         self.save_chats();
     }
 }

@@ -32,6 +32,7 @@ impl DrawingApp {
             at: 0,
             asleep: false,
         };
+
         self.integration_items().into_iter().map(line).collect()
     }
 
@@ -44,44 +45,62 @@ impl DrawingApp {
         let text_x = card.left() + 106.0;
         let mut width = card.right() - text_x - 14.0;
         let top = card.top() + 19.0;
+
         if let Some(cover) = item.cover {
             let area = Rect::from_min_size(Pos2::new(card.right() - 14.0 - COVER, card.top() + 12.0), Vec2::splat(COVER));
+
             ui.painter().add(egui::epaint::RectShape::filled(area, 6, Color32::WHITE).with_texture(cover, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0))));
             width -= COVER + 8.0;
         }
+
         ui.painter().circle_filled(Pos2::new(text_x + 4.0, top), 4.0, item.color);
         let title = clipped(ui.painter(), item.name.to_string(), font(13.0), INK, width * 0.5);
         let title_width = title.size().x;
+
         for shift in [0.0, 0.5] {
             ui.painter().galley(Pos2::new(text_x + 14.0 + shift, top - title.size().y / 2.0), title.clone(), INK);
         }
+
         let kind = clipped(ui.painter(), item.kind.clone(), font(11.5), DIM, (width - 20.0 - title_width).max(0.0));
+
         ui.painter().galley(Pos2::new(text_x + 20.0 + title_width, top - kind.size().y / 2.0 + 0.5), kind, DIM);
         let bottom = card.bottom() - if item.chips.is_empty() { 8.0 } else { 42.0 };
         let capacity = ((bottom - (card.top() + 31.0)) / ROW).floor().max(1.0) as usize;
+
         for (index, row) in item.rows.iter().take(capacity).enumerate() {
             let area = Rect::from_min_size(Pos2::new(text_x, card.top() + 31.0 + index as f32 * ROW), Vec2::new(width, ROW));
+
             let hovered = row.action.as_ref().is_some_and(|action| {
                 let response =
                     ui.interact(area, ui.scope_id().with(("island_integration_row", index)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
                 let response = if action.starts_with("open ") { response.on_hover_text("Abrir no navegador") } else { response };
+
                 if response.clicked() {
                     pressed.push(action.clone());
                 }
+
                 response.hovered()
             });
+
             let color = if hovered { INK } else { row.color };
             let words = clipped(ui.painter(), row.text.clone(), font(11.5), color, width);
+
             ui.painter().galley(Pos2::new(text_x, area.center().y - words.size().y / 2.0), words, color);
         }
+
         let mut chip_x = text_x;
+
         for (index, (label, action)) in item.chips.iter().enumerate() {
             let response = forms::chip(ui, Pos2::new(chip_x, card.bottom() - 36.0), label, index == 0);
+
             chip_x = response.rect.right() + 6.0;
+
             if response.clicked() {
                 pressed.push(action.clone());
             }
         }
+
         self.integrations.pressed.borrow_mut().extend(pressed);
         true
     }
@@ -106,16 +125,20 @@ mod tests {
             head: Some("s1".into()),
             ..Default::default()
         };
+
         let pulse = |ci| Pulse { login: "ana".into(), mine: vec![request(ci)], ..Default::default() };
         let mut app = DrawingApp::default();
+
         app.prefs.integrations.github = true;
         app.integrations.github = GitHub::with_token("ghp_0123456789abcdefghijABCDEFGHIJ012345");
         app.integrations.github.take_pulse(pulse(CiState::Pending), 1_000);
         let calm = app.integration_lines();
+
         assert_eq!(calm.len(), 1);
         assert!(calm[0].mago == MagoState::Idle && calm[0].badge.is_none() && calm[0].detail == "… a/b#1 T");
         app.integrations.github.take_pulse(pulse(CiState::Failure), 2_000);
         let line = app.integration_lines().remove(0);
+
         assert_eq!((line.id.as_str(), line.name.as_str(), line.kind.as_str()), ("integration:github", "GitHub", "@ana"));
         assert!(line.mago == MagoState::Error && line.badge == Some(Badge::Error), "the island sounds its error for it");
         assert_eq!(line.detail, "Os checks de a/b#1 falharam");

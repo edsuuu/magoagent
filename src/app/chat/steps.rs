@@ -26,8 +26,10 @@ pub(crate) enum Live {
 /// Three dots lighting up in turn (1.2 s, 0.2 s apart): something runs. 23 pt wide.
 pub(crate) fn busy_dots(p: &Painter, left: Pos2, color: Color32, t: f64) {
     let smooth = |x: f32| x * x * (3.0 - 2.0 * x);
+
     for k in 0..3 {
         let x = ((t - 0.2 * k as f64).rem_euclid(1.2) / 1.2) as f32;
+
         let on = if x < 0.4 {
             smooth(x / 0.4)
         } else if x < 0.8 {
@@ -35,6 +37,7 @@ pub(crate) fn busy_dots(p: &Painter, left: Pos2, color: Color32, t: f64) {
         } else {
             0.0
         };
+
         p.circle_filled(left + Vec2::new(2.5 + 9.0 * k as f32, 0.0), 2.5, color.gamma_multiply(0.25 + 0.75 * on));
     }
 }
@@ -43,6 +46,7 @@ pub(crate) fn busy_dots(p: &Painter, left: Pos2, color: Color32, t: f64) {
 /// dates ("a/1/2", "2026/10/28") are no count.
 pub(crate) fn counter(line: &str) -> Option<(u32, u32)> {
     let mut found = None;
+
     for (i, _) in line.match_indices('/') {
         let (left, right) = (line[..i].trim_end(), line[i + 1..].trim_start());
         let done = &left[left.trim_end_matches(|c: char| c.is_ascii_digit()).len()..];
@@ -50,9 +54,11 @@ pub(crate) fn counter(line: &str) -> Option<(u32, u32)> {
         let before = left[..left.len() - done.len()].chars().next_back();
         let after = right[total.len()..].chars().next();
         let joined = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '/' || c == '.');
+
         if done.is_empty() || total.is_empty() || joined(before) || joined(after) {
             continue;
         }
+
         if let (Ok(done), Ok(total)) = (done.parse(), total.parse())
             && done <= total
             && total > 0
@@ -60,39 +66,48 @@ pub(crate) fn counter(line: &str) -> Option<(u32, u32)> {
             found = Some((done, total));
         }
     }
+
     found
 }
 
 /// A folded run of steps: "4 ferramentas · Edit, Write, Bash ×2 · 46 s".
 pub(crate) fn run_summary(steps: &[&Step]) -> String {
     let mut names: Vec<(&str, usize)> = Vec::new();
+
     for step in steps {
         let name = short_tool(&step.name);
+
         match names.iter_mut().find(|(n, _)| *n == name) {
             Some(seen) => seen.1 += 1,
             None => names.push((name, 1)),
         }
     }
+
     let list: Vec<String> = names.iter().map(|(n, k)| if *k > 1 { format!("{n} ×{k}") } else { n.to_string() }).collect();
     let start = steps.iter().filter_map(|s| s.started).reduce(f64::min);
     let end = steps.iter().filter_map(|s| s.ended).reduce(f64::max);
+
     let time = match (start, end) {
         (Some(start), Some(end)) if end >= start => format!(" · {}", elapsed(end - start)),
         _ => String::new(),
     };
+
     format!("{} ferramentas · {}{time}", steps.len(), list.join(", "))
 }
 
 /// The tool running now (the latest called and not answered) and how many more run beside it.
 pub(crate) fn running_step(transcript: &Transcript) -> Option<(Step, usize)> {
     let (id, what) = transcript.running.last()?;
+
     let step = transcript.items.iter().rev().find_map(|i| match i {
         ChatItem::Tool(s) if &s.id == id => Some(s.clone()),
         _ => None,
     });
+
     // called before the part of the file read: its name and input are all there is
     let (name, what) = what.split_once(' ').unwrap_or((what, ""));
     let step = step.unwrap_or_else(|| Step { id: id.clone(), name: name.into(), what: what.into(), ..Default::default() });
+
     Some((step, transcript.running.len() - 1))
 }
 
@@ -105,12 +120,14 @@ fn tool_icon(p: &Painter, name: &str, at: Pos2, color: Color32) {
         "Grep" | "Glob" | "WebSearch" => Icon::Search,
         _ => Icon::More,
     };
+
     paint_icon_scaled(p, icon, at, color, 0.75, 0.0);
 }
 
 /// "0:08".
 fn clock(seconds: f64) -> String {
     let s = seconds.max(0.0) as u64;
+
     format!("{}:{:02}", s / 60, s % 60)
 }
 
@@ -132,23 +149,28 @@ impl DrawingApp {
     ) {
         let key = steps[0].id.clone();
         let c = self.colors();
+
         // its steps, each opening its card on a click, kept open as the runs are (`chat_unfolded`)
         let steps_ui = |ui: &mut egui::Ui, fold: &mut Option<String>| {
             ui.scope(|ui| {
                 ui.spacing_mut().item_spacing.y = 6.0;
+
                 for step in steps {
                     let live = match running.iter().any(|(id, _)| *id == step.id) {
                         true if waiting => Live::Waiting,
                         true => Live::Running,
                         false => Live::Done,
                     };
+
                     let card = format!("card:{}", step.id);
+
                     if step_with_card(ui, step, live, look, narrow, self.chat_unfolded.contains(&card), t, &c) {
                         *fold = Some(card);
                     }
                 }
             });
         };
+
         if steps.len() >= 2 && !trailing {
             let id = ui.scope_id().with(("tool_run", &key));
             let openness = openness(ui.ctx(), id, self.chat_unfolded.contains(&key));
@@ -158,19 +180,24 @@ impl DrawingApp {
             let (rect, response) = ui.allocate_exact_size(Vec2::new(text.size().x + 30.0, if narrow { 22.0 } else { 24.0 }), Sense::click());
             let response = response.on_hover_cursor(CursorIcon::PointingHand);
             let p = ui.painter();
+
             if response.hovered() {
                 p.rect_filled(rect, 6, look.surface.gamma_multiply(0.6));
             }
+
             chevron(p, Pos2::new(rect.left() + 10.0, rect.center().y), 12.0, 2.4, look.muted, openness);
             p.galley(Pos2::new(rect.left() + 22.0, rect.center().y - text.size().y / 2.0), text, look.muted);
+
             if response.clicked() {
                 *fold = Some(key);
             }
+
             // its steps ease open under it (`accordion::unfold`)
             unfold(ui, id, openness, |ui| steps_ui(ui, fold));
         } else {
             steps_ui(ui, fold);
         }
+
         self.step_files(ui, steps, &c);
         ui.add_space(8.0);
     }
@@ -182,6 +209,7 @@ impl DrawingApp {
         let running = transcript.and_then(running_step);
         let margin = if narrow { egui::Margin { left: 12, right: 5, top: 5, bottom: 5 } } else { egui::Margin { left: 14, right: 6, top: 6, bottom: 6 } };
         let frame = egui::Frame::new().fill(look.band).stroke(Stroke::new(1.0, look.line)).corner_radius(12).inner_margin(margin);
+
         frame
             .show(ui, |ui| {
                 // Claude's band is taller: its mascot works in it, in the pose of what it does
@@ -194,61 +222,78 @@ impl DrawingApp {
                 let kbd = ui.painter().layout_no_wrap("Esc".into(), FontId::monospace(11.0), look.soft);
                 let width = if narrow { 28.0 } else { 10.0 + 12.0 + 7.0 + label.size().x + 7.0 + kbd.size().x + 10.0 + 6.0 };
                 let button = Rect::from_min_max(Pos2::new(rect.right() - width, cy - 14.0), Pos2::new(rect.right(), cy + 14.0));
+
                 let response = ui
                     .interact(button, ui.scope_id().with("chat_interrupt"), Sense::click())
                     .on_hover_cursor(CursorIcon::PointingHand)
                     .tip("Interromper (Esc)");
+
                 let p = ui.painter();
+
                 p.rect_filled(button, 8, if response.hovered() { look.selected } else { look.raised });
                 let stop = |at: Pos2| p.rect_filled(Rect::from_center_size(at, Vec2::splat(if narrow { 6.5 } else { 7.0 })), 1.5, look.text);
+
                 if narrow {
                     stop(button.center());
                 } else {
                     stop(Pos2::new(button.left() + 16.0, cy));
                     let x = button.left() + 29.0;
+
                     p.galley(Pos2::new(x, cy - label.size().y / 2.0), label.clone(), look.text);
                     let key = Rect::from_min_size(Pos2::new(x + label.size().x + 7.0, cy - 8.0), Vec2::new(kbd.size().x + 10.0, 16.0));
+
                     p.rect_stroke(key, 4, Stroke::new(1.0, look.line), StrokeKind::Inside);
                     p.galley(key.center() - kbd.size() / 2.0, kbd, look.soft);
                 }
+
                 let mut right = button.left() - gap;
                 let started = running.as_ref().and_then(|(s, _)| s.started);
                 let seconds = started.map_or(self.now - since, |s| now_ms() as f64 / 1000.0 - s);
+
                 if !narrow {
                     let g = p.layout_no_wrap(clock(seconds), small.clone(), look.muted);
+
                     right -= g.size().x;
                     p.galley(Pos2::new(right, cy - g.size().y / 2.0), g, look.muted);
                     right -= gap;
                 }
+
                 if let Some((done, total)) = running.as_ref().and_then(|(s, _)| s.output.as_deref()).and_then(counter) {
                     let g = p.layout_no_wrap(format!("{done}/{total}"), FontId::proportional(if narrow { 12.0 } else { 12.5 }), look.soft);
+
                     right -= g.size().x;
                     p.galley(Pos2::new(right, cy - g.size().y / 2.0), g, look.soft);
                     let bar = Rect::from_min_max(Pos2::new(right - gap - if narrow { 44.0 } else { 120.0 }, cy - 2.0), Pos2::new(right - gap, cy + 2.0));
+
                     p.rect_filled(bar, 2, look.line);
                     p.rect_filled(Rect::from_min_size(bar.min, Vec2::new(bar.width() * done as f32 / total as f32, 4.0)), 2, ACCENT);
                     right = bar.left() - gap;
                 }
+
                 // from the left: Claude Code's mascot at work (the dots for other agents), the tool's chip, its command
                 let mut x = if claude {
                     // the agent's own state in its turn (talking while it writes, the error of a step), on a motion of its own
                     let state = MagoState::in_turn(row.state, transcript.map_or(&[], |transcript| &transcript.items), self.now);
+
                     paint_agent_mago(p, &format!("{}-steps", row.id), self.agent_color(&row.id), Pos2::new(rect.left() + 26.0, cy), 52.0, state, t);
                     rect.left() + 54.0 + gap
                 } else {
                     busy_dots(p, Pos2::new(rect.left(), cy), GREEN, t);
                     rect.left() + 23.0 + gap
                 };
+
                 match &running {
                     Some((step, more)) => {
                         let name = p.layout_no_wrap(short_tool(&step.name).to_string(), small.clone(), look.text);
                         let chip = Rect::from_min_size(Pos2::new(x, cy - 11.0), Vec2::new(8.0 + 12.0 + 6.0 + name.size().x + 8.0, 22.0));
+
                         p.rect_filled(chip, 6, look.raised);
                         tool_icon(p, &step.name, Pos2::new(chip.left() + 14.0, cy), look.text);
                         p.galley(Pos2::new(chip.left() + 26.0, cy - name.size().y / 2.0), name, look.text);
                         x = chip.right() + gap;
                         let what = if *more > 0 { format!("{} +{more}", step.what) } else { step.what.clone() };
                         let g = clipped(p, what, small, look.soft, (right - x).max(0.0));
+
                         p.galley(Pos2::new(x, cy - g.size().y / 2.0), g, look.soft);
                     }
                     None => {
@@ -257,9 +302,11 @@ impl DrawingApp {
                         let bright = if claude { crate::app::chat::thinking::CLAUDE } else { look.text };
                         // up to the count or the stop button, cut with "…"
                         let font = FontId::proportional(14.0);
+
                         crate::app::chat::thinking::shimmer(p, Pos2::new(x, cy), &words, font, look.soft, bright, t, (right - x).max(0.0));
                     }
                 }
+
                 response.clicked()
             })
             .inner
@@ -273,6 +320,7 @@ impl DrawingApp {
         let AmberCard { edge, title, note, well, well_edge, .. } = card;
         let screen = self.terminals.get(&row.id).and_then(|s| s.as_ref().ok()).map(|s| s.handle.screen_text()).unwrap_or_default();
         let menu = menu_choices(&screen);
+
         let why = match (self.agent_sessions.get(&row.id).and_then(|s| s.waiting_for.as_deref()), &menu) {
             (Some(w), _) if w.contains("permission") => "Pediu permissão".to_string(),
             (_, Some(_)) => "Escolha uma opção".into(),
@@ -280,60 +328,78 @@ impl DrawingApp {
             (Some(w), None) => format!("Espera: {w}"),
             (None, None) => "Uma pergunta ou um menu na tela do terminal".into(),
         };
+
         let why = match self.waiting_secs(&row.id) {
             Some(s) => format!("{why} · há {}", elapsed(s)),
             None => why,
         };
+
         let size = if narrow { 13.5 } else { 14.0 };
         let mut click = None;
+
         card.frame().show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 6.0;
             // the head: the dot, who and why, and the terminal a click away
             let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 36.0), Sense::hover());
             let label = ui.painter().layout_no_wrap("Abrir terminal".into(), FontId::proportional(14.0), title);
+
             let button =
                 Rect::from_min_max(Pos2::new(rect.right() - (12.0 + 16.0 + 6.0 + label.size().x + 12.0), rect.top() + 2.0), rect.max - Vec2::new(0.0, 2.0));
+
             let response = ui.interact(button, ui.scope_id().with("chat_open_terminal"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
             let p = ui.painter();
+
             pulse_dot(p, Pos2::new(rect.left() + 5.0, rect.center().y), 4.5, AMBER, 2.0, t);
             let room = button.left() - rect.left() - 20.0 - 12.0;
             let head = clipped(p, format!("{} precisa de você", row.spec.label()), FontId::proportional(size), title, room).text().to_string();
+
             bold(p, Pos2::new(rect.left() + 20.0, rect.top()), &head, size, title);
             p.galley(Pos2::new(rect.left() + 20.0, rect.top() + 19.0), clipped(p, why, FontId::proportional(13.0), note, room), note);
             p.rect(button, 8, if response.hovered() { AMBER.gamma_multiply(0.18) } else { Color32::TRANSPARENT }, Stroke::new(1.0, edge), StrokeKind::Inside);
             glyph(p, Pos2::new(button.left() + 20.0, button.center().y), 16.0, 2.2, title, PROMPT);
             p.galley(Pos2::new(button.left() + 34.0, button.center().y - label.size().y / 2.0), label, title);
+
             if response.clicked() {
                 click = Some(CardClick::Terminal);
             }
+
             let Some(menu) = menu else {
                 // no menu to read: its last lines
                 let lines: Vec<&str> = screen.lines().collect();
                 let end = lines.iter().rposition(|l| !l.trim().is_empty()).map_or(0, |i| i + 1);
+
                 card.well_frame().inner_margin(egui::Margin::symmetric(12, 8)).show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     let tail = lines[end.saturating_sub(8)..end].join("\n");
+
                     ui.add(egui::Label::new(egui::RichText::new(tail).monospace().size(13.0).color(look.text)).extend());
                 });
+
                 return;
             };
+
             if !menu.question.is_empty() {
                 ui.add(egui::Label::new(egui::RichText::new(menu.question.join("\n")).size(14.0).color(look.text)).wrap());
             }
+
             for (k, choice) in menu.choices.iter().enumerate() {
                 let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 36.0), Sense::click());
                 let response = response.on_hover_cursor(CursorIcon::PointingHand);
                 let ground = if response.hovered() { AMBER.gamma_multiply(0.22) } else { well };
                 let p = ui.painter();
+
                 p.rect(rect, 8, ground, Stroke::new(1.0, if k == menu.marked { AMBER } else { well_edge }), StrokeKind::Inside);
                 let text = clipped(p, choice.clone(), FontId::proportional(14.0), look.text, rect.width() - 24.0);
+
                 p.galley(Pos2::new(rect.left() + 12.0, rect.center().y - text.size().y / 2.0), text, look.text);
+
                 if response.clicked() {
                     click = Some(CardClick::Pick(menu.marked, k));
                 }
             }
         });
+
         click
     }
 }
@@ -350,6 +416,7 @@ pub(crate) fn step_with_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &
     let id = ui.scope_id().with(("step_card_open", &step.id));
     let openness = openness(ui.ctx(), id, open);
     let clicked = step_row(ui, step, live, look, narrow, openness, t);
+
     clicked | unfold(ui, id, openness, |ui| step_card(ui, step, live, look, c)).unwrap_or(false)
 }
 
@@ -362,11 +429,14 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 18.0), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let p = ui.painter();
+
     if response.hovered() {
         p.rect_filled(rect.expand2(Vec2::new(0.0, 2.0)), 4, look.surface.gamma_multiply(0.6));
     }
+
     let (x0, cy) = (rect.left() + if narrow { 4.0 } else { 6.0 }, rect.center().y);
     let mark = Pos2::new(x0 + 6.5, cy);
+
     match live {
         Live::Running => pulse_dot(p, mark, 3.5, GREEN, 1.6, t),
         Live::Waiting => pulse_dot(p, mark, 3.5, AMBER, 2.0, t),
@@ -374,16 +444,19 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
         // no answer seen (cut off, or before what was read): a quieter check
         Live::Done => glyph(p, mark, 13.0, 2.6, if step.ended.is_some() { GREEN } else { look.muted }, CHECK),
     }
+
     let live_now = live != Live::Done;
     let name_x = x0 + 13.0 + if narrow { 7.0 } else { 8.0 };
     let column = p.layout_no_wrap("000000".into(), font.clone(), look.text).size().x;
     let name = p.layout_no_wrap(short_tool(&step.name).to_string(), font.clone(), look.text);
     // a name longer than the column pushes what it was given along, never under it
     let column = column.max(name.size().x);
+
     p.galley(Pos2::new(name_x, cy - name.size().y / 2.0), name, look.text);
     // what its answer says, at the line's end: measured first, the input is cut before it; why it failed in red, in at
     // most half the row (its card has it whole)
     let mut tail: Vec<(String, Color32)> = Vec::new();
+
     match live {
         Live::Running => tail.push(("· rodando".into(), GREEN)),
         Live::Waiting => tail.push(("· aguardando você".into(), AMBER)),
@@ -391,6 +464,7 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
             if let Some(note) = &step.note {
                 tail.push((format!("· {note}"), if step.failed { RED } else { look.muted }));
             }
+
             if let Some((added, removed)) = step.diff.filter(|_| step.note.is_none()) {
                 tail.push(("·".into(), look.muted));
                 tail.push((format!("+{added}"), GREEN));
@@ -398,6 +472,7 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
             }
         }
     }
+
     // the chevron at the right edge, what comes before it cut short of it
     chevron(p, Pos2::new(rect.right() - 6.0, cy), 11.0, 2.4, look.muted, openness);
     let end = rect.right() - 14.0;
@@ -408,17 +483,23 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
     let what_color = if live_now { look.text.gamma_multiply(0.9) } else { look.soft };
     let what = clipped(p, step.what.clone(), font.clone(), what_color, (end - what_x - tail_width).max(0.0));
     let mut x = what_x + what.size().x + 8.0;
+
     p.galley(Pos2::new(what_x, cy - what.size().y / 2.0), what, what_color);
+
     for g in tail {
         let w = g.size().x;
+
         p.galley(Pos2::new(x, cy - g.size().y / 2.0), g, look.muted);
         x += w + 8.0;
     }
+
     if let Some(out) = step.output.as_ref().filter(|_| live_now) {
         let (line, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 17.0), Sense::hover());
         let g = clipped(ui.painter(), out.clone(), FontId::monospace(size - 0.5), look.muted, line.right() - name_x);
+
         ui.painter().galley(Pos2::new(name_x, line.center().y - g.size().y / 2.0), g, look.muted);
     }
+
     response.clicked()
 }
 
@@ -427,14 +508,19 @@ fn step_row(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, narrow: boo
 fn file_link_label(ui: &mut egui::Ui, file: &str, c: &UiColors) {
     let path = PathBuf::from(file);
     let text = egui::RichText::new(file).monospace().size(12.0).color(c.code);
+
     if !path.is_file() {
         ui.label(text);
+
         return;
     }
+
     let response = ui.add(egui::Label::new(text).sense(Sense::click())).on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Abrir na Árvore de Arquivos");
+
     if response.hovered() {
         ui.painter().hline(response.rect.x_range(), response.rect.bottom() - 1.0, Stroke::new(1.0, c.code));
     }
+
     if response.clicked() {
         crate::app::filetree::link::ask_open(ui.ctx(), crate::app::filetree::link::FileLink { path, line: None }, None);
     }
@@ -448,6 +534,7 @@ const CARD_LINES: usize = 40;
 fn card_output(log: &str) -> Option<String> {
     let lines: Vec<&str> = log.lines().collect();
     let above = lines.len().checked_sub(CARD_LINES).filter(|n| *n > 0)?;
+
     Some(format!("… ({above} linhas acima; Copiar leva todas)\n{}", lines[above..].join("\n")))
 }
 
@@ -459,6 +546,7 @@ fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColo
     let key = ui.scope_id().with(("step_card", &step.id));
     let last = ui.ctx().data_mut(|d| d.get_temp::<Rect>(key));
     let clicked = last.is_some_and(|rect| ui.interact(rect, key, Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked());
+
     let state = match live {
         Live::Running => "rodando".to_string(),
         Live::Waiting => "aguardando você".into(),
@@ -466,42 +554,54 @@ fn step_card(ui: &mut egui::Ui, step: &Step, live: Live, look: &Look, c: &UiColo
         Live::Done if step.ended.is_none() => "sem resposta".into(),
         Live::Done => "terminou".into(),
     };
+
     let took = match (step.started, step.ended) {
         (Some(start), Some(end)) if end >= start => format!(" em {}", elapsed(end - start)),
         _ => String::new(),
     };
+
     let mut lines = vec![format!("{} · {state}{took}", step.name)];
+
     lines.extend(step.cwd.as_ref().map(|cwd| format!("Pasta: {cwd}")));
+
     let frame = egui::Frame::new().inner_margin(egui::Margin { left: 27, right: 0, top: 0, bottom: 4 }).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.label(egui::RichText::new(lines.join("\n")).monospace().size(12.0).color(look.muted));
+
         // its files, each a link to it in a tree on the canvas (filetree/link.rs)
         if !step.files.is_empty() {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 ui.label(egui::RichText::new("Arquivos: ").monospace().size(12.0).color(look.muted));
+
                 for (index, file) in step.files.iter().enumerate() {
                     if index > 0 {
                         ui.label(egui::RichText::new(", ").monospace().size(12.0).color(look.muted));
                     }
+
                     file_link_label(ui, file, c);
                 }
             });
         }
+
         let input = if step.input.is_empty() { &step.what } else { &step.input };
+
         if !input.is_empty() {
             code_card(ui, if step.name == "Bash" { "comando" } else { "entrada" }, input, c, look.dark);
         }
+
         if !step.log.is_empty() {
             match card_output(&step.log) {
                 Some(end) => crate::app::chat::list::code_box(ui, "saída", &end, &step.log, c, look.dark),
                 None => code_card(ui, "saída", &step.log, c, look.dark),
             }
         }
+
         if let Some(error) = &step.error {
             ui.label(egui::RichText::new(error).monospace().size(13.0).color(RED));
         }
     });
+
     ui.ctx().data_mut(|d| d.insert_temp(key, frame.response.rect));
     clicked
 }
@@ -530,6 +630,7 @@ mod tests {
         assert_eq!(super::card_output("uma\nduas"), None, "what fits shows whole");
         let long: Vec<String> = (1..=100).map(|n| format!("linha {n}")).collect();
         let end = super::card_output(&long.join("\n")).unwrap();
+
         assert!(end.starts_with("… (60 linhas acima; Copiar leva todas)\nlinha 61\n") && end.ends_with("linha 100"), "{end}");
         assert_eq!(end.lines().count(), super::CARD_LINES + 1);
     }
@@ -538,14 +639,17 @@ mod tests {
     fn the_band_names_the_latest_tool_running_and_how_many_more() {
         use crate::transcript::{ChatItem, Transcript};
         let mut t = Transcript::new(std::path::PathBuf::new());
+
         assert!(super::running_step(&t).is_none(), "answered: it thinks");
         let read = Step { id: "b".into(), name: "Read".into(), what: "b.rs".into(), started: Some(5.0), ..Default::default() };
+
         t.items.push(ChatItem::Tool(read.clone()));
         t.running = vec![("a".into(), "Read a.rs".into()), ("b".into(), "Read b.rs".into())];
         assert_eq!(super::running_step(&t), Some((read, 1)));
         // called before what was read of the file: from its one line
         t.running = vec![("c".into(), "Bash cargo test --all".into())];
         let (step, more) = super::running_step(&t).unwrap();
+
         assert_eq!((step.name.as_str(), step.what.as_str(), more), ("Bash", "cargo test --all", 0));
     }
 
@@ -554,8 +658,10 @@ mod tests {
         let step = |name: &str, started: f64, ended: Option<f64>| Step { name: name.into(), started: Some(started), ended, ..Default::default() };
         let run = [step("Edit", 100.0, Some(101.0)), step("Write", 102.0, Some(103.0)), step("Bash", 104.0, Some(120.0)), step("Bash", 121.0, Some(146.0))];
         let refs: Vec<&Step> = run.iter().collect();
+
         assert_eq!(super::run_summary(&refs), "4 ferramentas · Edit, Write, Bash ×2 · 46 s");
         let unanswered = [step("Read", 1.0, None), step("Read", 2.0, None)];
+
         assert_eq!(super::run_summary(&unanswered.iter().collect::<Vec<_>>()), "2 ferramentas · Read ×2");
     }
 
@@ -569,12 +675,14 @@ mod tests {
         let refs: Vec<&Step> = run.iter().collect();
         let ctx = egui::Context::default();
         let mut width = 0.0;
+
         let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
             ui.allocate_ui(Vec2::new(200.0, 400.0), |ui| {
                 app.tool_run(ui, &refs, false, &[], false, &look, true, 0.0, &mut None);
                 width = ui.min_rect().width();
             });
         });
+
         assert!(width <= 200.0, "a long run is cut to the chat's width, not {width}");
     }
 }

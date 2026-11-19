@@ -82,6 +82,7 @@ impl TermPrefs {
     /// The theme, font size and shell a terminal with this look really has.
     pub(crate) fn resolve<'a>(&'a self, look: &'a TermLook) -> (&'a str, f32, &'a str) {
         let shell = if look.shell.trim().is_empty() { &self.shell } else { &look.shell };
+
         (look.theme.as_deref().unwrap_or(&self.theme), font_size(look.font_size, self.font_size), shell)
     }
 }
@@ -108,10 +109,12 @@ impl Look {
     /// The theme `id` names (`dark`: the app's theme, for "system"); unknown ids are the default.
     pub(crate) fn of(id: &str, dark: bool) -> Self {
         let id = if id == THEME_SYSTEM { if dark { "mago-dark" } else { "mago-light" } } else { id };
+
         match THEMES.iter().find(|t| t.id == id) {
             Some(t) => {
                 let c = |[r, g, b]: [u8; 3]| Color32::from_rgb(r, g, b);
                 let [r, g, b, a] = t.selection;
+
                 Self { bg: c(t.bg), fg: c(t.fg), cursor: c(t.cursor), selection: Color32::from_rgba_unmultiplied(r, g, b, a), ansi: t.ansi.map(c) }
             }
             None => Self::default(),
@@ -121,6 +124,7 @@ impl Look {
     /// The strips over and under the grid: the background with the text color's 6% over it.
     pub(crate) fn strip(&self) -> Color32 {
         let mix = |a: u8, b: u8| (a as f32 * 0.94 + b as f32 * 0.06).round() as u8;
+
         Color32::from_rgb(mix(self.bg.r(), self.fg.r()), mix(self.bg.g(), self.fg.g()), mix(self.bg.b(), self.fg.b()))
     }
 
@@ -161,6 +165,7 @@ pub(crate) fn grid_size_at(size: Vec2, font: f32) -> (usize, usize) {
     let c = cell(font);
     let cols = ((size.x - 2.0 * TERMINAL_PAD) / c.x).floor().max(2.0) as usize;
     let rows = ((size.y - TERMINAL_HEADER - TERMINAL_FOOTER - TERMINAL_PAD) / c.y).floor().max(1.0) as usize;
+
     (cols, rows)
 }
 
@@ -176,6 +181,7 @@ mod tests {
         assert_ne!(Look::of(THEME_SYSTEM, false), Look::of(THEME_SYSTEM, true));
         assert_eq!(Look::of(THEME_SYSTEM, false).bg, Color32::WHITE);
         assert_eq!(theme_choices().len(), THEMES.len() + 2);
+
         for t in THEMES {
             assert!(Look::of(t.id, true).fg != Look::of(t.id, true).bg, "{}", t.id);
         }
@@ -184,11 +190,14 @@ mod tests {
     #[test]
     fn a_terminal_has_its_own_look_or_the_defaults() {
         let prefs = TermPrefs { theme: "nord".into(), font_size: 12.0, shell: "zsh".into(), ..Default::default() };
+
         assert_eq!(prefs.resolve(&TermLook::default()), ("nord", 12.0, "zsh"));
         let own = TermLook { theme: Some(String::new()), font_size: Some(20.0), shell: "fish".into(), blurred: true };
+
         assert_eq!(prefs.resolve(&own), ("", 20.0, "fish"));
         assert!(TermLook::default().is_default() && !own.is_default());
         let json = serde_json::to_string(&TermLook::default()).unwrap();
+
         assert_eq!(json, "{}", "a terminal that kept the defaults saves nothing");
     }
 
@@ -201,6 +210,7 @@ mod tests {
         // a bigger font fits fewer columns in the same box, and the default one fits what it always did
         assert_eq!(grid_size_at(terminal_size(80, 24), TERMINAL_FONT), (80, 24));
         let big = grid_size_at(terminal_size(80, 24), 28.0);
+
         assert!(big.0 < 50 && big.1 < 16, "{big:?}");
     }
 }

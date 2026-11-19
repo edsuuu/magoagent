@@ -53,13 +53,16 @@ pub(crate) struct CmdRun {
 /// Reads `from` to its end, handing each chunk to `live` as it comes.
 fn pump(mut from: impl Read, live: &std::sync::Mutex<Vec<u8>>) -> Vec<u8> {
     let (mut all, mut buf) = (Vec::new(), [0u8; 2048]);
+
     while let Ok(n) = from.read(&mut buf) {
         if n == 0 {
             break;
         }
+
         all.extend_from_slice(&buf[..n]);
         live.lock().unwrap().extend_from_slice(&buf[..n]);
     }
+
     all
 }
 
@@ -81,6 +84,7 @@ impl DrawingApp {}
 pub(crate) fn complete_into(ctx: &Context, draft: &mut String, name: &str, id: egui::Id) {
     *draft = format!("/{name} ");
     let mut state = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
+
     state.cursor.set_char_range(Some(egui::text::CCursorRange::one(egui::text::CCursor::new(draft.chars().count()))));
     state.store(ctx, id);
     ctx.memory_mut(|m| m.request_focus(id));
@@ -90,20 +94,25 @@ pub(crate) fn complete_into(ctx: &Context, draft: &mut String, name: &str, id: e
 /// the agent's own; else what was typed, which the agent reads as its own alias.
 pub(crate) fn resolve_model(arg: &str, all: &[Choice]) -> String {
     let a = arg.trim().to_lowercase();
+
     if ["padrão", "padrao", "default"].contains(&a.as_str()) {
         return String::new();
     }
+
     let exact = all.iter().find(|c| c.id.to_lowercase() == a || c.name.to_lowercase() == a);
     let holds = || all.iter().find(|c| c.id.to_lowercase().contains(&a) || c.name.to_lowercase().contains(&a));
+
     exact.or_else(holds).map_or_else(|| arg.trim().to_string(), |c| c.id.clone())
 }
 
 /// The effort `arg` names, by id or by name; Some("") is the default; None, not one of them.
 pub(crate) fn resolve_effort(arg: &str, list: &[Choice]) -> Option<String> {
     let a = arg.trim().to_lowercase();
+
     if ["padrão", "padrao", "default"].contains(&a.as_str()) {
         return Some(String::new());
     }
+
     list.iter().find(|e| e.id == a || e.name.to_lowercase() == a || e.name.to_lowercase().replace('á', "a") == a).map(|e| e.id.clone())
 }
 
@@ -123,25 +132,31 @@ impl DrawingApp {
             .rev()
             .find(|i| !matches!(i, ChatItem::System(_)))
             .is_some_and(|i| matches!(i, ChatItem::Error(e) if crate::app::chat::error_hint(e).is_some()));
+
         if !expired || !self.is_chat(id) || self.chat_cmds.contains_key(id) {
             return;
         }
+
         let retry = self.slash.retry.contains(id);
         let (fill, ink) = if look.dark { (Color32::WHITE, Color32::BLACK) } else { (Color32::BLACK, Color32::WHITE) };
+
         ui.add_space(6.0);
         let label = egui::RichText::new(if retry { "Mandar de novo" } else { "Entrar" }).size(14.0).strong().color(ink);
         // no keyboard focus: an Enter meant for the box never presses it
         let sense = Sense::CLICK;
         let button = egui::Button::new(label).sense(sense).fill(fill).corner_radius(18).min_size(Vec2::new(120.0, 34.0));
+
         if ui.add(button).on_hover_cursor(CursorIcon::PointingHand).clicked() {
             ui.ctx().data_mut(|d| d.insert_temp(egui::Id::unique(if retry { RETRY_ASK } else { LOGIN_ASK }), true));
         }
+
         ui.add_space(8.0);
     }
 
     /// Mandar de novo: the message that failed goes again, now that the login is back.
     pub(crate) fn chat_retry(&mut self, ctx: &Context, id: &str) {
         self.slash.retry.remove(id);
+
         if let Some(prompt) = self.slash.sent.get(id).cloned() {
             self.chat_send(ctx, id, &prompt);
         }

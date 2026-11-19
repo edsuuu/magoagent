@@ -10,16 +10,20 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "add_elements" => with_scene(true, |scene| {
             let items = list(args, "elements")?;
             let caller = caller_id();
+
             may_build(scene, caller.as_deref(), items)?;
             let added = add_elements(scene, items)?;
+
             make_room(scene, caller.as_deref(), &added);
             // the windows it opened hang from it, by a rope in the same write
             let linked = tie_to_caller(scene, caller.as_deref(), &added)?;
             let mut reply = json!({ "created": added });
+
             if !linked.is_empty() {
                 reply["linked"] = json!(linked);
                 reply["note"] = "ligados a você por corda: list_agents os mostra e read_terminal lê a tela de um terminal".into();
             }
+
             Ok(text(reply.to_string()))
         }),
         "note" => with_scene(true, |scene| Ok(text(note_call(scene, args)?.to_string()))),
@@ -27,17 +31,21 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
             if args["id"].as_str().is_none() {
                 return Err("diga o `id` da nota".into());
             }
+
             Ok(text(note_call(scene, &json!({ "id": args["id"], "buttons": args["buttons"] }))?.to_string()))
         }),
         "update_elements" => with_scene(true, |scene| {
             let items = list(args, "elements")?;
+
             may_build(scene, caller_id().as_deref(), items)?;
             let updated = update_elements(scene, items)?;
+
             Ok(text(json!({ "updated": updated }).to_string()))
         }),
         "delete_elements" => with_scene(true, |scene| {
             let ids: Vec<&str> = list(args, "ids")?.iter().filter_map(Value::as_str).collect();
             let before = scene.elements.len();
+
             scene.elements.retain(|e| !ids.contains(&e.id.as_str()));
             Ok(text(format!("{} elemento(s) apagado(s)", before - scene.elements.len())))
         }),
@@ -49,6 +57,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "save_file" => with_scene(false, |scene| save_file(scene, args["path"].as_str().unwrap_or_default())),
         "open_file" => with_scene(true, |scene| {
             let path = args["path"].as_str().unwrap_or_default();
+
             *scene = fs::read_to_string(path).map_err(|e| e.to_string()).and_then(|d| parse_scene(&d).map_err(|e| e.to_string()))?;
             Ok(text(format!("{} elemento(s) carregado(s) de {path}", scene.elements.len())))
         }),
@@ -80,6 +89,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "ask_agent" => {
             let wait = args["timeout"].as_f64().unwrap_or(50.0);
             let ask = json!({ "cmd": "ask", "name": args["name"], "text": args["prompt"], "raw": args["raw"], "timeout": wait });
+
             agent(ask, wait)
         }
         "read_terminal" => agent(json!({ "cmd": "check", "name": args["name"] }), 15.0),
@@ -116,6 +126,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
             let site = args["site"].as_str().unwrap_or_default();
             let entries = load_vault();
             let found: Vec<VaultEntry> = accounts(&entries, site).into_iter().cloned().collect();
+
             Ok(text(if found.is_empty() { format!("Nenhuma conta de {site} no cofre.") } else { describe_accounts(&found) }))
         }
         "vault_fill" => (|| {
@@ -123,12 +134,14 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
             let entries = load_vault();
             let entry = pick_account(&entries, site, args["user"].as_str())?;
             let (secret, reply) = vault_login(entry)?;
+
             // the secret crosses to the app over the bridge and is typed there; only `reply` comes back
             agent(json!({ "cmd": "vault_fill", "site": entry.site, "selector": args["field"], "text": secret }), 30.0)?;
             Ok(text(reply))
         })(),
         other => Err(format!("ferramenta desconhecida: {other}")),
     };
+
     match outcome {
         Ok(content) => json!({ "content": content }),
         Err(message) => json!({ "content": text(message), "isError": true }),
@@ -140,7 +153,9 @@ pub(crate) fn describe_accounts(entries: &[VaultEntry]) -> String {
     if entries.is_empty() {
         return "O cofre está vazio: a pessoa cadastra contas em ☰ › Cofre….".into();
     }
+
     let items: Vec<Value> = entries.iter().map(|e| json!({ "site": e.site, "user": e.user, "kind": e.kind.name(), "note": e.note })).collect();
+
     Value::Array(items).to_string()
 }
 
@@ -166,6 +181,7 @@ fn caller_id() -> Option<String> {
 /// `caller_id` out of `env`: the terminal's id, else the chat's (a chat's agent has an empty terminal id).
 pub(crate) fn caller_from(env: impl Fn(&str) -> Option<String>) -> Option<String> {
     let set = |key: &str| env(key).filter(|id| !id.trim().is_empty());
+
     set("MAGOAGENT_TERMINAL_ID").or_else(|| set("MAGOAGENT_CHAT_ID"))
 }
 
@@ -198,17 +214,21 @@ impl Drop for SceneLock {
 pub(crate) fn scene_lock_within(scene: &std::path::Path, wait: std::time::Duration) -> Result<SceneLock, String> {
     let lock = scene.with_extension("lock");
     let deadline = std::time::Instant::now() + wait;
+
     while fs::File::create_new(&lock).is_err() {
         if std::time::Instant::now() >= deadline {
             return Err("a cena está ocupada por outro agente; tente de novo".into());
         }
+
         let stale = modified(&lock).and_then(|time| time.elapsed().ok()).is_some_and(|age| age > std::time::Duration::from_secs(10));
+
         if stale {
             let _ = fs::remove_file(&lock);
         } else {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
     }
+
     Ok(SceneLock(lock))
 }
 
@@ -221,6 +241,7 @@ pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value
     // a terminal's MCP has its workspace's drawing in MAGOAGENT_SCENE; any other (the chat's) the one on screen
     let path = if std::env::var_os("MAGOAGENT_SCENE").is_some() { path } else { crate::app::workspaces::current_scene(&path) };
     let _lock = if write { Some(scene_lock(&path)?) } else { None };
+
     let mut scene = match read_scene_file(&path) {
         Ok((scene, _)) => scene,
         Err(SceneError::Missing) => Scene::default(),
@@ -230,11 +251,14 @@ pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value
         // wrote back meanwhile
         Err(SceneError::Unreadable(error)) => {
             let kept = set_aside(&path).map_err(|io| format!("o desenho está ilegível ({error}) e não pôde ser guardado: {io}"))?;
+
             return Err(format!("o desenho estava ilegível ({error}) e foi guardado em {}; tente de novo", kept.display()));
         }
         Err(error) => return Err(error.to_string()),
     };
+
     let result = f(&mut scene)?;
+
     if write {
         scene.agent = Some(AGENT.get().cloned().unwrap_or_else(|| "IA".into()));
         scene.agent_terminal = caller_id();
@@ -242,6 +266,7 @@ pub(crate) fn with_scene(write: bool, f: impl FnOnce(&mut Scene) -> Result<Value
         recenter_labels(&mut scene.elements);
         write_scene_file(&path, &scene).map_err(|e| format!("não foi possível salvar: {e}"))?;
     }
+
     Ok(result)
 }
 
@@ -270,6 +295,7 @@ pub(crate) fn describe(scene: &Scene) -> String {
         "groupIds",
         "link",
     ];
+
     let elements: Vec<Value> = interop_elements(&scene.elements)
         .into_iter()
         .map(|mut v| {
@@ -282,10 +308,13 @@ pub(crate) fn describe(scene: &Scene) -> String {
                         && !(k == "backgroundColor" && *value == "transparent")
                 });
             }
+
             v
         })
         .collect();
+
     let bounds = scene.elements.iter().map(element_bounds).reduce(|a, b| a.union(b));
+
     json!({
         "background": hex(scene.background),
         "bounds": bounds.map(|b| json!({ "x": b.min.x, "y": b.min.y, "width": b.width(), "height": b.height() })),
@@ -297,15 +326,18 @@ pub(crate) fn describe(scene: &Scene) -> String {
 pub(crate) fn view(scene: &Scene, args: &Value) -> Result<Value, String> {
     let ids: Vec<&str> = args["ids"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
     let elements: Vec<Element> = scene.elements.iter().filter(|e| ids.is_empty() || ids.contains(&e.id.as_str())).cloned().collect();
+
     if elements.is_empty() {
         return Ok(text("O desenho está vazio.".into()));
     }
+
     let subset = Scene { elements, ..scene.clone() };
     let bounds = subset.elements.iter().map(element_bounds).reduce(|a, b| a.union(b)).unwrap_or(Rect::ZERO);
     // keep the image under ~2000px on its longest side
     let scale = args["scale"].as_f64().unwrap_or(1.0).clamp(0.1, 3.0) as f32;
     let scale = scale.min(2000.0 / (bounds.width().max(bounds.height()) + 20.0));
     let png = render_svg_png(&scene_svg(&subset, Some(scene.background)), scale)?;
+
     Ok(json!([
         { "type": "image", "data": base64(&png), "mimeType": "image/png" },
         { "type": "text", "text": format!(
@@ -317,6 +349,7 @@ pub(crate) fn view(scene: &Scene, args: &Value) -> Result<Value, String> {
 
 pub(crate) fn save_file(scene: &Scene, path: &str) -> Result<Value, String> {
     let lower = path.to_lowercase();
+
     let bytes = if lower.ends_with(".png") {
         render_svg_png(&scene_svg(scene, Some(scene.background)), 2.0)?
     } else if lower.ends_with(".svg") {
@@ -326,6 +359,7 @@ pub(crate) fn save_file(scene: &Scene, path: &str) -> Result<Value, String> {
     } else {
         return Err("use uma extensão .mago, .png ou .svg".into());
     };
+
     write_atomic(std::path::Path::new(path), bytes).map_err(|e| e.to_string())?;
     Ok(text(format!("Salvo em {path}")))
 }
@@ -336,19 +370,24 @@ pub(crate) fn save_file(scene: &Scene, path: &str) -> Result<Value, String> {
 // ponytail: off macOS an open window is not brought forward; a `show` command over the bridge would
 pub(crate) fn show_app() -> Result<Value, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+
     if cfg!(target_os = "macos") {
         let bundle = exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app"));
         let mut command = std::process::Command::new("open");
+
         match bundle {
             Some(bundle) => command.arg(bundle),
             None => command.args(["-a", "MagoAgent"]),
         };
+
         command.status().map_err(|e| e.to_string())?;
     } else if endpoint_path().is_some_and(|p| app_open(&p)) {
         return Ok(text("O MagoAgent já está aberto.".into()));
     } else {
         use std::process::Stdio;
+
         std::process::Command::new(exe).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| e.to_string())?;
     }
+
     Ok(text("MagoAgent aberto".into()))
 }

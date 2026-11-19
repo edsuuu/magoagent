@@ -86,6 +86,7 @@ pub(crate) struct Element {
 
 pub(crate) fn rot(v: Vec2, angle: f32) -> Vec2 {
     let (sin, cos) = angle.sin_cos();
+
     Vec2::new(v.x * cos - v.y * sin, v.x * sin + v.y * cos)
 }
 
@@ -111,6 +112,7 @@ impl Element {
             (_, Some(p)) => &mut p.unloaded,
             _ => return false,
         };
+
         std::mem::replace(flag, on) != on
     }
 
@@ -171,16 +173,19 @@ impl Element {
     pub(crate) fn rotate_around(&mut self, pivot: Pos2, delta: f32) {
         if self.rotatable() {
             let center = self.center();
+
             self.move_by(pivot + rot(center - pivot, delta) - center);
             self.angle = (self.angle + delta).rem_euclid(std::f32::consts::TAU);
         } else if let ElementKind::Line { points, .. } | ElementKind::FreeDraw { points } = &mut self.kind {
             for point in points {
                 let p = pivot + rot(Pos2::new(point[0], point[1]) - pivot, delta);
+
                 *point = [p.x, p.y];
             }
         } else {
             // windows and notes stay upright, but go round with the rest
             let center = self.center();
+
             self.move_by(pivot + rot(center - pivot, delta) - center);
         }
     }
@@ -204,6 +209,7 @@ impl Element {
         let sx = if from.width() > 0.0 { to.width() / from.width() } else { 1.0 };
         let sy = if from.height() > 0.0 { to.height() / from.height() } else { 1.0 };
         let map = |px: f32, py: f32| [to.min.x + (px - from.min.x) * sx, to.min.y + (py - from.min.y) * sy];
+
         match &mut self.kind {
             ElementKind::Rectangle { x, y, width, height } | ElementKind::Ellipse { x, y, width, height } | ElementKind::Diamond { x, y, width, height } => {
                 [*x, *y] = map(*x, *y);
@@ -230,22 +236,28 @@ impl Element {
     pub(crate) fn contains(&self, point: Pos2, tolerance: f32) -> bool {
         let point = self.to_local(point);
         let p = [point.x, point.y];
+
         let near = |poly: &[[f32; 2]], closed: bool| {
             let n = poly.len();
             let edges = if closed { n } else { n.saturating_sub(1) };
+
             (0..edges).any(|i| distance_to_segment(p, poly[i], poly[(i + 1) % n]) < tolerance)
         };
+
         match &self.kind {
             ElementKind::Text { .. } => local_bounds(self).expand(tolerance / 2.0).contains(point),
             ElementKind::Line { .. } => near(&line_path(self), false),
             ElementKind::FreeDraw { points } => near(points, false),
             _ => {
                 let poly = shape_polygon(self).unwrap_or_default();
+
                 if let Some(name) = &self.frame {
                     let b = local_bounds(self);
                     let tag = Rect::from_min_size(b.min - Vec2::new(0.0, 22.0), Vec2::new((name.chars().count() as f32 * 8.0).max(40.0), 22.0));
+
                     return near(&poly, true) || tag.contains(point);
                 }
+
                 near(&poly, true) || ((self.style.fill.is_some() || self.image.is_some() || self.is_node()) && polygon_contains(&poly, p))
             }
         }

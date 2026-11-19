@@ -32,6 +32,7 @@ fn pace(
     sleep: impl FnOnce(std::time::Duration),
 ) -> Option<std::time::Instant> {
     let Some(next) = last.map(|last| last + spacing).filter(|next| *next > now) else { return Some(now) };
+
     sleep(next - now);
     Some(next)
 }
@@ -45,15 +46,19 @@ impl DrawingApp {
         use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
         let size = ctx.input(|input| input.viewport().inner_rect.map(|rect| rect.size()));
         let drawn = std::mem::replace(&mut self.drawn_size, size) == size;
+
         if !drawn {
             ctx.request_repaint();
+
             return;
         }
+
         let window = match frame.window_handle().map(|handle| handle.as_raw()) {
             Ok(RawWindowHandle::Xlib(handle)) => handle.window as u32,
             Ok(RawWindowHandle::Xcb(handle)) => handle.window.get(),
             _ => return,
         };
+
         crate::app::island::x11::frame_drawn(window);
     }
 }
@@ -64,6 +69,7 @@ impl eframe::App for DrawingApp {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.save_on_exit();
         crate::mcp::bridge::remove_hook_endpoint();
+
         // Linux: the pages' X11 windows live inside the app's; they go first, so GTK never draws in a window that is gone
         #[cfg(target_os = "linux")]
         if !self.portals.is_empty() {
@@ -89,22 +95,30 @@ impl eframe::App for DrawingApp {
     /// agents' states run: it paints unseen every 400 ms.
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         const EVERY: std::time::Duration = std::time::Duration::from_millis(400);
+
         FRAME_RATE.store(self.prefs.frame_rate, std::sync::atomic::Ordering::Relaxed);
+
         #[cfg(target_os = "linux")]
         if crate::app::island::x11::active() {
             self.paced = pace(self.paced, std::time::Instant::now(), frame_spacing(), std::thread::sleep);
             self.resize_sync(ctx, frame);
         }
+
         #[cfg(not(target_os = "linux"))]
         let _ = frame;
+
         self.background_window(ctx);
+
         if ctx.input(|i| i.viewport().visible()) != Some(false) {
             self.hidden_paint = None;
+
             return;
         }
+
         // every request reaches here while hidden: only one in 400 ms paints. The input's time
         // stands still meanwhile, so the clock is the system's
         let since = self.hidden_paint.map_or(EVERY, |t| t.elapsed());
+
         if since >= EVERY {
             self.hidden_paint = Some(std::time::Instant::now());
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaintWhileHidden);
@@ -119,18 +133,23 @@ impl eframe::App for DrawingApp {
         if raw.viewport_id != egui::ViewportId::ROOT {
             return;
         }
+
         if let Some(script) = &mut self.script {
             script.feed(ctx, raw);
         }
+
         if TITLE_BAR > 0.0 {
             edge_resize(ctx, raw);
             self.caption_drag(ctx, raw);
         }
+
         // Ctrl + wheel over the window while another has the keyboard (canvas/wheel.rs); a script's keys are its own
         if self.script.is_none() {
             let current = ctx.input(|input| input.modifiers);
+
             crate::app::canvas::wheel::wheel_modifiers(&mut raw.events, raw.focused, current, crate::app::canvas::wheel::system_modifiers);
         }
+
         // Tab on the bare canvas moves no focus: egui would hand the keys to the first button, and
         // the shortcuts and Space would stop until the next click
         if !self.keyboard_taken(ctx) {
@@ -140,22 +159,29 @@ impl eframe::App for DrawingApp {
 
     fn ui(&mut self, root: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = root.ctx().clone();
+
         // the frame's clock before anything is laid out by it: read only in `handle_canvas`, the canvas's
         // edge was a frame behind the sidebar sliding beside it, and the window's ground showed between them
         self.now = ctx.input(|i| i.time);
+
         if let Some(perf) = &mut self.perf {
             perf.frame(ctx.input(|i| i.time), frame.info().cpu_usage, &ctx.repaint_causes());
         }
+
         if let Some(theme) = ctx.system_theme() {
             self.system_dark = theme == egui::Theme::Dark;
         }
+
         configure_visuals(&ctx, self.dark());
+
         if self.prefs.ligatures != self.ligatures_shown {
             install_fonts(&ctx, self.prefs.ligatures);
             self.ligatures_shown = self.prefs.ligatures;
         }
+
         #[cfg(target_os = "macos")]
         crate::place_window_buttons(LIGHTS_Y as f64);
+
         self.screen_keys(&ctx);
         self.handle_shortcuts(&ctx);
         self.sync_filetrees(&ctx);
@@ -181,11 +207,14 @@ impl eframe::App for DrawingApp {
         self.maestro_note_ui(&ctx);
         self.maestro_tick(&ctx);
         self.actions_tick(&ctx);
+
         if self.swing_ropes(ctx.input(|i| i.stable_dt).min(0.05)) {
             ctx.request_repaint();
         }
+
         // every window clears see-through while a popup is up (clear_color): this one's ground stays solid
         root.painter().rect_filled(root.max_rect(), 0, ctx.global_style().visuals.window_fill());
+
         egui::CentralPanel::no_frame().show(root, |ui| {
             // not focusable: Tab would park the keyboard on the canvas and turn the shortcuts and Space off
             // the workspaces' sidebar keeps the left strip (its clicks and the pages stay off it)
@@ -193,48 +222,60 @@ impl eframe::App for DrawingApp {
             let rect = rect.with_min_x(rect.min.x + self.sidebar_width()).with_max_x(rect.max.x - self.pane_width());
             let response = ui.allocate_rect(rect, Sense::CLICK | Sense::DRAG);
             let painter = ui.painter_at(rect);
+
             self.handle_canvas(&response, rect);
             // the wheel and the pinch: the canvas's, a long note's or a window's (canvas/wheel.rs)
             self.canvas_wheel(&ctx, &response, rect);
             self.update_cursor(&ctx, &response);
             self.paint_stage(&ctx, &painter, rect);
         });
+
         if !self.floors_ui.fx.engaged {
             self.text_editor(&ctx);
             self.note_buttons_ui(&ctx);
             self.stack_tabs_ui(&ctx);
         }
+
         // under the toolbar: the windows' live parts stack on it (canvas/cover.rs)
         egui::Area::new(crate::app::canvas::cover::anchor().id).order(egui::Order::Middle).fixed_pos(Pos2::ZERO).interactable(false).show(&ctx, |_| {});
         self.floating_controls(&ctx);
         self.sidebar(&ctx);
+
         if TITLE_BAR > 0.0 {
             self.title_bar(&ctx);
         }
+
         self.panes_ui(&ctx);
         self.note_color_ui(&ctx);
         self.links_popover_ui(&ctx);
         self.context_ui(&ctx);
         self.rename_ui(&ctx);
         let time = ctx.input(|i| i.time);
+
         if self.chat_was_open && !self.chat_open {
             self.chat_left_at = Some(time);
         }
+
         self.chat_was_open = self.chat_open;
+
         if let Some(left) = self.chat_left_at.filter(|_| !self.chat_open) {
             // ponytail: a plain fade of the ground, about as long as the chat's own fade in
             let k = ((time - left) / 0.2) as f32;
+
             if k >= 1.0 {
                 self.chat_left_at = None;
             } else {
                 let ground = crate::app::chat::list::Look::new(self.dark(), &self.colors()).bg;
                 let veil = egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("chat_leave"));
                 let ease = 1.0 - (1.0 - k) * (1.0 - k);
+
                 ctx.layer_painter(veil).rect_filled(ctx.content_rect(), 0, ground.gamma_multiply(1.0 - ease));
                 ctx.request_repaint();
             }
         }
+
         self.chat_zoom_ui(&ctx);
+
         if self.chat_open {
             self.chat_screen(&ctx);
         } else if self.floors_ui.fx.engaged {
@@ -251,28 +292,38 @@ impl eframe::App for DrawingApp {
             self.element_links_ui(&ctx);
             self.link_back_ui(&ctx);
         }
+
         self.welcome_ui(&ctx);
         self.tour_ui(&ctx);
         self.changelog_ui(&ctx);
+
         if TITLE_BAR > 0.0 {
             crate::app::ui::titlebar::edge_cursor(&ctx);
         }
+
         #[cfg(windows)]
         if !self.caption_hooked {
             self.caption_hooked = crate::app::ui::titlebar::native_caption::install(&*frame);
         }
+
         self.sync_portals(&*frame, &ctx);
+
         #[cfg(not(target_os = "linux"))]
         self.sync_voice_page(&*frame, &ctx);
+
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         if let Some(path) = self.script.as_mut().and_then(Script::take_pages) {
             self.save_page_shots(&path);
         }
+
         let _ = frame;
         let idle = !self.in_gesture() && self.multi.is_none() && self.editing.is_none();
+
         self.save_prefs_when_due(&ctx);
         let now = ctx.input(|i| i.time);
+
         self.laser.retain(|(_, t)| now - *t < 1.0);
+
         if let Some(id) = self.reveal.front() {
             match self.scene.elements.iter().find(|e| &e.id == id) {
                 Some(e) if self.reveal_progress(e) < 1.0 => {}
@@ -280,36 +331,46 @@ impl eframe::App for DrawingApp {
                     if let (Some(e), Some(agent)) = (done, &mut self.agent) {
                         (agent.1, agent.2) = (reveal_pen(e), now);
                     }
+
                     self.reveal.pop_front();
                     self.reveal_since = now;
                 }
             }
+
             ctx.request_repaint();
         } else if self.agent.as_ref().is_some_and(|a| now - a.2 < AGENT_LINGER) {
             ctx.request_repaint();
         }
+
         if !self.laser.is_empty() {
             ctx.request_repaint();
         }
+
         if idle && !self.autosave_busy() && now - self.last_poll > 0.4 {
             self.last_poll = now;
             self.sync_from_file();
         }
+
         // changes are written 0.4 s after the first one not yet on disk: a burst (arrow nudges,
         // typing) goes in a write every 0.4 s, not one per change, and a long one is never all lost
         if !self.dirty {
             self.dirty_since = now;
         }
+
         self.finish_autosave(false);
+
         if self.dirty && idle && now - self.dirty_since >= 0.4 {
             self.write_autosave_in_background();
         }
+
         if self.glide.is_some() {
             ctx.request_repaint();
         }
+
         if std::mem::take(&mut self.attention) {
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
         }
+
         ctx.request_repaint_after(std::time::Duration::from_millis(400));
     }
 }
@@ -335,13 +396,16 @@ mod pace_tests {
     fn frames_sooner_than_a_sixtieth_wait_the_rest() {
         let (start, sixtieth) = (std::time::Instant::now(), spacing(60));
         let mut slept = None;
+
         assert_eq!(pace(None, start, sixtieth, |time| slept = Some(time)), Some(start), "the first frame waits for nothing");
         assert_eq!(slept, None);
         let soon = start + std::time::Duration::from_millis(4);
+
         assert_eq!(pace(Some(start), soon, sixtieth, |time| slept = Some(time)), Some(start + sixtieth));
         assert_eq!(slept, Some(sixtieth - std::time::Duration::from_millis(4)), "it waits the rest of the sixtieth");
         slept = None;
         let late = start + std::time::Duration::from_millis(40);
+
         assert_eq!(pace(Some(start), late, sixtieth, |time| slept = Some(time)), Some(late), "a late frame goes at once");
         assert_eq!(slept, None);
     }
@@ -352,6 +416,7 @@ mod pace_tests {
         assert_eq!(spacing(144).as_micros(), 6_944);
         assert_eq!(spacing(240).as_micros(), 4_166);
         assert_eq!(spacing(0), spacing(15), "a broken rate never asks for endless frames");
+
         for rate in FRAME_RATES {
             assert!(spacing(rate) > std::time::Duration::ZERO);
         }

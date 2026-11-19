@@ -55,6 +55,7 @@ pub(crate) struct Panes {
 /// still leaves the canvas `CANVAS_MIN`.
 pub(crate) fn clamp_pane_width(wanted: f32, room: f32) -> f32 {
     let widest = if room > 0.0 { (room - CANVAS_MIN).max(PANE_MIN) } else { f32::INFINITY };
+
     wanted.clamp(PANE_MIN, widest).round()
 }
 
@@ -80,6 +81,7 @@ impl DrawingApp {
             self.panes.changes.read_at = None;
             self.panes.focus_note = pane == Some(Pane::QuickNote);
         }
+
         self.panes.open = pane;
     }
 
@@ -87,31 +89,41 @@ impl DrawingApp {
     /// opens or closes its panel. Hidden over the chat, which the panels don't cover.
     pub(crate) fn pane_buttons(&mut self, ui: &mut egui::Ui) {
         self.panes.buttons = None;
+
         // over the chat, which the panels don't cover, and on the welcome
         if self.chat_open || self.welcome.is_some() {
             return;
         }
+
         let (dark, width) = (self.dark(), ui.ctx().content_rect().width());
         let ink = glass_ink(dark);
         let p = ui.painter().clone();
         let counts = PANES.map(|(pane, ..)| if pane == Pane::Changes { self.changed_file_count() } else { 0 });
+
         for (k, (pane, _, name, icon)) in PANES.into_iter().enumerate() {
             let rect = self.pane_button(width, k);
+
             self.panes.buttons = Some(self.panes.buttons.map_or(rect, |span| span.union(rect)));
             let button = ui.interact(rect, egui::Id::unique(("pane_button", k)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(name);
             let on = self.panes.open == Some(pane);
+
             paint_glass(&p, rect, rect.width() / 2.0, dark, false);
+
             if button.hovered() || on {
                 p.circle_filled(rect.center(), GLASS_BUTTON / 2.0, ink.gamma_multiply(0.1));
             }
+
             paint_icon_scaled(&p, icon, rect.center(), if on { glass_accent(dark) } else { ink.gamma_multiply(0.85) }, GLASS_ICON, 0.0);
+
             if counts[k] > 0 {
                 let text = if counts[k] > 99 { "99+".to_string() } else { counts[k].to_string() };
                 let galley = p.layout_no_wrap(text, FontId::proportional(9.5), Color32::WHITE);
                 let pill = Rect::from_center_size(rect.right_top() + Vec2::new(-4.0, 5.0), Vec2::new((galley.size().x + 7.0).max(14.0), 14.0));
+
                 p.rect_filled(pill, 7, glass_accent(dark));
                 p.galley(pill.center() - galley.size() / 2.0, galley, Color32::WHITE);
             }
+
             if button.clicked() && live(ui) {
                 self.toggle_pane(pane);
             }
@@ -128,6 +140,7 @@ impl DrawingApp {
     fn pane_edge(&mut self, ui: &mut egui::Ui, rect: Rect) {
         let edge = Rect::from_min_max(Pos2::new(rect.left() - EDGE_GRAB, rect.top()), Pos2::new(rect.left() + EDGE_GRAB, rect.bottom()));
         let pull = ui.interact(edge, egui::Id::unique("pane_edge"), Sense::click_and_drag()).on_hover_cursor(CursorIcon::ResizeHorizontal);
+
         if pull.dragged()
             && let Some(at) = pull.interact_pointer_pos()
         {
@@ -136,9 +149,11 @@ impl DrawingApp {
         } else if let Some(width) = self.panes.pulled.take() {
             self.prefs.pane_width = Some(width);
         }
+
         if pull.double_clicked() && live(ui) {
             (self.prefs.pane_width, self.panes.pulled) = (None, None);
         }
+
         if pull.hovered() || pull.dragged() {
             ui.painter().vline(rect.left(), rect.y_range(), Stroke::new(2.0, glass_accent(self.dark())));
         }
@@ -149,56 +164,72 @@ impl DrawingApp {
         if TITLE_BAR == 0.0 {
             egui::Area::new(egui::Id::unique("pane_buttons")).fixed_pos(Pos2::ZERO).order(egui::Order::Foreground).show(ctx, |ui| self.pane_buttons(ui));
         }
+
         self.panes.room = ctx.content_rect().width() - self.sidebar_width();
         let Some(pane) = self.panes.open.filter(|_| !self.chat_open) else { return };
         let rect = self.pane_rect(ctx.content_rect());
         let (colors, ink) = (self.colors(), glass_ink(self.dark()));
         let line = ink.gamma_multiply(0.12);
         let area = egui::Area::new(egui::Id::unique("side_pane")).order(egui::Order::Foreground).fixed_pos(rect.min).constrain(false);
+
         area.show(ctx, |ui| {
             // the whole panel is its own: no press falls through to what is under it
             ui.allocate_rect(rect, Sense::click_and_drag());
             let p = ui.painter().clone();
+
             p.rect_filled(rect, 0, colors.island);
             p.vline(rect.left(), rect.y_range(), Stroke::new(1.0, line));
             self.pane_edge(ui, rect);
             let head = Rect::from_min_size(rect.min, Vec2::new(rect.width(), HEAD));
+
             p.text(head.left_center() + Vec2::new(14.0, 0.0), egui::Align2::LEFT_CENTER, pane.name(), FontId::proportional(14.0), colors.text);
             p.hline(rect.x_range(), head.bottom(), Stroke::new(1.0, line));
             let close = Rect::from_center_size(head.right_center() - Vec2::new(22.0, 0.0), Vec2::splat(28.0));
             let button = ui.interact(close, egui::Id::unique("pane_close"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip("Fechar");
+
             if button.hovered() {
                 p.rect_filled(close, 6, ink.gamma_multiply(0.1));
             }
+
             for (from, to) in [(Vec2::new(-4.5, -4.5), Vec2::new(4.5, 4.5)), (Vec2::new(-4.5, 4.5), Vec2::new(4.5, -4.5))] {
                 p.line_segment([close.center() + from, close.center() + to], Stroke::new(1.25, ink.gamma_multiply(0.85)));
             }
+
             if button.clicked() && live(ui) {
                 self.set_pane(None);
+
                 return;
             }
+
             // Alterações' comment on the lines picked, Nota rápida's Levar para o canvas: a bar pinned to the bottom, the
             // rest scrolling above it
             let bar = match pane {
                 Pane::Changes => self.comment_bar_height(),
                 Pane::QuickNote => 48.0,
             };
+
             let body = Rect::from_min_max(Pos2::new(rect.left() + 12.0, head.bottom() + 12.0), rect.max - Vec2::new(12.0, bar));
+
             if bar > 0.0 {
                 let strip = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - bar), rect.max);
+
                 p.hline(strip.x_range(), strip.top(), Stroke::new(1.0, line));
+
                 ui.scope_builder(egui::UiBuilder::new().max_rect(strip.shrink2(Vec2::new(12.0, 8.0))), |ui| match pane {
                     Pane::Changes => self.review_comment_bar(ui),
                     Pane::QuickNote => self.quick_note_bar(ui),
                 });
             }
+
             ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {
                 egui::ScrollArea::vertical().id_salt(("pane_scroll", pane.name())).auto_shrink(false).show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 10.0;
+
                     match pane {
                         Pane::Changes => self.changes_pane(ui),
                         Pane::QuickNote => self.quick_note_pane(ui, body.height() - 12.0),
                     }
+
                     ui.add_space(12.0);
                 });
             });
@@ -212,21 +243,27 @@ impl DrawingApp {
         let mut name = args["name"].as_str().unwrap_or_default().trim().to_lowercase();
         let mut open = args["open"].as_bool();
         let mut said = Vec::new();
+
         if let Some(width) = args["width"].as_f64() {
             self.prefs.pane_width = (width > 0.0).then(|| clamp_pane_width(width as f32, self.panes.room));
             said.push(format!("Largura do painel: {} px.", self.panel_width()));
         }
+
         if let Some(wanted) = args["worktree"].as_str().map(str::trim).filter(|w| !w.is_empty()) {
             said.push(self.choose_worktree(wanted)?);
+
             // the worktree is Alterações': it shows there
             if name.is_empty() && open != Some(false) {
                 (name, open) = ("changes".into(), Some(true));
             }
         }
+
         if name.is_empty() && open.is_none() && !said.is_empty() {
             return Ok(said.join(" "));
         }
+
         let done = self.act_panel_open(&name, open)?;
+
         Ok([done].into_iter().chain(said).collect::<Vec<_>>().join(" "))
     }
 
@@ -235,13 +272,17 @@ impl DrawingApp {
         if name.is_empty() {
             if open == Some(false) || open.is_none() {
                 self.set_pane(None);
+
                 return Ok("Painel fechado.".into());
             }
+
             return Err("Diga qual painel (name): changes ou note.".into());
         }
+
         let pane = PANES.iter().find(|p| p.1 == name || p.2.to_lowercase() == name).map(|p| p.0);
         let pane = pane.ok_or_else(|| format!("Painel desconhecido: {name}. Use changes ou note."))?;
         let wanted = open.unwrap_or(self.panes.open != Some(pane));
+
         if wanted {
             self.chat_open = false;
             self.set_pane(Some(pane));
@@ -250,6 +291,7 @@ impl DrawingApp {
             if self.panes.open == Some(pane) {
                 self.set_pane(None);
             }
+
             Ok(format!("Painel {} fechado.", pane.name()))
         }
     }
@@ -265,6 +307,7 @@ fn live(ui: &egui::Ui) -> bool {
 fn card<R>(ui: &mut egui::Ui, dark: bool, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let ink = glass_ink(dark);
     let frame = egui::Frame::new().fill(ink.gamma_multiply(0.04)).stroke(Stroke::new(1.0, ink.gamma_multiply(0.12))).corner_radius(8).inner_margin(8);
+
     frame
         .show(ui, |ui| {
             ui.set_width(ui.available_width());

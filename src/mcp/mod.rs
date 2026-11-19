@@ -60,17 +60,21 @@ senha em texto nem tente lê-la da página.";
 pub fn run() {
     let stdin = std::io::stdin();
     let mut out = std::io::stdout();
+
     for line in stdin.lock().lines() {
         let Ok(line) = line else {
             break;
         };
+
         if line.trim().is_empty() {
             continue;
         }
+
         let reply = match serde_json::from_str::<Value>(&line) {
             Ok(message) => handle(&message),
             Err(e) => Some(json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": e.to_string() } })),
         };
+
         if let Some(reply) = reply {
             let _ = writeln!(out, "{reply}");
             let _ = out.flush();
@@ -92,6 +96,7 @@ pub(crate) fn agent_label(client: &str) -> String {
             .filter(|w| !w.is_empty() && *w != "mcp" && *w != "client")
             .map(|w| {
                 let mut chars = w.chars();
+
                 chars.next().map_or(String::new(), |first| first.to_uppercase().chain(chars).collect())
             })
             .collect::<Vec<_>>()
@@ -103,12 +108,14 @@ pub(crate) fn agent_label(client: &str) -> String {
 pub(crate) fn handle(message: &Value) -> Option<Value> {
     let id = message.get("id")?.clone();
     let params = &message["params"];
+
     let result = match message["method"].as_str().unwrap_or_default() {
         "initialize" => {
             // the app shows this name on the cursor while it replays what the AI drew: the
             // terminal's own name when the AI runs inside one of the canvas terminals
             let terminal = std::env::var("MAGOAGENT_TERMINAL_NAME").ok().filter(|n| !n.is_empty());
             let _ = AGENT.set(terminal.unwrap_or_else(|| agent_label(params["clientInfo"]["name"].as_str().unwrap_or_default())));
+
             Ok(json!({
                 "protocolVersion": params["protocolVersion"].as_str().unwrap_or(PROTOCOL_VERSION),
                 "capabilities": { "tools": {} },
@@ -121,6 +128,7 @@ pub(crate) fn handle(message: &Value) -> Option<Value> {
         "tools/call" => Ok(call(params["name"].as_str().unwrap_or_default(), &params["arguments"])),
         other => Err(json!({ "code": -32601, "message": format!("método desconhecido: {other}") })),
     };
+
     Some(match result {
         Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
         Err(error) => json!({ "jsonrpc": "2.0", "id": id, "error": error }),

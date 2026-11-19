@@ -4,6 +4,7 @@ pub(super) fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> St
     // the app's reading (its Claude Code session's word over the screen's)
     let busy = |id: &str| {
         let shared = locked(shared);
+
         match (shared.terminals.get(id), shared.states.get(id)) {
             (None, _) => "",
             (Some(t), _) if t.exited() => " (encerrado)",
@@ -12,12 +13,15 @@ pub(super) fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> St
             _ => " (parado)",
         }
     };
+
     let reachable = reachable(nodes, from);
     let outside = chat::outside(nodes, from);
     let mut out = String::new();
+
     if let Some(me) = nodes.iter().find(|n| n.id == from) {
         out += &format!("Você: \"{}\"\n", me.name);
     }
+
     for (kind, title, connected) in [
         (NodeKind::Terminal, "Agentes", " conectados"),
         (NodeKind::Note, "Notas", " conectadas"),
@@ -37,10 +41,12 @@ pub(super) fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> St
                 })
                 .collect(),
         };
+
         if !items.is_empty() {
             out += &format!("{title}{}:\n{}\n", if outside { "" } else { connected }, items.join("\n"));
         }
     }
+
     if reachable.is_empty() {
         // outside a terminal there is no "this terminal" to tie: the canvas itself has nothing
         out += if outside {
@@ -49,6 +55,7 @@ pub(super) fn describe(nodes: &[Node], from: &str, shared: &Mutex<Shared>) -> St
             "Nada conectado. Ligue este terminal a outro (ou a uma nota) com uma seta, ou use o botão Conectar."
         };
     }
+
     out.trim_end().to_string()
 }
 
@@ -65,6 +72,7 @@ pub(crate) fn ask(
     delivered: impl FnOnce(),
 ) -> Result<(Asked, String), String> {
     let mut said = transcript.map(Transcript::from_end);
+
     let mut reply = |screen: String| {
         said.as_mut()
             .and_then(|t| {
@@ -73,36 +81,47 @@ pub(crate) fn ask(
             })
             .unwrap_or(screen)
     };
+
     let before = target.screen_text();
+
     if raw {
         target.write(unescape(prompt));
     } else {
         target.type_prompt(prompt)?;
     }
+
     delivered();
     let start = Instant::now();
     let (mut last, mut changed_at) = (before, None::<Instant>);
+
     loop {
         std::thread::sleep(Duration::from_millis(250));
         let screen = target.screen_text();
+
         if screen != last {
             last = screen;
             changed_at = Some(Instant::now());
         }
+
         let quiet = changed_at.map_or(start.elapsed(), |t| t.elapsed());
         let settled = if changed_at.is_some() { quiet >= IDLE } else { quiet >= NO_REACTION };
+
         if target.exited() {
             return Ok((Asked::Exited, format!("{}\n\n(o terminal do agente encerrou)", reply(last))));
         }
+
         if settled {
             // stopped on a menu: the words alone would hide what it waits for
             if let Err(why) = target.ready() {
                 let answer = reply(last.clone());
                 let screen = if answer == last { String::new() } else { format!("\n\nA tela:\n{last}") };
+
                 return Ok((Asked::Waiting, format!("{answer}\n\n(o agente {why}){screen}")));
             }
+
             return Ok((if changed_at.is_some() { Asked::Answered } else { Asked::Silent }, reply(last)));
         }
+
         if start.elapsed() >= timeout {
             return Ok((Asked::StillWorking, format!("{}\n\n(o agente ainda está trabalhando; leia de novo com check/read_terminal)", reply(last))));
         }
@@ -114,6 +133,7 @@ pub(crate) fn ask(
 pub(crate) fn unescape(text: &str) -> Vec<u8> {
     let mut out = Vec::new();
     let mut chars = text.chars().peekable();
+
     while let Some(c) = chars.next() {
         match c {
             // CR LF is one Enter: the LF that follows is it
@@ -125,6 +145,7 @@ pub(crate) fn unescape(text: &str) -> Vec<u8> {
                 Some('e') => out.push(0x1b),
                 Some('x') => {
                     let hex: String = chars.by_ref().take(2).collect();
+
                     out.extend(u8::from_str_radix(&hex, 16).ok());
                 }
                 Some(other) => out.extend(other.to_string().into_bytes()),
@@ -133,6 +154,7 @@ pub(crate) fn unescape(text: &str) -> Vec<u8> {
             _ => out.extend(c.to_string().into_bytes()),
         }
     }
+
     out
 }
 
@@ -141,6 +163,7 @@ pub(crate) fn unescape(text: &str) -> Vec<u8> {
 /// field the page has focused (a vault login, after the agent clicked the password box).
 pub(crate) fn cursor_script(agent: &str, selector: &str, fill: Option<&str>) -> String {
     let args = json!([agent, selector, fill]);
+
     format!(
         r##"(function([who, sel, text]) {{
   const el = sel ? document.querySelector(sel) : (document.activeElement !== document.body ? document.activeElement : null);

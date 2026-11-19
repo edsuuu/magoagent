@@ -1,9 +1,10 @@
 //! The chat's picture viewer: one image over the whole chat (the conversation isn't drawn behind
 //! it), with its name, size, sender and time, Copiar and Salvar como…, the zoom (− % +, Ajustar,
-//! 1:1, the wheel), dragging to move, a minimap and the previous and next image.
+//! 1:1, the wheel), dragging to move, a minimap and the previous and next image. It walks the open
+//! conversation's pictures, or the ones waiting in the box (images.rs `attached_row`).
 
 use crate::app::chat::image_key;
-use crate::app::chat::images::{Decoding, clipped, decode, details, picture};
+use crate::app::chat::images::{Attached, Decoding, clipped, decode, details, picture};
 use crate::prelude::*;
 use crate::transcript::ChatItem;
 
@@ -11,12 +12,68 @@ use crate::transcript::ChatItem;
 const STEPS: [f32; 12] = [0.1, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0];
 
 pub(crate) struct Viewer {
-    pub(crate) key: (usize, String),
+    pub(crate) source: PictureSource,
     pub(crate) full: Decoding,
     /// Screen pixels per picture pixel; None fits it in the view (never past 1:1).
     pub(crate) zoom: Option<f32>,
     /// The picture's center off the view's, in points.
     pan: Vec2,
+}
+
+/// The picture the viewer shows.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum PictureSource {
+    /// One of the open conversation's, by its `image_key`.
+    Message((usize, String)),
+    /// One waiting in the box, by its file.
+    Attached(PathBuf),
+}
+
+/// A picture the viewer walks through, and what its header says of it.
+struct Page<'a> {
+    source: PictureSource,
+    name: String,
+    /// After its size: who sent it and when, or that it goes with the next message.
+    about: String,
+    /// A message's picture, in base64, and its type, for Copiar and Salvar como…; a picture in the box is a file the
+    /// person already has, and offers neither.
+    data: Option<(&'a str, &'a str)>,
+}
+
+impl Page<'_> {
+    /// The open conversation's pictures, oldest first; `agent` sent the ones not the person's.
+    fn said<'a>(names: &[(&'a ChatItem, String)], agent: &str) -> Vec<Page<'a>> {
+        let page = |(item, name): &(&'a ChatItem, String)| {
+            let ChatItem::Image { data, media, user, at } = item else { return None };
+            let mut about = format!("enviada por {}", if *user { "você" } else { agent });
+
+            if let Some(time) = (*at > 0).then(|| local_clock(*at)).flatten() {
+                about += &format!(" às {time}");
+            }
+
+            Some(Page { source: PictureSource::Message(image_key(data)), name: name.clone(), about, data: Some((data.as_str(), media.as_str())) })
+        };
+
+        names.iter().filter_map(page).collect()
+    }
+
+    /// The pictures waiting in the box, in their order.
+    fn attached(attached: &[Attached]) -> Vec<Page<'static>> {
+        let about = |picture: &Attached| if picture.pasted { "colada · vai com a próxima mensagem" } else { "anexada · vai com a próxima mensagem" };
+
+        let page =
+            |picture: &Attached| Page { source: PictureSource::Attached(picture.path.clone()), name: picture.name(), about: about(picture).into(), data: None };
+
+        attached.iter().map(page).collect()
+    }
+
+    /// The viewer on it, reading the whole picture in a thread.
+    fn open(&self, ctx: &Context) -> Viewer {
+        match &self.source {
+            PictureSource::Message(key) => Viewer::open(ctx, key.clone(), self.data.map_or("", |(data, _)| data)),
+            PictureSource::Attached(path) => Viewer::attached(ctx, path),
+        }
+    }
 }
 
 /// What the viewer's buttons ask for that needs the app.
@@ -40,6 +97,7 @@ struct Look {
 
 fn look(c: &UiColors, dark: bool) -> Look {
     let accent = Color32::from_rgb(0x0a, 0x84, 0xff);
+
     if dark {
         Look {
             bg: rgb_hex(0x0e0e10),
@@ -74,6 +132,7 @@ impl DrawingApp {
         if self.chat_pics.get_mut().viewer.is_none() {
             return false;
         }
+
         match self.viewer_ui(ctx, agent) {
             None => {}
             Some(Act::Copy(data)) => {
@@ -81,6 +140,7 @@ impl DrawingApp {
                 match crate::render::base64_decode(&data).and_then(|b| image::load_from_memory(&b).ok()) {
                     Some(image) => {
                         let rgba = image.to_rgba8();
+
                         ctx.copy_image(egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], &rgba));
                         self.toast("Imagem copiada");
                     }
@@ -90,6 +150,7 @@ impl DrawingApp {
             Some(Act::Save(data, name, ext)) => {
                 let file = if name.contains('.') { name } else { format!("{name}.{ext}") };
                 let path = rfd::FileDialog::new().set_title("Salvar imagem").set_file_name(file).add_filter("Imagem", &[ext.as_str()]).save_file();
+
                 if let Some(path) = path {
                     match crate::render::base64_decode(&data).ok_or("imagem ilegível".to_string()).and_then(|b| fs::write(&path, b).map_err(|e| e.to_string()))
                     {
@@ -99,74 +160,103 @@ impl DrawingApp {
                 }
             }
         }
+
         true
     }
 
     fn viewer_ui(&self, ctx: &Context, agent: &str) -> Option<Act> {
-        let list = self.chat_image_names();
-        let mut pics = self.chat_pics.borrow_mut();
+        let names = self.chat_image_names();
+        let mut guard = self.chat_pics.borrow_mut();
+        let pics = &mut *guard;
         let viewer = pics.viewer.as_mut()?;
-        let found = list.iter().position(|(item, _)| matches!(item, ChatItem::Image { data, .. } if image_key(data) == viewer.key));
-        // its message left the memory, or another agent's chat shows
-        let Some(at) = found else {
+
+        let list = match viewer.source {
+            PictureSource::Message(_) => Page::said(&names, agent),
+            PictureSource::Attached(_) => Page::attached(&pics.attached),
+        };
+
+        // its message left the memory, another agent's chat shows, or it left the box
+        let Some(at) = list.iter().position(|page| page.source == viewer.source) else {
             pics.viewer = None;
+
             return None;
         };
-        let (ChatItem::Image { data, media, user, at: when }, name) = &list[at] else { return None };
+
+        let Page { name, about, data, .. } = &list[at];
         let l = look(&self.colors(), self.dark());
         let area = Rect::from_min_max(Pos2::new(0.0, TOOLBAR_BOTTOM + 4.0), ctx.content_rect().max);
+
         // the full picture once read, the thumbnail meanwhile
-        let thumb = self.chat_images.borrow().get(&viewer.key).cloned();
+        let thumb = match &viewer.source {
+            PictureSource::Message(key) => self.chat_images.borrow().get(key).cloned(),
+            PictureSource::Attached(path) => pics.attached.iter().find(|picture| &picture.path == path).map(|picture| picture.pic.clone()),
+        };
+
         let pic = viewer.full.get().and_then(Option::as_ref).or(thumb.as_ref().and_then(|t| t.get()).and_then(Option::as_ref));
         let mut act = None;
         let mut go = None;
         let mut close = ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
+
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::ArrowLeft)) {
             go = at.checked_sub(1);
         }
+
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::ArrowRight)) {
             go = Some(at + 1);
         }
+
         egui::Area::new(egui::Id::unique("chat_viewer")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_min_size(area.size());
             let p = ui.painter().clone();
+
             p.rect_filled(area, 0, l.bg);
             // the header: what it is, whose, which of how many; Copiar, Salvar como… and close
             let head = Rect::from_min_size(area.min, Vec2::new(area.width(), 56.0));
+
             p.hline(head.x_range(), head.bottom() - 0.5, Stroke::new(1.0, l.line));
             paint_icon(&p, Icon::Image, Pos2::new(head.left() + 27.0, head.center().y), l.muted);
             let mut sub = pic.map(details).unwrap_or_default();
-            let who = if *user { "você" } else { agent };
-            sub += &format!("{}enviada por {who}", if sub.is_empty() { "" } else { " · " });
-            if let Some(time) = (*when > 0).then(|| local_clock(*when)).flatten() {
-                sub += &format!(" às {time}");
-            }
+
+            sub += &format!("{}{about}", if sub.is_empty() { "" } else { " · " });
+
             let mut x = head.right() - 12.0;
             let close_rect = Rect::from_min_size(Pos2::new(x - 32.0, head.center().y - 16.0), Vec2::splat(32.0));
             let r = ui.interact(close_rect, ui.scope_id().with("close"), Sense::click()).tip("Fechar (Esc)");
+
             p.rect_filled(close_rect, 8, if r.hovered() { l.surface.gamma_multiply(1.3) } else { l.surface });
             cross(&p, close_rect.center(), 5.5, Stroke::new(1.6, l.text));
             close |= r.on_hover_cursor(CursorIcon::PointingHand).clicked();
             x = close_rect.left() - 4.0;
-            p.vline(x - 0.5, head.center().y - 12.0..=head.center().y + 12.0, Stroke::new(1.0, l.edge));
-            x -= 4.0 + 8.0;
-            if header_button(ui, &p, &mut x, head.center().y, Icon::Download, "Salvar como…", &l) {
-                act = Some(Act::Save(data.clone(), name.clone(), media.rsplit('/').next().unwrap_or("png").replace("jpeg", "jpg")));
+
+            // Copiar and Salvar como…, past a hairline, for a message's picture
+            if let Some((data, media)) = data {
+                p.vline(x - 0.5, head.center().y - 12.0..=head.center().y + 12.0, Stroke::new(1.0, l.edge));
+                x -= 4.0 + 8.0;
+
+                if header_button(ui, &p, &mut x, head.center().y, Icon::Download, "Salvar como…", &l) {
+                    act = Some(Act::Save(data.to_string(), name.clone(), media.rsplit('/').next().unwrap_or("png").replace("jpeg", "jpg")));
+                }
+
+                x -= 8.0;
+
+                if header_button(ui, &p, &mut x, head.center().y, Icon::Duplicate, "Copiar", &l) {
+                    act = Some(Act::Copy(data.to_string()));
+                }
             }
-            x -= 8.0;
-            if header_button(ui, &p, &mut x, head.center().y, Icon::Duplicate, "Copiar", &l) {
-                act = Some(Act::Copy(data.clone()));
-            }
+
             let room = x - 16.0 - (head.left() + 48.0);
             let title = clipped(&p, name.clone(), 14.5, l.text, room - 60.0);
             let line = clipped(&p, sub, 12.0, l.muted, room - 60.0);
+
             p.galley(Pos2::new(head.left() + 48.0, head.center().y - 18.0), title.clone(), l.text);
             p.galley(Pos2::new(head.left() + 48.0, head.center().y + 1.0), line.clone(), l.muted);
             let count = p.layout_no_wrap(format!("{} de {}", at + 1, list.len()), FontId::proportional(13.0), l.muted);
+
             let pill = Rect::from_min_size(
                 Pos2::new(head.left() + 48.0 + title.size().x.max(line.size().x) + 12.0, head.center().y - 10.0),
                 Vec2::new(count.size().x + 16.0, 20.0),
             );
+
             p.rect_filled(pill, 10, l.panel);
             p.galley(pill.center() - count.size() / 2.0, count, l.muted);
             // the picture, under the pointer's wheel and drag
@@ -177,24 +267,32 @@ impl DrawingApp {
             let fit = ((body.width() / real.x).min(body.height() / real.y) * ppp).min(1.0);
             let zoom = viewer.zoom.unwrap_or(fit);
             let drag = ui.interact(body, ui.scope_id().with("picture"), Sense::click_and_drag());
+
             viewer.pan += drag.drag_delta();
+
             if drag.dragged() {
                 ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
             }
+
             if let Some(pointer) = drag.hover_pos() {
                 let (wheel, pinch) = ctx.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
                 let factor = pinch * (wheel / 400.0).exp();
+
                 if factor != 1.0 {
                     let to = (zoom * factor).clamp(0.05, 16.0);
+
                     viewer.pan = zoomed_pan(viewer.pan, pointer - body.center(), zoom, to);
                     viewer.zoom = Some(to);
                 }
             }
+
             let zoom = viewer.zoom.unwrap_or(fit);
             let shown = real * zoom / ppp;
             let slack = ((shown - body.size()) / 2.0).max(Vec2::ZERO);
+
             viewer.pan = viewer.pan.clamp(-slack, slack);
             let rect = Rect::from_center_size(body.center() + viewer.pan, shown);
+
             match (pic, viewer.full.get()) {
                 (_, Some(None)) => {
                     p.text(body.center(), egui::Align2::CENTER_CENTER, "Não foi possível abrir a imagem.", FontId::proportional(14.0), l.muted);
@@ -204,32 +302,42 @@ impl DrawingApp {
                 }
                 _ => {}
             }
+
             // the previous and the next picture
             for (left, to) in [(true, at.checked_sub(1)), (false, (at + 1 < list.len()).then_some(at + 1))] {
                 let center = Pos2::new(if left { body.left() + 36.0 } else { body.right() - 36.0 }, body.center().y);
                 let r = ui.interact(Rect::from_center_size(center, Vec2::splat(40.0)), ui.scope_id().with(("go", left)), Sense::click());
+
                 p.circle(center, 20.0, l.chip, Stroke::new(1.0, l.edge));
                 let ink = if to.is_some() { l.text } else { l.muted.gamma_multiply(0.6) };
                 let d = if left { 1.0 } else { -1.0 };
+
                 p.line(vec![center + Vec2::new(2.5 * d, -6.0), center + Vec2::new(-3.5 * d, 0.0), center + Vec2::new(2.5 * d, 6.0)], Stroke::new(2.0, ink));
+
                 if let Some(to) = to {
                     let tip = if left { "Imagem anterior (←)" } else { "Próxima imagem (→)" };
+
                     if r.on_hover_cursor(CursorIcon::PointingHand).tip(tip).clicked() {
                         go = Some(to);
                     }
                 }
             }
+
             // the minimap, while the picture is larger than the view
             if let Some(pic) = pic.filter(|_| slack != Vec2::ZERO) {
                 let m = (176.0 / real.x).min(110.0 / real.y);
                 let inner = Rect::from_min_size(body.right_bottom() - Vec2::splat(16.0 + 6.0) - real * m, real * m);
+
                 p.rect(inner.expand(6.0), 10, l.chip, Stroke::new(1.0, l.edge), StrokeKind::Inside);
                 picture(&p, Some(pic), inner, 4, &UiColors::new(true));
                 let seen = rect.intersect(body);
+
                 let part =
                     Rect::from_min_max(inner.min + (seen.min - rect.min) / shown * inner.size(), inner.min + (seen.max - rect.min) / shown * inner.size());
+
                 p.rect(part, 2, l.accent.gamma_multiply(0.12), Stroke::new(2.0, l.accent), StrokeKind::Inside);
             }
+
             // the zoom: − 150% +, Ajustar and 1:1
             p.hline(foot.x_range(), foot.top() + 0.5, Stroke::new(1.0, l.line));
             let font = FontId::proportional(14.0);
@@ -238,31 +346,43 @@ impl DrawingApp {
             let (fit_w, one_w) = (10.0 + 15.0 + 6.0 + fit_label.size().x + 10.0, one.size().x + 20.0);
             let width = 4.0 + 32.0 + 2.0 + 58.0 + 2.0 + 32.0 + 13.0 + fit_w + 2.0 + one_w + 4.0;
             let bar = Rect::from_center_size(foot.center(), Vec2::new(width, 40.0));
+
             p.rect_filled(bar, 12, l.panel);
             let mut x = bar.left() + 4.0;
+
             let cell = |x: &mut f32, w: f32, id: &str| {
                 let r = Rect::from_min_size(Pos2::new(*x, bar.top() + 4.0), Vec2::new(w, 32.0));
+
                 *x += w + 2.0;
                 let response = ui.interact(r, ui.scope_id().with(id), Sense::click());
+
                 if response.hovered() {
                     p.rect_filled(r, 8, l.surface);
                 }
+
                 (r, response.on_hover_cursor(CursorIcon::PointingHand))
             };
+
             let (r, minus) = cell(&mut x, 32.0, "minus");
+
             paint_icon(&p, Icon::Minus, r.center(), l.text);
             let label = Rect::from_min_size(Pos2::new(x, bar.top()), Vec2::new(58.0, 40.0));
+
             p.text(label.center(), egui::Align2::CENTER_CENTER, format!("{:.0}%", zoom * 100.0), font.clone(), l.text);
             x += 60.0;
             let (r, plus) = cell(&mut x, 32.0, "plus");
+
             paint_icon(&p, Icon::Plus, r.center(), l.text);
             p.vline(x + 4.5, bar.center().y - 10.0..=bar.center().y + 10.0, Stroke::new(1.0, l.edge));
             x += 11.0;
             let (r, fit_button) = cell(&mut x, fit_w, "fit");
+
             corners(&p, Pos2::new(r.left() + 10.0 + 7.5, r.center().y), Stroke::new(1.4, l.text));
             p.galley(Pos2::new(r.left() + 31.0, r.center().y - fit_label.size().y / 2.0), fit_label, l.text);
             let (r, one_button) = cell(&mut x, one_w, "one");
+
             p.galley(r.center() - one.size() / 2.0, one, l.text);
+
             let step = if minus.tip("Diminuir zoom").clicked() {
                 STEPS.iter().rev().find(|s| **s < zoom * 0.99).copied()
             } else if plus.tip("Aumentar zoom").clicked() {
@@ -270,36 +390,53 @@ impl DrawingApp {
             } else {
                 None
             };
+
             if let Some(to) = step {
                 viewer.pan = zoomed_pan(viewer.pan, Vec2::ZERO, zoom, to);
                 viewer.zoom = Some(to);
             }
+
             if fit_button.clicked() {
                 (viewer.zoom, viewer.pan) = (None, Vec2::ZERO);
             }
+
             if one_button.clicked() {
                 viewer.pan = zoomed_pan(viewer.pan, Vec2::ZERO, zoom, 1.0);
                 viewer.zoom = Some(1.0);
             }
+
             let hint = p.layout_no_wrap("Roda do mouse: zoom · Arrastar: mover · Esc: fechar".into(), FontId::proportional(13.0), l.muted);
+
             if foot.right() - 20.0 - hint.size().x > bar.right() + 16.0 {
                 p.galley(Pos2::new(foot.right() - 20.0 - hint.size().x, foot.center().y - hint.size().y / 2.0), hint, l.muted);
             }
         });
-        if let Some((ChatItem::Image { data, .. }, _)) = go.and_then(|k| list.get(k)) {
-            pics.viewer = Some(Viewer::open(ctx, image_key(data), data));
+
+        if let Some(page) = go.and_then(|k| list.get(k)) {
+            pics.viewer = Some(page.open(ctx));
         }
+
         if close {
             pics.viewer = None;
         }
+
         act
     }
 }
 
 impl Viewer {
+    /// A picture of the conversation, `data` its base64.
     pub(crate) fn open(ctx: &Context, key: (usize, String), data: &str) -> Viewer {
         let data = data.to_string();
-        Viewer { key, full: decode(ctx, u32::MAX, move || crate::render::base64_decode(&data)), zoom: None, pan: Vec2::ZERO }
+
+        Viewer { source: PictureSource::Message(key), full: decode(ctx, u32::MAX, move || crate::render::base64_decode(&data)), zoom: None, pan: Vec2::ZERO }
+    }
+
+    /// A picture waiting in the box, read off its file.
+    pub(crate) fn attached(ctx: &Context, path: &std::path::Path) -> Viewer {
+        let file = path.to_path_buf();
+
+        Viewer { source: PictureSource::Attached(file.clone()), full: decode(ctx, u32::MAX, move || fs::read(file).ok()), zoom: None, pan: Vec2::ZERO }
     }
 }
 
@@ -312,6 +449,7 @@ fn zoomed_pan(pan: Vec2, at: Vec2, from: f32, to: f32) -> Vec2 {
 fn corners(p: &Painter, at: Pos2, stroke: Stroke) {
     for (x, y) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
         let corner = at + Vec2::new(6.0 * x, 6.0 * y);
+
         p.line(vec![corner - Vec2::new(0.0, 4.0 * y), corner, corner - Vec2::new(4.0 * x, 0.0)], stroke);
     }
 }
@@ -320,8 +458,10 @@ fn corners(p: &Painter, at: Pos2, stroke: Stroke) {
 fn header_button(ui: &egui::Ui, p: &Painter, x: &mut f32, y: f32, icon: Icon, label: &str, l: &Look) -> bool {
     let text = p.layout_no_wrap(label.into(), FontId::proportional(14.0), l.text);
     let rect = Rect::from_min_max(Pos2::new(*x - (10.0 + 15.0 + 7.0 + text.size().x + 12.0), y - 16.0), Pos2::new(*x, y + 16.0));
+
     *x = rect.left();
     let response = ui.interact(rect, ui.scope_id().with(label), Sense::click());
+
     p.rect_filled(rect, 8, if response.hovered() { l.surface.gamma_multiply(1.3) } else { l.surface });
     paint_icon(p, icon, Pos2::new(rect.left() + 17.5, y), l.text);
     p.galley(Pos2::new(rect.left() + 32.0, y - text.size().y / 2.0), text, l.text);
@@ -331,6 +471,7 @@ fn header_button(ui: &egui::Ui, p: &Painter, x: &mut f32, y: f32, icon: Icon, la
 /// "16:52": the local time of `ms` since 1970.
 pub(crate) fn local_clock(ms: i64) -> Option<String> {
     let (hour, minute) = local_hour_minute(ms)?;
+
     Some(format!("{hour:02}:{minute:02}"))
 }
 
@@ -339,6 +480,7 @@ pub(crate) fn local_offset(ms: i64) -> i64 {
     let Some((hour, minute)) = local_hour_minute(ms) else { return 0 };
     let utc = ms.div_euclid(60_000).rem_euclid(1440);
     let minutes = (hour as i64 * 60 + minute as i64 - utc + 720).rem_euclid(1440) - 720;
+
     // ponytail: the hour alone can't tell -11/-12 from +13/+12; the peopled side wins. Upgrade: the local date too
     (if minutes <= -660 { minutes + 1440 } else { minutes }) * 60
 }
@@ -349,11 +491,13 @@ fn local_hour_minute(ms: i64) -> Option<(u16, u16)> {
         fn FileTimeToSystemTime(file: *const u64, out: *mut [u16; 8]) -> i32;
         fn SystemTimeToTzSpecificLocalTime(zone: *const u8, utc: *const [u16; 8], local: *mut [u16; 8]) -> i32;
     }
+
     // 100 ns steps since 1601
     let file = (ms.checked_add(11_644_473_600_000)? as u64).checked_mul(10_000)?;
     let (mut utc, mut local) = ([0u16; 8], [0u16; 8]);
     // SAFETY: plain values in and out, sized as Windows declares them (SYSTEMTIME: 8 WORDs)
     let done = unsafe { FileTimeToSystemTime(&file, &mut utc) != 0 && SystemTimeToTzSpecificLocalTime(std::ptr::null(), &utc, &mut local) != 0 };
+
     done.then_some((local[4], local[5]))
 }
 
@@ -362,12 +506,15 @@ fn local_hour_minute(ms: i64) -> Option<(u16, u16)> {
     /// Larger than any platform's struct tm, aligned as it: its first ints are sec, min, hour.
     #[repr(C, align(8))]
     struct Tm([i32; 16]);
+
     unsafe extern "C" {
         fn localtime_r(time: *const i64, out: *mut Tm) -> *mut Tm;
     }
+
     let (time, mut tm) = (ms.div_euclid(1000), Tm([0; 16]));
     // SAFETY: both pointers are valid for the call
     let done = unsafe { !localtime_r(&time, &mut tm).is_null() };
+
     done.then_some((tm.0[2] as u16, tm.0[1] as u16))
 }
 
@@ -376,6 +523,7 @@ mod tests {
     #[test]
     fn the_zoom_keeps_the_pointer_and_the_time_is_local() {
         use eframe::egui::Vec2;
+
         assert_eq!(super::zoomed_pan(Vec2::ZERO, Vec2::new(100.0, 0.0), 1.0, 2.0), Vec2::new(-100.0, 0.0), "the point under the pointer stays");
         assert_eq!(super::STEPS.iter().find(|s| **s > 0.92 * 1.01), Some(&1.0), "+ from a fit goes to the next step");
         assert_eq!(crate::transcript::iso_ms("2026-10-28T19:52:03.123Z"), Some(1_793_217_123_000));

@@ -69,6 +69,7 @@ pub(crate) fn arc(cx: f32, cy: f32, r: f32, from: f32, to: f32) -> Vec<(f32, f32
     (0..=16)
         .map(|i| {
             let a = (from + (to - from) * i as f32 / 16.0).to_radians();
+
             (cx + r * a.cos(), cy + r * a.sin())
         })
         .collect()
@@ -79,6 +80,7 @@ pub(crate) fn paint_g(p: &Painter, g: G, c: Pos2, size: f32, color: Color32) {
     let stroke = Stroke::new(2.0 * size / 24.0, color);
     let line = |pts: &[(f32, f32)]| outline(p, c, size, pts, false, stroke);
     let shape = |pts: &[(f32, f32)]| outline(p, c, size, pts, true, stroke);
+
     match g {
         G::Menu(icon) => paint_menu_icon_sized(p, icon, c, color, size),
         G::FolderOpen => {
@@ -87,9 +89,11 @@ pub(crate) fn paint_g(p: &Painter, g: G, c: Pos2, size: f32, color: Color32) {
         }
         G::Link => {
             let mut left = vec![(9.0, 17.0), (7.0, 17.0)];
+
             left.extend(arc(7.0, 12.0, 5.0, 90.0, 270.0));
             left.push((9.0, 7.0));
             let mut right = vec![(15.0, 7.0), (17.0, 7.0)];
+
             right.extend(arc(17.0, 12.0, 5.0, 270.0, 450.0));
             right.push((15.0, 17.0));
             line(&left);
@@ -99,6 +103,7 @@ pub(crate) fn paint_g(p: &Painter, g: G, c: Pos2, size: f32, color: Color32) {
         G::CornerDownRight => {
             line(&[(15.0, 10.0), (20.0, 15.0), (15.0, 20.0)]);
             let mut pts = vec![(4.0, 4.0), (4.0, 11.0)];
+
             pts.extend(arc(8.0, 11.0, 4.0, 180.0, 90.0));
             pts.push((20.0, 15.0));
             line(&pts);
@@ -117,6 +122,7 @@ pub(crate) fn paint_g(p: &Painter, g: G, c: Pos2, size: f32, color: Color32) {
         G::FolderPlus => {
             line(&[(12.0, 10.0), (12.0, 16.0)]);
             line(&[(9.0, 13.0), (15.0, 13.0)]);
+
             shape(&[
                 (4.0, 20.0),
                 (20.0, 20.0),
@@ -198,13 +204,17 @@ pub(crate) fn menu_row(ui: &mut egui::Ui, row: Row) -> egui::Response {
     let fade = |c: Color32| if row.on { c } else { c.gamma_multiply(0.5) };
     let p = ui.painter();
     let lit = row.lit || (row.on && response.hovered());
+
     if lit {
         p.rect_filled(rect, 4, colors.hover);
     }
+
     let mid = rect.center().y;
     let mut x = rect.left() + ROW_PAD;
+
     if row.lead != Lead::None {
         let dot = Pos2::new(x + 5.69, mid);
+
         match row.lead {
             Lead::Dot(true) => {
                 p.circle_filled(dot, 3.25, fade(colors.text));
@@ -212,18 +222,23 @@ pub(crate) fn menu_row(ui: &mut egui::Ui, row: Row) -> egui::Response {
             Lead::Tick(true) => paint_menu_icon_sized(p, MenuIcon::Check, dot, fade(colors.text), ICON_SIZE),
             _ => {}
         }
+
         x = rect.left() + 26.0;
     }
+
     if let Some(icon) = row.icon {
         paint_g(p, icon, Pos2::new(x + row.size / 2.0, mid), row.size, fade(if lit { colors.text } else { colors.muted }));
         x += row.size + ROW_GAP;
     }
+
     p.text(Pos2::new(x, mid), egui::Align2::LEFT_CENTER, row.label, FontId::proportional(MENU_TEXT_SIZE), fade(colors.text));
+
     if row.arrow {
         paint_menu_icon_sized(p, MenuIcon::Chevron, Pos2::new(rect.right() - ROW_PAD - ICON_SIZE / 2.0, mid), fade(colors.muted), ICON_SIZE);
     } else if !row.keys.is_empty() {
         p.text(Pos2::new(rect.right() - ROW_PAD, mid), egui::Align2::RIGHT_CENTER, row.keys, FontId::proportional(11.0), fade(colors.muted));
     }
+
     response
 }
 
@@ -231,6 +246,7 @@ pub(crate) fn menu_row(ui: &mut egui::Ui, row: Row) -> egui::Response {
 fn separator(ui: &mut egui::Ui) {
     let colors = menu_colors(ui.visuals().dark_mode);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), SEP_HEIGHT), Sense::hover());
+
     ui.painter().hline(rect.left() - MENU_PAD..=rect.right() + MENU_PAD, rect.center().y, Stroke::new(1.0, colors.border));
 }
 
@@ -260,47 +276,64 @@ pub(crate) fn row_menu(ui: &mut egui::Ui, tree: &str, row: Option<&TreeRow>, sho
     ui.set_width(CONTEXT_WIDTH - 2.0 * FRAME);
     ui.spacing_mut().item_spacing.y = 0.0;
     let dir = target_dir(row, shown);
+
     let item = |ui: &mut egui::Ui, icon: G, label: &str, action: &str, on: bool| {
         let clicked = menu_row(ui, Row { keys: if action.is_empty() { "" } else { shortcut(action) }, on, ..Row::new(Some(icon), label) }).clicked();
+
         if clicked {
             ui.close();
         }
+
         clicked
     };
+
     let ask = |kind: NameKind, text: &str| Act::Ask(TreeAsk::Name { tree: tree.to_string(), at: dir.clone(), kind, text: text.into() });
     let paste = paste_label(clip);
+
     if let Some(r) = row {
         if item(ui, G::FolderOpen, "Abrir", "", true) {
             acts.push(if r.dir { Act::Into(r.path.clone()) } else { Act::Activate(r.path.clone()) });
         }
+
         separator(ui);
+
         if item(ui, G::Link, "Copiar Caminho", "copyPath", true) {
             acts.push(Act::CopyPath(r.path.clone(), false));
         }
+
         if item(ui, G::CornerDownRight, "Copiar Caminho Relativo", "copyRelativePath", true) {
             acts.push(Act::CopyPath(r.path.clone(), true));
         }
+
         if changed && !r.dir {
             separator(ui);
+
             // a file git sees as changed: its diff against the last commit, in a tab
             if item(ui, G::ArrowUpDown, "Mostrar Diff", "diff", true) {
                 acts.push(Act::Diff(r.path.clone()));
             }
         }
+
         separator(ui);
+
         if item(ui, G::Menu(MenuIcon::Copy), "Copiar", "copy", true) {
             acts.push(Act::Copy(r.path.clone()));
         }
+
         if item(ui, G::Scissors, "Recortar", "cut", true) {
             acts.push(Act::Cut(r.path.clone()));
         }
+
         if item(ui, G::Menu(MenuIcon::Paste), &paste, "paste", clip.is_some()) {
             acts.push(Act::Paste(dir.clone()));
         }
+
         separator(ui);
+
         if item(ui, G::PenLine, "Renomear", "rename", true) {
             acts.push(Act::Ask(TreeAsk::Name { tree: tree.to_string(), at: r.path.clone(), kind: NameKind::Rename, text: split_name(&r.name).0.to_string() }));
         }
+
         if item(ui, G::Menu(MenuIcon::Trash), "Mover para a Lixeira", "delete", true) {
             acts.push(Act::Ask(TreeAsk::Trash { tree: tree.to_string(), paths: vec![r.path.clone()] }));
         }
@@ -309,10 +342,13 @@ pub(crate) fn row_menu(ui: &mut egui::Ui, tree: &str, row: Option<&TreeRow>, sho
             acts.push(Act::Paste(dir.clone()));
         }
     }
+
     separator(ui);
+
     if item(ui, G::FolderPlus, "Nova Pasta", "newFolder", true) {
         acts.push(ask(NameKind::NewFolder, "Nova Pasta"));
     }
+
     if item(ui, G::FilePlus, "Novo Arquivo", "newFile", true) {
         acts.push(ask(NameKind::NewFile, "Sem título"));
     }
@@ -325,19 +361,24 @@ pub(crate) fn view_menu(ui: &mut egui::Ui, spec: &FileTreeSpec, expanded: bool, 
     ui.spacing_mut().item_spacing.y = 0.0;
     let small = ICON_SIZE;
     let label = if spec.editor { "Ocultar Editor" } else { "Mostrar Editor" };
+
     if menu_row(ui, Row { size: small, ..Row::new(Some(G::PanelRight), label) }).clicked() {
         acts.push(Act::ToggleEditor);
         ui.close();
     }
+
     separator(ui);
     let (eye, label) = if spec.hide_hidden { (MenuIcon::EyeOff, "Mostrar Arquivos Ocultos") } else { (MenuIcon::Eye, "Ocultar Arquivos Ocultos") };
+
     if menu_row(ui, Row { size: small, ..Row::new(Some(G::Menu(eye)), label) }).clicked() {
         acts.push(Act::Hidden);
         ui.close();
     }
+
     separator(ui);
     sort_menu(ui, spec, small, acts);
     separator(ui);
+
     if menu_row(ui, Row { size: small, on: expanded, ..Row::new(Some(G::ArrowUpToLine), "Recolher Tudo") }).clicked() {
         acts.push(Act::CollapseAll);
         ui.close();
@@ -350,6 +391,7 @@ fn sort_menu(ui: &mut egui::Ui, spec: &FileTreeSpec, small: f32, acts: &mut Vec<
     let mut button = menu_row(ui, Row { size: small, arrow: true, ..Row::new(Some(G::ArrowUpDown), "Ordenar por") });
     let dark = ui.visuals().dark_mode;
     let colors = menu_colors(dark);
+
     // the submenu's box is the menu's: same surface, border and padding
     // it overlaps the menu by 4, as the reference does
     let config = MenuConfig::new().submenu_gap(-8.0).style(move |s: &mut egui::Style| {
@@ -358,19 +400,25 @@ fn sort_menu(ui: &mut egui::Ui, spec: &FileTreeSpec, small: f32, acts: &mut Vec<
         s.spacing.menu_margin = egui::Margin::same(MENU_PAD as i8);
         s.spacing.item_spacing.y = 0.0;
     });
+
     // egui lines the first row of a submenu up with the button; the reference lines the box up
     let margin = MENU_PAD + 1.0;
+
     button.interact_rect = Rect::from_min_max(button.interact_rect.min + Vec2::new(0.0, margin), button.interact_rect.max - Vec2::new(0.0, margin));
+
     SubMenu::new().config(config).show(ui, &button, |ui| {
         ui.set_width(SORT_WIDTH - 2.0 * FRAME);
         ui.spacing_mut().item_spacing.y = 0.0;
+
         for by in SortBy::ALL {
             if menu_row(ui, Row { lead: Lead::Dot(spec.sort == by), ..Row::new(None, by.label()) }).clicked() {
                 acts.push(Act::Sort(by));
                 ui.close();
             }
         }
+
         separator(ui);
+
         if menu_row(ui, Row { lead: Lead::Tick(spec.reversed), ..Row::new(None, "Inverter Ordem") }).clicked() {
             acts.push(Act::Reverse);
             ui.close();
@@ -402,11 +450,13 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
     let accent = glass_accent(dark);
     let name = at.file_name().unwrap_or_default().to_string_lossy().into_owned();
     let (base, ext) = if *kind == NameKind::Rename { split_name(&name) } else { ("", "") };
+
     let (title, field) = match kind {
         NameKind::NewFile => ("Novo Arquivo".to_string(), "Nome do novo arquivo".to_string()),
         NameKind::NewFolder => ("Nova Pasta".to_string(), "Nome da nova pasta".to_string()),
         NameKind::Rename => ("Renomear".to_string(), format!("Novo nome para {name}")),
     };
+
     let problem = if text.trim().is_empty() { None } else { crate::editor::fileops::name_problem(text.trim(), std::env::consts::OS) };
     let unchanged = *kind == NameKind::Rename && text.trim() == base;
     let can = !text.trim().is_empty() && problem.is_none() && !unchanged;
@@ -414,6 +464,7 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
     let first = !ctx.data(|d| d.get_temp::<bool>(first_id).unwrap_or(false));
     let mut decision = Popover::Open;
     let inner = POPOVER_WIDTH - 2.0 * 9.75 - 2.0;
+
     let area = egui::Area::new(egui::Id::unique("ft_name_popover_area"))
         .fixed_pos(anchor.left_bottom() + Vec2::new(0.0, 6.0))
         .order(egui::Order::Foreground)
@@ -425,11 +476,15 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
                 ui.visuals_mut().selection.bg_fill = accent;
                 ui.visuals_mut().selection.stroke = Stroke::new(1.0, Color32::WHITE);
                 ui.label(egui::RichText::new(&title).size(13.0).color(c.text));
+
                 ui.horizontal(|ui| {
                     let ext_w =
                         if ext.is_empty() { 0.0 } else { ui.painter().layout_no_wrap(ext.to_string(), FontId::proportional(12.0), c.muted).size().x + 6.5 };
+
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(inner - ext_w, 26.0), Sense::hover());
+
                     ui.painter().rect_filled(rect, 6, if dark { Color32::from_rgb(0x1c, 0x1c, 0x1e) } else { Color32::from_rgb(0xf5, 0xf5, 0xf7) });
+
                     let edit = egui::TextEdit::singleline(text)
                         .frame(egui::Frame::NONE)
                         .margin(egui::Margin::ZERO)
@@ -437,31 +492,42 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
                         .text_color(c.text)
                         .char_limit(255)
                         .desired_width(rect.width() - 16.0);
+
                     let response = ui.put(rect.shrink2(Vec2::new(8.0, 4.0)), edit).tip(field);
+
                     if first {
                         response.request_focus();
                         select_all_text(ui.ctx(), response.id, text.chars().count());
                     }
+
                     // the field is the only thing the popover has to focus: its ring stays
                     ui.painter().rect_stroke(rect, 6, Stroke::new(1.5, accent), StrokeKind::Inside);
+
                     if !ext.is_empty() {
                         ui.label(egui::RichText::new(ext).size(12.0).color(c.muted));
                     }
                 });
+
                 if !ext.is_empty() {
                     ui.label(egui::RichText::new(format!("Mantém a extensão {ext}.")).size(11.0).color(c.muted));
                 }
+
                 if let Some(why) = problem {
                     ui.label(egui::RichText::new(why).size(11.0).color(uc.danger));
                 }
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let go = if *kind == NameKind::Rename { "Renomear" } else { "Criar" };
+
                     let (rect, response) = ui.allocate_exact_size(
                         Vec2::new(ui.painter().layout_no_wrap(go.into(), FontId::proportional(12.0), c.text).size().x + 20.0, 24.0),
                         if can { Sense::click() } else { Sense::hover() },
                     );
+
                     let fill = if response.hovered() && can { accent.gamma_multiply(0.85) } else { accent };
+
                     ui.painter().rect_filled(rect, 6, if can { fill } else { fill.gamma_multiply(0.5) });
+
                     ui.painter().text(
                         rect.center(),
                         egui::Align2::CENTER_CENTER,
@@ -469,25 +535,32 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
                         FontId::proportional(12.0),
                         Color32::WHITE.gamma_multiply(if can { 1.0 } else { 0.6 }),
                     );
+
                     if can && response.clicked() {
                         decision = Popover::Commit(format!("{}{ext}", text.trim()));
                     }
+
                     let (rect, response) = ui.allocate_exact_size(
                         Vec2::new(ui.painter().layout_no_wrap("Cancelar".into(), FontId::proportional(12.0), c.text).size().x + 20.0, 24.0),
                         Sense::click(),
                     );
+
                     if response.hovered() {
                         ui.painter().rect_filled(rect, 6, c.hover);
                     }
+
                     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "Cancelar", FontId::proportional(12.0), c.text);
+
                     if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
                         decision = Popover::Cancel;
                     }
                 });
             });
         });
+
     ctx.data_mut(|d| d.insert_temp(first_id, true));
     let pressed_outside = ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !area.response.rect.contains(p)));
+
     if matches!(decision, Popover::Open) {
         if ctx.input(|i| i.key_pressed(Key::Escape)) || pressed_outside {
             decision = Popover::Cancel;
@@ -495,6 +568,7 @@ pub(crate) fn name_popover(ctx: &Context, ask: &mut TreeAsk, anchor: Rect, dark:
             decision = Popover::Commit(format!("{}{ext}", text.trim()));
         }
     }
+
     decision
 }
 

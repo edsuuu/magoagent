@@ -3005,7 +3005,7 @@ dependencies = [
 
 [[package]]
 name = "magoagent"
-version = "0.0.33"
+version = "0.0.34"
 dependencies = [
  "alacritty_terminal",
  "block2 0.6.2",
@@ -3022,6 +3022,7 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
  "objc2-web-kit",
+ "proc-macro2",
  "raw-window-handle",
  "regex",
  "resvg",
@@ -3030,6 +3031,7 @@ dependencies = [
  "serde",
  "serde_json",
  "similar",
+ "syn 2.0.119",
  "tray-icon",
  "tree-sitter",
  "tree-sitter-javascript",

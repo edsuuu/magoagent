@@ -4,13 +4,17 @@ use super::*;
 /// otherwise through `bridge.json`.
 pub(crate) fn request(request: Value, wait: Duration) -> Result<String, String> {
     let env = |key: &str| std::env::var(key).ok().filter(|v| !v.is_empty());
+
     let saved = || {
         let saved = endpoint_path().and_then(|p| read_json::<Value>(&p)).ok_or("O MagoAgent não está aberto.")?;
+
         Ok::<(String, String), String>((saved["address"].as_str().unwrap_or_default().into(), saved["token"].as_str().unwrap_or_default().into()))
     };
+
     // a chat's agent speaks as its chat (app/chat/node.rs `chat_env`)
     if let (Some(address), Some(token)) = (env("MAGOAGENT_BRIDGE"), env("MAGOAGENT_TOKEN")) {
         let from = env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID")).unwrap_or_default();
+
         match request_to(&address, &token, &from, request.clone(), wait) {
             Err(error) if error == NOT_RUNNING => {}
             done => return done,
@@ -18,7 +22,9 @@ pub(crate) fn request(request: Value, wait: Duration) -> Result<String, String> 
         // ponytail: the app restarted and the address in the environment is stale; reconnect through bridge.json,
         // speaking as the app (the chat's identity died with the old run). Per-chat tokens that survive a restart if needed.
     }
+
     let (address, token) = retry_saved(saved)?;
+
     request_to(&address, &token, "", request, wait)
 }
 
@@ -27,15 +33,19 @@ const NOT_RUNNING: &str = "O MagoAgent não está aberto (a ponte de agentes nã
 /// The app may be starting: tries `bridge.json` for a few seconds until its address answers.
 fn retry_saved(saved: impl Fn() -> Result<(String, String), String>) -> Result<(String, String), String> {
     let mut last = Err(NOT_RUNNING.to_string());
+
     for _ in 0..10 {
         last = saved();
+
         if let Ok((address, _)) = &last
             && TcpStream::connect(address).is_ok()
         {
             return last;
         }
+
         std::thread::sleep(Duration::from_millis(500));
     }
+
     last
 }
 
@@ -43,11 +53,14 @@ pub(crate) fn request_to(address: &str, token: &str, from: &str, mut request: Va
     request["token"] = token.into();
     request["from"] = from.into();
     let mut stream = TcpStream::connect(address).map_err(|_| NOT_RUNNING.to_string())?;
+
     stream.set_read_timeout(Some(wait + Duration::from_secs(30))).map_err(|e| e.to_string())?;
     writeln!(stream, "{request}").map_err(|e| e.to_string())?;
     let mut line = String::new();
+
     BufReader::new(stream).read_line(&mut line).map_err(|e| e.to_string())?;
     let reply: Value = serde_json::from_str(&line).map_err(|_| "resposta inválida do MagoAgent")?;
+
     match reply["ok"].as_bool() {
         Some(true) => Ok(reply["text"].as_str().unwrap_or_default().into()),
         _ => Err(reply["error"].as_str().unwrap_or("erro desconhecido").into()),
@@ -82,6 +95,7 @@ pub(super) const HELP: &str = "Uso: magoagent <comando>
 pub(crate) fn cli(args: &[String]) -> i32 {
     let (mut words, mut raw, mut timeout) = (Vec::new(), false, 600.0);
     let mut rest = args.iter();
+
     while let Some(arg) = rest.next() {
         match arg.as_str() {
             "--raw" => raw = true,
@@ -89,6 +103,7 @@ pub(crate) fn cli(args: &[String]) -> i32 {
             word => words.push(word),
         }
     }
+
     let request = match words.as_slice() {
         ["list"] => json!({ "cmd": "list" }),
         ["ask", name, prompt @ ..] if !prompt.is_empty() => {
@@ -112,9 +127,11 @@ pub(crate) fn cli(args: &[String]) -> i32 {
         ["notify", text @ ..] if !text.is_empty() => json!({ "cmd": "notify", "text": text.join(" ") }),
         _ => {
             println!("{HELP}");
+
             return if matches!(words.as_slice(), ["help"] | []) { 0 } else { 2 };
         }
     };
+
     match self::request(request, Duration::from_secs_f64(timeout)) {
         Ok(text) => {
             println!("{text}");

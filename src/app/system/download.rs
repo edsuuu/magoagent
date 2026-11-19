@@ -12,6 +12,7 @@ const MAX_BYTES: u64 = 512 * 1024 * 1024;
 /// Whether `host` serves GitHub's releases (their assets redirect to githubusercontent.com).
 pub(crate) fn allowed_host(host: &str) -> bool {
     let host = host.to_ascii_lowercase();
+
     host == "github.com" || host == "api.github.com" || host.ends_with(".githubusercontent.com")
 }
 
@@ -20,12 +21,14 @@ pub(crate) fn allowed_url(url: &str) -> bool {
     let Some(rest) = url.strip_prefix("https://") else { return false };
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
     let host = authority.rsplit_once(':').filter(|(_, port)| port.bytes().all(|byte| byte.is_ascii_digit())).map_or(authority, |(host, _)| host);
+
     !authority.contains(['@', '\\']) && !host.is_empty() && allowed_host(host)
 }
 
 /// `sha256:<64 hex>` as GitHub writes a release asset's digest → the hex, in lowercase.
 pub(crate) fn parse_digest(digest: &str) -> Option<String> {
     let hex = digest.strip_prefix("sha256:")?;
+
     (hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit())).then(|| hex.to_ascii_lowercase())
 }
 
@@ -40,16 +43,21 @@ const ROUNDS: [u32; 64] = [
 /// One 64-byte block into the hash state.
 fn compress(state: &mut [u32; 8], block: &[u8]) {
     let mut words = [0u32; 64];
+
     for (index, bytes) in block.as_chunks::<4>().0.iter().enumerate() {
         words[index] = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
     }
+
     for index in 16..64 {
         let (a, b) = (words[index - 15], words[index - 2]);
         let small0 = a.rotate_right(7) ^ a.rotate_right(18) ^ (a >> 3);
         let small1 = b.rotate_right(17) ^ b.rotate_right(19) ^ (b >> 10);
+
         words[index] = words[index - 16].wrapping_add(small0).wrapping_add(words[index - 7]).wrapping_add(small1);
     }
+
     let mut v = *state;
+
     for index in 0..64 {
         let big1 = v[4].rotate_right(6) ^ v[4].rotate_right(11) ^ v[4].rotate_right(25);
         let choose = (v[4] & v[5]) ^ (!v[4] & v[6]);
@@ -57,8 +65,10 @@ fn compress(state: &mut [u32; 8], block: &[u8]) {
         let big0 = v[0].rotate_right(2) ^ v[0].rotate_right(13) ^ v[0].rotate_right(22);
         let majority = (v[0] & v[1]) ^ (v[0] & v[2]) ^ (v[1] & v[2]);
         let second = big0.wrapping_add(majority);
+
         v = [first.wrapping_add(second), v[0], v[1], v[2], v[3].wrapping_add(first), v[4], v[5], v[6]];
     }
+
     for (slot, value) in state.iter_mut().zip(v) {
         *slot = slot.wrapping_add(value);
     }
@@ -70,27 +80,37 @@ pub(crate) fn sha256_hex(mut reader: impl Read) -> std::io::Result<String> {
     let mut total: u64 = 0;
     let mut pending: Vec<u8> = Vec::new();
     let mut chunk = vec![0u8; 1 << 16];
+
     loop {
         let read = reader.read(&mut chunk)?;
+
         if read == 0 {
             break;
         }
+
         total += read as u64;
         pending.extend_from_slice(&chunk[..read]);
         let whole = pending.len() / 64 * 64;
+
         for block in pending[..whole].as_chunks::<64>().0 {
             compress(&mut state, block);
         }
+
         pending.drain(..whole);
     }
+
     pending.push(0x80);
+
     while pending.len() % 64 != 56 {
         pending.push(0);
     }
+
     pending.extend_from_slice(&(total * 8).to_be_bytes());
+
     for block in pending.as_chunks::<64>().0 {
         compress(&mut state, block);
     }
+
     Ok(state.iter().map(|word| format!("{word:08x}")).collect())
 }
 
@@ -98,6 +118,7 @@ pub(crate) fn sha256_hex(mut reader: impl Read) -> std::io::Result<String> {
 pub(crate) fn verify_file(path: &Path, digest: Option<&str>) -> Result<(), String> {
     let wanted = digest.and_then(parse_digest).ok_or("o GitHub não publicou o sha256 do instalador: por segurança ele não será executado")?;
     let found = fs::File::open(path).and_then(sha256_hex).map_err(|error| format!("não foi possível ler o instalador baixado: {error}"))?;
+
     if found == wanted { Ok(()) } else { Err("o instalador baixado não confere com o sha256 do GitHub: descartado".into()) }
 }
 
@@ -106,10 +127,13 @@ pub(crate) fn parse_head(head: &str) -> Option<(u16, Option<String>)> {
     let head = head.replace('\r', "");
     let last = head.split("\n\n").map(str::trim).filter(|part| part.starts_with("HTTP/")).last()?;
     let status = last.lines().next()?.split_whitespace().nth(1)?.parse().ok()?;
+
     let location = last.lines().skip(1).find_map(|line| {
         let (name, value) = line.split_once(':')?;
+
         name.trim().eq_ignore_ascii_case("location").then(|| value.trim().to_string())
     });
+
     Some((status, location))
 }
 
@@ -131,11 +155,13 @@ pub(crate) enum Hop {
 pub(crate) fn fetch_hops(url: &str, part: &Path, allowed: fn(&str) -> bool, max_time: u32) -> Result<(), Hop> {
     let head_file = part.with_extension("head");
     let mut current = url.to_string();
+
     let result = (|| {
         for _ in 0..=MAX_REDIRECTS {
             if !allowed(&current) {
                 return Err(Hop::Outside(current));
             }
+
             let status = crate::editor::command("curl")
                 .args([
                     "-sS",
@@ -160,18 +186,23 @@ pub(crate) fn fetch_hops(url: &str, part: &Path, allowed: fn(&str) -> bool, max_
                 .stderr(std::process::Stdio::null())
                 .status()
                 .map_err(Hop::Start)?;
+
             if !status.success() {
                 return Err(Hop::Failed);
             }
+
             match parse_head(&fs::read_to_string(&head_file).unwrap_or_default()) {
                 Some((200, _)) => return Ok(()),
                 Some((301 | 302 | 303 | 307 | 308, Some(next))) => current = next,
                 other => return Err(Hop::Unexpected(other)),
             }
         }
+
         Err(Hop::TooMany)
     })();
+
     let _ = fs::remove_file(&head_file);
+
     result
 }
 
@@ -196,17 +227,20 @@ mod tests {
     fn sha256_matches_the_known_vectors() {
         assert_eq!(sha256_hex(&b"abc"[..]).unwrap(), ABC);
         assert_eq!(sha256_hex(&b""[..]).unwrap(), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+
         // two blocks plus padding, and more than one read chunk
         assert_eq!(
             sha256_hex(&b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"[..]).unwrap(),
             "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
         );
+
         assert_eq!(sha256_hex(std::io::repeat(b'a').take(1_000_000)).unwrap(), "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
     }
 
     #[test]
     fn only_a_matching_digest_lets_the_installer_run() {
         let file = std::env::temp_dir().join(format!("magoagent-sha-{}.bin", std::process::id()));
+
         fs::write(&file, b"abc").unwrap();
         assert!(verify_file(&file, Some(&format!("sha256:{ABC}"))).is_ok());
         assert!(verify_file(&file, Some(&format!("sha256:{}", ABC.to_uppercase()))).is_ok());
@@ -223,6 +257,7 @@ mod tests {
         assert!(allowed_url("https://github.com/edsuuu/magoagent/releases/download/v1/x.msi"));
         assert!(allowed_url("https://objects.githubusercontent.com/a?b=c") && allowed_url("https://release-assets.githubusercontent.com/x"));
         assert!(allowed_url("https://api.github.com/repos"));
+
         for bad in [
             "http://github.com/x",
             "https://evil.com/x",
@@ -245,6 +280,7 @@ mod tests {
             parse_head("HTTP/2 302 \r\nlocation: https://objects.githubusercontent.com/x\r\nserver: GitHub\r\n\r\n"),
             Some((302, Some("https://objects.githubusercontent.com/x".into())))
         );
+
         assert_eq!(parse_head("HTTP/1.1 200 Connection established\r\n\r\nHTTP/2 200 \r\ncontent-length: 5\r\n\r\n"), Some((200, None)));
         assert_eq!(parse_head("HTTP/2 404 \r\n\r\n"), Some((404, None)));
         assert_eq!(parse_head(""), None);

@@ -75,6 +75,7 @@ pub(crate) fn status_color(s: Status, dark: bool) -> Color32 {
     if dark {
         return s.color();
     }
+
     let hex: u32 = match s {
         Status::Modified | Status::Renamed => 0x0032a0,
         Status::Added => 0x0a7700,
@@ -82,6 +83,7 @@ pub(crate) fn status_color(s: Status, dark: bool) -> Color32 {
         Status::Untracked => 0x993300,
         Status::Conflict => 0xff0000,
     };
+
     rgb_hex(hex)
 }
 
@@ -103,16 +105,21 @@ pub(crate) fn cr(r: f32) -> u8 {
 /// `text` cut to `max` points wide, with an ellipsis.
 pub(crate) fn fit(p: &Painter, text: &str, font: &FontId, max: f32) -> String {
     let width = |s: &str| p.layout_no_wrap(s.to_string(), font.clone(), Color32::WHITE).size().x;
+
     if max <= 0.0 {
         return String::new();
     }
+
     if width(text) <= max {
         return text.into();
     }
+
     let mut s = text.to_string();
+
     while !s.is_empty() && width(&format!("{s}…")) > max {
         s.pop();
     }
+
     format!("{s}…")
 }
 
@@ -134,25 +141,31 @@ fn head(p: &Painter, frame: Rect, z: f32, git: &TreeGit) -> Head {
     let back = slot(frame.left() + pad, size);
     let forward = slot(back.right() + z, size);
     let mut right = frame.right() - pad;
+
     let pill = git.repo.then(|| {
         let font = FontId::proportional(11.0 * z);
         let branch = fit(p, if git.branch.is_empty() { "HEAD" } else { &git.branch }, &font, 78.0 * z);
         let text = |s: &str| p.layout_no_wrap(s.to_string(), font.clone(), Color32::WHITE).size().x;
         let count = if git.changes > 0 { 3.25 * z + text(&git.changes.to_string()) } else { 0.0 };
         let width = 2.0 * pad + 2.0 * z + 9.75 * z + 3.25 * z + text(&branch) + count;
+
         right -= width;
         let rect = slot(right, width);
+
         right -= gap;
         (rect, branch)
     });
+
     let view = slot(right - 32.5 * z, 32.5 * z);
     let name = Rect::from_min_max(Pos2::new(forward.right() + gap, cy - size / 2.0), Pos2::new(view.left() - gap, cy + size / 2.0));
+
     Head { back, forward, name, view, pill }
 }
 
 /// A lucide-style outline from points on its 24-grid, scaled into a square of `size` at `c`.
 pub(crate) fn outline(p: &Painter, c: Pos2, size: f32, grid: &[(f32, f32)], close: bool, stroke: Stroke) {
     let points: Vec<Pos2> = grid.iter().map(|(x, y)| c + Vec2::new(x - 12.0, y - 12.0) * (size / 24.0)).collect();
+
     p.add(if close { Shape::closed_line(points, stroke) } else { Shape::line(points, stroke) });
 }
 
@@ -163,6 +176,7 @@ fn chevron(p: &Painter, c: Pos2, size: f32, dir: u8, stroke: Stroke) {
         1 => [(6.0, 9.0), (12.0, 15.0), (18.0, 9.0)],
         _ => [(15.0, 18.0), (9.0, 12.0), (15.0, 6.0)],
     };
+
     outline(p, c, size, &grid, false, stroke);
 }
 
@@ -213,18 +227,23 @@ impl DrawingApp {
     pub(crate) fn paint_filetree(&self, painter: &Painter, element: &Element, rect: Rect, z: f32) {
         let Some(spec) = &element.filetree else { return };
         let c = Palette::new(self.dark());
+
         painter.rect(rect, cr(8.125 * z), c.bg, Stroke::new(1.0, c.border), StrokeKind::Inside);
         let git = self.filetrees.views.get(&element.id).map(|v| v.git.clone()).unwrap_or_default();
         // the tree's column: the whole card, or what the editor pane leaves
         let (tree, pane) = parts(spec, rect, z);
         let h = head(painter, tree, z, &git);
         let line = rect.top() + FT_BAR * z;
+
         painter.hline(rect.left() + 1.0..=tree.right() - 1.0, line, Stroke::new(1.0, c.border));
+
         if pane.is_some() {
             painter.vline(tree.right() + 0.5 * z, rect.top() + 1.0..=rect.bottom() - 1.0, Stroke::new(1.0, c.border));
         }
+
         let font = FontId::proportional(13.0 * z);
         let name = fit(painter, &spec.name(), &font, h.name.width());
+
         // ponytail: the app has one weight of its font; the reference's medium name is struck twice, a hair apart
         for dx in [0.0, 0.45 * z] {
             painter.text(h.name.left_center() + Vec2::new(dx, 0.0), egui::Align2::LEFT_CENTER, &name, font.clone(), c.fg);
@@ -238,6 +257,7 @@ impl DrawingApp {
         let (tree, _) = crate::app::filetree::pane::parts(spec, frame, zoom);
         let git = self.filetrees.views.get(&element.id).map(|view| view.git.clone()).unwrap_or_default();
         let header = head(&ctx.layer_painter(egui::LayerId::background()), tree, zoom, &git);
+
         Some(Rect::from_min_max(Pos2::new(header.name.left(), tree.top()), Pos2::new(header.view.left(), tree.top() + FT_BAR * zoom)))
     }
 
@@ -245,21 +265,28 @@ impl DrawingApp {
     pub(crate) fn filetree_overlay(&mut self, ctx: &Context) {
         // enlarged, only the enlarged one (when it is a tree)
         let lifted = self.terminal_elevated.clone();
+
         if lifted.as_ref().is_some_and(|id| !self.scene.elements.iter().any(|e| &e.id == id && e.filetree.is_some())) {
             return;
         }
+
         // enlarged: a press outside the node, on the bare canvas, puts it back (as the enlarged terminal's margin)
         if let Some(element) = lifted.as_ref().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id)) {
             let frame = self.terminal_frame(element).0;
+
             let press = ctx
                 .input(|i| (i.pointer.primary_pressed() || i.pointer.secondary_pressed()).then(|| i.pointer.interact_pos()).flatten())
                 .filter(|_| !self.panning);
+
             if self.dock.is_none() && press.is_some_and(|p| !frame.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order == egui::Order::Background)) {
                 self.set_elevated(None);
+
                 return;
             }
         }
+
         let (dark, canvas) = (self.dark(), self.canvas_rect);
+
         let nodes: Vec<(String, FileTreeSpec, Rect, f32)> = self
             .scene
             .elements
@@ -267,24 +294,29 @@ impl DrawingApp {
             .filter(|e| e.filetree.is_some() && lifted.as_ref().is_none_or(|id| *id == e.id))
             .filter_map(|e| {
                 let (frame, z) = self.terminal_frame(e);
+
                 Some((e.id.clone(), e.filetree.clone()?, frame, z))
             })
             .filter(|(_, _, frame, z)| *z >= 0.3 && frame.width() * 1.0 >= 150.0 && frame.intersects(canvas))
             .collect();
+
         for (id, spec, frame, z) in nodes {
             let Some(mut view) = self.filetrees.views.remove(&id) else { continue };
             let mut acts = Vec::new();
             let clip = self.filetrees.clipboard.as_ref().map(|(paths, cut)| (paths.len(), *cut));
             let focused = self.card_focus.as_deref() == Some(id.as_str());
             let (tree, pane) = parts(&spec, frame, z);
+
             // the files with an error and the folders over them
             view.problems = self.filetrees.editors.get(&id).map(|ed| propagate(&ed.problems.error_files(), &spec.root_path())).unwrap_or_default();
             draw(ctx, &id, &spec, tree, z, canvas, dark, clip, focused, &mut view, &mut acts);
+
             // a name is asked in a small popover under the row it is about
             let pending = match &self.filetrees.ask {
                 Some(TreeAsk::Name { tree, at, .. }) if *tree == id => Some(at.clone()),
                 _ => None,
             };
+
             if let (Some(at), Some(mut ask)) = (pending, self.filetrees.ask.clone()) {
                 match name_popover(ctx, &mut ask, ask_anchor(&view, tree, z, &at), dark) {
                     Popover::Open => self.filetrees.ask = Some(ask),
@@ -295,31 +327,40 @@ impl DrawingApp {
                     Popover::Cancel => self.filetrees.ask = None,
                 }
             }
+
             // the panels over the rows (the search bar and its buttons stay)
             let foot = FT_BAR * z + if view.dropped > 0 { FT_NOTE * z } else { 0.0 };
+
             self.filetrees.views.insert(id.clone(), view);
+
             // the Alterações panel over the rows
             if spec.changes {
                 let list = Rect::from_min_max(Pos2::new(tree.left() + 4.0, tree.top() + FT_BAR * z + 1.0), Pos2::new(tree.right() - 4.0, tree.bottom() - foot));
                 let files = self.filetrees.views.get(&id).map(|v| v.git.files.clone()).unwrap_or_default();
+
                 if let Some(file) = crate::app::filetree::changes::changes_ui(ctx, &id, list, tree.intersect(canvas), z, dark, &spec.root_path(), &files) {
                     self.ft_open_change(&id, &file);
                 }
             }
+
             // the editor pane, when shown
             if let Some(pane) = pane {
                 let mut ed = self.filetrees.editors.remove(&id).unwrap_or_else(|| Editor::new(ctx.clone()));
                 let mut pane_acts = Vec::new();
+
                 pane_ui(ctx, &id, frame, tree, pane, z, canvas, dark, lifted.is_some(), &mut ed, &mut pane_acts);
                 self.filetrees.editors.insert(id.clone(), ed);
+
                 for act in pane_acts {
                     self.ft_pane_apply(&id, act);
                 }
             }
+
             for act in acts {
                 self.ft_apply(ctx, &id, act);
             }
         }
+
         if !matches!(self.filetrees.ask, Some(TreeAsk::Name { .. })) {
             ctx.data_mut(|d| d.remove::<bool>(egui::Id::unique("ft_name_popover")));
         }
@@ -331,6 +372,7 @@ impl DrawingApp {
 fn ask_anchor(view: &TreeView, frame: Rect, z: f32, at: &Path) -> Rect {
     let top = frame.top() + FT_BAR * z + 1.0;
     let row = view.filter.trim().is_empty().then_some(at).and_then(|at| view.rows.iter().position(|r| r.path == at));
+
     match row {
         Some(i) => Rect::from_min_size(Pos2::new(frame.left() + 4.0, top + (i as f32 * FT_ROW - view.scroll) * z), Vec2::new(frame.width() - 8.0, FT_ROW * z)),
         None => Rect::from_min_size(Pos2::new(frame.left() + 4.0, top - 6.0), Vec2::new(frame.width() - 8.0, 0.0)),

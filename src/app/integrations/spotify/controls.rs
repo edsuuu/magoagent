@@ -16,9 +16,11 @@ pub(crate) const LIKED_SONGS: &str = "spotify:collection";
 pub(crate) fn player_queue_now(most: usize) -> Option<Vec<QueueItem>> {
     #[cfg(not(any(windows, target_os = "macos")))]
     return super::soloist::queue_now(most);
+
     #[cfg(any(windows, target_os = "macos"))]
     {
         let _ = most;
+
         None
     }
 }
@@ -49,6 +51,7 @@ impl Spotify {
     /// `uri` as the Web API takes a context: Liked Songs by the account's own uri; None when it is not one to play.
     pub(crate) fn context_uri(&self, uri: &str) -> Option<String> {
         let context = if is_liked_songs(uri) { web::liked_songs_uri(&self.account.user_id) } else { uri.to_string() };
+
         uri_allowed(&context).then_some(context)
     }
 
@@ -56,6 +59,7 @@ impl Spotify {
     fn show_change(&mut self, command: &Command) {
         let Some(now) = self.now.as_mut() else { return };
         let playback = &mut now.playback;
+
         match command {
             Command::Shuffle(on) => playback.shuffle = Some(*on),
             Command::Repeat(repeat) => playback.repeat = Some(*repeat),
@@ -76,33 +80,43 @@ impl DrawingApp {
         if self.spotify_sources() == Sources::default() {
             return Err("O Spotify está desligado em Ajustes › Integrações.".into());
         }
+
         let spotify = &mut self.integrations.spotify;
         let linked = spotify.account.linked();
+
         // Liked Songs: the account's own uri
         let command = match command {
             Command::PlayUri(uri) if uri == LIKED_SONGS || is_liked_songs(&uri) => {
                 if spotify.account.user_id.is_empty() {
                     return Err(NEEDS_ACCOUNT.into());
                 }
+
                 Command::PlayUri(web::liked_songs_uri(&spotify.account.user_id))
             }
             command => command,
         };
+
         if super::fake::active() {
             spotify.show_change(&command);
+
             if let (Command::PlayPause, Some(now)) = (&command, spotify.now.as_mut()) {
                 now.playing = !now.playing;
             }
+
             return Ok(());
         }
+
         let shown = spotify.now.as_ref().map(|now| (now.player, now.through_soloist, now.playing));
         let route = playback::route(System::HERE, shown.map(|shown| shown.0), shown.is_some_and(|shown| shown.1), linked, &command);
+
         match route {
             Route::No(why) => return Err(why.into()),
             Route::Player => {
                 #[cfg(test)]
                 spotify.asked.push(command.clone());
+
                 spotify.show_change(&command);
+
                 if let Some((asks, _)) = &spotify.thread {
                     let _ = asks.send(Ask::Control(command));
                 }
@@ -110,16 +124,13 @@ impl DrawingApp {
             Route::Web => {
                 spotify.show_change(&command);
                 let playing = shown.is_some_and(|shown| shown.2);
+
                 spotify.spawn_web("control", move |shared| Reply::Done(web::control(shared, &command, playing)));
                 spotify.soon();
             }
         }
-        Ok(())
-    }
 
-    /// Play/pause, next or previous (the pill, Ajustes, the MCP); false when it went nowhere.
-    pub(crate) fn spotify_control(&mut self, command: Command) -> bool {
-        self.spotify_do(command).is_ok()
+        Ok(())
     }
 
     pub(crate) fn spotify_set_shuffle(&mut self, on: bool) -> Result<(), String> {
@@ -133,6 +144,7 @@ impl DrawingApp {
     /// `volume` from 0 to 1.
     pub(crate) fn spotify_set_volume(&mut self, volume: f32) -> Result<(), String> {
         let volume = if volume.is_finite() { volume.clamp(0.0, 1.0) } else { 0.0 };
+
         self.spotify_do(Command::Volume((volume * 100.0).round() as u8))
     }
 
@@ -144,9 +156,11 @@ impl DrawingApp {
     /// A track, an album, a playlist (`spotify:…`) or Liked Songs (`LIKED_SONGS`), now.
     pub(crate) fn spotify_play_uri(&mut self, uri: &str) -> Result<(), String> {
         let uri = uri.trim();
+
         if uri != LIKED_SONGS && !uri_allowed(uri) {
             return Err("Isso não é um endereço do Spotify que dê para tocar (spotify:track:…, spotify:playlist:…).".into());
         }
+
         self.spotify_do(Command::PlayUri(uri.to_string()))
     }
 
@@ -154,6 +168,7 @@ impl DrawingApp {
     /// without, as any `play`.
     pub(crate) fn spotify_jump(&mut self, uri: &str) -> Result<(), String> {
         let context = self.integrations.spotify.play_context();
+
         self.spotify_play_from(uri, context)
     }
 
@@ -161,15 +176,18 @@ impl DrawingApp {
     pub(crate) fn spotify_play_in_list(&mut self, words: &str) -> Result<(), String> {
         let (list, uri) = words.trim().split_once(' ').ok_or_else(String::new)?;
         let context = self.integrations.spotify.context_uri(list);
+
         self.spotify_play_from(uri, context)
     }
 
     /// A song now in `context`: with the account one Web API call; without, as any `play`.
     fn spotify_play_from(&mut self, uri: &str, context: Option<String>) -> Result<(), String> {
         let uri = uri.trim().to_string();
+
         if !self.integrations.spotify.account.linked() || !is_track(&uri) || super::fake::active() || self.spotify_sources() == Sources::default() {
             return self.spotify_play_uri(&uri);
         }
+
         self.integrations.spotify.spawn_web("control", move |shared| Reply::Done(web::play_in(shared, &uri, context.as_deref())));
         self.integrations.spotify.soon();
         Ok(())
@@ -178,23 +196,29 @@ impl DrawingApp {
     /// A track to the queue (Soloist's own, else the account's).
     pub(crate) fn spotify_add_to_queue(&mut self, uri: &str) -> Result<(), String> {
         let uri = uri.trim();
+
         if !is_track(uri) {
             return Err("Só uma música vai para a fila (spotify:track:…).".into());
         }
+
         self.spotify_do(Command::Enqueue(uri.to_string()))
     }
 
     /// The heart of a track (`uri`; empty: the one playing): into Liked Songs, or out. Only with the account.
     pub(crate) fn spotify_set_liked(&mut self, uri: &str, liked: bool) -> Result<(), String> {
         let spotify = &mut self.integrations.spotify;
+
         if !spotify.account.linked() {
             return Err(NEEDS_ACCOUNT.into());
         }
+
         let uri =
             if uri.trim().is_empty() { spotify.now.as_ref().map(|now| now.playback.track_uri.clone()).unwrap_or_default() } else { uri.trim().to_string() };
+
         if !is_track(&uri) {
             return Err("Não sei qual música é esta: o player não disse o endereço dela.".into());
         }
+
         spotify.library.hearts.insert(uri.clone(), liked);
         spotify.enrich();
         spotify.spawn_web("save", move |shared| Reply::Saved(uri.clone(), liked, web::save(shared, &uri, liked)));
@@ -205,13 +229,17 @@ impl DrawingApp {
     pub(crate) fn spotify_search(&mut self, query: &str) -> Result<(), String> {
         let query: String = query.chars().filter(|letter| !letter.is_control()).take(200).collect::<String>().trim().to_string();
         let spotify = &mut self.integrations.spotify;
+
         if query.is_empty() {
             (spotify.library.found, spotify.library.searching) = (None, false);
+
             return Ok(());
         }
+
         if !spotify.account.linked() {
             return Err(LISTS_NEED_ACCOUNT.into());
         }
+
         spotify.library.searching = true;
         spotify.library.set_query(&query);
         spotify.spawn_web("search", move |shared| Reply::Found(web::search(shared, &query)));
@@ -221,14 +249,19 @@ impl DrawingApp {
     /// The music to another of the account's devices (the "Soloist ▾" menu).
     pub(crate) fn spotify_transfer(&mut self, device_id: &str) -> Result<(), String> {
         let spotify = &mut self.integrations.spotify;
+
         if !spotify.account.linked() {
             return Err(NEEDS_ACCOUNT.into());
         }
+
         let device_id = device_id.trim().to_string();
+
         if !spotify.library.devices.iter().any(|device| device.id == device_id) {
             return Err("Esse aparelho não está entre os da conta do Spotify.".into());
         }
+
         let playing = spotify.now.as_ref().is_some_and(|now| now.playing);
+
         spotify.spawn_web("control", move |shared| Reply::Done(web::transfer(shared, &device_id, playing)));
         Ok(())
     }
@@ -239,6 +272,7 @@ impl DrawingApp {
     pub(crate) fn spotify_press(&mut self, words: &str) {
         let words = words.trim();
         let (name, rest) = words.split_once(' ').map_or((words, ""), |(name, rest)| (name, rest.trim()));
+
         let result = match name {
             "like" | "unlike" => self.spotify_set_liked(rest, name == "like"),
             "search" => self.spotify_search(rest),
@@ -260,6 +294,7 @@ impl DrawingApp {
                 None => Err(String::new()),
             },
         };
+
         if let Err(why) = result {
             self.integrations.spotify.library.fail(why, now_ms());
         }

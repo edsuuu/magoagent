@@ -26,9 +26,11 @@ pub(super) const DEFS: [(&str, &str, &str, bool); 10] = [
 pub(crate) fn catalog(agent: &str) -> Vec<Entry> {
     let mut list: Vec<Entry> =
         DEFS.iter().filter(|d| d.3 || agent != "codex").map(|d| Entry { name: d.0.into(), args: d.1.into(), desc: d.2.into() }).collect();
+
     if agent != "codex" {
         list.push(Entry { name: "compact".into(), args: "[instruções]".into(), desc: "Resume a conversa para liberar contexto (vai ao agente)".into() });
     }
+
     list
 }
 
@@ -52,6 +54,7 @@ pub(crate) fn parse(text: &str, agent: &str) -> Option<Result<Local, String>> {
     let rest = text.trim().strip_prefix('/')?;
     let (word, arg) = rest.split_once(char::is_whitespace).map_or((rest, ""), |(w, a)| (w, a.trim()));
     let arg = arg.to_string();
+
     let local = match word.to_lowercase().as_str() {
         "login" => Local::Login(arg),
         "logout" => Local::Logout,
@@ -65,9 +68,11 @@ pub(crate) fn parse(text: &str, agent: &str) -> Option<Result<Local, String>> {
         "help" => Local::Help,
         _ => return None,
     };
+
     if agent == "codex" && matches!(local, Local::Doctor | Local::Update) {
         return Some(Err(format!("/{word} só existe no Claude Code.")));
     }
+
     Some(Ok(local))
 }
 
@@ -92,6 +97,7 @@ pub(crate) fn cli_args(agent: &str, local: &Local) -> Result<Vec<String>, String
         (false, Local::Update) => &["update"],
         _ => return Err("Esse comando não roda o agente.".into()),
     };
+
     Ok(words.iter().map(|w| w.to_string()).collect())
 }
 
@@ -100,16 +106,20 @@ pub(crate) fn describe_status(json: &str) -> (bool, String) {
     let Ok(v) = serde_json::from_str::<Value>(json.trim()) else {
         return (false, json.trim().to_string());
     };
+
     if v["loggedIn"] != true {
         return (false, "Você não está logado. Digite /login para entrar.".into());
     }
+
     let get = |k: &str| v[k].as_str().filter(|s| !s.is_empty() && *s != "none").map(str::to_string);
     let mut text = format!("Logado como {}", get("email").unwrap_or_else(|| "uma conta".into()));
+
     for (key, prefix) in [("subscriptionType", "plano "), ("orgName", ""), ("authMethod", "acesso ")] {
         if let Some(value) = get(key) {
             text += &format!(" · {prefix}{value}");
         }
     }
+
     (true, text)
 }
 
@@ -118,6 +128,7 @@ pub(super) fn clean(bytes: &[u8]) -> String {
     let text = String::from_utf8_lossy(bytes);
     let mut out = String::new();
     let mut chars = text.chars().peekable();
+
     while let Some(c) = chars.next() {
         if c == '\u{1b}' {
             if chars.peek() == Some(&'[') {
@@ -131,6 +142,7 @@ pub(super) fn clean(bytes: &[u8]) -> String {
             out.push(c);
         }
     }
+
     out.trim().to_string()
 }
 
@@ -145,13 +157,16 @@ pub(super) fn describe(text: &str) -> String {
     let body = match text.strip_prefix("---").and_then(|t| t.split_once("\n---")) {
         Some((front, rest)) => {
             let found = front.lines().find_map(|l| l.trim().strip_prefix("description:")).map(|d| d.trim().trim_matches(['"', '\'']).to_string());
+
             if let Some(d) = found.filter(|d| !d.is_empty()) {
                 return clip(&d);
             }
+
             rest
         }
         None => text,
     };
+
     clip(body.lines().map(|l| l.trim().trim_start_matches('#').trim()).find(|l| !l.is_empty()).unwrap_or_default())
 }
 
@@ -161,25 +176,33 @@ pub(super) fn scan(claude: &Path, from: &str, out: &mut Vec<Entry>) {
     fn walk(dir: &Path, prefix: &str, from: &str, depth: usize, out: &mut Vec<Entry>) {
         let Ok(read) = fs::read_dir(dir) else { return };
         let mut files: Vec<_> = read.flatten().collect();
+
         files.sort_by_key(|e| e.file_name());
+
         for e in files {
             let (path, name) = (e.path(), e.file_name().to_string_lossy().to_string());
+
             if path.is_dir() && depth < 3 {
                 walk(&path, &format!("{prefix}{name}:"), from, depth + 1, out);
             } else if let Some(stem) = name.strip_suffix(".md") {
                 let desc = describe(&fs::read_to_string(&path).unwrap_or_default());
+
                 out.push(Entry { name: format!("{prefix}{stem}"), args: String::new(), desc: format!("{desc} ({from})").trim().to_string() });
             }
         }
     }
+
     walk(&claude.join("commands"), "", from, 0, out);
     let Ok(skills) = fs::read_dir(claude.join("skills")) else { return };
     let mut dirs: Vec<_> = skills.flatten().collect();
+
     dirs.sort_by_key(|e| e.file_name());
+
     for e in dirs {
         if let Ok(text) = fs::read_to_string(e.path().join("SKILL.md")) {
             let named = text.strip_prefix("---").and_then(|t| t.split_once("\n---")).and_then(|(f, _)| f.lines().find_map(|l| l.trim().strip_prefix("name:")));
             let name = named.map_or_else(|| e.file_name().to_string_lossy().to_string(), |n| n.trim().trim_matches(['"', '\'']).to_string());
+
             out.push(Entry { name, args: String::new(), desc: format!("Skill · {} ({from})", describe(&text)) });
         }
     }
@@ -188,11 +211,15 @@ pub(super) fn scan(claude: &Path, from: &str, out: &mut Vec<Entry>) {
 /// The folder's own commands first, then the person's; a name already taken stays with the first.
 pub(crate) fn discover(cwd: &Path, home: Option<&Path>) -> Vec<Entry> {
     let mut all = Vec::new();
+
     scan(&cwd.join(".claude"), "projeto", &mut all);
+
     if let Some(home) = home {
         scan(&home.join(".claude"), "pessoal", &mut all);
     }
+
     let mut seen = std::collections::HashSet::new();
+
     all.retain(|e| seen.insert(e.name.clone()));
     all
 }
@@ -203,5 +230,6 @@ pub(crate) fn filter(all: &[Entry], query: &str) -> Vec<Entry> {
     let q = query.to_lowercase();
     let starts = all.iter().filter(|e| e.name.to_lowercase().starts_with(&q));
     let holds = all.iter().filter(|e| !e.name.to_lowercase().starts_with(&q) && e.name.to_lowercase().contains(&q));
+
     starts.chain(holds).cloned().collect()
 }

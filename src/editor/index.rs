@@ -45,6 +45,7 @@ fn is_id(c: char) -> bool {
 fn words(line: &str) -> Vec<(usize, &str)> {
     let mut out = vec![];
     let mut start = None;
+
     for (col, (i, c)) in line.char_indices().enumerate() {
         match (is_id(c), start) {
             (true, None) => start = Some((col, i)),
@@ -55,9 +56,11 @@ fn words(line: &str) -> Vec<(usize, &str)> {
             _ => {}
         }
     }
+
     if let Some((sc, si)) = start {
         out.push((sc, &line[si..]));
     }
+
     out
 }
 
@@ -67,17 +70,23 @@ const CONTROL: &[&str] = &["if", "for", "while", "switch", "return", "else", "ne
 pub fn declarations(lang_id: &str, text: &str) -> Vec<Decl> {
     let mut out = vec![];
     let mut in_block_comment = false;
+
     for (ln, raw) in text.lines().enumerate() {
         let line = raw.trim_start();
         let indent = raw.len() - line.len();
+
         if in_block_comment {
             in_block_comment = !line.contains("*/");
+
             continue;
         }
+
         if line.starts_with("/*") {
             in_block_comment = !line.contains("*/");
+
             continue;
         }
+
         if line.starts_with("//")
             || line.starts_with('*')
             || line.starts_with("--")
@@ -86,7 +95,9 @@ pub fn declarations(lang_id: &str, text: &str) -> Vec<Decl> {
         {
             continue;
         }
+
         let ws = words(raw);
+
         if lang_id == "asm" {
             if indent == 0
                 && let Some((c, w)) = ws.first()
@@ -94,21 +105,28 @@ pub fn declarations(lang_id: &str, text: &str) -> Vec<Decl> {
             {
                 out.push(Decl { name: w.to_string(), kind: Kind::Function, line: ln, col: *c, bases: vec![] });
             }
+
             continue;
         }
+
         let chars: Vec<char> = raw.chars().collect();
+
         let kw = ws.iter().position(|&(c, w)| {
             let keyword = matches!(
                 w,
                 "class" | "interface" | "trait" | "enum" | "struct" | "union" | "fn" | "function" | "def" | "func" | "mod" | "impl" | "record" | "namespace"
             ) || (w == "const" && matches!(lang_id, "php" | "javascript" | "javascriptreact" | "typescript" | "typescriptreact" | "go"))
                 || (w == "type" && lang_id != "php");
+
             // not a keyword when used as a value/member/string: Foo::class, $fn, x.type, 'type' =>
             let prev = if c > 0 { chars[c - 1] } else { ' ' };
+
             keyword && !matches!(prev, ':' | '$' | '.' | '>' | '\'' | '"' | '-')
         });
+
         if let Some(k) = kw {
             let keyword = ws[k].1;
+
             if keyword == "impl" {
                 // impl Trait for Type  -> Type implements Trait
                 if let Some(f) = ws.iter().position(|(_, w)| *w == "for")
@@ -117,21 +135,28 @@ pub fn declarations(lang_id: &str, text: &str) -> Vec<Decl> {
                 {
                     out.push(Decl { name: ty.to_string(), kind: Kind::Struct, line: ln, col: *c, bases: vec![ws[k + 1..f].last().unwrap().1.to_string()] });
                 }
+
                 continue;
             }
+
             // Go method: func (r *T) Name(
             let mut ni = k + 1;
+
             if keyword == "func" && line[4..].trim_start().starts_with('(') {
                 let close = raw.find(')').unwrap_or(0);
+
                 ni = ws.iter().position(|(c, _)| *c > raw[..close].chars().count()).unwrap_or(ws.len());
             }
+
             let Some((col, name)) = ws.get(ni) else { continue };
             // the name must follow the keyword directly (rejects closures `function ($x)`, `fn($x) =>`)
             let gap: String = chars[ws[k].0 + keyword.chars().count()..*col].iter().collect();
             let direct = gap.chars().all(|c| c.is_whitespace() || c == '&' || c == '*') || ni != k + 1;
+
             if !direct || name.chars().next().is_some_and(|c| c.is_ascii_digit()) || matches!(*name, "extends" | "implements" | "use" | "new") {
                 continue;
             }
+
             let kind = match keyword {
                 "class" | "record" => Kind::Class,
                 "interface" => Kind::Interface,
@@ -155,16 +180,21 @@ pub fn declarations(lang_id: &str, text: &str) -> Vec<Decl> {
                     }
                 }
             };
+
             if kind == Kind::Module && lang_id == "php" {
                 continue; // `namespace App\Models;` is not interesting in Structure/Search
             }
+
             if kind == Kind::Constant && indent > 0 && !matches!(lang_id, "php" | "csharp") {
                 continue; // local consts
             }
+
             let mut bases = vec![];
+
             if kind.is_type() {
                 let rest: Vec<&str> = ws[ni + 1..].iter().map(|(_, w)| *w).collect();
                 let tail = &raw[raw.find(name).map_or(0, |i| i + name.len())..];
+
                 match lang_id {
                     "python" if tail.trim_start().starts_with('(') => bases.extend(rest.iter().take_while(|w| **w != "metaclass").map(|w| w.to_string())),
                     "csharp" | "cpp" | "c" if tail.trim_start().starts_with(':') => {
@@ -172,6 +202,7 @@ pub fn declarations(lang_id: &str, text: &str) -> Vec<Decl> {
                     }
                     _ => {
                         let mut on = false;
+
                         for w in rest {
                             if matches!(w, "extends" | "implements") {
                                 on = true;
@@ -181,12 +212,16 @@ pub fn declarations(lang_id: &str, text: &str) -> Vec<Decl> {
                         }
                     }
                 }
+
                 // drop namespace segments: App\Contracts\Foo -> Foo is the last word anyway; keep the last of each path
                 bases.retain(|b| b.chars().next().is_some_and(|c| c.is_uppercase()));
             }
+
             out.push(Decl { name: name.to_string(), kind, line: ln, col: *col, bases });
+
             continue;
         }
+
         // JS/TS class methods: `async save(x: T): Promise<void> {`
         if lang_id.starts_with("javascript") || lang_id.starts_with("typescript") {
             if indent > 0
@@ -195,6 +230,7 @@ pub fn declarations(lang_id: &str, text: &str) -> Vec<Decl> {
             {
                 let before = words(&raw[..p]);
                 const MODS: &[&str] = &["async", "static", "public", "private", "protected", "readonly", "get", "set", "override", "abstract"];
+
                 if let Some((&(col, name), mods)) = before.split_last()
                     && mods.iter().all(|(_, w)| MODS.contains(w))
                     && raw[..p].trim_end().ends_with(name)
@@ -204,8 +240,10 @@ pub fn declarations(lang_id: &str, text: &str) -> Vec<Decl> {
                     out.push(Decl { name: name.to_string(), kind: Kind::Method, line: ln, col, bases: vec![] });
                 }
             }
+
             continue;
         }
+
         // C-family functions/methods without a keyword: `type name(args) {`
         if matches!(lang_id, "c" | "cpp" | "csharp")
             && !line.ends_with(';')
@@ -213,13 +251,16 @@ pub fn declarations(lang_id: &str, text: &str) -> Vec<Decl> {
             && let Some(p) = raw.find('(')
         {
             let before = words(&raw[..p]);
+
             if before.len() >= 2 && !before.iter().any(|(_, w)| CONTROL.contains(w)) && raw[..p].trim_end().ends_with(before.last().unwrap().1) {
                 let (col, name) = *before.last().unwrap();
                 let kind = if indent > 0 { Kind::Method } else { Kind::Function };
+
                 out.push(Decl { name: name.to_string(), kind, line: ln, col, bases: vec![] });
             }
         }
     }
+
     out
 }
 
@@ -251,9 +292,11 @@ pub fn indexable(p: &Path) -> bool {
 impl Index {
     pub fn build(files: &[PathBuf]) -> Index {
         let mut ix = Index::default();
+
         for p in files.iter().filter(|p| indexable(p)) {
             ix.update(p);
         }
+
         ix
     }
 
@@ -266,21 +309,26 @@ impl Index {
         let decls = if lang.kind == highlight::Kind::Code { declarations(lang.id, &text) } else { vec![] };
         let starts = hints::byte_starts(&text);
         let mut class = String::new();
+
         for d in &decls {
             for b in &d.bases {
                 self.implementors.entry(b.clone()).or_default().push((p.to_path_buf(), d.line));
             }
+
             if d.kind == Kind::Class {
                 class = d.name.clone();
             }
+
             if matches!(d.kind, Kind::Function | Kind::Method)
                 && let Some(names) = hints::params_at(lang.id, &text, hints::byte_of(&text, &starts, d.line, d.col))
             {
                 // a constructor is filed under its class, so `new Class(...)` finds it
                 let key = if d.name == "__construct" && !class.is_empty() { class.clone() } else { d.name.clone() };
+
                 self.params.entry(key).or_default().push((p.to_path_buf(), names));
             }
         }
+
         // `impl Trait for Type` lines only describe implementors, not new symbols
         self.symbols.extend(
             decls
@@ -288,7 +336,9 @@ impl Index {
                 .filter(|d| !(lang.id == "rust" && d.kind == Kind::Struct && !d.bases.is_empty()))
                 .map(|decl| Symbol { decl, path: p.to_path_buf() }),
         );
+
         let mut counts: HashMap<String, u32> = HashMap::new();
+
         for line in text.lines() {
             for (_, w) in words(line) {
                 if w.len() > 1 && !w.chars().next().unwrap().is_ascii_digit() {
@@ -296,20 +346,25 @@ impl Index {
                 }
             }
         }
+
         for (w, n) in &counts {
             *self.words.entry(w.clone()).or_default() += n;
         }
+
         self.file_words.insert(p.to_path_buf(), counts);
     }
 
     fn remove(&mut self, p: &Path) {
         self.symbols.retain(|s| s.path != p);
+
         for v in self.implementors.values_mut() {
             v.retain(|(q, _)| q != p);
         }
+
         for v in self.params.values_mut() {
             v.retain(|(q, _)| q.as_path() != p);
         }
+
         if let Some(old) = self.file_words.remove(p) {
             for (w, n) in old {
                 if let Some(c) = self.words.get_mut(&w) {
@@ -326,6 +381,7 @@ impl Index {
         // a declaration in another language is not what this file calls (a JS `clamp` for Rust's `.clamp()`)
         let fam = super::text::family(highlight::detect(path).id);
         let all: Vec<&(PathBuf, Vec<String>)> = self.params.get(name)?.iter().filter(|(p, _)| super::text::family(highlight::detect(p).id) == fam).collect();
+
         all.iter().find(|(p, _)| p.as_path() == path).or_else(|| all.first().filter(|(_, ps)| all.iter().all(|(_, q)| q == ps))).map(|(_, ps)| ps)
     }
 
@@ -334,19 +390,24 @@ impl Index {
         if d.kind == Kind::Module {
             return None;
         }
+
         let decls = self.symbols.iter().filter(|s| s.decl.name == d.name).count().max(1) as u32;
         let uses = self.words.get(&d.name).copied().unwrap_or(0).saturating_sub(decls);
+
         let mut parts = vec![match uses {
             0 => "nenhum uso".to_string(),
             1 => "1 uso".to_string(),
             n => format!("{n} usos"),
         }];
+
         if matches!(d.kind, Kind::Interface | Kind::Trait | Kind::Class) {
             let n = self.implementors.get(&d.name).map_or(0, |v| v.len());
+
             if n > 0 || d.kind == Kind::Interface {
                 parts.push(if n == 1 { "1 implementação".into() } else { format!("{n} implementações") });
             }
         }
+
         Some(parts.join("   "))
     }
 }
@@ -363,6 +424,7 @@ mod tests {
     fn php_class_methods_and_bases() {
         let src = "<?php\nnamespace App;\n\nfinal class User extends Model implements Auditable, MustVerify\n{\n    public function isAdmin(): bool\n    {\n        return Foo::class;\n    }\n    const MAX = 1;\n}\ninterface Auditable {}\n";
         let d = declarations("php", src);
+
         assert_eq!(d[0].name, "User");
         assert_eq!(d[0].kind, Kind::Class);
         assert_eq!(d[0].bases, vec!["Model", "Auditable", "MustVerify"]);
@@ -375,41 +437,52 @@ mod tests {
             names("rust", "pub struct A;\nimpl Display for A {\n    fn fmt(&self) {}\n}\nfn main() {}"),
             [("A".into(), Kind::Struct, 0), ("A".into(), Kind::Struct, 1), ("fmt".into(), Kind::Method, 2), ("main".into(), Kind::Function, 4)]
         );
+
         assert_eq!(names("go", "func (s *Server) Run() {}\nfunc main() {}"), [("Run".into(), Kind::Method, 0), ("main".into(), Kind::Function, 1)]);
+
         assert_eq!(
             names("python", "class A(Base):\n    def run(self):\n        pass\ndef top():\n    pass"),
             [("A".into(), Kind::Class, 0), ("run".into(), Kind::Method, 1), ("top".into(), Kind::Function, 3)]
         );
+
         assert_eq!(
             names("typescript", "export class A implements I {}\nexport const handler = async () => {};\nconst x = 1;"),
             [("A".into(), Kind::Class, 0), ("handler".into(), Kind::Function, 1), ("x".into(), Kind::Constant, 2)]
         );
+
         assert_eq!(
             names("cpp", "int main(int argc, char** argv) {\n    if (x) {\n    return f(1);\n}\nclass Foo : public Bar {"),
             [("main".into(), Kind::Function, 0), ("Foo".into(), Kind::Class, 4)]
         );
+
         assert_eq!(
             names("csharp", "public class Svc : IService\n{\n    public async Task Run(int x)\n    {"),
             [("Svc".into(), Kind::Class, 0), ("Run".into(), Kind::Method, 2)]
         );
+
         assert_eq!(names("asm", "_start:\n  mov rax, 1\nloop:"), [("_start".into(), Kind::Function, 0), ("loop".into(), Kind::Function, 2)]);
     }
 
     #[test]
     fn usages_and_implementations() {
         let dir = std::env::temp_dir().join(format!("magoagent-ide-ix-{}", std::process::id()));
+
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("I.php"), "<?php\ninterface Shape { public function area(); }\n").unwrap();
+
         std::fs::write(
             dir.join("A.php"),
             "<?php\nclass Sq implements Shape {\n    public function area() { return 1; }\n}\n$s = new Sq(); $s->area(); $t = new Sq();\n",
         )
         .unwrap();
+
         let files = vec![dir.join("I.php"), dir.join("A.php")];
         let mut ix = Index::build(&files);
         let shape = ix.symbols.iter().find(|s| s.decl.name == "Shape").unwrap().decl.clone();
+
         assert_eq!(ix.vision(&shape).unwrap(), "1 uso   1 implementação");
         let sq = ix.symbols.iter().find(|s| s.decl.name == "Sq").unwrap().decl.clone();
+
         assert_eq!(ix.vision(&sq).unwrap(), "2 usos");
         // re-indexing a file replaces its contribution
         std::fs::write(dir.join("A.php"), "<?php\nclass Sq {}\n").unwrap();
@@ -421,26 +494,32 @@ mod tests {
     #[test]
     fn parameter_names_come_only_from_the_files_own_language() {
         let dir = std::env::temp_dir().join(format!("magoagent-ide-params-{}", std::process::id()));
+
         std::fs::create_dir_all(&dir).unwrap();
+
         std::fs::write(
             dir.join("a.js"),
             "function clamp(v, lo) { return v; }
 ",
         )
         .unwrap();
+
         std::fs::write(
             dir.join("b.ts"),
             "clamp(1, 2);
 ",
         )
         .unwrap();
+
         std::fs::write(
             dir.join("c.rs"),
             "fn f() { 1.0f32.clamp(0.0, 1.0); }
 ",
         )
         .unwrap();
+
         let ix = Index::build(&[dir.join("a.js"), dir.join("b.ts"), dir.join("c.rs")]);
+
         assert_eq!(ix.params_for("clamp", &dir.join("b.ts")).map(Vec::as_slice), Some(&["v".to_string(), "lo".to_string()][..]), "TypeScript sees JavaScript");
         assert_eq!(ix.params_for("clamp", &dir.join("c.rs")), None, "Rust's clamp is not the script's");
         let _ = std::fs::remove_dir_all(&dir);
