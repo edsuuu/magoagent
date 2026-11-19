@@ -8,7 +8,31 @@ use crate::app::panes::Pane;
 use egui::accesskit::Role;
 
 fn doubt(id: u64, question: &str, answer: &str) -> Doubt {
-    Doubt { id, agent: "luna".into(), question: question.into(), options: Vec::new(), answer: answer.into() }
+    Doubt { id, agent: "luna".into(), question: question.into(), answer: answer.into(), ..Default::default() }
+}
+
+/// The recommendation shows apart from the question: its own field, or what the question says after "Recomendação:"
+/// or on a line of its own; a question that only looks like one stays whole.
+#[test]
+fn the_recommendation_comes_apart_from_the_question() {
+    let parts = |question: &str, recommendation: &str| Doubt { question: question.into(), recommendation: recommendation.into(), ..doubt(1, "", "") }.parts();
+    let pair = |question: &str, recommendation: &str| (question.to_string(), recommendation.to_string());
+
+    assert_eq!(parts("Qual banco?", " Postgres. "), pair("Qual banco?", "Postgres."));
+    assert_eq!(parts("Qual banco?\n**Recomendo** Postgres: já está no projeto.", ""), pair("Qual banco?", "**Recomendo** Postgres: já está no projeto."));
+    assert_eq!(parts("Qual banco? Recomendação: Postgres.", ""), pair("Qual banco?", "Recomendação: Postgres."));
+    assert_eq!(parts("Recomendas Postgres?", ""), pair("Recomendas Postgres?", ""), "nothing left to ask: the question whole");
+    assert_eq!(parts("Qual porta?", ""), pair("Qual porta?", ""));
+}
+
+/// The section of an agent says the branch it was on when it last asked.
+#[test]
+fn an_agents_section_has_its_last_branch() {
+    let mut board = crate::app::doubts::DoubtBoard::default();
+
+    board.list = vec![Doubt { branch: "main".into(), ..doubt(1, "a", "") }, Doubt { branch: "mago/luna".into(), ..doubt(2, "b", "") }, doubt(3, "c", "")];
+    assert_eq!(board.branch("luna"), "mago/luna", "the last known, not the empty one after it");
+    assert_eq!(board.branch("sol"), "");
 }
 
 /// The message back: the answered ones, or all with the rest as the agent's to decide; nothing answered, nothing sent.
@@ -20,9 +44,13 @@ fn the_answers_go_back_as_one_message() {
     assert!(answers_message(&[&porta, &banco], true).unwrap().ends_with("2. Qual banco?\n   → sem resposta: decida você"));
     assert_eq!(answers_message(&[&banco], false), None);
     // the questions as texts, as {question, options}, or one alone
-    let asked = asked_questions(&json!({ "questions": ["Qual porta?", { "question": "Qual banco?", "options": ["Postgres", " ", "SQLite"] }, ""] }));
+    let banco = json!({ "question": "Qual banco?", "options": ["Postgres", " ", "SQLite"], "recommendation": "Postgres" });
+    let asked = asked_questions(&json!({ "questions": ["Qual porta?", banco, ""] }));
 
-    assert_eq!(asked, [("Qual porta?".into(), vec![]), ("Qual banco?".into(), vec!["Postgres".to_string(), "SQLite".into()])]);
+    assert_eq!(
+        asked,
+        [("Qual porta?".into(), vec![], String::new()), ("Qual banco?".into(), vec!["Postgres".to_string(), "SQLite".into()], "Postgres".into())]
+    );
     assert_eq!(asked_questions(&json!({ "question": "Só esta?" })).len(), 1);
 }
 
@@ -56,7 +84,9 @@ fn the_doubts_panel_opens_over_the_chat() {
     let mut app = DrawingApp::default();
     let id = push_chat(&mut app, "Luna");
 
-    app.act("doubts", &json!({ "action": "add", "asker": id, "questions": ["Qual porta?"] })).unwrap();
+    let banco = json!({ "question": "Qual banco?", "options": ["Postgres", "SQLite"], "recommendation": "Postgres, já está no projeto" });
+
+    app.act("doubts", &json!({ "action": "add", "asker": id, "questions": ["Qual porta?", banco] })).unwrap();
     app.chat_open = true;
     app.set_pane(None);
 
@@ -76,4 +106,15 @@ fn the_doubts_panel_opens_over_the_chat() {
 
     assert!(shown.iter().any(|(_, text, _)| text.contains("Qual porta?")), "{shown:?}");
     assert!(shown.iter().any(|(role, text, _)| *role == Role::Button && text == "Enviar todas"));
+    // the agent's section, each question folds; the suggested answers are buttons, the recommendation folds apart
+    assert!(shown.iter().any(|(role, text, _)| *role == Role::DisclosureTriangle && text.starts_with("Luna")), "{shown:?}");
+    assert!(shown.iter().any(|(role, text, _)| *role == Role::Button && text == "Postgres"));
+    let recommendation =
+        shown.iter().find(|(role, text, _)| *role == Role::DisclosureTriangle && text == "Recomendação do agente").map(|(.., rect)| rect.center());
+
+    assert!(!shown.iter().any(|(_, text, _)| text.contains("já está no projeto")), "folded until asked");
+    pane_click(&mut app, &ctx, recommendation.expect("the recommendation's fold"));
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+
+    assert!(shown.iter().any(|(role, text, _)| *role == Role::Label && text.contains("já está no projeto")), "{shown:?}");
 }

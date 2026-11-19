@@ -181,6 +181,15 @@ fn the_list_shows_six_rows_and_the_search_finds_a_name_or_a_stretch_of_code() {
 
     assert!(files(&shown).is_empty());
     assert!(texts(&shown).iter().any(|t| t.starts_with("Nada com “nada assim”")), "{:?}", texts(&shown));
+    // the files under their folder's header, which counts them and folds on a click; a search shows them folded or not
+    app.panes.changes.search.clear();
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+    let folder = find(&shown, Role::DisclosureTriangle, "(raiz) (12)").expect("the root's header, with its count");
+
+    pane_click(&mut app, &ctx, folder.center());
+    assert!(files(&pane_frame(&mut app, &ctx, vec![])).is_empty(), "folded");
+    app.panes.changes.search = "arquivo03".into();
+    assert_eq!(files(&pane_frame(&mut app, &ctx, vec![])), ["arquivo03.txt"]);
     let _ = fs::remove_dir_all(&dir);
 }
 
