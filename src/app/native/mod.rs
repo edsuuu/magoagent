@@ -140,6 +140,13 @@ fn changed(sent: &mut std::collections::HashMap<String, String>, topic: &str, js
     Some(json)
 }
 
+/// Asks for a frame: something Swift shows is still moving.
+pub(crate) fn repaint() {
+    if let Some(context) = CONTEXT.get() {
+        context.request_repaint();
+    }
+}
+
 /// Swift's `act`: the envelope waits for the frame, which comes at once.
 extern "C" fn take_envelope(json: *const c_char) {
     if json.is_null() {

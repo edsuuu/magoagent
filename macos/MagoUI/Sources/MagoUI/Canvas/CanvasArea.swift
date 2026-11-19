@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The canvas area: registers `MagoViews.canvas`. Rust's side is src/app/canvas/native.rs (topics "scene", "scene.<id>",
-/// "canvas"; verbs `ui.canvas.view|pointer|tool|key|text|text_done|image|font`).
+/// The canvas area: registers `MagoViews.canvas`. Rust's side is src/app/canvas/native/ (topics "scene", "scene.<id>",
+/// "canvas"; verbs `ui.canvas.view|pointer|tool|key|text|text_done|image|font|note_button|link|link_dismiss|minimap|dock|
+/// lifted_zoom`).
 @MainActor public enum CanvasArea {
     public static func start() {
         MagoViews.canvas = { AnyView(CanvasView()) }

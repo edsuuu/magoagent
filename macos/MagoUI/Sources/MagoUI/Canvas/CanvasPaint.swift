@@ -53,8 +53,11 @@ func paintGrid(_ context: inout GraphicsContext, size: CGSize, camera: CanvasVie
     context.stroke(path, with: .color(color), lineWidth: 0.5)
 }
 
-/// One element in world coordinates (the context carries the camera).
-func paintEntry(_ context: inout GraphicsContext, _ entry: CanvasEntry, hand: String?, image: NSImage?, dark: Bool) {
+/// One element in world coordinates (the context carries the camera); a window in `frame` when it shows elsewhere than
+/// its box (enlarged), a note's text scrolled down `scroll` points.
+@MainActor
+func paintEntry(_ context: inout GraphicsContext, _ entry: CanvasEntry, hand: String?, image: NSImage?, dark: Bool, frame: CGRect? = nil,
+                scroll: CGFloat = 0) {
     let drawing = entry.drawing
     let rect = canvasRect(drawing.rect)
     var context = context
@@ -65,7 +68,7 @@ func paintEntry(_ context: inout GraphicsContext, _ entry: CanvasEntry, hand: St
     }
     if let node = drawing.node {
         // a terminal's card is its own view's, strips and outline included
-        if node.kind != "terminal" { paintNodeFrame(&context, rect: rect, node: node, dark: dark) }
+        if node.kind != "terminal" { paintNodeFrame(&context, rect: frame ?? rect, node: node, dark: dark) }
         return
     }
     if drawing.image {
@@ -79,12 +82,70 @@ func paintEntry(_ context: inout GraphicsContext, _ entry: CanvasEntry, hand: St
         case let .text(op): paintText(&context, op, hand: hand)
         }
     }
-    if let note = drawing.note, let text = entry.noteText {
-        let area = canvasRect(note.area)
-        var clipped = context
-        clipped.clip(to: Path(area))
-        let font: Font = note.raw ? .system(size: note.size, design: .monospaced) : .system(size: note.size)
-        clipped.draw(Text(text).font(font).foregroundStyle(canvasColor(note.ink)), in: area)
+    if let note = drawing.note { paintNoteText(&context, entry, note, rect: rect, scroll: scroll) }
+}
+
+/// A resting note's text (render/mod.rs `paint_note`): under its header and above its buttons, scrolled by the wheel
+/// with a thin bar at its right while the card cuts it; an eye where it is blurred; a placeholder while it is empty.
+@MainActor
+func paintNoteText(_ context: inout GraphicsContext, _ entry: CanvasEntry, _ note: CanvasNote, rect: CGRect, scroll: CGFloat) {
+    let area = canvasRect(note.area)
+    let pad = area.minX - rect.minX
+    let ink = canvasColor(note.ink)
+    if note.blurred {
+        let body = CGRect(x: rect.minX, y: area.minY - pad, width: rect.width, height: rect.maxY - area.minY + pad)
+        context.draw(Text(Image(systemName: "eye.slash")).font(.system(size: 18)).foregroundStyle(ink.opacity(0.25)), at: CGPoint(x: body.midX, y: body.midY))
+        return
+    }
+    // typed: the editor shows it
+    guard let text = note.text else { return }
+    if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        context.draw(Text("Clique para editar…").font(Font(noteFont(note.size) as CTFont)).foregroundStyle(ink.opacity(0.4)), at: area.origin, anchor: .topLeading)
+        return
+    }
+    guard let layout = entry.noteLayout else { return }
+    let offset = min(max(scroll, 0), max(layout.height - area.height, 0))
+    var clipped = context
+    clipped.clip(to: Path(CGRect(x: rect.minX, y: area.minY - pad, width: rect.width, height: area.height + 2 * pad).intersection(rect)))
+    layout.draw(&clipped, at: CGPoint(x: area.minX, y: area.minY - offset))
+    let (shown, whole) = (area.height, layout.height)
+    guard whole > shown + 0.5, shown > 0 else { return }
+    let length = min(max(shown * shown / whole, 16), shown)
+    let top = area.minY + (shown - length) * min(max(offset / (whole - shown), 0), 1)
+    let bar = CGRect(x: area.maxX + pad / 2 - 1.5, y: top, width: 3, height: length)
+    context.fill(Path(roundedRect: bar, cornerRadius: 1.5), with: .color(ink.opacity(0.3)))
+}
+
+/// The enlarged window's place on the canvas (lifted.rs `paint_skeleton`), in screen coordinates.
+func paintSkeleton(_ context: inout GraphicsContext, _ skeleton: CanvasSkeleton, camera: CanvasViewport, dark: Bool) {
+    let rect = camera.screen(canvasRect(skeleton.rect))
+    let zoom = camera.zoom
+    let ink: Color = dark ? .white : .black
+    let corner = min(max(10 * zoom, 2), 14)
+    context.fill(Path(roundedRect: rect, cornerRadius: corner), with: .color(ink.opacity(0.03)))
+    let dash = StrokeStyle(lineWidth: 1, dash: [6 * max(zoom, 0.5), 5 * max(zoom, 0.5)])
+    context.stroke(Path(rect), with: .color(ink.opacity(0.28)), style: dash)
+    let head = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: min(skeleton.head * zoom, rect.height))
+    context.fill(Path(roundedRect: head, cornerRadii: RectangleCornerRadii(topLeading: corner, topTrailing: corner)), with: .color(ink.opacity(0.04)))
+    let pad = 14 * zoom
+    if zoom >= 0.35 {
+        let name = context.resolve(Text(skeleton.name).font(.app(12 * zoom)).foregroundStyle(ink.opacity(0.4)))
+        if name.measure(in: CGSize(width: CGFloat.infinity, height: .infinity)).width < head.width - 2 * pad {
+            context.draw(name, at: CGPoint(x: head.minX + pad, y: head.midY), anchor: .leading)
+        }
+    }
+    // the content as grey bars, as a page loading
+    let (bar, gap) = (8 * zoom, 14 * zoom)
+    var y = head.maxY + pad
+    var index = 0
+    while !skeleton.lines.isEmpty && y + bar <= rect.maxY - pad {
+        let width = (rect.width - 2 * pad) * skeleton.lines[index % skeleton.lines.count]
+        context.fill(Path(roundedRect: CGRect(x: rect.minX + pad, y: y, width: width, height: bar), cornerRadius: bar / 2), with: .color(ink.opacity(0.06)))
+        y += bar + gap
+        index += 1
+    }
+    if zoom >= 0.35 && rect.height > 90 * zoom {
+        context.draw(Text(skeleton.words).font(.app(13 * zoom)).foregroundStyle(ink.opacity(0.45)), at: CGPoint(x: rect.midX, y: rect.midY))
     }
 }
 
@@ -126,6 +187,7 @@ func paintNodeFrame(_ context: inout GraphicsContext, rect: CGRect, node: Canvas
 }
 
 /// What goes over the scene, in screen coordinates (sizes as egui's paint_scene: handles 8, rotation 4.5, points 5 or 10).
+@MainActor
 func paintOverlay(_ context: inout GraphicsContext, _ overlay: CanvasOverlay, camera: CanvasViewport, hand: String?) {
     let screen = { (point: [CGFloat]) -> CGPoint in point.count >= 2 ? camera.screen(point[0], point[1]) : .zero }
     let handleFill: Color = overlay.dark ? Color(white: 0.07) : .white

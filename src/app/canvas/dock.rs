@@ -7,7 +7,7 @@ use crate::prelude::*;
 /// How far in from the edge a drag docks a panel already docked there.
 const DOCKED_ZONE: f32 = 110.0;
 /// Around the docked column, and how close a resized width falls back to the default one.
-const DOCK_MARGIN: f32 = 8.0;
+pub(crate) const DOCK_MARGIN: f32 = 8.0;
 const DOCK_SNAP: f32 = 28.0;
 const DOCK_MIN: f32 = 240.0;
 

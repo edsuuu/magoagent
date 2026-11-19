@@ -1,18 +1,30 @@
 //! The canvas drawn by SwiftUI on macOS (`MAGOAGENT_SWIFTUI` with "canvas"): Rust keeps the scene, the editing, the undo,
 //! the bindings and the hand-drawn geometry; Swift (macos/MagoUI/Sources/MagoUI/Canvas) draws what it gets and sends the
-//! pointer and the keys back as `ui.canvas.*`.
+//! pointer and the keys back as `ui.canvas.*` (act.rs).
 //!
 //! Topics, in world coordinates:
-//! - `scene`: `SceneList`, the elements in paint order with each one's revision, the ground and the grid;
-//! - `scene.<id>`: `Drawing`, one element's fills, strokes and text, published only when its revision changes;
+//! - `scene`: `SceneList`, the elements in paint order with each one's revision, the ground and the grid: the ropes,
+//!   the drawings, then the cards (windows and notes) in the drawing's order and the enlarged one last (`paint_scene`);
+//! - `scene.<id>`: `Drawing`, one element's fills, strokes and text, published only when its revision changes (a note's
+//!   text, buttons and tabs in note.rs);
 //! - `canvas`: `Overlay`, the camera, the tool and what goes over the scene (selection, handles, marquee, the shape being
-//!   dragged out, the text being typed).
+//!   dragged out, the text being typed, and pieces.rs: the enlarged window, the minimap, the link marks, "Voltar").
 //!
 //! The camera: Swift pans and zooms by itself and says where it is (`view`, and with every `pointer`); when Rust moves it
-//! (zoom to fit, focus_canvas, a glide) `camera.serial` goes up and Swift takes Rust's.
+//! (zoom to fit, focus_canvas, a glide) `camera.serial` goes up and Swift takes Rust's. Swift's own moves don't come back.
 
+mod act;
+mod note;
+mod pieces;
+#[cfg(test)]
+mod tests;
+
+use crate::app::canvas::minimap::MinimapArea;
 use crate::prelude::*;
 use std::{cell::RefCell, collections::HashMap};
+
+pub(crate) use note::{Mark, Note, PageLook, marks};
+pub(crate) use pieces::{Chain, Lift, LinkMark, Minimap};
 
 /// One painted step, in paint order.
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -53,17 +65,6 @@ pub(crate) struct Node {
     header: f32,
 }
 
-/// A sticky note's body: its markdown in `area`, under the paper and header in `ops`. No `text` while it is typed.
-#[derive(Serialize, Clone, Debug, PartialEq)]
-pub(crate) struct Note {
-    text: Option<String>,
-    ink: [u8; 4],
-    size: f32,
-    area: [f32; 4],
-    raw: bool,
-    blurred: bool,
-}
-
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
 pub(crate) struct Drawing {
     rev: u64,
@@ -86,6 +87,8 @@ pub(crate) struct Drawing {
 pub(crate) struct Item {
     id: String,
     rev: u64,
+    /// A window or a note: it stacks over the drawings, in the order of the list, each over the ones before.
+    card: bool,
 }
 
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
@@ -115,6 +118,8 @@ pub(crate) struct Selection {
     rotation: Option<[f32; 2]>,
 }
 
+/// The text being typed: a text, a label or a note's markdown (with its live look, `runs` and `marks`, as egui's note
+/// editor shows it: only what the caret is on shows its marks).
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub(crate) struct Editing {
     id: String,
@@ -122,8 +127,12 @@ pub(crate) struct Editing {
     rect: [f32; 4],
     size: f32,
     color: [u8; 4],
-    note: bool,
+    /// The note it is the text of: its id (a lifted note is typed where it shows).
+    note: Option<String>,
     center: bool,
+    raw: bool,
+    runs: Vec<markdown::LiveRun>,
+    marks: Vec<Mark>,
 }
 
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
@@ -149,6 +158,14 @@ pub(crate) struct Overlay {
     /// A window being dragged out: a blue box.
     placing: Option<[f32; 4]>,
     editing: Option<Editing>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lift: Option<Lift>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    minimap: Option<Minimap>,
+    links: Vec<LinkMark>,
+    chain: Chain,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    back: Option<&'static str>,
 }
 
 /// What, besides the element itself, its drawing depends on.
@@ -162,6 +179,8 @@ pub(crate) struct Look {
     cut: bool,
     note_text: Option<String>,
     rope: Option<Vec<[f32; 2]>>,
+    /// A pile's front page: its pages, for the tabs.
+    pages: Vec<PageLook>,
 }
 
 // ponytail: the cache lives beside DrawingApp (its fields are in state.rs, shared with egui); a field of its own once egui's canvas is gone
@@ -170,8 +189,14 @@ pub(crate) struct Native {
     cache: HashMap<String, (Element, Look, Drawing)>,
     list: SceneList,
     next_rev: u64,
+    /// Where the camera is (Swift's or Rust's), and the camera last moved by Rust, the one published.
     camera: Option<(Vec2, f32)>,
     serial: u64,
+    published: Camera,
+    /// Where the caret is in the note being typed (`ui.canvas.text`).
+    caret: Option<markdown::Caret>,
+    /// The minimap's area, held while it is pressed (its own: egui's minimap runs unseen beside it).
+    minimap: MinimapArea,
 }
 
 thread_local! {
@@ -250,7 +275,7 @@ pub(crate) fn drawing(element: &Element, look: &Look) -> Drawing {
     }
 
     if element.created.is_some() {
-        note_drawing(element, look, &mut out);
+        note::note_drawing(element, look, &mut out);
 
         return out;
     }
@@ -313,58 +338,6 @@ pub(crate) fn drawing(element: &Element, look: &Look) -> Drawing {
     out
 }
 
-/// The card of a sticky note as `paint_note` draws it: shadowless paper with a hairline, the header strip, the tape and
-/// the name; its markdown goes in `note`.
-fn note_drawing(note: &Element, look: &Look, out: &mut Drawing) {
-    let bounds = local_bounds(note);
-    let alpha = note.style.opacity as f32 / 100.0;
-    let radius = if note.style.round { 8.0_f32.min(bounds.width() / 2.0).min(bounds.height() / 2.0).min(NOTE_HEADER) } else { 0.0 };
-    let (paper, ink) = note_colors(note, note.style.opacity);
-    let header = Rect::from_min_size(bounds.min, Vec2::new(bounds.width(), NOTE_HEADER.min(bounds.height())));
-    let strip = if ink == Color32::WHITE { Color32::from_white_alpha(26) } else { Color32::from_black_alpha(15) };
-    let hairline = color(Color32::from_black_alpha(20).gamma_multiply(alpha));
-    let outline = corners(bounds, radius);
-
-    out.ops.push(Op::Fill { points: outline.clone(), color: color(paper) });
-    out.ops.push(Op::Stroke { points: outline, color: hairline, width: 0.5, dash: None, closed: true });
-    let header_outline = corner_outline(header, [radius, radius, 0.0, 0.0]).iter().flat_map(|point| [point.x, point.y]).collect();
-
-    out.ops.push(Op::Fill { points: header_outline, color: color(strip.gamma_multiply(alpha)) });
-    let tape: Vec<f32> = tape(bounds).iter().flat_map(|point| [point.x, point.y]).collect();
-
-    out.ops.push(Op::Fill { points: tape.clone(), color: color(Color32::from_rgba_unmultiplied(0xe9, 0xe4, 0xd4, 205).gamma_multiply(alpha)) });
-    out.ops.push(Op::Stroke { points: tape, color: color(Color32::from_black_alpha(34).gamma_multiply(alpha)), width: 0.8, dash: None, closed: true });
-    let ink = ink.gamma_multiply(alpha);
-    let text = look.note_text.clone().unwrap_or_default();
-
-    if !note.note.blurred {
-        let muted = ink.gamma_multiply(0.6);
-        let (name, name_color) = if text.trim().is_empty() { ("Sem título".to_string(), muted.gamma_multiply(0.7)) } else { (note_name(&text), muted) };
-        let size = 10.0;
-        let y = bounds.min.y + (NOTE_HEADER - size * LINE_HEIGHT) / 2.0;
-
-        out.ops.push(Op::Text { value: name, x: bounds.min.x + NOTE_PAD, y, size, color: color(name_color), hand: false, center: 0.0, halo: None });
-    }
-
-    out.note = Some(Note {
-        text: (!look.hide_text).then_some(text),
-        ink: color(ink),
-        size: note.note.font_size,
-        area: rect_of(note_text_box(note)),
-        raw: note.note.raw,
-        blurred: note.note.blurred,
-    });
-}
-
-/// The tools by the names Swift uses: `Tool`'s own, in lower case.
-fn tool_name(tool: Tool) -> String {
-    format!("{tool:?}").to_lowercase()
-}
-
-fn all_tools() -> impl Iterator<Item = Tool> {
-    Tool::TOOLBAR.into_iter().chain(Tool::DRAWING).chain(Tool::EXTRA).chain([Tool::Chat])
-}
-
 impl DrawingApp {
     /// Each frame while Swift draws the canvas: the glide, the bindings, then what changed to Swift.
     pub(crate) fn native_canvas(&mut self) {
@@ -392,16 +365,25 @@ impl DrawingApp {
         let elements = &self.scene.elements;
         let dark = self.dark();
         let ground = color(self.ground());
-        // ropes under everything, the windows over the drawings (paint_scene)
+        // ropes under everything, the cards (windows and notes) over the drawings in the drawing's order, and the enlarged
+        // one last (paint_scene)
         let mut order: Vec<usize> = (0..elements.len()).filter(|&index| !hidden_page(elements, &elements[index])).collect();
 
         order.retain(|&index| note_of_label(elements, &elements[index]).is_none());
-        order.sort_by_key(|&index| (!elements[index].rope, elements[index].is_node()));
+        order.sort_by_key(|&index| (!elements[index].rope, elements[index].is_card()));
+
+        if let Some(lifted) = self.lift_index() {
+            order.retain(|&index| index != lifted);
+            order.push(lifted);
+        }
+
         let mut changed = Vec::new();
         let mut items = Vec::with_capacity(order.len());
 
         for index in order {
-            let element = &elements[index];
+            // a lifted note is a sheet of its own size (`shown_note`)
+            let element = self.shown_note(&elements[index]);
+            let element = element.as_ref();
             let text = matches!(element.kind, ElementKind::Text { .. });
 
             let look = Look {
@@ -416,6 +398,7 @@ impl DrawingApp {
                     _ => None,
                 }),
                 rope: element.rope.then(|| self.rope_path(element)),
+                pages: self.native_pages(index),
             };
 
             let rev = match native.cache.get(&element.id) {
@@ -430,7 +413,7 @@ impl DrawingApp {
                 }
             };
 
-            items.push(Item { id: element.id.clone(), rev });
+            items.push(Item { id: element.id.clone(), rev, card: element.is_card() });
         }
 
         native.cache.retain(|id, _| items.iter().any(|item| item.id == *id));
@@ -455,6 +438,7 @@ impl DrawingApp {
         if native.camera != Some(camera) {
             native.camera = Some(camera);
             native.serial += 1;
+            native.published = Camera { serial: native.serial, x: camera.0.x, y: camera.0.y, zoom: self.zoom };
         }
 
         let world = |screen: Pos2| {
@@ -464,17 +448,10 @@ impl DrawingApp {
         };
 
         let dark = self.dark();
-
-        let mut overlay = Overlay {
-            camera: Camera { serial: native.serial, x: camera.0.x, y: camera.0.y, zoom: self.zoom },
-            tool: tool_name(self.tool),
-            dark,
-            ..Default::default()
-        };
-
+        let mut overlay = Overlay { camera: native.published.clone(), tool: tool_name(self.tool), dark, ..Default::default() };
         let elements = &self.scene.elements;
         let selected: Vec<&Element> = self.selected.iter().filter_map(|index| elements.get(*index)).collect();
-        let card = |element: &Element| element.is_node() || element.created.is_some();
+        let card = |element: &Element| element.is_card();
 
         let with_card = |element: &&Element| {
             card(element) || element.rope || selected.iter().any(|other| card(other) && other.group_id.is_some() && other.group_id == element.group_id)
@@ -539,38 +516,59 @@ impl DrawingApp {
             _ => {}
         }
 
-        overlay.editing = self.editing.and_then(|index| {
-            let element = elements.get(index)?;
-            let ElementKind::Text { x, y, value } = &element.kind else { return None };
+        if self.editing.is_none() {
+            native.caret = None;
+        }
 
-            Some(match note_of_label(elements, element) {
-                Some(note) => {
-                    let note = &elements[note];
-                    let (_, ink) = note_colors(note, 100);
+        overlay.editing = self.native_editing(native.caret);
+        overlay.lift = self.native_lift();
+        overlay.minimap = self.native_minimap(&mut native.minimap);
+        overlay.links = self.native_links();
+        overlay.chain = self.chain_colors();
+        overlay.back = self.native_back();
+        overlay
+    }
 
-                    Editing {
-                        id: element.id.clone(),
-                        value: value.clone(),
-                        rect: rect_of(note_text_box(note)),
-                        size: note.note.font_size,
-                        color: color(ink),
-                        note: true,
-                        center: false,
-                    }
-                }
-                None => Editing {
+    /// The text being typed, with a note's live look for where the caret is.
+    fn native_editing(&self, caret: Option<markdown::Caret>) -> Option<Editing> {
+        let elements = &self.scene.elements;
+        let index = self.editing?;
+        let element = elements.get(index)?;
+        let ElementKind::Text { x, y, value } = &element.kind else { return None };
+
+        Some(match note_of_label(elements, element) {
+            Some(note) => {
+                let note = self.shown_note(&elements[note]);
+                let (_, ink) = note_colors(&note, 100);
+                let raw = note.note.raw;
+                let (runs, ornaments) = if raw { Default::default() } else { markdown::live_runs(value, note.note.font_size, caret) };
+
+                Editing {
                     id: element.id.clone(),
                     value: value.clone(),
-                    rect: [*x, *y, element_bounds(element).width(), element_bounds(element).height()],
-                    size: element.style.font_size,
-                    color: color(themed(rgba(element.style.stroke), dark)),
-                    note: false,
-                    center: is_label(element),
-                },
-            })
-        });
-
-        overlay
+                    rect: rect_of(note_text_box(&note)),
+                    size: note.note.font_size,
+                    color: color(ink),
+                    note: Some(note.id.clone()),
+                    center: false,
+                    raw,
+                    runs,
+                    marks: marks(&ornaments),
+                }
+            }
+            None => Editing {
+                id: element.id.clone(),
+                value: value.clone(),
+                rect: [*x, *y, element_bounds(element).width(), element_bounds(element).height()],
+                size: element.style.font_size,
+                color: color(themed(rgba(element.style.stroke), self.dark())),
+                note: None,
+                center: is_label(element),
+                raw: false,
+                runs: Vec::new(),
+                marks: Vec::new(),
+            },
+        })
     }
 
     /// Where Swift's camera is: (x, y) the world's origin in the canvas view, `width` × `height` the view.
@@ -588,236 +586,13 @@ impl DrawingApp {
             NATIVE.with_borrow_mut(|native| native.camera = Some((self.origin(), self.zoom)));
         }
     }
-
-    /// `ui.canvas.<verb>`: pointer and keys from Swift, through the same editing code as egui's canvas.
-    pub(crate) fn native_canvas_act(&mut self, verb: &str, args: &Value) -> Result<String, String> {
-        let text = |key: &str| args[key].as_str().unwrap_or_default().to_string();
-        let flag = |key: &str| args[key].as_bool().unwrap_or(false);
-        let modifiers = Modifiers { alt: flag("alt"), ctrl: false, shift: flag("shift"), mac_cmd: flag("cmd"), command: flag("cmd") };
-
-        match verb {
-            "view" => self.native_view(args),
-            "pointer" => {
-                self.native_view(args);
-                let pos = Pos2::new(args["px"].as_f64().unwrap_or(0.0) as f32, args["py"].as_f64().unwrap_or(0.0) as f32);
-
-                self.mods = modifiers;
-
-                match text("phase").as_str() {
-                    "down" => {
-                        self.press_canvas(pos, text("button") == "middle", false, modifiers, false);
-                    }
-                    "move" => self.update_gesture(pos),
-                    "up" => {
-                        self.update_gesture(pos);
-                        self.release(pos);
-
-                        // egui's double-click comes with the second release
-                        if args["clicks"].as_u64().unwrap_or(1) >= 2 {
-                            self.double_click_canvas(pos, true, true);
-                        }
-                    }
-                    "cancel" => self.cancel_gesture(),
-                    phase => return Err(format!("Fase do ponteiro desconhecida: {phase}")),
-                }
-
-                self.update_bindings();
-            }
-            "tool" => {
-                let name = text("name");
-                let tool = all_tools().find(|tool| tool_name(*tool) == name).ok_or(format!("Ferramenta desconhecida: {name}"))?;
-
-                self.select_tool(tool);
-            }
-            "key" => self.native_key(&text("key"), modifiers),
-            "text" => {
-                if let Some(index) = self.editing
-                    && let Some(Element { kind: ElementKind::Text { value, .. }, .. }) = self.scene.elements.get_mut(index)
-                {
-                    *value = text("value");
-                    recenter_labels(&mut self.scene.elements);
-                }
-            }
-            "text_done" => {
-                if self.elevated_index().is_some_and(|index| self.scene.elements[index].created.is_some()) {
-                    self.set_elevated(None);
-                } else {
-                    self.finish_text();
-                }
-            }
-            "image" => {
-                let id = text("id");
-                let element = self.scene.elements.iter().find(|element| element.id == id).ok_or(format!("Elemento não encontrado: {id}"))?;
-
-                return element.image.as_deref().map(str::to_string).ok_or(format!("O elemento {id} não é uma imagem"));
-            }
-            "font" => return Ok(base64(crate::geometry::HAND_FACE)),
-            _ => return Err(format!("Ação do canvas desconhecida: {verb}")),
-        }
-
-        Ok(String::new())
-    }
-
-    /// A key on the canvas, by egui's name for it (`Key::name`): the canvas's part of handle_shortcuts.
-    fn native_key(&mut self, name: &str, modifiers: Modifiers) {
-        if self.in_gesture() {
-            // mid-drag the keys wait; Esc cancels it
-            if name == "Escape" {
-                self.cancel_gesture();
-            }
-
-            return;
-        }
-
-        let Some(key) = Key::from_name(name) else { return };
-        let (command, shift) = (modifiers.command, modifiers.shift);
-
-        match key {
-            Key::Z if command && shift => self.redo(),
-            Key::Z if command => self.undo(),
-            Key::Y if command => self.redo(),
-            Key::A if command => self.select_all(),
-            Key::D if command => self.duplicate(),
-            Key::Delete | Key::Backspace if !command => {
-                if !self.delete_selected_point() {
-                    self.delete_selected();
-                }
-            }
-            Key::Escape | Key::Enter if self.multi.is_some() => self.finish_multi(),
-            Key::Escape | Key::Enter if self.line_editor.is_some() => {
-                self.line_editor = None;
-                self.selected_point = None;
-            }
-            Key::Escape => {
-                self.connecting = None;
-                self.set_elevated(None);
-
-                if self.selected.is_empty() {
-                    self.tool = Tool::Select;
-                }
-
-                self.selected.clear();
-            }
-            Key::Enter => {
-                if let [index] = self.selected[..]
-                    && self.scene.elements.get(index).is_some_and(|element| matches!(element.kind, ElementKind::Text { .. }) || element.created.is_some())
-                {
-                    self.begin_text_edit(index);
-                }
-            }
-            Key::ArrowLeft | Key::ArrowRight | Key::ArrowUp | Key::ArrowDown if !command => {
-                let delta = match key {
-                    Key::ArrowLeft => Vec2::new(-1.0, 0.0),
-                    Key::ArrowRight => Vec2::new(1.0, 0.0),
-                    Key::ArrowUp => Vec2::new(0.0, -1.0),
-                    _ => Vec2::new(0.0, 1.0),
-                };
-
-                self.nudge(if shift { delta * 5.0 } else { delta });
-            }
-            Key::X if shift && !command && self.drawing() => self.select_tool(Tool::AutoShape),
-            _ if !command && !shift && !modifiers.alt => {
-                if let Some(tool) = all_tools().find(|tool| self.tool_keys_live(*tool) && tool.keys().contains(&key)) {
-                    self.select_tool(tool);
-                }
-            }
-            _ => {}
-        }
-    }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// The tools by the names Swift uses: `Tool`'s own, in lower case.
+fn tool_name(tool: Tool) -> String {
+    format!("{tool:?}").to_lowercase()
+}
 
-    fn pointer(app: &mut DrawingApp, phase: &str, x: f32, y: f32) {
-        let args = json!({ "phase": phase, "px": x, "py": y, "x": 0.0, "y": 0.0, "zoom": 1.0, "width": 1200.0, "height": 800.0 });
-
-        app.native_canvas_act("pointer", &args).unwrap();
-    }
-
-    #[test]
-    fn a_rectangle_drawn_from_swift_lands_in_the_scene_with_its_rough_strokes() {
-        let mut app = DrawingApp::default();
-
-        app.native_canvas_act("tool", &json!({ "name": "rectangle" })).unwrap();
-        pointer(&mut app, "down", 100.0, 100.0);
-        pointer(&mut app, "move", 200.0, 150.0);
-        // mid-drag the shape is the overlay's draft, not yet in the scene
-        let mut native = Native::default();
-
-        assert!(app.overlay(&mut native).draft.is_some_and(|draft| !draft.ops.is_empty()));
-        pointer(&mut app, "move", 300.0, 220.0);
-        pointer(&mut app, "up", 300.0, 220.0);
-        assert_eq!(app.scene.elements.len(), 1);
-        assert_eq!(element_bounds(&app.scene.elements[0]), Rect::from_min_max(Pos2::new(100.0, 100.0), Pos2::new(300.0, 220.0)));
-
-        let changed = app.sync_scene(&mut native);
-
-        assert_eq!(changed.len(), 1);
-        let (id, drawing) = &changed[0];
-
-        assert_eq!(*id, app.scene.elements[0].id);
-        // the same strokes egui paints: rough_outlines, two passes of four edges
-        let strokes = drawing.ops.iter().filter(|op| matches!(op, Op::Stroke { .. })).count();
-
-        assert_eq!(strokes, rough_outlines(&app.scene.elements[0]).len());
-        assert_eq!(native.list.items, vec![Item { id: id.clone(), rev: drawing.rev }]);
-        let version = native.list.version;
-
-        // nothing changed: nothing is sent again
-        assert!(app.sync_scene(&mut native).is_empty());
-        assert_eq!(native.list.version, version);
-
-        // one element moved: only it comes back, with a new revision
-        app.snapshot();
-        app.scene.elements.push(app.new_element(ElementKind::Ellipse { x: 0.0, y: 0.0, width: 10.0, height: 10.0 }));
-        app.sync_scene(&mut native);
-        app.scene.elements[1].move_by(Vec2::new(5.0, 0.0));
-        let changed = app.sync_scene(&mut native);
-
-        assert_eq!(changed.len(), 1);
-        assert_eq!(changed[0].0, app.scene.elements[1].id);
-        assert!(native.list.version > version);
-
-        // undo through the key takes the ellipse back out
-        app.native_canvas_act("key", &json!({ "key": "Z", "cmd": true })).unwrap();
-        app.sync_scene(&mut native);
-        assert_eq!(native.list.items.len(), 1);
-    }
-
-    #[test]
-    fn windows_paint_over_drawings_and_carry_their_kind() {
-        let mut app = DrawingApp::default();
-        let mut terminal = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 300.0, height: 200.0 });
-
-        terminal.terminal = Some(TerminalSpec { name: "build".into(), ..Default::default() });
-        let line = app.new_element(ElementKind::Line { points: vec![[0.0, 0.0], [50.0, 50.0]], arrow: true });
-
-        app.scene.elements = vec![terminal, line];
-        let mut native = Native::default();
-        let changed: HashMap<String, Drawing> = app.sync_scene(&mut native).into_iter().collect();
-        let order: Vec<&str> = native.list.items.iter().map(|item| item.id.as_str()).collect();
-
-        assert_eq!(order, [app.scene.elements[1].id.as_str(), app.scene.elements[0].id.as_str()]);
-        assert_eq!(changed[&app.scene.elements[0].id].node, Some(Node { kind: "terminal", name: "build".into(), header: TERMINAL_HEADER }));
-        // the arrow's head is a stroke after its line
-        assert!(matches!(changed[&app.scene.elements[1].id].ops.last(), Some(Op::Stroke { closed: false, .. })));
-    }
-
-    #[test]
-    fn the_camera_serial_moves_only_when_rust_moves_the_camera() {
-        let mut app = DrawingApp::default();
-        let mut native = Native::default();
-        let first = app.overlay(&mut native).camera.serial;
-
-        // Swift's own pan: what it sent is what it has
-        app.native_view(&json!({ "x": 40.0, "y": -20.0, "zoom": 2.0, "width": 800.0, "height": 600.0 }));
-        NATIVE.with_borrow(|shared| native.camera = shared.camera);
-        let camera = app.overlay(&mut native).camera;
-
-        assert_eq!((camera.serial, camera.x, camera.y, camera.zoom), (first, 40.0, -20.0, 2.0));
-        app.zoom_at(1.0, Pos2::new(400.0, 300.0));
-        assert_eq!(app.overlay(&mut native).camera.serial, first + 1);
-    }
+fn all_tools() -> impl Iterator<Item = Tool> {
+    Tool::TOOLBAR.into_iter().chain(Tool::DRAWING).chain(Tool::EXTRA).chain([Tool::Chat])
 }

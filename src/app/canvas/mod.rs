@@ -2,7 +2,7 @@
 
 mod arrows;
 pub(crate) mod cover;
-mod dock;
+pub(crate) mod dock;
 pub(crate) mod drops;
 pub(crate) mod editing;
 pub(crate) mod lifted;

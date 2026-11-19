@@ -390,15 +390,20 @@ impl DrawingApp {
             });
         }
 
-        let Some((id, link)) = clicked else { return };
+        if let Some((id, link)) = clicked {
+            self.open_element_link(&id, &link);
+        }
+    }
 
-        match element_link(&link) {
+    /// A drawing's link mark clicked: its file in a tree beside it (an address on the web in the browser).
+    pub(crate) fn open_element_link(&mut self, id: &str, link: &str) {
+        match element_link(link) {
             Some(link) => {
-                if let Err(why) = self.open_file_link(&link, Some(&id)) {
+                if let Err(why) = self.open_file_link(&link, Some(id)) {
                     self.toast(why);
                 }
             }
-            None => crate::app::browser::open_external(&link),
+            None => crate::app::browser::open_external(link),
         }
     }
 }

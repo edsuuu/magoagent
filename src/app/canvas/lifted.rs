@@ -23,7 +23,7 @@ pub(crate) struct Backdrop {
 
 impl DrawingApp {
     /// The window enlarged in the middle of the screen, or on its way back from there: the canvas is blurred behind it.
-    fn blurred_for(&self) -> Option<(&str, f32)> {
+    pub(crate) fn blurred_for(&self) -> Option<(&str, f32)> {
         if let Some(id) = self.terminal_elevated.as_deref().filter(|_| self.dock.is_none()) {
             return Some((id, self.elevate_progress(self.elevate_since)));
         }
@@ -158,10 +158,10 @@ impl DrawingApp {
 }
 
 /// How long each grey line of a skeleton is, as a share of its width.
-const SKELETON_LINES: [f32; 6] = [0.62, 0.86, 0.48, 0.74, 0.55, 0.8];
+pub(crate) const SKELETON_LINES: [f32; 6] = [0.62, 0.86, 0.48, 0.74, 0.55, 0.8];
 
 /// The window's name on its skeleton.
-fn skeleton_name(element: &Element) -> String {
+pub(crate) fn skeleton_name(element: &Element) -> String {
     let named = |name: &str| (!name.trim().is_empty()).then(|| name.trim().to_string());
 
     element

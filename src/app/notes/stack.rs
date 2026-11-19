@@ -10,12 +10,12 @@ const SPILL: f32 = 24.0;
 /// The tab rail: tabs this wide out of the page's right edge, the front one tucked 2 px under it, at most 120 tall
 /// and 10 over each other, from 10 below the top (the reference app's).
 const TAB_W: f32 = 23.0;
-const TAB_TUCK: f32 = 2.0;
+pub(crate) const TAB_TUCK: f32 = 2.0;
 const TAB_MAX_H: f32 = 120.0;
 const TAB_OVERLAP: f32 = 10.0;
 const RAIL_INSET: f32 = 10.0;
 /// How far down a tab's curve runs from the page to its full width.
-const TAB_TRANSITION: f32 = 26.0;
+pub(crate) const TAB_TRANSITION: f32 = 26.0;
 /// A pile is a page standing up: at least this wide, and 1.4 times as tall as it is wide with the rail.
 const PAGE_MIN_W: f32 = 270.0;
 const PAGE_RATIO: f32 = 1.4;
@@ -70,9 +70,9 @@ pub(crate) fn page_rect(front: Rect) -> Rect {
     Rect::from_min_size(front.min, Vec2::new(width, front.height().max(((width + TAB_W) * PAGE_RATIO).round())))
 }
 
-/// A tab as the reference app's: from under the page it curves out to its full width, runs down and curves back.
-/// The back ones are shaded from the page's side (0.22 of black) to 0.08 at 45% of their width.
-fn tab_shape(rect: Rect, paper: Color32, front: bool) -> Shape {
+/// A tab's outer edge as the reference app's, from its top: from under the page it curves out to its full width, runs down
+/// and curves back (points from the tab's corner).
+pub(crate) fn tab_edge(rect: Rect) -> Vec<Pos2> {
     let (width, height) = (rect.width(), rect.height());
     // the curve's run at this zoom: the tab is (TAB_W + TAB_TUCK) wide on the page
     let run = (TAB_TRANSITION * width / (TAB_W + TAB_TUCK)).min(height / 3.0);
@@ -91,17 +91,23 @@ fn tab_shape(rect: Rect, paper: Color32, front: bool) -> Shape {
     let bottom = [Pos2::new(width, height - run), Pos2::new(width, height - run * 0.45), Pos2::new(0.0, height - run * 0.55), Pos2::new(0.0, height)];
     let steps = 12;
 
-    let edge: Vec<Pos2> =
-        (0..=steps).map(|step| cubic(top, step as f32 / steps as f32)).chain((0..=steps).map(|step| cubic(bottom, step as f32 / steps as f32))).collect();
+    (0..=steps).map(|step| cubic(top, step as f32 / steps as f32)).chain((0..=steps).map(|step| cubic(bottom, step as f32 / steps as f32))).collect()
+}
+
+/// A back tab's shade by how far across it (`x` of `width`): from the page's side (0.22 of black) to 0.08 at 45%.
+pub(crate) fn tab_shade(paper: Color32, x: f32, width: f32) -> Color32 {
+    let fraction = (x / width.max(1.0) / 0.45).min(1.0);
+
+    paper.lerp_to_gamma(Color32::BLACK, 0.22 + (0.08 - 0.22) * fraction)
+}
+
+/// A tab as the reference app's (`tab_edge`), the back ones shaded (`tab_shade`).
+fn tab_shape(rect: Rect, paper: Color32, front: bool) -> Shape {
+    let width = rect.width();
+    let edge = tab_edge(rect);
 
     let shade = |x: f32| {
-        if front {
-            return paper;
-        }
-
-        let fraction = (x / width.max(1.0) / 0.45).min(1.0);
-
-        paper.lerp_to_gamma(Color32::BLACK, 0.22 + (0.08 - 0.22) * fraction)
+        if front { paper } else { tab_shade(paper, x, width) }
     };
 
     let mut mesh = egui::Mesh::default();

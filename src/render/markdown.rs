@@ -269,6 +269,79 @@ struct Look {
 
 /// The note's text for the editor, `size` and `wrap` in screen points, `caret` while the editor has the keys.
 pub(crate) fn live_text(text: &str, size: f32, ink: Color32, wrap: f32, caret: Option<Caret>) -> LiveText {
+    let (chars, looks, ornaments) = looks_of(text, caret);
+
+    let build = |bold_only: bool| {
+        let mut job = LayoutJob::default();
+
+        job.wrap.max_width = wrap;
+        let mut from = 0;
+
+        while from < chars.len() {
+            let look = looks[from];
+            let to = (from..chars.len()).find(|&i| looks[i] != look).unwrap_or(chars.len());
+            let bytes = chars[from].0..chars.get(to).map_or(text.len(), |(byte, _)| *byte);
+
+            job.append(&text[bytes], 0.0, format_of(look, size, ink, bold_only));
+            from = to;
+        }
+
+        job
+    };
+
+    LiveText { job: build(false), bold: build(true), ornaments }
+}
+
+/// A run of the live text as SwiftUI's note shows it (macOS): characters `from..to` (Unicode scalars), its size and its
+/// line's in the note's points, the share of the ink it is written in (0: out of sight), the share of the ink under it.
+#[cfg(target_os = "macos")]
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub(crate) struct LiveRun {
+    pub(crate) from: usize,
+    pub(crate) to: usize,
+    pub(crate) size: f32,
+    pub(crate) line: f32,
+    pub(crate) ink: f32,
+    pub(crate) bold: bool,
+    pub(crate) italic: bool,
+    pub(crate) strike: bool,
+    pub(crate) underline: bool,
+    pub(crate) back: f32,
+}
+
+/// `live_text`'s looks as runs, `size` the note's text size: the same text egui's editor lays out, for SwiftUI.
+#[cfg(target_os = "macos")]
+pub(crate) fn live_runs(text: &str, size: f32, caret: Option<Caret>) -> (Vec<LiveRun>, Vec<Ornament>) {
+    let (chars, looks, ornaments) = looks_of(text, caret);
+    let mut runs = Vec::new();
+    let mut from = 0;
+
+    while from < chars.len() {
+        let look = looks[from];
+        let to = (from..chars.len()).find(|&i| looks[i] != look).unwrap_or(chars.len());
+        let shown = shown(look, size, false);
+
+        runs.push(LiveRun {
+            from,
+            to,
+            size: shown.size,
+            line: shown.line,
+            ink: shown.ink,
+            bold: look.bold,
+            italic: look.italic,
+            strike: shown.strike,
+            underline: shown.underline,
+            back: shown.back,
+        });
+
+        from = to;
+    }
+
+    (runs, ornaments)
+}
+
+/// Each character's look and the ornaments over the hidden marks (`live_text`).
+fn looks_of(text: &str, caret: Option<Caret>) -> (Vec<(usize, char)>, Vec<Look>, Vec<Ornament>) {
     let chars: Vec<(usize, char)> = text.char_indices().collect();
     let mut looks = vec![Look::default(); chars.len()];
     let mut ornaments = Vec::new();
@@ -360,25 +433,7 @@ pub(crate) fn live_text(text: &str, size: f32, ink: Color32, wrap: f32, caret: O
         start = end + 1;
     }
 
-    let build = |bold_only: bool| {
-        let mut job = LayoutJob::default();
-
-        job.wrap.max_width = wrap;
-        let mut from = 0;
-
-        while from < chars.len() {
-            let look = looks[from];
-            let to = (from..chars.len()).find(|&i| looks[i] != look).unwrap_or(chars.len());
-            let bytes = chars[from].0..chars.get(to).map_or(text.len(), |(byte, _)| *byte);
-
-            job.append(&text[bytes], 0.0, format_of(look, size, ink, bold_only));
-            from = to;
-        }
-
-        job
-    };
-
-    LiveText { job: build(false), bold: build(true), ornaments }
+    (chars, looks, ornaments)
 }
 
 /// A block's mark (a heading's hashes, a list's dash): shown faint while the caret is on its line, out of the line otherwise.
@@ -467,44 +522,65 @@ fn inline_looks(chars: &[(usize, char)], looks: &mut [Look], from: usize, to: us
     }
 }
 
-/// A character's format: its heading's size and line, faint, faded or out of sight.
-fn format_of(look: Look, size: f32, ink: Color32, bold_only: bool) -> TextFormat {
-    let line_size = size_of(look.level, size);
+/// How a character shows: its size and its line's, the share of the ink it is written in (0: out of sight), its lines,
+/// and the share of the ink under it.
+struct Shown {
+    size: f32,
+    line: f32,
+    ink: f32,
+    strike: bool,
+    underline: bool,
+    back: f32,
+}
 
-    let mut color = match look.fade {
-        Some(share) => ink.gamma_multiply(share),
-        None if look.dim => ink.gamma_multiply(0.4),
-        None => ink,
+/// A character's look shown: its heading's size and line, faint, faded or out of sight.
+fn shown(look: Look, size: f32, bold_only: bool) -> Shown {
+    let line = size_of(look.level, size);
+
+    let mut ink = match look.fade {
+        Some(share) => share,
+        None if look.dim => 0.4,
+        None => 1.0,
     };
 
     if look.clear || look.hidden || (bold_only && !look.bold) {
-        color = Color32::TRANSPARENT;
+        ink = 0.0;
     }
 
-    let font = if look.hidden {
+    let size = if look.hidden {
         0.1
     } else if look.code {
-        line_size * 0.95
+        line * 0.95
     } else {
-        line_size
+        line
     };
 
     let painted = !bold_only && !look.hidden && !look.clear;
 
+    let back = if painted && look.code {
+        0.1
+    } else if painted && look.block {
+        0.05
+    } else {
+        0.0
+    };
+
+    Shown { size, line, ink, strike: painted && look.strike, underline: painted && look.link, back }
+}
+
+/// A character's format for egui.
+fn format_of(look: Look, size: f32, ink: Color32, bold_only: bool) -> TextFormat {
+    let shown = shown(look, size, bold_only);
+    let color = if shown.ink > 0.0 { ink.gamma_multiply(shown.ink) } else { Color32::TRANSPARENT };
+
     TextFormat {
-        font_id: FontId::monospace(font),
+        font_id: FontId::monospace(shown.size),
         color,
         italics: look.italic,
-        line_height: Some(line_size * NOTE_LINE),
-        strikethrough: if painted && look.strike { Stroke::new(1.0, color) } else { Stroke::NONE },
-        underline: if painted && look.link { Stroke::new(1.0, ink.gamma_multiply(0.4)) } else { Stroke::NONE },
-        background: if painted && look.code {
-            ink.gamma_multiply(0.1)
-        } else if painted && look.block {
-            ink.gamma_multiply(0.05)
-        } else {
-            Color32::TRANSPARENT
-        },
+        line_height: Some(shown.line * NOTE_LINE),
+        strikethrough: if shown.strike { Stroke::new(1.0, color) } else { Stroke::NONE },
+        underline: if shown.underline { Stroke::new(1.0, ink.gamma_multiply(0.4)) } else { Stroke::NONE },
+        background: if shown.back > 0.0 { ink.gamma_multiply(shown.back) } else { Color32::TRANSPARENT },
         ..Default::default()
     }
 }

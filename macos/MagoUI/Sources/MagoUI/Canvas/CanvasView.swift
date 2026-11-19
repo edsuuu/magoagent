@@ -1,8 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// The canvas on macOS: Rust's scene drawn as it publishes it (src/app/canvas/native.rs), the pan and zoom done here,
-/// the pointer and the keys sent back as `ui.canvas.*`.
+/// The canvas on macOS: Rust's scene drawn as it publishes it (src/app/canvas/native/), the pan and zoom done here,
+/// the pointer and the keys sent back as `ui.canvas.*`. The drawings in one picture, each card (window or note) in a
+/// layer of its own over them in the drawing's order, the enlarged one last over the blur, then what goes over all.
 struct CanvasView: View {
     private let store = MagoStore.shared
     @State private var cache = CanvasCache()
@@ -11,6 +12,8 @@ struct CanvasView: View {
     @State private var size = CGSize.zero
     /// Bumped when a picture or the hand font arrives, so the canvas draws again.
     @State private var arrivals = 0
+    /// How far down each note's text is scrolled by the wheel, in its points (notes/scroll.rs): the session's, by id.
+    @State private var noteScroll: [String: CGFloat] = [:]
 
     var body: some View {
         let list = store.decode(CanvasSceneList.self, topic: "scene")
@@ -20,57 +23,93 @@ struct CanvasView: View {
         let images = cache.images.mapValues(\.image)
         let camera = camera
         let dark = overlay?.dark ?? false
+        let handTool = overlay?.tool == "hand"
+        let ground = canvasColor(list?.ground ?? [255, 255, 255, 255])
+        let lift = overlay?.lift
+        // the enlarged window is the list's last (sync_scene)
+        let lifted = lift.flatMap { lift in entries.last.flatMap { $0.id == lift.id ? $0 : nil } }
+        let cards = entries.filter { $0.card && $0 !== lifted }
+        let liftedTree = lifted?.drawing.node?.kind == "filetree" ? lift.map { canvasRect($0.frame) } : nil
         let _ = arrivals
         GeometryReader { geometry in
+            let view = geometry.size
             ZStack(alignment: .topLeading) {
                 Canvas { context, size in
-                    context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(canvasColor(list?.ground ?? [255, 255, 255, 255])))
+                    context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(ground))
                     if let grid = list?.grid { paintGrid(&context, size: size, camera: camera, color: canvasColor(grid)) }
                     let seen = camera.world(size)
                     var world = context
                     world.translateBy(x: camera.x, y: camera.y)
                     world.scaleBy(x: camera.zoom, y: camera.zoom)
-                    for entry in entries where canvasRect(entry.drawing.reach).intersects(seen) {
+                    for entry in entries where !entry.card && canvasRect(entry.drawing.reach).intersects(seen) {
                         paintEntry(&world, entry, hand: hand, image: images[entry.id], dark: dark)
                     }
                 }
-                CanvasInput(handTool: overlay?.tool == "hand") { handle($0) }
-                ForEach(entries.filter { $0.drawing.node != nil }, id: \.id) { entry in
-                    hosted(entry, camera: camera, seen: camera.world(geometry.size))
+                CanvasInput(handTool: handTool, base: true) { handle($0, overlay: overlay) }
+                ForEach(cards, id: \.id) { entry in
+                    card(entry, place: camera.screen(canvasRect(entry.drawing.rect)), scale: camera.zoom, view: view, overlay: overlay)
+                }
+                if let lift {
+                    if let skeleton = lift.skeleton {
+                        Canvas { context, _ in paintSkeleton(&context, skeleton, camera: camera, dark: dark) }.allowsHitTesting(false)
+                    }
+                    if lift.blur > 0 {
+                        // the canvas behind it blurred and tinted with the ground (lifted.rs), live windows too; a press
+                        // there is the canvas's
+                        Rectangle().fill(.regularMaterial).opacity(lift.blur).allowsHitTesting(false)
+                        Rectangle().fill(ground.opacity(0.35 * lift.blur)).allowsHitTesting(false)
+                        CanvasInput(handTool: handTool) { handle($0, overlay: overlay) }
+                    }
+                    if let lifted {
+                        card(lifted, place: canvasRect(lift.frame), scale: lift.zoom, view: view, overlay: overlay)
+                    }
                 }
                 MagoViews.pages?()
                 if let overlay {
                     Canvas { context, _ in paintOverlay(&context, overlay, camera: camera, hand: hand) }
                         .allowsHitTesting(false)
+                    CanvasPieces(overlay: overlay, camera: camera, view: view)
                     if let editing = overlay.editing {
-                        CanvasTextEditor(editing: editing, camera: camera, hand: hand).id(editing.id)
+                        if let note = editing.note {
+                            // a lifted note is typed where it shows
+                            let viewport = if let lift, let lifted, lift.id == note { liftViewport(lift, lifted) } else { camera }
+                            let rect = viewport.screen(canvasRect(editing.rect))
+                            let press = CanvasInputView.pressed.map { CGPoint(x: $0.x - rect.minX, y: $0.y - rect.minY) }
+                            CanvasNoteEditor(editing: editing, zoom: viewport.zoom, scroll: noteScroll[note] ?? 0, press: press)
+                                .frame(width: rect.width, height: rect.height)
+                                .offset(x: rect.minX, y: rect.minY)
+                                .id(editing.id)
+                        } else {
+                            CanvasTextEditor(editing: editing, camera: camera, hand: hand).id(editing.id)
+                        }
                     }
                 }
             }
+            .coordinateSpace(name: "canvas")
             .clipped()
             .onAppear { resize(geometry.size) }
             .onChange(of: geometry.size) { resize(geometry.size) }
         }
         .onChange(of: overlay?.camera.serial, initial: true) { adopt(overlay?.camera) }
         .onChange(of: self.camera) { sendView() }
+        .onChange(of: liftedTree, initial: true) { CanvasInputView.liftedTree = liftedTree }
         .task { await CanvasFonts.register(store: store); arrivals += 1 }
         .task(id: list?.version) { await fetchImages(entries) }
     }
 
-    /// A window's live view over its card, below the title strip (the strip stays Rust's: it moves the window).
-    @ViewBuilder
-    private func hosted(_ entry: CanvasEntry, camera: CanvasViewport, seen: CGRect) -> some View {
-        let rect = canvasRect(entry.drawing.rect)
-        if let node = entry.drawing.node, rect.intersects(seen), let view = CanvasArea.view(kind: node.kind, id: entry.id) {
-            // a terminal's view has its own strip, so it covers the whole card
-            let header = node.kind == "terminal" ? 0 : node.header
-            let inner = CGSize(width: rect.width, height: max(rect.height - header, 0))
-            let at = camera.screen(rect.minX, rect.minY + header)
-            view.frame(width: inner.width, height: inner.height)
-                .scaleEffect(camera.zoom, anchor: .topLeading)
-                .frame(width: inner.width * camera.zoom, height: inner.height * camera.zoom, alignment: .topLeading)
-                .clipShape(UnevenRoundedRectangle(topLeadingRadius: header == 0 ? 8 * camera.zoom : 0, bottomLeadingRadius: 8 * camera.zoom, bottomTrailingRadius: 8 * camera.zoom, topTrailingRadius: header == 0 ? 8 * camera.zoom : 0))
-                .offset(x: at.x, y: at.y)
+    /// Where the enlarged card's own points show: its box's origin at the frame's, at its scale.
+    private func liftViewport(_ lift: CanvasLift, _ entry: CanvasEntry) -> CanvasViewport {
+        let (frame, rect) = (canvasRect(lift.frame), canvasRect(entry.drawing.rect))
+        return CanvasViewport(x: frame.minX - rect.minX * lift.zoom, y: frame.minY - rect.minY * lift.zoom, zoom: lift.zoom)
+    }
+
+    private func card(_ entry: CanvasEntry, place: CGRect, scale: CGFloat, view: CGSize, overlay: CanvasOverlay?) -> some View {
+        CanvasCard(entry: entry, place: place, scale: scale, view: view, hand: CanvasFonts.hand, dark: overlay?.dark ?? false,
+                   handTool: overlay?.tool == "hand", scroll: noteScroll[entry.id] ?? 0, onEvent: { handle($0, overlay: overlay) }) { delta in
+            guard let layout = entry.noteLayout, let note = entry.drawing.note else { return false }
+            let overflow = max(layout.height - canvasRect(note.area).height, 0)
+            noteScroll[entry.id] = min(max((noteScroll[entry.id] ?? 0) - delta, 0), overflow)
+            return true
         }
     }
 
@@ -94,9 +133,11 @@ struct CanvasView: View {
         camera = CanvasViewport(x: rust.x, y: rust.y, zoom: rust.zoom)
     }
 
-    private func handle(_ event: CanvasInputEvent) {
+    private func handle(_ event: CanvasInputEvent, overlay: CanvasOverlay?) {
         switch event {
         case let .pointer(phase, at, flags, clicks, middle):
+            // the minimap is a popover: a press anywhere else on the canvas puts it away
+            if phase == "down" && overlay?.minimap != nil { store.send("minimap", ["open": false]) }
             var args = viewArgs()
             args["phase"] = phase
             args["px"] = Double(at.x)
@@ -113,6 +154,10 @@ struct CanvasView: View {
         case let .zoom(factor, at):
             camera.zoom(by: factor, at: at)
         case let .key(name, flags):
+            if name == "Escape" && overlay?.minimap != nil {
+                store.send("minimap", ["open": false])
+                return
+            }
             store.send("ui.canvas.key", ["key": name, "cmd": flags.contains(.command), "shift": flags.contains(.shift), "alt": flags.contains(.option)])
         }
     }
@@ -130,7 +175,7 @@ struct CanvasView: View {
     }
 }
 
-/// The text being typed (a text, a label or a note's markdown): every change goes to Rust, Esc or Cmd+Enter ends it.
+/// A text or a label being typed: every change goes to Rust, Esc or Cmd+Enter ends it (a note's is CanvasNoteEditor).
 struct CanvasTextEditor: View {
     let editing: CanvasEditing
     let camera: CanvasViewport
@@ -141,11 +186,10 @@ struct CanvasTextEditor: View {
     var body: some View {
         let rect = camera.screen(canvasRect(editing.rect))
         let size = editing.size * camera.zoom
-        let font: Font = editing.note ? .system(size: size, design: .monospaced) : .custom(hand ?? "Excalifont", size: size)
         // a text grows sideways as it is typed (egui's desired_width: its width plus two letters)
-        let width = editing.note ? rect.width : rect.width + size * 2
+        let width = rect.width + size * 2
         TextEditor(text: $value)
-            .font(font)
+            .font(.custom(hand ?? "Excalifont", size: size))
             .foregroundStyle(canvasColor(editing.color))
             .multilineTextAlignment(editing.center ? .center : .leading)
             .scrollContentBackground(.hidden)
