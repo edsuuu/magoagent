@@ -159,6 +159,8 @@ pub(crate) struct DrawingApp {
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub(crate) raising: Option<f64>,
     pub(crate) quitting: bool,
+    /// The window closed while agents worked: the question of system/close_ask.rs is up.
+    pub(crate) close_ask: bool,
     /// The window's caption is the system's (ui/titlebar.rs::native_caption), once hooked.
     #[cfg(windows)]
     pub(crate) caption_hooked: bool,

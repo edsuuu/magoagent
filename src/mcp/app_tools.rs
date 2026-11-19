@@ -495,6 +495,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["action"] },
         }),
         json!({
+            "name": "stop_all",
+            "description": "Parar tudo: todos os agentes param onde estão. Os chats param a resposta, os agentes em terminal recebem Esc, a fila e as mensagens que esperavam são descartadas, e as perguntas entre agentes acabam sem resposta (nenhuma resposta acorda quem recrutou). Depois, nada continua sem uma mensagem nova da pessoa. Use sempre que a pessoa pedir para parar tudo ou parar os agentes; você também para, então não chame mais nada depois.",
+            "inputSchema": { "type": "object", "properties": {} },
+        }),
+        json!({
             "name": "doubts",
             "description": "A tela Dúvidas: as perguntas que você deixa para a pessoa enquanto trabalha, sem parar (para uma pergunta que trava o trabalho, use ask_person). add acrescenta `questions` (textos, ou {question, options} com respostas sugeridas) e abre o painel, no canvas e no modo chat; a pessoa responde lá e as respostas chegam a você numa mensagem, só as respondidas ou todas (as sem resposta ficam para você decidir). list mostra as suas com o que já foi respondido; remove tira as que não precisa mais (ids, ou todas). answer (id, answer) e send (agent, all) são o que a pessoa faz no painel. Quando a pessoa pedir um .md de dúvidas, use esta tela.",
             "inputSchema": { "type": "object", "properties": {

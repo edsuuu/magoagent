@@ -34,6 +34,7 @@ pub(crate) mod recruit_card;
 pub(crate) mod search;
 pub(crate) mod segments;
 pub(crate) mod steps;
+pub(crate) mod stop;
 pub(crate) mod thinking;
 pub(crate) mod tools;
 pub(crate) mod viewer;

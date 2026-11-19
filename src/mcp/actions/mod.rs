@@ -280,6 +280,7 @@ impl DrawingApp {
             "file_tree" => self.act_file_tree(args),
             "tasks" => self.act_tasks(args),
             "doubts" => self.act_doubts(args),
+            "stop_all" => Ok(self.stop_all()),
             "flow" => self.act_flow(args),
             "binder" => self.act_binder(&text("action"), &text("name"), args["text"].as_str().unwrap_or_default()),
             "workspaces" => self.act_workspaces(args),
