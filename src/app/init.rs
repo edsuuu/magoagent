@@ -207,6 +207,7 @@ impl Default for DrawingApp {
             voice_page: None,
             portal_events: std::sync::mpsc::channel(),
             portal_url_edit: None,
+            portal_focus: None,
             design: None,
             annotations: Default::default(),
             design_confirm: None,
