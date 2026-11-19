@@ -137,14 +137,12 @@ impl DrawingApp {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("Para").color(colors.muted));
 
-            let shown = agents
-                .iter()
-                .find(|(row, _)| row.id == self.panes.changes.review.agent)
-                .map_or("Nenhum agente".to_string(), |(row, _)| row.spec.label().into());
+            let shown =
+                agents.iter().find(|(row, _)| row.id == self.panes.changes.review.agent).map_or("Nenhum agente".to_string(), |(row, _)| self.review_name(row));
 
             egui::ComboBox::from_id_salt("changes_review_agent").width(ui.available_width()).selected_text(shown).truncate().show_ui(ui, |ui| {
                 for (row, inside) in &agents {
-                    let mut text = row.spec.label().to_string();
+                    let mut text = self.review_name(row);
 
                     if row.spec.chat {
                         text += " (chat)";

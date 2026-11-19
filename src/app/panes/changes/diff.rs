@@ -1,4 +1,5 @@
-//! The diff of the file picked in Alterações: the old and new numbers in a gutter, the code in its language's colors
+//! The diff of the file picked in Alterações: one number per line in a gutter (the file's, the HEAD's on a removed
+//! line, as Claude Code's diff), the code in its language's colors
 //! (`highlight`, read over the whole file so a comment or a string that spans lines keeps its color), a whole row of
 //! green or red under an added or removed line (the row, never a word), long lines scrolling sideways. A press on a
 //! line picks it for a review comment; Shift+click or a drag picks more (review.rs).
@@ -169,7 +170,7 @@ impl DrawingApp {
             let char_width = ui.fonts_mut(|fonts| fonts.glyph_width(&font, '0'));
             let widest = lines.iter().map(|l| l.old.max(l.new).unwrap_or(0)).max().unwrap_or(0);
             let number_width = (widest.to_string().len().max(2) as f32) * char_width + 8.0;
-            let gutter_width = number_width * 2.0 + char_width + 6.0;
+            let gutter_width = number_width + char_width + 6.0;
 
             let text_width =
                 lines.iter().map(|l| l.text.chars().map(|c| if c == '\t' { 4 } else { 1 }).sum::<usize>()).max().unwrap_or(0) as f32 * char_width + 12.0;
@@ -213,15 +214,10 @@ impl DrawingApp {
                     let number = |n: Option<usize>| n.map_or(String::new(), |n| n.to_string());
                     let muted = ink.gamma_multiply(0.45);
 
-                    p.text(Pos2::new(row.left() + number_width - 4.0, row.center().y), egui::Align2::RIGHT_CENTER, number(line.old), small.clone(), muted);
+                    // one column: the line in the file, or in the HEAD for one that left it
+                    let shown = if line.mark == '-' { line.old } else { line.new };
 
-                    p.text(
-                        Pos2::new(row.left() + 2.0 * number_width - 4.0, row.center().y),
-                        egui::Align2::RIGHT_CENTER,
-                        number(line.new),
-                        small.clone(),
-                        muted,
-                    );
+                    p.text(Pos2::new(row.left() + number_width - 4.0, row.center().y), egui::Align2::RIGHT_CENTER, number(shown), small.clone(), muted);
 
                     let mark_color = match line.mark {
                         '+' => crate::app::filetree::diff::ADDED,
@@ -231,7 +227,7 @@ impl DrawingApp {
 
                     let mark = if line.mark == ' ' { String::new() } else { line.mark.to_string() };
 
-                    p.text(Pos2::new(row.left() + 2.0 * number_width + 2.0, row.center().y), egui::Align2::LEFT_CENTER, mark, font.clone(), mark_color);
+                    p.text(Pos2::new(row.left() + number_width + 2.0, row.center().y), egui::Align2::LEFT_CENTER, mark, font.clone(), mark_color);
                 }
 
                 egui::ScrollArea::horizontal().id_salt(("changes_diff", path)).auto_shrink([false, true]).show(ui, |ui| {

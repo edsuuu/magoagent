@@ -13,8 +13,6 @@ use crate::prelude::*;
 pub(crate) enum Attention {
     Next,
     ToggleAgents,
-    /// The × of the green notice: hides it.
-    HideClear,
     Agent(String),
     /// A Maestro's agents opened (true) or folded under it (chat/list/team.rs).
     Team(String, bool),
@@ -96,52 +94,24 @@ impl DrawingApp {
         let width = ui.available_width();
         let dark = self.dark();
         let mut picked = None;
-        // Precisa de você: amber with somebody waiting, a green notice without
+        // Precisa de você: an amber card only while somebody waits (nothing in its place without)
         let waiting = self.needing_you().len();
 
-        let (wash, ink) = match (waiting > 0, dark) {
-            (true, true) => (Color32::from_rgba_unmultiplied(0xf0, 0xa0, 0x20, 38), AMBER),
-            (true, false) => (Color32::from_rgba_unmultiplied(0xf0, 0xa0, 0x20, 41), Color32::from_rgb(0xb8, 0x73, 0x0a)),
-            (false, true) => (Color32::from_rgba_unmultiplied(0x30, 0xd1, 0x58, 36), Color32::from_rgb(0x30, 0xd1, 0x58)),
-            (false, false) => (Color32::from_rgba_unmultiplied(0x24, 0x8a, 0x3d, 31), Color32::from_rgb(0x24, 0x8a, 0x3d)),
+        let (wash, ink) = if dark {
+            (Color32::from_rgba_unmultiplied(0xf0, 0xa0, 0x20, 38), AMBER)
+        } else {
+            (Color32::from_rgba_unmultiplied(0xf0, 0xa0, 0x20, 41), Color32::from_rgb(0xb8, 0x73, 0x0a))
         };
 
         let painter = ui.painter().clone();
-        let shown = waiting > 0 || !self.prefs.sidebar_clear_hidden;
-        let card = if shown { ui.allocate_exact_size(Vec2::new(width, if waiting > 0 { 74.0 } else { 38.0 }), Sense::hover()).0 } else { Rect::NOTHING };
 
-        if shown {
+        if waiting > 0 {
+            let card = ui.allocate_exact_size(Vec2::new(width, 74.0), Sense::hover()).0;
+            let header = Pos2::new(card.left() + 10.0, card.top() + 19.0);
+
             painter.rect_filled(card, 10, wash);
-        }
-
-        let header = Pos2::new(card.left() + 10.0, card.top() + 19.0);
-
-        if waiting > 0 {
             painter.circle_filled(header + Vec2::new(5.0, 0.0), 4.0, ink);
-        } else {
-            paint_icon_scaled(&painter, Icon::Check, header + Vec2::new(6.0, 0.0), ink, 0.8, 0.0);
-        }
-
-        if shown {
             painter.text(header + Vec2::new(18.0, 0.0), egui::Align2::LEFT_CENTER, waiting_text(waiting), FontId::proportional(13.0), ink);
-        }
-
-        if waiting == 0 && shown {
-            let spot = Rect::from_center_size(Pos2::new(card.right() - 19.0, header.y), Vec2::splat(22.0));
-            let button = ui.interact(spot, egui::Id::unique("sidebar_clear_hide"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-
-            if button.hovered() {
-                painter.rect_filled(spot, 6, ink.gamma_multiply(0.18));
-            }
-
-            painter.text(spot.center(), egui::Align2::CENTER_CENTER, "×", FontId::proportional(16.0), ink);
-
-            if button.tip("Ocultar este aviso").clicked() {
-                picked = Some(Attention::HideClear);
-            }
-        }
-
-        if waiting > 0 {
             let spot = Rect::from_min_max(Pos2::new(card.left() + 10.0, card.top() + 36.0), Pos2::new(card.right() - 10.0, card.top() + 64.0));
             let button = ui.interact(spot, egui::Id::unique("sidebar_next"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
 
@@ -163,9 +133,7 @@ impl DrawingApp {
             if button.tip(self.tip_with_keys("Próximo agente que precisa de você", AppAction::NextNeedingYou)).clicked() {
                 picked = Some(Attention::Next);
             }
-        }
 
-        if shown {
             ui.add_space(8.0);
         }
 
@@ -291,7 +259,6 @@ impl DrawingApp {
                 self.next_needing_attention();
             }
             Attention::ToggleAgents => self.prefs.sidebar_agents_closed = !self.prefs.sidebar_agents_closed,
-            Attention::HideClear => self.prefs.sidebar_clear_hidden = true,
             Attention::Agent(id) => self.open_agent(&id),
             Attention::Team(maestro, open) => self.set_team_open(&maestro, open),
         }

@@ -227,6 +227,14 @@ fn a_changed_file_shows_its_lines_and_diff_and_opens_in_the_tree() {
     let shown = pane_frame(&mut app, &ctx, vec![]);
 
     assert!(find(&shown, Role::Button, "Descartar").is_none(), "no such action in the app");
+    // Fechar diff: the list alone again; the file's row opens it once more
+    pane_click(&mut app, &ctx, find(&shown, Role::Button, "Fechar diff").expect("the diff closes").center());
+    assert!(app.panes.changes.selected.is_none() && app.panes.changes.diff.is_empty());
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+
+    pane_click(&mut app, &ctx, find(&shown, Role::Button, "kept.txt").unwrap().center());
+    let shown = pane_frame(&mut app, &ctx, vec![]);
+
     pane_click(&mut app, &ctx, find(&shown, Role::Button, "Abrir na Árvore").unwrap().center());
     assert_eq!(app.terminal_elevated.as_deref(), Some(id.as_str()), "the tree enlarged");
     assert!(app.filetrees.editors[&id].tabs.iter().any(|t| t.path.to_string_lossy().contains("HEAD ↔ kept.txt")));
