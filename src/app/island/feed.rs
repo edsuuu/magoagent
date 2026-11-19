@@ -281,7 +281,7 @@ impl DrawingApp {
         }
     }
 
-    /// An integration with no tab of its own (WhatsApp): its card's first button, as if pressed there.
+    /// An integration with no tab of its own: its card's first button, as if pressed there.
     fn feed_press(&self, id: &str) {
         let Some(item) = self.integration_items().into_iter().find(|item| item.id == id) else { return };
 

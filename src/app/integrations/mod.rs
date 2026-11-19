@@ -10,7 +10,6 @@ pub(crate) mod github;
 pub(crate) mod hermes;
 pub(crate) mod http;
 pub(crate) mod spotify;
-pub(crate) mod whatsapp;
 
 /// The island's ids of the integrations start with this.
 pub(crate) const ITEM_PREFIX: &str = "integration:";
@@ -26,24 +25,13 @@ pub(crate) struct IntegrationPrefs {
     pub(crate) spotify_client_id: String,
     /// Hermes Agent's sessions show on the island (its plugin is installed apart, by a button).
     pub(crate) hermes: bool,
-    pub(crate) whatsapp: bool,
-    #[serde(default = "whatsapp::default_base")]
-    pub(crate) whatsapp_base: String,
     /// Luna dances to what Spotify plays on the island, by the beat heard in the computer's sound (on by default).
     pub(crate) luna_dances: bool,
 }
 
 impl Default for IntegrationPrefs {
     fn default() -> Self {
-        Self {
-            github: false,
-            spotify: false,
-            hermes: false,
-            whatsapp: false,
-            whatsapp_base: String::new(),
-            spotify_client_id: String::new(),
-            luna_dances: true,
-        }
+        Self { github: false, spotify: false, hermes: false, spotify_client_id: String::new(), luna_dances: true }
     }
 }
 
@@ -51,7 +39,6 @@ impl Default for IntegrationPrefs {
 pub(crate) struct Integrations {
     pub(crate) github: github::GitHub,
     pub(crate) spotify: spotify::Spotify,
-    pub(crate) whatsapp: whatsapp::WhatsApp,
     /// The token as it is typed in Ajustes, until Salvar puts it in the keychain: never in `Prefs`.
     pub(crate) token_field: String,
     /// Ajustes' "Instalar…" of Hermes was pressed: what it will write is shown, waiting for the yes.
@@ -60,8 +47,6 @@ pub(crate) struct Integrations {
     pub(crate) soloist_setup: spotify::setup::Setup,
     /// What was pressed on the island's cards (they are drawn where the app is only read): done by the next tick.
     pub(crate) pressed: std::cell::RefCell<Vec<String>>,
-    /// Ajustes › Integrações was opened for WhatsApp: its card scrolls into view once.
-    pub(crate) scroll_to_whatsapp: bool,
 }
 
 /// One line of an integration's card on the island; with an `action`, a press does it.
@@ -91,10 +76,8 @@ pub(crate) struct IslandItem {
 
 const GREEN: Color32 = Color32::from_rgb(0x34, 0xd3, 0x99);
 const RED: Color32 = Color32::from_rgb(0xff, 0x8d, 0x97);
-/// Each service's mini in its own colour: GitHub red, WhatsApp its green (Spotify has
-/// its own, in spotify/).
+/// Each service's mini in its own colour: GitHub red (Spotify has its own, in spotify/).
 const GITHUB: Color32 = Color32::from_rgb(0xf4, 0x50, 0x5e);
-const WHATSAPP: Color32 = Color32::from_rgb(0x25, 0xd3, 0x66);
 
 /// The pages a card or a button of the integrations may open: the services' own, never an address an answer made up.
 pub(crate) fn page_allowed(url: &str) -> bool {
@@ -111,30 +94,22 @@ pub(crate) fn open_page(url: &str) {
 impl DrawingApp {
     /// Each frame: every integration that is on.
     pub(crate) fn integrations_tick(&mut self, ctx: &Context) {
-        let time = ctx.input(|input| input.time);
-
         for action in std::mem::take(self.integrations.pressed.get_mut()) {
-            self.integration_press(&action, time);
+            self.integration_press(&action);
         }
 
         self.github_tick(ctx);
         self.spotify_tick(ctx);
         self.soloist_setup_tick(ctx);
-        self.whatsapp_tick(ctx);
     }
 
     /// What a press on a card of the island does: "open <address>" (only a page of the services themselves), "seen
-    /// <integration>" (its card was shown), "whatsapp open" (its line in Início, see `DrawingApp::whatsapp_open`) and
-    /// "spotify <words>" (the pill's buttons and the Spotify page's, see `DrawingApp::spotify_press`).
-    fn integration_press(&mut self, action: &str, time: f64) {
+    /// <integration>" (its card was shown) and "spotify <words>" (the pill's buttons and the Spotify page's, see
+    /// `DrawingApp::spotify_press`).
+    fn integration_press(&mut self, action: &str) {
         match action.split_once(' ') {
             Some(("open", url)) => open_page(url),
             Some(("seen", "github")) => self.github_seen(),
-            Some(("whatsapp", "open")) => {
-                self.whatsapp_open();
-                // the app took it: the island folds back, as Spotify's "Abrir Ajustes › Integrações"
-                self.island.fold_now(time);
-            }
             Some(("spotify", words)) => self.spotify_press(words),
             _ => {}
         }
@@ -149,8 +124,6 @@ impl DrawingApp {
 
             open_page(&notice.unwrap_or_else(|| github::PULLS_PAGE.into()));
             self.github_seen();
-        } else if name == "whatsapp" {
-            self.whatsapp_open();
         }
 
         true
@@ -168,35 +141,7 @@ impl DrawingApp {
             items.extend(self.spotify_item());
         }
 
-        if self.prefs.integrations.whatsapp {
-            items.push(self.whatsapp_item());
-        }
-
         items
-    }
-
-    /// WhatsApp's pill: how the gateway is, and one button (what a click on its line in Início does too).
-    fn whatsapp_item(&self) -> IslandItem {
-        let whatsapp = &self.integrations.whatsapp;
-
-        let (text, color, failed) = match whatsapp.link {
-            whatsapp::Link::Unknown => ("Gateway ainda não testado", DIM, false),
-            whatsapp::Link::Connected => ("Gateway conectado", GREEN, false),
-            whatsapp::Link::NeedsPairing => ("WhatsApp precisa ser pareado no gateway", AMBER, false),
-            whatsapp::Link::Unavailable => ("Gateway indisponível ou resposta inválida", RED, true),
-        };
-
-        IslandItem {
-            id: format!("{ITEM_PREFIX}whatsapp"),
-            name: "WhatsApp",
-            kind: "GOWA local".into(),
-            color: WHATSAPP,
-            badge: failed.then_some(Badge::Error),
-            failed,
-            rows: vec![ItemRow { text: text.into(), color, action: None }],
-            chips: vec![(if whatsapp.link == whatsapp::Link::Connected { "Abrir o gateway" } else { "Configurar" }, "whatsapp open".into())],
-            cover: None,
-        }
     }
 
     /// GitHub's pill: the alert first, then the pull requests with their checks and the ones to review.
@@ -331,5 +276,13 @@ mod tests {
         app.integrations.pressed.borrow_mut().extend(["seen github".to_string(), "open file:///etc/passwd".to_string(), "apagar tudo".to_string()]);
         app.integrations_tick(&Context::default());
         assert!(app.integrations.pressed.borrow().is_empty());
+    }
+
+    /// Preferences saved while WhatsApp was an integration still load: its fields are left out.
+    #[test]
+    fn old_preferences_with_whatsapp_still_load() {
+        let old: IntegrationPrefs = serde_json::from_str(r#"{"github":true,"whatsapp":true,"whatsapp_base":"http://127.0.0.1:3000"}"#).unwrap();
+
+        assert_eq!(old, IntegrationPrefs { github: true, ..Default::default() });
     }
 }

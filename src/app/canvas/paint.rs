@@ -457,6 +457,15 @@ impl DrawingApp {
     }
 
     pub(crate) fn text_editor(&mut self, ctx: &Context) {
+        // the chat opened last is on top: a note in focus leaves it (its editor floats over every window)
+        if self.chat_open {
+            if self.elevated_index().is_some_and(|index| self.scene.elements[index].created.is_some()) {
+                self.set_elevated(None);
+            }
+
+            return self.finish_text();
+        }
+
         let Some(index) = self.editing else {
             return;
         };

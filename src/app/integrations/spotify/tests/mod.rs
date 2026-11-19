@@ -351,3 +351,19 @@ fn of_the_spotify_app_and_spotifast_the_one_that_plays_is_shown() {
     assert_eq!(shown([None, now("spotifast", false)]), Some((1, "spotifast".into())), "only Spotifast open");
     assert_eq!(shown([None, None]), None);
 }
+
+/// A Soloist set up another way (Spotifast's, a service of the person's own) that answers: Configurar leaves nothing to
+/// do, though nothing is in the setup's own places; one that does not answer and is not there starts at the download.
+#[test]
+fn a_soloist_that_answers_needs_no_setup() {
+    use super::setup::{Login, Mark, Program, Status, hints, marks};
+
+    let status = Status { program: Program::Ready("soloist 1.3.10".into()), login: Login::In, ..Default::default() };
+
+    assert_eq!(marks(&status, false), [Mark::Done; 5]);
+    assert!(hints(&status, false, "")[3].contains("outro caminho"), "{:?}", hints(&status, false, ""));
+    let waiting = Status { login: Login::Waiting, ..status.clone() };
+
+    assert_eq!(marks(&waiting, false), [Mark::Done, Mark::Done, Mark::Done, Mark::Done, Mark::Now]);
+    assert_eq!(marks(&Status::default(), false), [Mark::Now, Mark::Todo, Mark::Todo, Mark::Todo, Mark::Todo]);
+}

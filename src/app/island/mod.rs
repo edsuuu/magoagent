@@ -159,7 +159,7 @@ pub(crate) enum Tab {
 
 impl Tab {
     /// The page a pill lives on: the sessions outside the app on Claude Code's, GitHub's and Spotify's on theirs, the
-    /// other integrations (WhatsApp) on Início's, and the app's own agents and chats on Chats.
+    /// other integrations on Início's, and the app's own agents and chats on Chats.
     pub(crate) fn of(id: &str) -> Tab {
         if id.starts_with(crate::app::maestro::outside::PILL_PREFIX) {
             return Tab::Claude;
@@ -533,11 +533,6 @@ pub(crate) struct NewForm {
 }
 
 impl Island {
-    /// Compact at once: the app took what was pressed on it (Ajustes, a page).
-    pub(crate) fn fold_now(&mut self, time: f64) {
-        self.machine.force_petit(time);
-    }
-
     /// The island as drawn now.
     #[cfg(test)]
     pub(crate) fn size(&self) -> Vec2 {
