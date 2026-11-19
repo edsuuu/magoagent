@@ -350,6 +350,11 @@ impl DrawingApp {
         }
 
         let view = self.canvas_rect;
+        let side = link_mark_side(self.zoom);
+
+        if side < LINK_MARK_LEAST {
+            return;
+        }
 
         let marks: Vec<(String, String, Pos2)> = self
             .scene
@@ -359,13 +364,9 @@ impl DrawingApp {
             .filter_map(|element| {
                 let link = element.link.clone()?;
                 let bounds = element_bounds(element);
-                let corner = self.to_screen(bounds.right_top()) + Vec2::new(LINK_MARK * 0.5 + 2.0, -LINK_MARK * 0.5 - 2.0);
+                let corner = self.to_screen(bounds.right_top()) + Vec2::new(side * 0.5 + 2.0, -side * 0.5 - 2.0);
 
-                (view.expand(LINK_MARK).contains(corner) && bounds.width().max(bounds.height()) * self.zoom > 12.0).then_some((
-                    element.id.clone(),
-                    link,
-                    corner,
-                ))
+                (view.expand(side).contains(corner) && bounds.width().max(bounds.height()) * self.zoom > 12.0).then_some((element.id.clone(), link, corner))
             })
             .collect();
 
@@ -373,15 +374,17 @@ impl DrawingApp {
         let mut clicked = None;
 
         for (id, link, corner) in marks {
-            let rect = Rect::from_center_size(corner, Vec2::splat(LINK_MARK));
+            let rect = Rect::from_center_size(corner, Vec2::splat(side));
 
             egui::Area::new(egui::Id::unique(("element_link", id.as_str()))).order(egui::Order::Middle).fixed_pos(rect.min).constrain(false).show(ctx, |ui| {
                 let (rect, response) = ui.allocate_exact_size(rect.size(), Sense::click());
                 let response = response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(format!("Abrir {link}"));
                 let p = ui.painter();
 
-                p.rect_filled(rect, 6.0, if response.hovered() { c.surface_high } else { c.island });
-                p.rect_stroke(rect, 6.0, Stroke::new(1.0, c.code.gamma_multiply(0.6)), StrokeKind::Inside);
+                let corner = 6.0 * side / LINK_MARK;
+
+                p.rect_filled(rect, corner, if response.hovered() { c.surface_high } else { c.island });
+                p.rect_stroke(rect, corner, Stroke::new(1.0, c.code.gamma_multiply(0.6)), StrokeKind::Inside);
                 chain(p, rect.center(), rect.width() * 0.6, c.code);
 
                 if response.clicked() {
@@ -403,8 +406,16 @@ impl DrawingApp {
     }
 }
 
-/// The side of a drawing's link mark, on screen.
+/// The side of a drawing's link mark, on screen, at 100% and closer.
 pub(crate) const LINK_MARK: f32 = 20.0;
+/// Under this side (screen points) the mark is too small to click, and goes.
+const LINK_MARK_LEAST: f32 = 9.0;
+
+/// The mark's side at `zoom`: `LINK_MARK` from 100% up; zoomed out it shrinks with the drawing, which it outgrew (a
+/// column of boxes far out had marks as big as they were).
+pub(crate) fn link_mark_side(zoom: f32) -> f32 {
+    LINK_MARK * zoom.min(1.0)
+}
 
 /// Two links of a chain across `size` at `center`, slanting up to the right: the link mark.
 fn chain(painter: &Painter, center: Pos2, size: f32, color: Color32) {
@@ -425,6 +436,6 @@ fn chain(painter: &Painter, center: Pos2, size: f32, color: Color32) {
             }
         }
 
-        painter.add(Shape::closed_line(points, Stroke::new(1.4, color)));
+        painter.add(Shape::closed_line(points, Stroke::new(size * 0.12, color)));
     }
 }

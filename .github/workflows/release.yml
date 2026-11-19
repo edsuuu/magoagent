@@ -1,6 +1,7 @@
-# Uma tag v* gera o MSI do Windows e os pacotes do Linux (.tar.gz e .deb) numa release em RASCUNHO: publicar é decisão
-# do dono (os arquivos sobem com o gh, que já vem no runner). Publicada, o pages.yml põe o .deb no repositório apt (GitHub Pages).
-# Os pacotes compilam junto com o CI (antes esperavam por ele: uns 9 minutos a mais); o rascunho e os arquivos só
+# Uma tag v* gera o MSI do Windows e os pacotes do Linux (.tar.gz e .deb) numa release PUBLICADA (os arquivos sobem com
+# o gh, que já vem no runner): ela nasce em rascunho só até os pacotes subirem, para o atualizador nunca achar uma release
+# sem eles, e então sai como a mais recente. Publicada, o pages.yml põe o .deb no repositório apt (GitHub Pages).
+# Os pacotes compilam junto com o CI (antes esperavam por ele: uns 9 minutos a mais); a release e os arquivos só
 # aparecem depois que o CI passa.
 name: Release
 on:
@@ -33,10 +34,14 @@ jobs:
             exit 1
           fi
 
-  # o rascunho com os pacotes, só com o CI e os dois builds prontos
-  draft:
+  # a release com os pacotes, só com o CI e os dois builds prontos
+  publish:
     needs: [ci, version, windows, linux]
     runs-on: ubuntu-latest
+    # actions: o pages.yml é chamado à mão (a release publicada pelo GITHUB_TOKEN não dispara outro workflow)
+    permissions:
+      contents: write
+      actions: write
     steps:
       - uses: actions/download-artifact@v4.1.8
         with:
@@ -48,7 +53,7 @@ jobs:
         working-directory: pacotes
         run: sha256sum -- * > SHA256SUMS.txt
       # as notas no formato que o cartão "O que há de novo" do app mostra (updates.rs): "## Novo" e um item por PR
-      # juntado desde a última release, sem os PRs que só sobem a versão; o dono revisa no rascunho antes de publicar
+      # juntado desde a última release, sem os PRs que só sobem a versão
       - name: Notas da release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -58,13 +63,19 @@ jobs:
             grep -vE '^- (Versão )?[0-9]+\.[0-9]+\.[0-9]+' > itens.md || true
           if [ -s itens.md ]; then { echo "## Novo"; cat itens.md; } > notas.md; else : > notas.md; fi
           cat notas.md
-      - name: O rascunho da release, com os pacotes
+      - name: A release, com os pacotes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --title "MagoAgent AlphaVersion $GITHUB_REF_NAME" --notes-file notas.md
           gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber pacotes/*
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+      # publicada pelo GITHUB_TOKEN, a release não dispara o `release: published` do pages.yml: o .deb vai para o apt por aqui
+      - name: O repositório apt com o .deb novo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
 
   windows:
     needs: [version]
@@ -112,7 +123,7 @@ jobs:
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           tar -czf "MagoAgent-$version-linux-x86_64.tar.gz" -C target/release magoagent
           sh installer/build-deb.sh
-          # ao lado do .tar.gz: o artefato guarda o caminho a partir da pasta comum, e o rascunho sobe pacotes/*
+          # ao lado do .tar.gz: o artefato guarda o caminho a partir da pasta comum, e a release sobe pacotes/*
           cp target/release/magoagent_*_amd64.deb .
       - uses: actions/upload-artifact@v4.6.2
         with:

@@ -44,8 +44,8 @@ src/
   voice/         microfone (cpal), voz pelo VoiceStudio (servidor do usuário) e pela OpenAI, e pelo Codex (realtime); nada de voz é baixado
   install/       o instalador (`MagoAgent-Instalador` / `magoagent instalar`); no Windows é o MSI de installer/
   tests/         testes gerais: formatos, exportação, desenho, transcrições, shells
-assets/          fontes (mão = Excalifont do Excalidraw, interface = Assistant; licenças OFL), editor-icons/ (JetBrains,
-                 Apache 2.0, com NOTICE), mascot/, ícones do app
+assets/          fontes (mão = Excalifont do Excalidraw, interface = Assistant; licenças OFL; o negrito das notas = Hack
+                 Bold, MIT), editor-icons/ (JetBrains, Apache 2.0, com NOTICE), mascot/, ícones do app
 installer/       MSI do Windows (WiX 3: build-msi.sh, magoagent.wxs)
 docs/            imagens do README e o exemplo arquitetura.mago
 build-macos-app.sh  gera MagoAgent.app (bundle com.edsuuu.magoagent)
@@ -172,8 +172,8 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="size 1440 900; wait 2000; clic
 A esteira de CI roda a cada push na `main` e em cada pull request (uma vez por commit; um push novo no PR cancela o
 anterior), com jobs paralelos de formatação, clippy, auditoria de dependências, testes nos dois sistemas e um teste de
 ponta a ponta no Linux. PR em rascunho não roda: o CI começa quando ele fica pronto para revisão. Uma tag `v*` roda o
-mesmo CI e, ao mesmo tempo, compila os pacotes; a release (rascunho) só sai se o CI passar, já com as notas ("## Novo",
-um item por PR juntado desde a última release; revise antes de publicar) e o `SHA256SUMS.txt`.
+mesmo CI e, ao mesmo tempo, compila os pacotes; a release só sai se o CI passar, já publicada (rascunho só até os
+pacotes subirem), com as notas ("## Novo", um item por PR juntado desde a última release) e o `SHA256SUMS.txt`.
 
 O Rust é o do `rust-toolchain.toml`, o mesmo na CI e nas máquinas. Subir de versão é um commit de propósito: muda o
 arquivo e o `dtolnay/rust-toolchain@<versão>` dos workflows junto, e corrige o que o clippy novo apontar. Os alvos da

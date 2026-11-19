@@ -46,8 +46,8 @@ fn the_agents_open_a_folder_a_pdf_and_resize_windows() {
     assert!(matches!(app.scene.elements[ide].kind, ElementKind::Rectangle { width: 900.0, height: 700.0, .. }));
     app.act("resize_window", &json!({ "target": name, "state": "shrink" })).unwrap();
     assert!(app.terminal_elevated.is_none());
-    // what opened brought the app's window to the front
-    assert!(std::mem::take(&mut app.viewport_commands).contains(&egui::ViewportCommand::Focus));
+    // what opened did not bring the app's window to the front: only a question waiting on the person does
+    assert!(!std::mem::take(&mut app.viewport_commands).contains(&egui::ViewportCommand::Focus));
     app.act("resize_window", &json!({ "target": "app", "state": "maximize" })).unwrap();
     assert_eq!(app.viewport_commands, vec![egui::ViewportCommand::Maximized(true)]);
     assert!(app.act("resize_window", &json!({ "target": "nada" })).is_err());

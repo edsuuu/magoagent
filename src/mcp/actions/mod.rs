@@ -21,21 +21,11 @@ mod windows;
 const PAGE_KINDS: [&str; 9] = ["pdf", "png", "jpg", "jpeg", "gif", "webp", "svg", "html", "htm"];
 
 impl DrawingApp {
-    /// The bridge's `act`: one of the app's actions, by name. What opens something shows it: the
-    /// app's window comes to the front with it.
+    /// The bridge's `act`: one of the app's actions, by name. What it opens shows in the app without bringing the window
+    /// to the front: minimized or behind another program, the app stays where the person left it. Only a question or a
+    /// permission an agent waits on brings it (`ask_person`).
     pub(crate) fn act(&mut self, action: &str, args: &Value) -> Result<String, String> {
-        let result = self.act_on(action, args);
-        // a chat shown in the island is over every window already
-        let in_island = args["place"] == "island";
-
-        if result.is_ok()
-            && !in_island
-            && matches!(action, "ide_folder" | "open_path" | "file_link" | "open_as_note" | "chat_new" | "chat_open" | "chat_node" | "chats_view")
-        {
-            self.bring_to_front();
-        }
-
-        result
+        self.act_on(action, args)
     }
 
     /// The app's window to the front, out of the taskbar if minimized.

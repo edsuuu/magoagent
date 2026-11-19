@@ -10,6 +10,9 @@ use crate::app::chat::list::{ACCENT, AMBER, CROSS, DOWN, Look, RED, bold, clippe
 use crate::app::chat::thinking::CLAUDE;
 use crate::prelude::*;
 
+/// The least room between the band's words and its Compactar button.
+const GAP: f32 = 12.0;
+
 /// O nome na legenda, a cor e se conta no uso (as adiadas não entram na janela).
 pub(crate) fn style(name: &str) -> (&'static str, Color32, bool) {
     match name {
@@ -45,6 +48,12 @@ const ORDER: [&str; 12] = [
 ];
 
 /// "301,8k": os tokens com a vírgula daqui.
+/// The words before the amount in the band that fit in `room` (`width` measures them): a narrow panel says less
+/// instead of running into the Compactar button; none when not even the shortest fits.
+pub(crate) fn band_words(room: f32, width: impl Fn(&str) -> f32) -> Option<&'static str> {
+    ["Compacta sozinho em ", "Sozinho em ", "Em "].into_iter().find(|words| width(words) <= room)
+}
+
 fn tokens(n: u64) -> String {
     short(n).replace('.', ",")
 }
@@ -306,13 +315,23 @@ fn summary(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, current: &str, a
         p.line_segment([clock + Vec2::new(0.0, -3.5), clock], Stroke::new(1.6, AMBER));
         p.line_segment([clock, clock + Vec2::new(2.5, 1.7)], Stroke::new(1.6, AMBER));
         let font = FontId::proportional(13.0);
-        let words = p.layout_no_wrap("Compacta sozinho em ".into(), font.clone(), look.soft);
-        let words_w = words.size().x;
-
-        p.galley(Pos2::new(row.left() + 22.0, row.center().y - words.size().y / 2.0), words, look.soft);
-        bold(p, Pos2::new(row.left() + 22.0 + words_w, row.center().y - 7.5), &tokens(left), 12.0, look.text);
-        let label = p.layout_no_wrap("Compactar".into(), font, look.bg);
+        let label = p.layout_no_wrap("Compactar".into(), font.clone(), look.bg);
         let button = Rect::from_min_max(Pos2::new(row.right() - label.size().x - 20.0, row.top()), row.max);
+        let amount = tokens(left);
+        let amount_w = p.layout_no_wrap(amount.clone(), FontId::proportional(12.0), look.text).size().x;
+        // the words that fit before the button with room to spare: a narrow panel says less instead of touching it
+        let room = button.left() - GAP - (row.left() + 22.0) - amount_w;
+
+        let words = band_words(room, |words| p.layout_no_wrap(words.into(), font.clone(), look.soft).size().x)
+            .map(|words| p.layout_no_wrap(words.into(), font.clone(), look.soft));
+
+        let words_w = words.as_ref().map_or(0.0, |words| words.size().x);
+
+        if let Some(words) = words {
+            p.galley(Pos2::new(row.left() + 22.0, row.center().y - words.size().y / 2.0), words, look.soft);
+        }
+
+        bold(p, Pos2::new(row.left() + 22.0 + words_w, row.center().y - 7.5), &amount, 12.0, look.text);
 
         let r = ui
             .interact(button, ui.scope_id().with("ctx_compact"), Sense::click())

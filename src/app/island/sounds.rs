@@ -1,6 +1,6 @@
-//! The island's sounds, made in code: a short soft tone or chord for each
-//! moment: it peeks, opens, closes, a question or permission comes, one
-//! is answered, something finishes or fails, and the clicks of its buttons (a hover makes none). Low in volume.
+//! The island's sounds, made in code: a short soft tone or chord for what the person does on it: it peeks, opens,
+//! closes, a question is answered, a key that does nothing, and the clicks of its buttons (a hover makes none). What the
+//! agents do (a question arriving, an answer, a failure, GitHub's alerts) makes none. Low in volume.
 
 use crate::prelude::*;
 use crate::voice::{Sound, partial};
@@ -9,12 +9,7 @@ pub(super) const PEEK: Sound = &[partial(1320.0, 1320.0, 0.0, 0.0, 0.004, 38.0, 
 pub(super) const OPEN: Sound = &[partial(523.0, 784.0, 0.12, 0.0, 0.01, 14.0, 0.09), partial(784.0, 1175.0, 0.12, 0.04, 0.01, 14.0, 0.05)];
 pub(super) const CLOSE: Sound = &[partial(784.0, 523.0, 0.12, 0.0, 0.01, 16.0, 0.08)];
 pub(super) const BLIP: Sound = &[partial(1760.0, 1760.0, 0.0, 0.0, 0.002, 60.0, 0.05)];
-/// A question or a permission arrives: two notes, the second higher.
-pub(super) const ASK: Sound = &[partial(659.0, 659.0, 0.0, 0.0, 0.01, 10.0, 0.1), partial(880.0, 880.0, 0.0, 0.11, 0.01, 9.0, 0.1)];
 pub(super) const APPROVE: Sound = &[partial(880.0, 1320.0, 0.06, 0.0, 0.005, 22.0, 0.08)];
-/// Everything finished: a rising arpeggio.
-pub(super) const FINISH: Sound =
-    &[partial(523.0, 523.0, 0.0, 0.0, 0.01, 7.0, 0.08), partial(659.0, 659.0, 0.0, 0.09, 0.01, 7.0, 0.08), partial(784.0, 784.0, 0.0, 0.18, 0.01, 6.0, 0.08)];
 
 /// The entrance: a few bright notes rising, like sparkles.
 pub(super) const GREET: Sound = &[

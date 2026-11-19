@@ -199,7 +199,7 @@ fn minimap_covers_drawing_and_centers_on_click() {
 
 /// The note editor's text as it shows (what is inked), from the live preview.
 fn shown_while_typing(text: &str, caret: Option<usize>) -> (String, Vec<markdown::Ornament>) {
-    let live = markdown::live_text(text, 14.0, Color32::BLACK, 300.0, caret.map(|at| markdown::Caret { head: at, anchor: at }));
+    let live = markdown::live_text(text, 14.0, Color32::BLACK, 300.0, caret.map(|at| markdown::Caret { head: at, anchor: at }), &egui::FontFamily::Monospace);
 
     let shown = live
         .job
@@ -231,14 +231,35 @@ fn the_live_preview_keeps_every_character_where_the_caret_counts_them() {
     let text = "## Plano\n- [x] feito ~~antes~~\n> citação\n---\n[site](https://x.dev) *fim*";
 
     for caret in [None, Some(0), Some(12), Some(40)] {
-        let live = markdown::live_text(text, 14.0, Color32::BLACK, 300.0, caret.map(|at| markdown::Caret { head: at, anchor: at }));
+        let live =
+            markdown::live_text(text, 14.0, Color32::BLACK, 300.0, caret.map(|at| markdown::Caret { head: at, anchor: at }), &egui::FontFamily::Monospace);
 
         assert_eq!(live.job.text, text, "the galley holds every typed character, hidden or not");
-        assert_eq!(live.bold.text, text);
     }
 
     let (shown, ornaments) = shown_while_typing(text, None);
 
     assert_eq!(shown, "Plano\n feito antes\n citação\n\nsite fim");
     assert_eq!(ornaments, vec![markdown::Ornament::Task(12, true), markdown::Ornament::Quote(31), markdown::Ornament::Rule(41)]);
+}
+
+/// The caret the editor lays the text out with in the frame of a change: where the change ended. Ctrl+Backspace on a
+/// word above a bold line no longer lands it inside the bold (its marks flickered on and off).
+#[test]
+fn the_caret_after_an_edit_is_where_the_change_ended() {
+    let at = |before: &str, after: &str| markdown::caret_after_edit(before, after).head;
+    let text = "uma palavra\n**forte**";
+
+    // Ctrl+Backspace took "palavra" out: the caret where it was, on the first line (the old one, 11, was in the bold)
+    assert_eq!(at(text, "uma \n**forte**"), 4);
+    // typed: after what came in; a Backspace: where the letter was
+    assert_eq!(at("ab", "axb"), 2);
+    assert_eq!(at("abc", "ac"), 1);
+    // pasted over a selection: after what was pasted
+    assert_eq!(at("um dois três", "um 2 três"), 4);
+
+    let live = markdown::live_text("uma \n**forte**", 14.0, Color32::BLACK, 300.0, Some(markdown::Caret { head: 4, anchor: 4 }), &egui::FontFamily::Monospace);
+    let marks = live.job.sections.iter().filter(|section| live.job.text[section.byte_range.start.0..section.byte_range.end.0].contains("**"));
+
+    assert!(marks.into_iter().all(|section| section.format.color == Color32::TRANSPARENT), "the bold below keeps its marks hidden");
 }

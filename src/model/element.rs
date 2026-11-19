@@ -94,6 +94,9 @@ pub(crate) fn rot(v: Vec2, angle: f32) -> Vec2 {
 pub(crate) const TERMINAL_MIN: Vec2 = Vec2::new(200.0, 140.0);
 /// The smallest box a portal can be drawn or resized to (the Novo Portal dialog starts at 400×300).
 pub(crate) const PORTAL_MIN: Vec2 = Vec2::new(320.0, 240.0);
+/// The box a portal opens in: its page 1366×768, a notebook's screen, so a site reads as it does there with nothing to
+/// resize; over it the header and the address bar (72), around it the 1-point border.
+pub(crate) const PORTAL_SIZE: Vec2 = Vec2::new(1366.0 + 2.0, 768.0 + 72.0 + 2.0);
 /// The smallest box a sticky note can be drawn or resized to.
 pub(crate) const NOTE_MIN: Vec2 = Vec2::new(250.0, 100.0);
 /// The size a click makes a note.

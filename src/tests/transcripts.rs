@@ -18,6 +18,11 @@ fn the_chat_reads_claude_code_files() {
     let bash = crate::transcript::Step { name: "Bash".into(), what: "ls -la".into(), input: "ls -la\npwd".into(), ..Default::default() };
 
     assert_eq!(line(reply), vec![ChatItem::Agent("Feito.".into()), ChatItem::Tool(bash)]);
+    // Claude Code's "No response requested." (a message that asked for no answer) is not the agent speaking
+    let synthetic = json!({"type": "assistant", "message": {"model": "<synthetic>", "content": [{"type": "text", "text": "No response requested."}]}});
+
+    assert!(line(synthetic).is_empty() && crate::transcript::said_nothing(" No response requested.\n") && !crate::transcript::said_nothing("Feito."));
+    assert_eq!(line(json!({"type": "user", "message": {"content": "No response requested."}})), vec![ChatItem::User("No response requested.".into())]);
     // tool results, side conversations and bookkeeping lines stay out
     assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": "ok"}]}})).is_empty());
     // but an image a tool gave back (a PNG read, a page's print) is the agent showing it

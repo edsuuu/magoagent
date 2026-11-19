@@ -1,5 +1,16 @@
 use super::*;
 
+/// The chat's folder takes the name the agent gave it; true when that is news, and chats.json has to hear of it.
+fn renamed(cwd: &mut String, named: &str) -> bool {
+    let news = cwd != named;
+
+    if news {
+        *cwd = named.to_string();
+    }
+
+    news
+}
+
 impl DrawingApp {
     /// Esc: the answer stops where it is.
     pub(crate) fn chat_stop(&mut self, id: &str) {
@@ -89,19 +100,29 @@ impl DrawingApp {
 
                         // the folder as Claude Code names it, and the session it keeps (a resumed
                         // one may go on as a copy)
+                        let mut named = false;
+
                         if value["type"] == "system"
                             && value["subtype"] == "init"
                             && let Some(cwd) = value["cwd"].as_str()
                         {
                             // a Claude Code in WSL names it as Linux does (system/wsl.rs): the chat keeps Windows' name
-                            self.chats[i].cwd = match wsl_distro() {
+                            let cwd = match wsl_distro() {
                                 Some(distro) if cfg!(windows) && cwd.starts_with('/') => windows_path(&distro.name, cwd),
                                 _ => cwd.to_string(),
                             };
+
+                            named |= renamed(&mut self.chats[i].cwd, &cwd);
                         }
 
                         if let Some(session) = value["session_id"].as_str().filter(|s| self.chats[i].session.as_deref() != Some(s)) {
                             self.chats[i].session = Some(session.to_string());
+                            named = true;
+                        }
+
+                        // both say where the conversation's file is: a folder kept only in memory loses the
+                        // messages on the next start
+                        if named {
                             self.save_chats();
                         }
 
@@ -305,5 +326,17 @@ impl DrawingApp {
             let _ = fs::create_dir_all(path.parent().unwrap_or(&path));
             let _ = serde_json::to_string(&t.items).map(|json| write_atomic(&path, json));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_folder_the_agent_names_otherwise_is_news_to_save() {
+        let mut cwd = "~/p".to_string();
+
+        assert!(super::renamed(&mut cwd, "/home/eu/p"), "chats.json has to hear of it");
+        assert_eq!(cwd, "/home/eu/p");
+        assert!(!super::renamed(&mut cwd, "/home/eu/p"), "nothing new, nothing to save");
     }
 }

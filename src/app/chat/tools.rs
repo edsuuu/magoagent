@@ -265,8 +265,6 @@ impl DrawingApp {
             "ide" | "tree" => self.open_tree(),
             _ => self.show_canvas(),
         }
-
-        self.bring_to_front();
     }
 
     /// focus_canvas: the canvas, centered on what `at` names (ids, or the names of terminals,
@@ -294,7 +292,6 @@ impl DrawingApp {
             self.set_lifted_zoom(zoom);
             // the canvas's screen, the tree kept enlarged (show_canvas would put it back)
             self.chat_open = false;
-            self.bring_to_front();
 
             return Ok(format!("A árvore ampliada {} está em {:.0}%.", at.trim(), self.lifted_zoom * 100.0));
         }
@@ -306,7 +303,6 @@ impl DrawingApp {
         };
 
         self.show_canvas();
-        self.bring_to_front();
         self.fit_view(bounds, zoom.map(|z| z.clamp(0.1, 4.0)));
         Ok(format!("Mostrando {} no canvas.", if wanted.is_empty() { "o desenho todo" } else { at.trim() }))
     }

@@ -4,7 +4,7 @@
 //!   move x y · click x y · rclick x y · dclick x y · down x y · up x y · drag x1 y1 x2 y2
 //!   type texto · key J cmd shift alt · hold cmd (the clicks after it are Ctrl+clicks; `hold` alone lets go) · paste /imagem.png
 //!   drop x y /arquivo · scroll x y dy dx · pinch x y fator · wait ms · shot /caminho.png · shot-ilha /caminho.png
-//!   size w h · minimize · quit
+//!   size w h · minimize · blur (the window loses the keys, as when another program comes in front) · focus · quit
 //! They go in through raw input, the same path as a real mouse. `shot` saves what egui drew;
 //! native web pages are not in it (macOS and Linux save each page beside it, `<shot>-<id>.png`). `shot-ilha` saves the
 //! island's window, only while it draws itself (`island/replay.rs`: eframe takes no picture of it otherwise). A `wait`
@@ -22,6 +22,8 @@ pub(crate) struct Script {
     shooting: Arc<AtomicBool>,
     /// The modifiers a `hold` keeps down: every frame's input says so again (the window's own events would let go).
     held: Modifiers,
+    /// After a `blur`, until a `focus`: every frame's input says the window is not the one in front.
+    away: bool,
     /// The path of the last `shot`, so the app also saves the native pages next to it (macOS, Linux).
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     pages: Option<String>,
@@ -105,6 +107,7 @@ impl Script {
             until: 0.0,
             shooting: Default::default(),
             held: Modifiers::NONE,
+            away: false,
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             pages: None,
         }
@@ -117,6 +120,14 @@ impl Script {
 
         if self.held != Modifiers::NONE {
             raw.events.push(egui::Event::ModifiersChanged(self.held));
+        }
+
+        if self.away {
+            raw.focused = false;
+
+            if let Some(viewport) = raw.viewports.get_mut(&raw.viewport_id) {
+                viewport.focused = Some(false);
+            }
         }
 
         let shooting = self.shooting.load(Ordering::Relaxed);
@@ -294,6 +305,14 @@ impl Script {
                 ctx.send_viewport_cmd_to(island, egui::ViewportCommand::Screenshot(egui::ScreenshotCallback::new(saved)));
             }
             ["minimize"] => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
+            ["blur"] => {
+                self.away = true;
+                raw.events.push(egui::Event::WindowFocused(false));
+            }
+            ["focus"] => {
+                self.away = false;
+                raw.events.push(egui::Event::WindowFocused(true));
+            }
             // below the window's minimum too, to see the narrow layouts
             ["size", ..] => {
                 let size = Vec2::new(number(1), number(2));

@@ -220,3 +220,13 @@ fn a_drawings_link_rides_the_file_and_its_mark_opens_the_file_and_voltar_brings_
     let _ = id;
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A drawing's link mark is as big as at 100% only from there up: zoomed out it shrinks with the drawing (a column of
+/// boxes far out had marks as big as they were).
+#[test]
+fn the_link_mark_shrinks_with_the_drawing_when_zoomed_out() {
+    use crate::app::filetree::link::{LINK_MARK, link_mark_side};
+
+    assert_eq!((link_mark_side(3.0), link_mark_side(1.0)), (LINK_MARK, LINK_MARK));
+    assert_eq!(link_mark_side(0.5), LINK_MARK / 2.0);
+}

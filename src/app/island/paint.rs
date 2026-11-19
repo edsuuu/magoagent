@@ -75,8 +75,7 @@ pub(super) struct View {
     pub(super) activity: Option<Activity>,
     pub(super) since: f32,
     pub(super) glimpse: Vec<(usize, String)>,
-    /// How many agents failed now, how many times the wizard was poked, and whether it is dizzy from it.
-    pub(super) failures: usize,
+    /// How many times the wizard was poked, and whether it is dizzy from it.
     pub(super) pokes: u32,
     pub(super) dizzy: bool,
     /// Seconds into the entrance, while it plays.
@@ -268,7 +267,6 @@ impl DrawingApp {
 
         let chat_row = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|row| &row.id == id)).cloned();
         let activity = focus.as_ref().and_then(|id| activities.remove(id));
-        let failures = lines.iter().filter(|line| line.mago == MagoState::Error).count();
         let (pokes, dizzy) = mago_pokes("island-main", time);
         let (since, glimpse) = self.island_stage(focus.as_deref(), activity.as_ref(), time);
         let island = &self.island;
@@ -299,7 +297,6 @@ impl DrawingApp {
             activity,
             since,
             glimpse,
-            failures,
             pokes,
             dizzy,
             dock: island.dock,

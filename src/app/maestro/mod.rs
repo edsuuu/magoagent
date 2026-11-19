@@ -223,7 +223,7 @@ impl DrawingApp {
             name => name.to_string(),
         };
 
-        let at = self.free_spot_near(Rect::from_min_size(Pos2::new(b.max.x + 60.0, b.min.y), Vec2::new(720.0, 520.0)), b);
+        let at = self.free_spot_near(Rect::from_min_size(Pos2::new(b.max.x + 60.0, b.min.y), PORTAL_SIZE), b);
         let mut portal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
 
         portal.style = node_style(portal.style);

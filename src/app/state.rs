@@ -153,6 +153,8 @@ pub(crate) struct DrawingApp {
     pub(crate) tray: Option<crate::app::system::tray::Tray>,
     pub(crate) tray_tried: bool,
     pub(crate) raise_window: bool,
+    /// When the window last got the keys back from another program (`WINDOW_BACK`).
+    pub(crate) window_back: f64,
     /// Linux on X11: the window asked back, until when it is looked for to be brought as a taskbar would (`tray.rs`).
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub(crate) raising: Option<f64>,

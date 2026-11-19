@@ -17,7 +17,7 @@ Sem o repositório, o `.deb` de uma release também instala direto: `sudo apt in
 ## Como sai (para o dono do repositório)
 
 1. A tag `v<versão>` roda o `release.yml`: o build do Linux no Ubuntu 22.04 gera o `.tar.gz` e o `.deb`
-   (`installer/build-deb.sh`) e os põe na release em **rascunho**, junto com o MSI.
+   (`installer/build-deb.sh`) e os põe na release, junto com o MSI; a release sai publicada e o `release.yml` chama o `pages.yml`.
 2. Ao **publicar** a release, o `pages.yml` baixa o `.deb` dela, monta o repositório apt (Packages, Release,
    InRelease e Release.gpg assinados) e o publica no ramo `gh-pages`. O mesmo fluxo publica o site (`site/`) e roda à mão em Actions › Pages; sem release ou sem segredo, sai só o site, com um aviso.
 

@@ -40,20 +40,67 @@ fn buttons_from(list: &Value) -> Result<Vec<NoteButton>, String> {
         .collect()
 }
 
+/// The title a note's text gives it: its first line that says something, without the heading's marks.
+fn title_of(text: &str) -> String {
+    let line = text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or_default();
+
+    line.trim_start_matches('#').trim().to_lowercase()
+}
+
+/// The note of `caller`'s (the notes tied to it by a rope; with no caller, any note) that already has `title`: the
+/// agent writing the same note again changes that one instead of opening a copy beside it.
+fn same_note(scene: &Scene, caller: Option<&str>, title: &str) -> Option<String> {
+    if title.is_empty() {
+        return None;
+    }
+
+    fn ends(e: &Element) -> [Option<&str>; 2] {
+        [&e.ends.start, &e.ends.end].map(|end| end.as_ref().map(|b| b.element_id.as_str()))
+    }
+
+    let tied = |id: &str| {
+        let Some(caller) = caller else { return true };
+
+        scene.elements.iter().filter(|e| e.rope).any(|e| matches!(ends(e), [Some(a), Some(b)] if (a == caller && b == id) || (a == id && b == caller)))
+    };
+
+    (0..scene.elements.len())
+        .filter(|index| scene.elements[*index].created.is_some() && tied(&scene.elements[*index].id))
+        .find(|index| {
+            note_label(&scene.elements, *index)
+                .is_some_and(|label| matches!(&scene.elements[label].kind, ElementKind::Text { value, .. } if title_of(value) == title))
+        })
+        .map(|index| scene.elements[index].id.clone())
+}
+
 /// Creates a note (no `id`) or changes one: `text`, `title` (its first line), `color`, `x`, `y`,
-/// `width`, `height` and `buttons` (which replace the ones it has).
-pub(crate) fn note_call(scene: &mut Scene, args: &Value) -> Result<Value, String> {
+/// `width`, `height` and `buttons` (which replace the ones it has). A new one is `caller`'s (the agent's terminal or
+/// chat card): beside it, in the free place nearest to it, tied to it by a rope; the one it already has with the same
+/// title is changed instead.
+pub(crate) fn note_call(scene: &mut Scene, args: &Value, caller: Option<&str>) -> Result<Value, String> {
     let paper = args["color"].as_str().map(paper_named).transpose()?;
     let buttons = args.get("buttons").filter(|b| !b.is_null()).map(buttons_from).transpose()?;
+    let caller = caller.filter(|caller| scene.elements.iter().any(|e| e.id == *caller));
+    let title = title_of(args["title"].as_str().or(args["text"].as_str()).unwrap_or_default());
+    let known = args["id"].as_str().map(String::from).or_else(|| same_note(scene, caller, &title));
+    let new = known.is_none();
 
-    let id = match args["id"].as_str() {
-        Some(id) => id.to_string(),
+    let id = match known {
+        Some(id) => id,
         None => {
-            // beside what is drawn when no place is given
+            // beside the agent; with none, beside what is drawn
+            let around = caller.and_then(|caller| scene.elements.iter().find(|e| e.id == caller)).map(element_bounds);
             let right = scene.elements.iter().map(|e| element_bounds(e).max.x).fold(f32::MIN, f32::max);
-            let x = args["x"].as_f64().unwrap_or(if scene.elements.is_empty() { 0.0 } else { right as f64 + 40.0 });
+
+            let (x, y) = match around {
+                Some(around) => (around.max.x + WINDOW_GAP, around.min.y),
+                None if scene.elements.is_empty() => (0.0, 0.0),
+                None => (right + 40.0, 0.0),
+            };
+
+            let (x, y) = (args["x"].as_f64().unwrap_or(x as f64), args["y"].as_f64().unwrap_or(y as f64));
             let id = new_id();
-            let item = json!({ "type": "stickynote", "id": id, "x": x, "y": args["y"].as_f64().unwrap_or(0.0), "backgroundColor": "#fff9c4" });
+            let item = json!({ "type": "stickynote", "id": id, "x": x, "y": y, "backgroundColor": "#fff9c4" });
 
             add_elements(scene, &[item])?;
             id
@@ -110,10 +157,20 @@ pub(crate) fn note_call(scene: &mut Scene, args: &Value) -> Result<Value, String
         }
     }
 
-    let note = &scene.elements[index];
-    let color = NOTE_PAPERS.iter().find(|(p, _)| Some(*p) == note.style.fill).map(|(_, n)| *n);
+    let mut reply = json!({ "id": id, "buttons": scene.elements[index].note.buttons.len() });
 
-    Ok(json!({ "id": id, "color": color, "buttons": note.note.buttons.len() }))
+    if new {
+        // over nothing on the canvas, and the agent's: its rope says whose it is
+        make_room(scene, caller, &[json!({ "id": id })]);
+        tie_to_caller(scene, caller, &[json!({ "id": id })])?;
+    } else if args["id"].is_null() {
+        reply["note"] = "você já tinha uma nota com esse título: ela foi atualizada em vez de abrir outra".into();
+    }
+
+    let note = scene.elements.iter().find(|e| e.id == id).ok_or("a nota sumiu")?;
+
+    reply["color"] = json!(NOTE_PAPERS.iter().find(|(p, _)| Some(*p) == note.style.fill).map(|(_, n)| *n));
+    Ok(reply)
 }
 
 fn note_buttons_schema() -> Value {
@@ -127,7 +184,8 @@ pub(crate) fn note_tools() -> Vec<Value> {
     json!([
         {
             "name": "note",
-            "description": "Cria uma nota no canvas (sem `id`) ou muda uma (com `id`): `text` (markdown), `title` (a primeira linha), `color` \
+            "description": "Cria uma nota no canvas (sem `id`) ou muda uma (com `id`). A nova nasce ao seu lado, no lugar livre mais perto, ligada \
+                a você por corda; com o mesmo título de uma nota sua, muda essa em vez de abrir outra igual. `text` (markdown), `title` (a primeira linha), `color` \
                 (Amarelo, Rosa, Azul, Verde, Laranja, Roxo, Branco, Carvão, Ardósia, Meia-noite; o texto acompanha), x, y, width, height \
                 e `buttons`: [{label, action, args}], botões no pé da nota que a pessoa clica para rodar uma ação do app (substituem os que ela tem).",
             "inputSchema": { "type": "object", "properties": {

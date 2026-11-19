@@ -1,5 +1,5 @@
 # O site do MagoAgent (site/) e o repositório apt, no GitHub Pages (ramo gh-pages, refeito do zero a cada execução).
-# Com release publicada (o release.yml a deixa em rascunho) e o segredo APT_GPG_PRIVATE_KEY, o .deb dela vira um
+# Com release publicada (o release.yml a publica e chama este por workflow_dispatch) e o segredo APT_GPG_PRIVATE_KEY, o .deb dela vira um
 # repositório apt simples (flat), assinado com essa chave: `sudo apt install magoagent` depois de adicionar o
 # repositório (docs/apt.md). Sem release ou sem segredo, publica só o site, com um aviso.
 name: Pages

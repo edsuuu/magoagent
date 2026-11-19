@@ -4,7 +4,7 @@ impl DrawingApp {
     /// Click: a 960×680 portal centered there; drag: that box. Asks for the address first.
     pub(crate) fn open_portal_dialog(&mut self, start: Pos2, end: Pos2) {
         let at = if start.distance(end) * self.zoom < 10.0 {
-            Rect::from_center_size(start, Vec2::new(960.0, 680.0))
+            Rect::from_center_size(start, PORTAL_SIZE)
         } else {
             let r = Rect::from_two_pos(start, end);
 
