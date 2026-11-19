@@ -24,6 +24,7 @@ thread_local! {
 /// `busctl --user --json=short <arguments>`: what it printed, when it answered.
 fn busctl(arguments: &[&str]) -> Option<String> {
     let output = crate::editor::command("busctl").args(["--user", "--json=short"]).args(arguments).stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
+
     output.status.success().then(|| String::from_utf8_lossy(&output.stdout).to_string())
 }
 
@@ -31,14 +32,17 @@ fn read_one(index: usize) -> Option<Now> {
     let (name, player) = NAMES[index];
     let answer = busctl(&["call", name, PATH, "org.freedesktop.DBus.Properties", "GetAll", "s", PLAYER])?;
     let root = serde_json::from_str(&answer).ok()?;
+
     TRACK_IDS.with_borrow_mut(|ids| ids[index] = mpris_track_id(&root).unwrap_or_default());
     let mut now = super::from_mpris(&root)?;
+
     now.playback.device = if player == Player::Spotifast { "Spotifast" } else { "Spotify" }.into();
     Some(Now { player, ..now })
 }
 
 pub(super) fn read() -> Option<Now> {
     let (index, now) = first_playing([0, 1].map(read_one))?;
+
     SHOWN.set(index);
     Some(now)
 }
@@ -46,9 +50,11 @@ pub(super) fn read() -> Option<Now> {
 /// The busctl arguments of a control for the player at bus `name` whose track is `track_id` (None: it has no way).
 pub(super) fn arguments(name: &str, track_id: &str, command: &Command) -> Option<Vec<String>> {
     let call = |words: &[&str]| ["call", name, PATH, PLAYER].iter().chain(words).map(|word| word.to_string()).collect::<Vec<_>>();
+
     let set = |property: &str, signature: &str, value: &str| {
         ["set-property", name, PATH, PLAYER, property, signature, value].iter().map(|word| word.to_string()).collect::<Vec<_>>()
     };
+
     Some(match command {
         Command::PlayPause => call(&["PlayPause"]),
         Command::Next => call(&["Next"]),
@@ -68,5 +74,6 @@ pub(super) fn control(command: &Command) -> bool {
     let index = SHOWN.get();
     let track_id = TRACK_IDS.with_borrow(|ids| ids[index].clone());
     let Some(arguments) = arguments(NAMES[index].0, &track_id, command) else { return false };
+
     busctl(&arguments.iter().map(String::as_str).collect::<Vec<_>>()).is_some()
 }

@@ -36,18 +36,23 @@ impl SessionWatch {
     pub(crate) fn ask(&self, terminals: Vec<Terminal>, dir: Option<PathBuf>, wsl: Option<(PathBuf, String)>) {
         *self.input.lock().unwrap_or_else(|e| e.into_inner()) = (terminals, dir, wsl);
         self.asked.store(now_secs(), Ordering::Relaxed);
+
         if self.running.swap(true, Ordering::Relaxed) {
             return;
         }
+
         let (input, found, running, asked) = (self.input.clone(), self.found.clone(), self.running.clone(), self.asked.clone());
+
         std::thread::spawn(move || {
             // nobody asked for ten seconds (the app closed, no agent left): the thread ends, and the next ask starts another
             while now_secs().saturating_sub(asked.load(Ordering::Relaxed)) <= 10 {
                 let (terminals, dir, wsl) = input.lock().unwrap_or_else(|e| e.into_inner()).clone();
                 let result = if terminals.is_empty() { Vec::new() } else { assign(&terminals, &all_sessions(dir.as_deref(), wsl.as_ref()), parents) };
+
                 *found.lock().unwrap_or_else(|e| e.into_inner()) = Some(result);
                 std::thread::sleep(Duration::from_millis(500));
             }
+
             running.store(false, Ordering::Relaxed);
         });
     }
@@ -65,18 +70,24 @@ mod tests {
     #[test]
     fn the_sessions_are_looked_for_off_the_callers_thread() {
         let dir = std::env::temp_dir().join(format!("mago-watch-{}", std::process::id()));
+
         std::fs::create_dir_all(dir.join("sessions")).unwrap();
         let watch = SessionWatch::default();
+
         assert_eq!(watch.take(), None, "nothing asked, nothing found");
         watch.ask(vec![("t1".into(), dir.to_string_lossy().into_owned(), 0, 1)], Some(dir.clone()), None);
         let mut found = None;
+
         for _ in 0..100 {
             found = watch.take();
+
             if found.is_some() {
                 break;
             }
+
             std::thread::sleep(Duration::from_millis(30));
         }
+
         // an empty folder of sessions: an answer, with nothing in it
         assert_eq!(found, Some(Vec::new()));
         let _ = std::fs::remove_dir_all(dir);

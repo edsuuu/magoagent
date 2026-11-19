@@ -11,65 +11,86 @@ impl DrawingApp {
     pub(crate) fn press_select(&mut self, pos: Pos2, world: Pos2, modifiers: Modifiers) {
         // a file tree keeps the keys only while the presses land on it
         self.card_focus = None;
+
         // an enlarged window: presses inside it are its own; a margin press only puts it back (a
         // docked one stays, and the canvas around it takes the press)
         if let Some(index) = self.elevated_index() {
             let inside = self.terminal_frame(&self.scene.elements[index]).0.contains(pos);
+
             if inside || self.dock.is_none() {
                 if !inside {
                     self.set_elevated(None);
                     self.terminal_focus = None;
                 }
+
                 // nor does its release open what lies on the canvas (a rope's popover)
                 self.press_world = Pos2::new(f32::NAN, f32::NAN);
+
                 return;
             }
         }
+
         // a group's pill picks all its members up
         if let Some(gid) = self.group_pill_at(pos) {
             self.press_group_pill(&gid);
+
             return;
         }
+
         if let Some((point_index, _)) = self.point_handles().into_iter().find(|(_, point)| point.distance(pos) <= 10.0) {
             self.snapshot();
+
             if let Some(index) = self.single_line() {
                 let last = self.line_points(index).len() - 1;
                 let ends = &mut self.scene.elements[index].ends;
+
                 if point_index == 0 {
                     ends.start = None;
                 } else if point_index == last {
                     ends.end = None;
                 }
             }
+
             self.point_drag = Some(point_index);
             self.selected_point = Some(point_index);
+
             return;
         }
+
         // the point comes with the drag: a click on the handle, or a double-click that labels an arrow, adds none
         if let (Some(_), Some((point_index, _))) = (self.editable_line(), self.midpoint_handles().into_iter().find(|(_, point)| point.distance(pos) <= 8.0)) {
             self.midpoint_press = Some((point_index + 1, pos));
+
             return;
         }
+
         if let Some(line) = self.line_editor {
             if modifiers.alt {
                 self.snapshot();
+
                 if let Some(points) = self.line_points_mut(line) {
                     points.push([world.x, world.y]);
                     self.selected_point = Some(points.len() - 1);
                 }
+
                 return;
             }
+
             self.line_editor = None;
             self.selected_point = None;
+
             if self.hit(world) == Some(line) {
                 self.moving = true;
                 self.move_snapshotted = false;
+
                 return;
             }
         }
+
         if let (true, Some((center, _, _))) = (self.hovered_rotation(pos), self.selection_frame()) {
             self.snapshot();
             self.detach_selected_arrows();
+
             self.rotating = Some(Rotate {
                 pivot: center,
                 start: (world - center).angle(),
@@ -79,8 +100,10 @@ impl DrawingApp {
             let from = Rect::from_center_size(center, size);
             let corners = [from.left_top(), from.right_top(), from.right_bottom(), from.left_bottom()];
             let local = center + rot(world - center, -angle);
+
             self.snapshot();
             self.detach_selected_arrows();
+
             self.resizing = Some(Resize {
                 anchor: corners[(corner + 2) % 4],
                 grab: corners[corner] - local,
@@ -96,9 +119,11 @@ impl DrawingApp {
             let index = self.raise_card(index);
             let from = local_bounds(&self.scene.elements[index]);
             let corners = [from.left_top(), from.right_top(), from.right_bottom(), from.left_bottom()];
+
             self.selected = self.with_card_text(&[index]);
             self.snapshot();
             self.detach_selected_arrows();
+
             self.resizing = Some(Resize {
                 anchor: corners[(corner + 2) % 4],
                 grab: corners[corner] - world,
@@ -111,25 +136,30 @@ impl DrawingApp {
             });
         } else if let Some(index) = self.hit(world) {
             let index = self.raise_card(index);
+
             // another card, though inside the frame of the terminal with the keyboard (a note in front of it): the keys
             // are no longer the terminal's (terminal/overlay.rs only lets go of them for a press outside its frame)
             if self.terminal_focus.as_ref().is_some_and(|focused| *focused != self.scene.elements[index].id) {
                 self.terminal_focus = None;
             }
+
             if !self.drags(index, world, modifiers.shift) {
                 let element = &self.scene.elements[index];
+
                 if element.terminal.is_some() {
                     self.focus_terminal(index);
                 } else if let Some(label) = note_label(&self.scene.elements, index).filter(|_| element.created.is_some()) {
                     // a note's body: a click on its text with no modifier types into it, on the
                     // release (`release`); elsewhere the press only selects it
                     self.selected = vec![index];
+
                     if modifiers.is_none() && self.on_note_text(index, world) {
                         self.note_press = Some(label);
                     }
                 } else if element.created.is_some() {
                     // a note left empty (its text was dropped): a click under the header gives it back and types
                     self.selected = vec![index];
+
                     if modifiers.is_none() && self.on_note_text(index, world) {
                         self.begin_text_edit(index);
                     }
@@ -137,9 +167,12 @@ impl DrawingApp {
                     // a portal's body is its page's: selected, not picked up
                     self.selected = vec![index];
                 }
+
                 return;
             }
+
             let members: Vec<usize> = self.group_members(index).into_iter().filter(|member| !self.is_card_text(*member)).collect();
+
             if modifiers.shift {
                 for member in members {
                     if self.selected.contains(&member) {
@@ -151,6 +184,7 @@ impl DrawingApp {
             } else if !self.selected.contains(&index) {
                 self.selected = members;
             }
+
             self.moving = true;
             self.move_snapshotted = false;
         } else if !modifiers.shift && self.selection_bounds().is_some_and(|bounds| bounds.contains(world)) {
@@ -160,6 +194,7 @@ impl DrawingApp {
             if !modifiers.shift {
                 self.selected.clear();
             }
+
             self.marquee = Some(world);
         }
     }
@@ -169,12 +204,15 @@ impl DrawingApp {
     /// index.
     pub(crate) fn raise_card(&mut self, index: usize) -> usize {
         let element = &self.scene.elements[index];
+
         if !element.is_card() || element.note.stacked {
             return index;
         }
+
         let mine = self.with_card_text(&[index]);
         let id = element.id.clone();
         let bounds = element_bounds(element);
+
         let covered = self
             .scene
             .elements
@@ -182,19 +220,25 @@ impl DrawingApp {
             .enumerate()
             .skip(index + 1)
             .any(|(position, other)| !mine.contains(&position) && other.is_card() && element_bounds(other).intersects(bounds));
+
         if !covered {
             return index;
         }
+
         // what is worked on goes by its place in the drawing too: the text typed in, the note pressed, the arrow whose
         // points are edited, the line being drawn point by point (a press on a card's live parts ends none of them)
         let id_at = |app: &Self, place: Option<usize>| place.and_then(|place| app.scene.elements.get(place)).map(|element| element.id.clone());
         let worked_on = [self.editing, self.note_press, self.line_editor, self.multi].map(|place| id_at(self, place));
+
         self.keeping_selection(|app| {
             let (raised, rest): (Vec<_>, Vec<_>) =
                 std::mem::take(&mut app.scene.elements).into_iter().enumerate().partition(|(position, _)| mine.contains(position));
+
             app.scene.elements = rest.into_iter().chain(raised).map(|(_, element)| element).collect();
         });
+
         let place_of = |app: &Self, id: Option<String>| id.and_then(|id| app.scene.elements.iter().position(|element| element.id == id));
+
         [self.editing, self.note_press, self.line_editor, self.multi] = worked_on.map(|id| place_of(self, id));
         self.dirty = true;
         self.scene.elements.iter().position(|element| element.id == id).unwrap_or(index)
@@ -203,6 +247,7 @@ impl DrawingApp {
     /// Whether a world point is on element `index`'s title strip (a note's header, a portal's bar).
     pub(crate) fn on_title(&self, index: usize, world: Pos2) -> bool {
         let element = &self.scene.elements[index];
+
         let head = if element.portal.is_some() {
             PORTAL_HEADER
         } else if element.filetree.is_some() {
@@ -212,6 +257,7 @@ impl DrawingApp {
         } else {
             TERMINAL_HEADER
         };
+
         world.y - local_bounds(element).min.y < head
     }
 
@@ -234,6 +280,7 @@ impl DrawingApp {
         let element = &self.scene.elements[index];
         // (a chat's card has no body of its own: it is picked up anywhere)
         let window = (element.is_node() && element.chat.is_none()) || (element.created.is_some() && !element.note.content_locked);
+
         // the hit's halo just outside a window is not its body
         shift || !window || self.on_title(index, world) || !local_bounds(element).contains(world)
     }
@@ -243,6 +290,7 @@ impl DrawingApp {
             && !erasing.contains(&index)
         {
             let members = self.group_members(index);
+
             if let Some(erasing) = &mut self.erasing {
                 erasing.extend(members.into_iter().filter(|member| !erasing.contains(member)).collect::<Vec<_>>());
             }
@@ -254,15 +302,18 @@ impl DrawingApp {
     pub(crate) fn connect_target(&self, from: &str, world: Pos2) -> Option<usize> {
         let hit = self.hit(world)?;
         let id = self.scene.elements[hit].id.trim_end_matches("-label");
+
         if id == from {
             return None;
         }
+
         self.scene.elements.iter().position(|element| element.id == id && !element.rope && bindable(element))
     }
 
     /// The node under the pointer while "Conectar" waits: highlighted, and where a click connects.
     pub(crate) fn connect_hover(&self) -> Option<usize> {
         let from = self.connecting.as_deref()?;
+
         self.connect_target(from, self.to_world(self.last_pointer?))
     }
 }
@@ -273,6 +324,7 @@ pub(crate) fn save_pasted(image: &egui::ColorImage, directory: &std::path::Path)
     let [width, height] = image.size;
     let rgba: Vec<u8> = image.pixels.iter().flat_map(|pixel| pixel.to_srgba_unmultiplied()).collect();
     let path = directory.join(format!("magoagent-colado-{}.png", uuid::Uuid::new_v4().simple()));
+
     image::RgbaImage::from_raw(width as u32, height as u32, rgba)?.save(&path).ok()?;
     Some(path)
 }
@@ -284,7 +336,9 @@ pub(crate) fn dropped_paths(draft: &str, paths: &[PathBuf]) -> String {
         (false, true) => format!("\"{path}\""),
         _ => path,
     };
+
     let words: Vec<String> = paths.iter().map(|path| quote(path.display().to_string())).collect();
     let gap = if draft.is_empty() || draft.ends_with(char::is_whitespace) || words.is_empty() { "" } else { " " };
+
     format!("{gap}{}", words.join(" "))
 }

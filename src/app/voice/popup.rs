@@ -27,6 +27,7 @@ pub(crate) enum PopupClick {
 /// the figure and the speakers.
 pub(crate) fn popup_buttons(rect: Rect) -> [(PopupClick, Rect); 4] {
     let at = |x: f32, d: f32| Rect::from_center_size(Pos2::new(rect.left() + x, rect.center().y), Vec2::splat(d));
+
     [(PopupClick::Chat, at(30.0, 48.0)), (PopupClick::Mute, at(96.0, 36.0)), (PopupClick::Figure, at(149.0, 44.0)), (PopupClick::Speakers, at(202.0, 36.0))]
 }
 
@@ -38,6 +39,7 @@ fn pill(rect: Rect) -> Rect {
 fn paint_pencil(p: &Painter, c: Pos2, ink: Color32) {
     let s = Stroke::new(1.6, ink);
     let page = vec![c + Vec2::new(1.0, -7.0), c + Vec2::new(-7.0, -7.0), c + Vec2::new(-7.0, 7.0), c + Vec2::new(7.0, 7.0), c + Vec2::new(7.0, -1.0)];
+
     p.add(Shape::line(page, s));
     p.line_segment([c + Vec2::new(-2.0, 2.0), c + Vec2::new(7.0, -7.0)], Stroke::new(2.4, ink));
 }
@@ -51,13 +53,16 @@ impl DrawingApp {
         if !self.voice.on || self.prefs.avatar || self.prefs.island {
             return;
         }
+
         let at = *self.voice.popup_at.get_or_insert_with(|| match self.prefs.call_popup {
             Some([x, y]) => Pos2::new(x, y),
             None => {
                 let outer = ctx.input(|i| i.viewport().outer_rect).unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)));
+
                 Pos2::new(outer.center().x - POPUP_SIZE.x / 2.0, outer.bottom() - POPUP_SIZE.y - 110.0)
             }
         });
+
         let builder = egui::ViewportBuilder::default()
             .with_title("Chat por voz")
             .with_transparent(true)
@@ -68,6 +73,7 @@ impl DrawingApp {
             .with_active(false)
             .with_inner_size(POPUP_SIZE)
             .with_position(at);
+
         let muted = self.voice.shared.muted.load(Ordering::Relaxed);
         let chat_popup = self.chat_popup;
         let speakers_off = self.voice.speakers_off;
@@ -76,13 +82,17 @@ impl DrawingApp {
         let since = self.voice.connected_at.map(|at| (now - at) as f32);
         let speak = if self.voice.state == VoiceState::Speaking { 1.0 } else { 0.0 };
         let mic = f32::from_bits(self.voice.shared.level.load(Ordering::Relaxed)).min(1.0);
+
         let (click, moved) = ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("voice_popup"), builder, |ui, _| {
             let rect = ui.max_rect();
+
             // dragged by anywhere: the system moves the window
             if ui.interact(rect, ui.scope_id().with("popup_drag"), Sense::drag()).drag_started() {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
+
             let buttons = popup_buttons(rect);
+
             let hovered: Vec<(PopupClick, bool, bool)> = buttons
                 .iter()
                 .map(|(click, r)| {
@@ -95,35 +105,48 @@ impl DrawingApp {
                         PopupClick::Speakers if speakers_off => "Ativar som dos alto-falantes",
                         PopupClick::Speakers => "Silenciar alto-falantes",
                     };
+
                     let r = ui.interact(*r, ui.scope_id().with(click), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(tip);
+
                     (*click, r.hovered(), r.clicked())
                 })
                 .collect();
+
             let p = ui.painter();
             let [chat, mute, figure, speakers] = buttons.map(|(_, r)| r.center());
+
             p.circle(chat, 24.0, FILL, Stroke::new(1.0, EDGE));
             p.rect(pill(rect), 26.0, FILL, Stroke::new(1.0, EDGE), StrokeKind::Inside);
             let over = |k: usize| hovered[k].1;
+
             if over(0) {
                 p.circle_filled(chat, 23.0, HOVER);
             }
+
             paint_pencil(p, chat, INK);
+
             if muted || over(1) {
                 p.circle_filled(mute, 16.0, if muted { crate::app::chat::list::RED.gamma_multiply(0.85) } else { HOVER });
             }
+
             crate::app::voice::paint_mic(p, mute, if muted { Color32::WHITE } else { INK }, muted);
+
             if speakers_off || over(3) {
                 p.circle_filled(speakers, 16.0, HOVER);
             }
+
             crate::app::voice::paint_speaker(p, speakers, INK, speakers_off);
+
             // the figure: a dot breathing while it connects, then opening with the orb's spring
             match since {
                 None => {
                     let breath = 1.0 + 0.25 * (0.5 - 0.5 * (now as f32 * std::f32::consts::TAU / 1.25).cos());
+
                     p.circle_filled(figure, DOT / 2.0 * breath, INK);
                 }
                 Some(a) => {
                     let d = launch_size(a, FIGURE);
+
                     if mascot {
                         crate::app::mascot::mago::paint_mago_for(
                             p,
@@ -138,24 +161,32 @@ impl DrawingApp {
                     }
                 }
             }
+
             if over(2) {
                 p.circle_filled(figure, 18.0, Color32::from_black_alpha(110));
+
                 for d in [Vec2::new(5.0, 5.0), Vec2::new(5.0, -5.0)] {
                     p.line_segment([figure - d, figure + d], Stroke::new(2.0, Color32::WHITE));
                 }
             }
+
             let moved = ui.ctx().input(|i| i.viewport().outer_rect).map(|r| r.min);
+
             (hovered.iter().find(|h| h.2).map(|h| h.0), moved)
         });
+
         #[cfg(windows)]
         if !self.voice.popup_plain {
             self.voice.popup_plain = plain::strip("Chat por voz");
         }
+
         // where it was left, for the next call too
         if let Some(pos) = moved.filter(|p| self.prefs.call_popup != Some([p.x, p.y])) {
             self.prefs.call_popup = Some([pos.x, pos.y]);
         }
+
         ctx.request_repaint_after(std::time::Duration::from_millis(33));
+
         if let Some(click) = click {
             self.voice_popup_click(click);
         }
@@ -176,17 +207,21 @@ impl DrawingApp {
         if !self.chat_popup {
             return;
         }
+
         let builder =
             egui::ViewportBuilder::default().with_title("Chat").with_always_on_top().with_inner_size([440.0, 640.0]).with_min_inner_size([360.0, 420.0]);
+
         let close = ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("chat_popup"), builder, |ui, _| {
             // every window clears see-through during a call (clear_color): this one's ground is solid
             ui.painter().rect_filled(ui.max_rect(), 0, ui.ctx().global_style().visuals.window_fill());
             // the chat screen draws only while the chat is open: open here, whatever the app shows
             let shown = std::mem::replace(&mut self.chat_open, true);
+
             self.chat_screen(ui.ctx());
             self.chat_open = shown;
             ui.ctx().input(|i| i.viewport().close_requested())
         });
+
         if close {
             self.chat_popup = false;
         }
@@ -255,15 +290,18 @@ pub(crate) mod plain {
     /// frame: winit setting its styles again drops these two, and they come back the next frame.
     pub(crate) fn click_through(title: &str, through: bool) {
         let Some(hwnd) = find(title) else { return };
+
         // SAFETY: a window of this process; the three out values are this call's locals
         unsafe {
             let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
             let (mut key, mut alpha, mut flags) = (0u32, 0u8, 0u32);
             let wanted = style | WS_EX_LAYERED;
             let wanted = if through { wanted | WS_EX_TRANSPARENT } else { wanted & !WS_EX_TRANSPARENT };
+
             if wanted != style {
                 SetWindowLongPtrW(hwnd, GWL_EXSTYLE, wanted);
             }
+
             if GetLayeredWindowAttributes(hwnd, &mut key, &mut alpha, &mut flags) == 0 || alpha != 255 {
                 SetLayeredWindowAttributes(hwnd, 0, 255, LWA_ALPHA);
             }
@@ -305,6 +343,7 @@ pub(crate) mod plain {
         // POINT by value: x in the low half, y in the high
         let point = (x as u32 as i64) | ((y as i64) << 32);
         let mut info = MonitorInfo { size: std::mem::size_of::<MonitorInfo>() as u32, ..Default::default() };
+
         // SAFETY: MONITOR_DEFAULTTONEAREST always gives a monitor; the struct is sized as asked
         unsafe { (GetMonitorInfoW(MonitorFromPoint(point, 2), &mut info) != 0).then_some(info.work) }
     }
@@ -331,16 +370,21 @@ pub(crate) mod plain {
     /// This app's window called `title`.
     fn find(title: &str) -> Option<isize> {
         let wide: Vec<u16> = title.encode_utf16().chain([0]).collect();
+
         // SAFETY: a nul-terminated title; each window found is checked to be this process's
         unsafe {
             // another MagoAgent open (the installed one beside a build) has windows of the same title
             let mut hwnd = 0;
+
             loop {
                 hwnd = FindWindowExW(0, hwnd, std::ptr::null(), wide.as_ptr());
+
                 if hwnd == 0 {
                     return None;
                 }
+
                 let mut pid = 0;
+
                 if GetWindowThreadProcessId(hwnd, &mut pid) != 0 && pid == std::process::id() {
                     return Some(hwnd);
                 }
@@ -368,6 +412,7 @@ pub(crate) mod plain {
         const SW_SHOW: i32 = 5;
         const SW_RESTORE: i32 = 9;
         let Some(hwnd) = find(title) else { return false };
+
         // SAFETY: plain user32 calls on a window of this process
         unsafe {
             if IsIconic(hwnd) != 0 {
@@ -375,12 +420,15 @@ pub(crate) mod plain {
             } else if IsWindowVisible(hwnd) == 0 {
                 ShowWindow(hwnd, SW_SHOW);
             }
+
             BringWindowToTop(hwnd);
+
             // asked with no click on the app (the voice, the MCP): the system refuses; for a moment the window in front
             // shares its input with this thread, and then it lets go
             if SetForegroundWindow(hwnd) == 0 && GetForegroundWindow() != hwnd {
                 let front = GetWindowThreadProcessId(GetForegroundWindow(), std::ptr::null_mut());
                 let ours = GetCurrentThreadId();
+
                 if front != 0 && front != ours && AttachThreadInput(ours, front, 1) != 0 {
                     BringWindowToTop(hwnd);
                     SetForegroundWindow(hwnd);
@@ -388,12 +436,14 @@ pub(crate) mod plain {
                 }
             }
         }
+
         true
     }
 
     /// True once this app's window called `title` is found and stripped.
     pub(crate) fn strip(title: &str) -> bool {
         let Some(hwnd) = find(title) else { return false };
+
         // SAFETY: a window of this process; the attributes are DWORDs
         unsafe {
             DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &DWMWCP_DONOTROUND, 4);
@@ -409,10 +459,12 @@ pub(crate) mod plain {
             SetWindowSubclass(hwnd, no_caption, 7, 0);
             // the buttons off the window it already is (the subclass keeps them off what comes after)
             let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+
             SetWindowLongPtrW(hwnd, GWL_STYLE, style & !(CAPTION as isize));
             // SWP_NOSIZE | NOMOVE | NOZORDER | NOACTIVATE | FRAMECHANGED
             SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x1 | 0x2 | 0x4 | 0x10 | 0x20);
         }
+
         true
     }
 
@@ -424,6 +476,7 @@ pub(crate) mod plain {
             // SAFETY: a window of this process; DWMWA_CLOAK takes a BOOL
             unsafe { DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &on, 4) };
         };
+
         match *stage {
             0 if strip(title) => {
                 cloak(find(title).unwrap_or_default(), 1);
@@ -450,13 +503,16 @@ mod tests {
     fn the_popup_has_its_four_buttons_apart_and_the_figure_ends_the_call() {
         let rect = Rect::from_min_size(Pos2::ZERO, POPUP_SIZE);
         let buttons = popup_buttons(rect);
+
         for (i, (_, a)) in buttons.iter().enumerate() {
             assert!(rect.contains_rect(*a), "{a:?}");
             assert!(buttons[i + 1..].iter().all(|(_, b)| !a.intersects(*b)), "{a:?}");
         }
+
         assert!(buttons[1..].iter().all(|(_, b)| pill(rect).contains_rect(*b)), "the three in the pill");
         let ctx = Context::default();
         let mut app = DrawingApp::default();
+
         app.voice.on = true;
         app.voice.state = VoiceState::Listening;
         app.voice_popup_click(PopupClick::Mute);
@@ -466,6 +522,7 @@ mod tests {
         app.voice_popup_click(PopupClick::Chat);
         assert!(app.chat_popup, "the pencil opens the chat in its popup");
         let mut out = ctx.run_ui(egui::RawInput::default(), |ui| app.chat_popup_ui(ui.ctx()));
+
         out.textures_delta.clear();
         assert!(!app.chat_open, "the app keeps showing what it showed");
         app.voice_popup_click(PopupClick::Chat);
@@ -478,10 +535,12 @@ mod tests {
     fn the_popup_shows_while_the_call_is_on_and_stays_where_it_was_left() {
         let ctx = Context::default();
         let mut app = DrawingApp::default();
+
         // the popup is the call's place with the island off (on, the island shows the call)
         app.prefs.island = false;
         app.prefs.call_popup = Some([500.0, 300.0]);
         let frame = |app: &mut DrawingApp| ctx.run_ui(egui::RawInput::default(), |ui| app.voice_popup(ui.ctx())).textures_delta.clear();
+
         frame(&mut app);
         assert_eq!(app.voice.popup_at, None, "no call, no popup");
         app.voice.on = true;
@@ -497,24 +556,31 @@ mod tests {
     fn claude_codes_call_has_its_mascot_and_codexs_the_orb() {
         let ctx = Context::default();
         let mut app = DrawingApp::default();
+
         app.prefs.island = false;
         let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+
         e.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
         let id = e.id.clone();
+
         app.scene.elements.push(e);
         app.chat_agent = Some(id.clone());
         app.voice.on = true;
         app.voice.state = VoiceState::Listening;
         app.now = 10.0;
         app.voice.connected_at = Some(5.0);
+
         // the popup's figure: the mascot's flame or the orb's mesh of rings
         let figure = |app: &mut DrawingApp| {
             let mut output = ctx.run_ui(egui::RawInput::default(), |ui| app.voice_popup(ui.ctx()));
+
             output.textures_delta.clear();
             // the flame is a mesh of a few dozen points (its outline), the orb one of thousands
             let mesh = |points: std::ops::Range<usize>| output.shapes.iter().any(|s| matches!(&s.shape, Shape::Mesh(m) if points.contains(&m.vertices.len())));
+
             (mesh(40..200), mesh(1000..usize::MAX))
         };
+
         figure(&mut app);
         assert_eq!(figure(&mut app), (true, false), "Claude Code: the mascot, no orb");
         app.scene.elements.iter_mut().find(|e| e.id == id).unwrap().terminal.as_mut().unwrap().command = "codex".into();

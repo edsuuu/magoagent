@@ -79,16 +79,20 @@ fn to_light(svg: &str) -> String {
 /// The icon rasterized for `px` pixels, made once per size and palette.
 fn texture(ctx: &egui::Context, (name, svg): Svg, px: u32, light: bool) -> Option<egui::TextureHandle> {
     let id = egui::Id::unique(("ide_icon", name, px, light));
+
     if let Some(tex) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
         return Some(tex);
     }
+
     let recolored = light.then(|| to_light(svg));
     let tree = resvg::usvg::Tree::from_str(recolored.as_deref().unwrap_or(svg), &resvg::usvg::Options::default()).ok()?;
     let mut pixmap = resvg::tiny_skia::Pixmap::new(px, px)?;
     let scale = px as f32 / tree.size().width().max(tree.size().height());
+
     resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
     let image = egui::ColorImage::from_rgba_premultiplied([px as usize, px as usize], pixmap.data());
     let tex = ctx.load_texture(name, image, egui::TextureOptions::LINEAR);
+
     ctx.data_mut(|d| d.insert_temp(id, tex.clone()));
     Some(tex)
 }
@@ -109,6 +113,7 @@ pub(crate) fn paint_on(p: &Painter, src: Svg, rect: Rect, light: bool) {
 
 fn draw(p: &Painter, src: Svg, rect: Rect, tint: Color32, light: bool) {
     let px = (rect.width() * p.pixels_per_point()).round().max(1.0) as u32;
+
     if let Some(tex) = texture(p.ctx(), src, px, light) {
         p.image(tex.id(), rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
     }
@@ -117,6 +122,7 @@ fn draw(p: &Painter, src: Svg, rect: Rect, tint: Color32, light: bool) {
 /// Icon + response for a toolbar-sized button.
 pub(crate) fn button(ui: &mut Ui, src: Svg, tip: &str, selected: bool) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(vec2(30.0, 30.0), egui::Sense::click());
+
     let bg = if selected || resp.is_pointer_button_down_on() {
         t::PRESSED
     } else if resp.hovered() {
@@ -124,6 +130,7 @@ pub(crate) fn button(ui: &mut Ui, src: Svg, tip: &str, selected: bool) -> egui::
     } else {
         Color32::TRANSPARENT
     };
+
     ui.painter().rect_filled(rect, 6, bg);
     paint(ui.painter(), src, Rect::from_center_size(rect.center(), vec2(18.0, 18.0)));
     super::chrome::named(resp, tip).tip(tip)
@@ -132,15 +139,19 @@ pub(crate) fn button(ui: &mut Ui, src: Svg, tip: &str, selected: bool) -> egui::
 fn file_icon(path: &Path) -> Option<Svg> {
     let name = path.file_name()?.to_string_lossy().to_lowercase();
     let ext = name.rsplit_once('.').map_or("", |(_, e)| e);
+
     if name == "dockerfile" || name.starts_with("docker-compose") || name.ends_with(".dockerfile") {
         return Some(FT_DOCKER);
     }
+
     if name.starts_with(".env") {
         return Some(FT_CONFIG);
     }
+
     if matches!(name.as_str(), ".gitignore" | ".gitattributes" | ".dockerignore" | ".npmignore" | ".prettierignore" | ".eslintignore") {
         return Some(FT_IGNORED);
     }
+
     Some(match ext {
         "md" | "markdown" | "mdx" => FT_MD,
         "png" | "jpg" | "jpeg" | "gif" | "svg" | "ico" | "webp" | "bmp" => FT_IMAGE,
@@ -179,6 +190,7 @@ fn badge(path: &Path) -> Option<(u32, &'static str)> {
         Some("bin" | "dat" | "so" | "dylib" | "o" | "a" | "class" | "pyc" | "wasm") => return Some((0xA1A3AB, "Bin")),
         _ => {}
     }
+
     Some(match highlight::detect(path).id {
         "php" => (0xB589EC, "P"),
         "java" => (0xE76F00, "Jv"),
@@ -204,12 +216,15 @@ pub(crate) fn file(p: &Painter, path: &Path, c: egui::Pos2, zoom: f32) {
 /// `file` on a surface that may be light (the file tree's card).
 pub(crate) fn file_on(p: &Painter, path: &Path, c: egui::Pos2, zoom: f32, light: bool) {
     let whole = Rect::from_center_size(c, vec2(16.0, 16.0) * zoom);
+
     if let Some(src) = file_icon(path) {
         return paint_on(p, src, whole, light);
     }
+
     let Some((rgb, label)) = badge(path) else { return paint_on(p, FT_UNKNOWN, whole, light) };
     let color = Color32::from_rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8);
     let r = Rect::from_center_size(c, vec2(13.0, 13.0) * zoom);
+
     p.rect(r, 3, color.gamma_multiply(0.18), Stroke::new(1.0, color), egui::StrokeKind::Inside);
     p.text(r.center(), egui::Align2::CENTER_CENTER, label, t::ui(if label.len() > 1 { 7.0 } else { 9.0 } * zoom), color);
 }
@@ -222,6 +237,7 @@ mod tests {
     fn the_light_palette_leaves_no_dark_color_in_a_file_icon() {
         for (name, svg) in [FOLDER, FT_TEXT, FT_JS, FT_TS, FT_JSON, FT_MD, FT_CS, FT_IMAGE, FT_UNKNOWN] {
             let light = to_light(svg);
+
             assert!(LIGHT.iter().all(|(dark, _)| !light.contains(dark)), "{name}");
             assert_ne!(light, svg, "{name}");
         }

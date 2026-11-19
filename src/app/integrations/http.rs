@@ -25,6 +25,7 @@ pub(crate) struct Answer {
 /// What curl gets on its command line: flags only, nothing of the request.
 pub(crate) fn arguments(request: &Request) -> Vec<String> {
     let flags = ["-sS", "--proto", "=http,https", "--max-filesize", "2097152", "-w", "\\n%{http_code}", "--max-time"];
+
     flags.iter().map(|flag| flag.to_string()).chain([request.timeout_seconds.to_string(), "-K".into(), "-".into()]).collect()
 }
 
@@ -41,12 +42,15 @@ pub(crate) fn quote(text: &str) -> String {
 /// curl's config (`-K -`) for `request`, each value quoted as curl reads it.
 pub(crate) fn config(request: &Request) -> String {
     let mut text = format!("url = \"{}\"\nrequest = \"{}\"\n", quote(&one_line(request.url)), quote(request.method));
+
     for header in &request.headers {
         text += &format!("header = \"{}\"\n", quote(&one_line(header)));
     }
+
     if let Some(body) = &request.body {
         text += &format!("data-binary = \"{}\"\n", quote(body));
     }
+
     text
 }
 
@@ -55,14 +59,17 @@ pub(crate) fn split_answer(output: &[u8]) -> Result<(u16, &[u8]), String> {
     if output.len() > MAX_ANSWER {
         return Err("a resposta veio grande demais".into());
     }
+
     let end = output.iter().rposition(|byte| *byte == b'\n').ok_or("resposta sem status")?;
     let status = std::str::from_utf8(&output[end + 1..]).ok().and_then(|text| text.trim().parse::<u16>().ok()).ok_or("resposta sem status")?;
+
     Ok((status, &output[..end]))
 }
 
 /// Sends `request` and reads the answer as text.
 pub(crate) fn send(request: &Request) -> Result<Answer, String> {
     let (status, body) = send_bytes(request)?;
+
     Ok(Answer { status, body: String::from_utf8_lossy(&body).into_owned() })
 }
 
@@ -76,13 +83,17 @@ pub(crate) fn send_bytes(request: &Request) -> Result<(u16, Vec<u8>), String> {
         .stderr(Stdio::null())
         .spawn()
         .map_err(|error| format!("curl não pôde ser iniciado: {error}"))?;
+
     if let Some(mut input) = child.stdin.take() {
         let _ = input.write_all(config(request).as_bytes());
     }
+
     let output = child.wait_with_output().map_err(|error| format!("curl: {error}"))?;
+
     if !output.status.success() {
         return Err("sem conexão".into());
     }
+
     split_answer(&output.stdout).map(|(status, body)| (status, body.to_vec()))
 }
 
@@ -93,6 +104,7 @@ mod tests {
     #[test]
     fn a_secret_goes_in_the_config_on_stdin_and_never_on_the_command_line() {
         let token = "ghp_segredo123";
+
         let request = Request {
             method: "POST",
             url: "https://api.github.com/graphql",
@@ -100,10 +112,13 @@ mod tests {
             body: Some(r#"{"query":"a \"b\"\nc"}"#.into()),
             timeout_seconds: 15,
         };
+
         let arguments = arguments(&request);
+
         assert!(arguments.iter().all(|argument| !argument.contains(token) && !argument.contains("github.com")), "{arguments:?}");
         assert_eq!(&arguments[arguments.len() - 2..], ["-K", "-"], "the request comes by the standard input");
         let config = config(&request);
+
         assert!(config.contains("header = \"Authorization: Bearer ghp_segredo123\"\n"), "{config}");
         assert!(config.contains(r#"data-binary = "{\"query\":\"a \\\"b\\\"\\nc\"}""#), "{config}");
         assert!(config.starts_with("url = \"https://api.github.com/graphql\"\nrequest = \"POST\"\n"));
@@ -112,6 +127,7 @@ mod tests {
     #[test]
     fn a_line_break_in_a_secret_adds_no_header() {
         let request = Request { method: "GET", url: "https://x", headers: vec!["Authorization: Bearer a\r\nX-Evil: 1".into()], body: None, timeout_seconds: 5 };
+
         assert_eq!(config(&request).lines().count(), 3, "url, request and one header");
     }
 

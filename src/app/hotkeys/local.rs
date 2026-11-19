@@ -105,6 +105,7 @@ impl DrawingApp {
         if !events.iter().any(|event| matches!(event, egui::Event::Key { pressed: true, .. })) {
             return Vec::new();
         }
+
         APP.iter()
             .filter(|def| super::keys_of(def, &self.prefs.shortcuts).iter().any(|combo| events.iter().any(|event| keys::hits(event, combo))))
             .filter_map(|def| match def.act {
@@ -117,6 +118,7 @@ impl DrawingApp {
     /// Whether `action`'s keys are among this frame's, leaving them there.
     pub(crate) fn peek_app_key(&self, ctx: &Context, action: AppAction) -> bool {
         let combos = super::keys_of(def_of(action), &self.prefs.shortcuts);
+
         ctx.input(|input| input.events.iter().any(|event| combos.iter().any(|combo| keys::hits(event, combo))))
     }
 
@@ -124,11 +126,14 @@ impl DrawingApp {
     /// true when there was one.
     pub(crate) fn take_app_key(&self, ctx: &Context, action: AppAction) -> bool {
         let combos = super::keys_of(def_of(action), &self.prefs.shortcuts);
+
         if combos.is_empty() {
             return false;
         }
+
         ctx.input_mut(|input| {
             let before = input.events.len();
+
             input.events.retain(|event| !combos.iter().any(|combo| keys::hits(event, combo)));
             input.events.len() != before
         })
@@ -137,6 +142,7 @@ impl DrawingApp {
     /// The first keys of `action` as Ajustes shows them ("Ctrl+S"), for the palette and the tips; empty without a key.
     pub(crate) fn app_keys_text(&self, action: AppAction) -> String {
         let combos = super::keys_of(def_of(action), &self.prefs.shortcuts);
+
         combos.first().map(|combo| keys::combo_label(combo, true)).unwrap_or_default()
     }
 
@@ -162,8 +168,10 @@ mod tests {
         for def in &APP {
             for keys in def.defaults {
                 let combo = keys::parse_keys(keys).unwrap_or_else(|| panic!("{}: {keys}", def.id));
+
                 assert_eq!(keys::format(&combo), *keys, "{}", def.id);
             }
+
             assert_eq!(super::super::every().filter(|other| other.id == def.id).count(), 1, "{} twice", def.id);
         }
     }
@@ -172,6 +180,7 @@ mod tests {
     fn the_keys_pressed_are_the_shortcuts_set_and_a_cleared_one_answers_to_nothing() {
         let mut app = DrawingApp::default();
         let command = Modifiers::COMMAND;
+
         assert_eq!(app.app_keys(&[key(Key::S, command)]), [AppAction::Save]);
         assert_eq!(app.app_keys(&[key(Key::S, command | Modifiers::SHIFT)]), [AppAction::SaveAs]);
         assert_eq!(app.app_keys(&[key(Key::Y, command)]), [AppAction::Redo], "the second default answers too");
@@ -188,6 +197,7 @@ mod tests {
         assert!(app.app_keys(&[key(Key::F5, command | Modifiers::SHIFT)]).is_empty());
         assert_eq!(app.app_keys_text(AppAction::Save), "");
         assert_eq!(app.tip_with_keys("Salvar", AppAction::Save), "Salvar");
+
         assert_eq!(
             app.tip_with_keys("Aumentar zoom", AppAction::ZoomIn),
             format!("Aumentar zoom — {}", if cfg!(target_os = "macos") { "Cmd++" } else { "Ctrl++" })

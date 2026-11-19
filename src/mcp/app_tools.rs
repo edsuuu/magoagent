@@ -11,6 +11,7 @@ pub(crate) fn is_action(name: &str) -> bool {
 pub(crate) fn app_tools() -> Vec<Value> {
     let name = |what: &str| json!({ "type": "string", "description": what });
     let chat = name("o nome do chat (ou parte dele), como chat_list mostra; vazio: o chat aberto");
+
     let mut tools = vec![
         json!({
             "name": "update",
@@ -579,6 +580,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
             }, "required": ["action"] },
         }),
     ];
+
     add_app_shortcuts(&mut tools);
     tools
 }
@@ -587,16 +589,20 @@ pub(crate) fn app_tools() -> Vec<Value> {
 fn add_app_shortcuts(tools: &mut [Value]) {
     let Some(tool) = tools.iter_mut().find(|tool| tool["name"] == "set_setting") else { return };
     let app = &crate::app::hotkeys::local::APP;
+
     if let Some(names) = tool["inputSchema"]["properties"]["name"]["enum"].as_array_mut() {
         names.extend(app.iter().map(|def| json!(format!("shortcut_{}", def.id))));
     }
+
     let list: Vec<String> = app.iter().map(|def| format!("shortcut_{} ({})", def.id, def.label.to_lowercase())).collect();
+
     let more = format!(
         " Atalhos do app, que valem na janela dele: {}. O valor são as teclas (Ctrl+S, Ctrl+Shift+K, Shift+1, F2), none para deixar sem tecla ou \
          default para o padrão; vale também para os globais. Teclas que já são de outro atalho, as fixas (as letras das ferramentas, Esc, Enter, \
          Delete, as setas, Ctrl+C, Ctrl+X, Ctrl+V) e as do sistema (Alt+Tab, Alt+F4) são recusadas, dizendo de quem são.",
         list.join(", ")
     );
+
     if let Some(description) = tool["description"].as_str().map(|text| format!("{text}{more}")) {
         tool["description"] = json!(description);
     }
@@ -609,6 +615,7 @@ fn integrations_description() -> String {
     } else {
         "`integration` hermes (o Hermes Agent na ilha) está desativado por enquanto: responde só que está desativado."
     };
+
     format!("{BEFORE_HERMES}{hermes}{AFTER_HERMES}")
 }
 
@@ -621,6 +628,7 @@ mod tests {
     fn the_integrations_tool_tells_hermes_as_it_is() {
         // in the tests Hermes is always available: the tool says how to use it, not that it is off
         let description = super::integrations_description();
+
         assert!(description.contains("install põe o plugin") && !description.contains("desativado por enquanto"));
         assert!(description.contains("`integration` github") && description.ends_with("status resume todas."));
     }

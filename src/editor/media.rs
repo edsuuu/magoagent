@@ -63,6 +63,7 @@ struct PdfJob {
 /// Whether `path` opens as a picture or a PDF rather than as text.
 pub(crate) fn is_media(path: &Path) -> bool {
     let ext = path.extension().and_then(|e| e.to_str()).map(str::to_lowercase).unwrap_or_default();
+
     ext == "pdf" || IMAGES.contains(&ext.as_str())
 }
 
@@ -70,11 +71,14 @@ impl Media {
     pub(crate) fn open(path: &Path, ctx: &egui::Context) -> Self {
         let mut media = Media::default();
         let (out, path, ctx) = (media.decoded.clone(), path.to_path_buf(), ctx.clone());
+
         if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf")) {
             let (want, busy, ready) = (Arc::new(Mutex::new(vec![])), Arc::new(AtomicUsize::new(usize::MAX)), Ready::default());
             let (wake, woken) = mpsc::channel();
+
             media.pdf =
                 Some(PdfJob { want: want.clone(), busy: busy.clone(), ready: ready.clone(), wake, asked: Default::default(), seen: Default::default() });
+
             std::thread::spawn(move || pdf_thread(&path, &ctx, &out, (want, busy, ready), woken));
         } else {
             std::thread::spawn(move || {
@@ -82,18 +86,23 @@ impl Media {
                 ctx.request_repaint();
             });
         }
+
         media
     }
 
     /// The decoded pages to the GPU, once they're there (`background`, every frame).
     pub(crate) fn upload(&mut self, ctx: &egui::Context) {
         let done = self.decoded.lock().unwrap().take();
+
         match done {
             Some(Ok(Decoded::Images { images, delays, natural })) => {
                 self.natural = Some(natural);
+
                 let textures: Vec<_> =
                     images.into_iter().enumerate().map(|(i, image)| ctx.load_texture(format!("ide_media_{i}"), image, egui::TextureOptions::LINEAR)).collect();
+
                 self.pages = vec![Page { size: textures[0].size_vec2(), tex: Some(textures[0].clone()) }];
+
                 if textures.len() > 1 {
                     self.frames = textures.into_iter().zip(delays).collect();
                 }
@@ -102,14 +111,17 @@ impl Media {
             Some(Err(e)) => self.error = Some(e),
             None => {}
         }
+
         if let Some(pdf) = &self.pdf {
             for (i, image) in std::mem::take(&mut *pdf.ready.lock().unwrap()) {
                 if let Some(page) = self.pages.get_mut(i) {
                     page.tex = Some(ctx.load_texture(format!("ide_media_{i}"), image, egui::TextureOptions::LINEAR));
                 }
             }
+
             // far from view, a page's texture goes
             let (first, last) = pdf.seen.get();
+
             for (i, page) in self.pages.iter_mut().enumerate() {
                 if i + KEEP < first || i > last + KEEP {
                     page.tex = None;
@@ -123,16 +135,19 @@ impl Media {
     pub(crate) fn layout(&self, left: f32, top: f32, width: f32) -> (Vec<Rect>, f32) {
         let mut y = top + GAP;
         let room = (width - 2.0 * GAP).max(1.0);
+
         let rects = self
             .pages
             .iter()
             .map(|page| {
                 let size = page.size * (room / page.size.x).min(1.0);
                 let rect = Rect::from_min_size(pos2(left + (width - size.x) / 2.0, y), size);
+
                 y += size.y + GAP;
                 rect
             })
             .collect();
+
         (rects, y - top)
     }
 
@@ -144,20 +159,26 @@ impl Media {
         // a screen of margin each way, so the next page is there before it scrolls in
         let near = clip.expand2(vec2(0.0, clip.height()));
         let mut seen = vec![];
+
         for (i, rect) in rects.iter().enumerate() {
             let rect = map(*rect);
+
             if !rect.intersects(near) {
                 continue;
             }
+
             seen.push(i);
+
             match self.texture(i, now, painter.ctx()) {
                 Some(id) => painter.image(id, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE),
                 None => painter.rect_filled(rect, 0, Color32::WHITE.gamma_multiply(0.06)),
             };
         }
+
         if let (Some(pdf), Some((&first, &last))) = (&self.pdf, seen.first().zip(seen.last())) {
             pdf.seen.set((first, last));
             let need: Vec<usize> = seen.into_iter().filter(|&i| self.pages[i].tex.is_none() && pdf.busy.load(Ordering::Relaxed) != i).collect();
+
             if need != *pdf.asked.borrow() {
                 *pdf.want.lock().unwrap() = need.clone();
                 *pdf.asked.borrow_mut() = need;
@@ -170,6 +191,7 @@ impl Media {
     fn texture(&self, i: usize, now: f64, ctx: &egui::Context) -> Option<egui::TextureId> {
         if i == 0 && !self.frames.is_empty() {
             let mut at = now % self.frames.iter().map(|f| f.1).sum::<f64>();
+
             let frame = self
                 .frames
                 .iter()
@@ -178,9 +200,12 @@ impl Media {
                     at < 0.0
                 })
                 .unwrap_or(&self.frames[0]);
+
             ctx.request_repaint_after(Duration::from_secs_f64(frame.1));
+
             return Some(frame.0.id());
         }
+
         self.pages[i].tex.as_ref().map(|t| t.id())
     }
 
@@ -199,29 +224,39 @@ fn pdf_thread(path: &Path, ctx: &egui::Context, out: &Slot, (want, busy, ready):
     let opened = std::fs::read(path)
         .map_err(|e| e.to_string())
         .and_then(|b| hayro::hayro_syntax::Pdf::new(b).map_err(|_| "PDF ilegível (ou protegido por senha)".to_string()));
+
     let pdf = match opened {
         Ok(pdf) if pdf.pages().is_empty() => return *out.lock().unwrap() = Some(Err("PDF sem páginas".into())),
         Ok(pdf) => pdf,
         Err(e) => return *out.lock().unwrap() = Some(Err(e)),
     };
+
     let sizes = pdf.pages().iter().map(|page| page.render_dimensions()).map(|(w, h)| vec2((w * PDF_SCALE).ceil(), (h * PDF_SCALE).ceil())).collect();
+
     *out.lock().unwrap() = Some(Ok(Decoded::Pdf(sizes)));
     ctx.request_repaint();
     let (cache, settings) = (hayro::RenderCache::new(), hayro::hayro_interpret::InterpreterSettings::default());
     let pixmap = hayro::PixmapSettings { x_scale: PDF_SCALE, y_scale: PDF_SCALE, bg_color: hayro::vello_cpu::color::palette::css::WHITE };
+
     while woken.recv().is_ok() {
         loop {
             let next = {
                 let mut want = want.lock().unwrap();
+
                 (!want.is_empty()).then(|| want.remove(0))
             };
+
             let Some(i) = next else { break };
+
             busy.store(i, Ordering::Relaxed);
+
             if let Some(page) = pdf.pages().get(i) {
                 let p = hayro::render(page, &cache, &settings, &hayro::RenderSettings::default(), &pixmap);
                 let image = egui::ColorImage::from_rgba_premultiplied([p.width() as usize, p.height() as usize], p.data_as_u8_slice());
+
                 ready.lock().unwrap().push((i, image));
             }
+
             busy.store(usize::MAX, Ordering::Relaxed);
             ctx.request_repaint();
         }
@@ -233,6 +268,7 @@ fn decode(path: &Path) -> Result<Decoded, String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
     let ext = path.extension().and_then(|e| e.to_str()).map(str::to_lowercase).unwrap_or_default();
     let one = |image: egui::ColorImage, natural: [usize; 2]| Ok(Decoded::Images { images: vec![image], delays: vec![], natural });
+
     if ext == "svg" {
         let tree = resvg::usvg::Tree::from_data(&bytes, &resvg::usvg::Options::default()).map_err(|e| format!("SVG ilegível: {e}"))?;
         let size = tree.size();
@@ -240,16 +276,20 @@ fn decode(path: &Path) -> Result<Decoded, String> {
         let scale = (2.0f32).min(LONGEST as f32 / size.width().max(size.height()));
         let (w, h) = ((size.width() * scale).ceil() as u32, (size.height() * scale).ceil() as u32);
         let mut pixmap = resvg::tiny_skia::Pixmap::new(w.max(1), h.max(1)).ok_or("SVG sem tamanho")?;
+
         resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
+
         return one(
             egui::ColorImage::from_rgba_premultiplied([pixmap.width() as usize, pixmap.height() as usize], pixmap.data()),
             [size.width().ceil() as usize, size.height().ceil() as usize],
         );
     }
+
     if ext == "gif"
         && let Ok(decoder) = image::codecs::gif::GifDecoder::new(std::io::Cursor::new(&bytes))
     {
         let mut pixels = 0;
+
         let frames: Vec<_> = decoder
             .into_frames()
             .take(GIF_FRAMES)
@@ -259,20 +299,27 @@ fn decode(path: &Path) -> Result<Decoded, String> {
                 pixels <= GIF_PIXELS
             })
             .collect();
+
         if frames.len() > 1 {
             let (w, h) = frames[0].buffer().dimensions();
+
             let seconds = |f: &image::Frame| {
                 let (n, d) = f.delay().numer_denom_ms();
+
                 (n as f64 / d as f64 / 1000.0).max(0.02)
             };
+
             let images = frames.iter().map(|f| egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], f.buffer())).collect();
+
             return Ok(Decoded::Images { images, delays: frames.iter().map(seconds).collect(), natural: [w as usize, h as usize] });
         }
     }
+
     let image = image::load_from_memory(&bytes).map_err(|e| format!("Imagem ilegível: {e}"))?;
     let natural = [image.width() as usize, image.height() as usize];
     let image = if image.width().max(image.height()) > LONGEST { image.resize(LONGEST, LONGEST, image::imageops::FilterType::Triangle) } else { image };
     let rgba = image.to_rgba8();
+
     one(egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], &rgba), natural)
 }
 
@@ -284,11 +331,14 @@ mod tests {
     fn until(media: &mut Media, ctx: &egui::Context, done: impl Fn(&Media) -> bool) {
         for _ in 0..500 {
             media.upload(ctx);
+
             if done(media) {
                 return;
             }
+
             std::thread::sleep(Duration::from_millis(10));
         }
+
         panic!("media never got there");
     }
 
@@ -303,6 +353,7 @@ mod tests {
     fn pdf_of(n: usize) -> String {
         let kids: String = (0..n).map(|i| format!("{} 0 R ", 3 + i)).collect();
         let pages: String = (0..n).map(|i| format!("{} 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >> endobj\n", 3 + i)).collect();
+
         format!(
             "%PDF-1.4\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [{kids}] /Count {n} >> endobj\n{pages}trailer << /Root 1 0 R >>\n%%EOF\n"
         )
@@ -312,27 +363,35 @@ mod tests {
     #[test]
     fn pictures_and_pdfs_open_as_pages() {
         let dir = std::env::temp_dir().join(format!("magoagent-media-{}", std::process::id()));
+
         std::fs::create_dir_all(&dir).unwrap();
         let png = dir.join("a.png");
+
         image::RgbaImage::new(300, 100).save(&png).unwrap();
         let ico = dir.join("i.ico");
+
         image::RgbaImage::new(32, 32).save(&ico).unwrap();
         let svg = dir.join("b.svg");
+
         std::fs::write(&svg, r#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="red"/></svg>"#).unwrap();
         assert!(is_media(&png) && is_media(&svg) && is_media(&ico) && is_media(Path::new("x.PDF")) && !is_media(Path::new("main.rs")));
         assert_eq!(size_of(decode(&png).unwrap()), [300, 100]);
         assert_eq!(size_of(decode(&ico).unwrap()), [32, 32]);
         assert_eq!(size_of(decode(&svg).unwrap()), [80, 40], "SVG at twice its size");
         let ctx = egui::Context::default();
+
         // a PDF that isn't one says so
         std::fs::write(dir.join("c.pdf"), "não é pdf").unwrap();
         let mut bad = Media::open(&dir.join("c.pdf"), &ctx);
+
         until(&mut bad, &ctx, |m| m.error.is_some());
         assert_eq!(bad.error.as_deref(), Some("PDF ilegível (ou protegido por senha)"));
         // in the view: fitted to the width, not blown up past its size
         let mut media = Media::open(&png, &ctx);
+
         until(&mut media, &ctx, |m| !m.pages.is_empty());
         let (rects, height) = media.layout(0.0, 0.0, 174.0);
+
         assert_eq!((rects[0].size(), height), (vec2(150.0, 50.0), 50.0 + 2.0 * GAP));
         assert_eq!(media.layout(0.0, 0.0, 1000.0).0[0].size(), vec2(300.0, 100.0));
         std::fs::remove_dir_all(&dir).ok();
@@ -342,16 +401,20 @@ mod tests {
     #[test]
     fn a_long_pdf_renders_its_pages_on_demand() {
         let dir = std::env::temp_dir().join(format!("magoagent-media-pdf-{}", std::process::id()));
+
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("longo.pdf");
+
         std::fs::write(&path, pdf_of(60)).unwrap();
         let ctx = egui::Context::default();
         let mut media = Media::open(&path, &ctx);
+
         until(&mut media, &ctx, |m| !m.pages.is_empty());
         assert_eq!(media.pages.len(), 60);
         assert!(media.pages.iter().all(|p| p.tex.is_none() && p.size == vec2(918.0, 1188.0)));
         // the last page comes into view
         let pdf = media.pdf.as_ref().unwrap();
+
         *pdf.want.lock().unwrap() = vec![59];
         pdf.wake.send(()).unwrap();
         pdf.seen.set((58, 59));
@@ -369,16 +432,21 @@ mod tests {
     #[test]
     fn gifs_animate() {
         let dir = std::env::temp_dir().join(format!("magoagent-media-gif-{}", std::process::id()));
+
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("a.gif");
         let mut gif = image::codecs::gif::GifEncoder::new(std::fs::File::create(&path).unwrap());
+
         for shade in [0u8, 255] {
             let frame = image::RgbaImage::from_pixel(8, 6, image::Rgba([shade, 0, 0, 255]));
+
             gif.encode_frame(image::Frame::from_parts(frame, 0, 0, image::Delay::from_numer_denom_ms(100, 1))).unwrap();
         }
+
         drop(gif);
         let ctx = egui::Context::default();
         let mut media = Media::open(&path, &ctx);
+
         until(&mut media, &ctx, |m| !m.pages.is_empty());
         assert_eq!(media.frames.len(), 2);
         std::fs::remove_dir_all(&dir).ok();

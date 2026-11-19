@@ -73,6 +73,7 @@ impl TerminalSpec {
         let mut words = self.command.split_whitespace();
         let picks = |word: &str| ["-r", "-c", "--resume", "--continue", "--session-id", "-p", "--print"].contains(&word.split('=').next().unwrap_or(word));
         let fresh = words.next() == Some("claude") && !words.any(picks);
+
         match claude {
             Some(dir) if self.resume && safe && fresh && crate::transcript::transcript_path(dir, &self.claude_folder, id).is_file() => {
                 format!("{} --resume {id}", self.command.trim())
@@ -131,9 +132,11 @@ impl PortalSpec {
 
     pub(crate) fn set_tab_url(&mut self, tab: usize, url: String) {
         let mut tabs = self.tab_urls();
+
         if let Some(slot) = tabs.get_mut(tab) {
             *slot = url;
         }
+
         self.set_tabs(tabs, self.active_tab());
     }
 }

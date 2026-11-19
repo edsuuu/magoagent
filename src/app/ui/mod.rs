@@ -80,35 +80,44 @@ pub(crate) fn glass_accent(dark: bool) -> Color32 {
 // one-point bands of the same rounded shape; a backdrop pass in the renderer would do both
 pub(crate) fn paint_glass(p: &Painter, rect: Rect, radius: f32, dark: bool, strong: bool) {
     let [r, g, b] = if dark { [44, 44, 46] } else { [255, 255, 255] };
+
     let fade = |t: f32| match t {
         _ if strong => 0.78,
         t if t < 0.48 => 0.96 - 0.06 * t / 0.48,
         t if t < 0.76 => 0.90 - 0.16 * (t - 0.48) / 0.28,
         t => 0.74 - 0.32 * (t - 0.76) / 0.24,
     };
+
     if !dark {
         // the reference's .glass lift, in the light theme only (on white the glass needs it to stand out; the dark stays flat)
         let (near, far) = if strong { (0x1f, (10, 28, 0x1f)) } else { (0x1a, (6, 20, 0x14)) };
+
         for (y, blur, alpha) in [(1, 2, near), far] {
             p.add(egui::epaint::Shadow { offset: [0, y], blur, spread: 0, color: Color32::from_black_alpha(alpha) }.as_shape(rect, radius));
         }
     }
+
     let rows = rect.height().ceil().max(1.0) as usize;
+
     for row in 0..rows {
         // the first and last bands take the edge's feather with them
         let top = if row == 0 { rect.top() - 1.0 } else { rect.top() + row as f32 };
         let bottom = if row + 1 == rows { rect.bottom() + 1.0 } else { rect.top() + row as f32 + 1.0 };
         let band = Rect::from_min_max(Pos2::new(rect.left() - 1.0, top), Pos2::new(rect.right() + 1.0, bottom)).intersect(p.clip_rect());
         let alpha = (fade((row as f32 + 0.5) / rows as f32) * 255.0).round() as u8;
+
         p.with_clip_rect(band).rect_filled(rect, radius, Color32::from_rgba_unmultiplied(r, g, b, alpha));
     }
+
     let rim = if dark { Color32::from_white_alpha(0x24) } else { Color32::from_black_alpha(14) };
+
     p.rect_stroke(rect, radius, Stroke::new(1.0, rim), StrokeKind::Inside);
 }
 
 /// How wide a glass pill is around `buttons` buttons and the `others` (each thing a gap from the next).
 pub(crate) fn glass_width(buttons: usize, others: &[f32]) -> f32 {
     let things = buttons + others.len();
+
     buttons as f32 * GLASS_BUTTON + others.iter().sum::<f32>() + things.saturating_sub(1) as f32 * GLASS_GAP + 2.0 * GLASS_END
 }
 
@@ -120,9 +129,11 @@ pub(crate) fn glass_row<R>(ui: &mut egui::Ui, width: f32, dark: bool, add: impl 
 /// `glass_row`, `height` tall (its buttons 5 under it at each side).
 pub(crate) fn glass_row_sized<R>(ui: &mut egui::Ui, width: f32, height: f32, dark: bool, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
+
     paint_glass(ui.painter(), rect, height / 2.0, dark, false);
     let inside = rect.shrink2(Vec2::new(GLASS_END, (GLASS_HEIGHT - GLASS_BUTTON) / 2.0));
     let row = egui::UiBuilder::new().max_rect(inside).layout(egui::Layout::left_to_right(egui::Align::Center));
+
     ui.scope_builder(row, |ui| {
         ui.spacing_mut().item_spacing.x = GLASS_GAP;
         add(ui)
@@ -140,23 +151,30 @@ pub(crate) fn glass_button(ui: &mut egui::Ui, on: bool, icon: Icon, dark: bool) 
 pub(crate) fn glass_button_sized(ui: &mut egui::Ui, on: bool, icon: Icon, dark: bool, size: f32) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
     let ink = glass_ink(dark);
+
     if response.hovered() {
         ui.painter().circle_filled(rect.center(), size / 2.0, ink.gamma_multiply(0.1));
     }
+
     let now = ui.input(|i| i.time);
+
     if response.clicked() {
         ui.data_mut(|d| d.insert_temp(response.id, now));
     }
+
     let since = ((now - ui.data(|d| d.get_temp::<f64>(response.id)).unwrap_or(f64::MIN)) / 0.38) as f32;
+
     let scale = match since {
         t if t >= 1.0 => 1.0,
         t if t < 0.32 => 1.0 + 0.22 * t / 0.32,
         t if t < 0.72 => 1.22 - 0.25 * (t - 0.32) / 0.4,
         t => 0.97 + 0.03 * (t - 0.72) / 0.28,
     };
+
     if since < 1.0 {
         ui.ctx().request_repaint();
     }
+
     paint_icon_scaled(
         ui.painter(),
         icon,
@@ -165,6 +183,7 @@ pub(crate) fn glass_button_sized(ui: &mut egui::Ui, on: bool, icon: Icon, dark: 
         GLASS_ICON * scale * size / GLASS_BUTTON,
         0.0,
     );
+
     response.on_hover_cursor(CursorIcon::PointingHand)
 }
 
@@ -185,6 +204,7 @@ impl Tip for egui::Response {
         // a menu open this frame or the last (ui/context.rs) or an egui popup hides the tips
         let menu = ctx.data(|d| d.get_temp::<u64>(egui::Id::unique("menu_frame"))).is_some_and(|f| f + 1 >= ctx.cumulative_frame_nr());
         let over = self.hovered() && !ctx.input(|i| i.pointer.any_down()) && !menu && !egui::Popup::is_any_open(&ctx);
+
         // since when the pointer rests here
         let since = ctx.data_mut(|d| {
             if over {
@@ -194,21 +214,29 @@ impl Tip for egui::Response {
                 now
             }
         });
+
         let warm = ctx.data(|d| d.get_temp::<f64>(last)).is_some_and(|t| now - t < 0.4);
         let shown = over && (warm || now - since >= TIP_DELAY);
+
         if over && !shown {
             ctx.request_repaint_after(std::time::Duration::from_secs_f64(TIP_DELAY - (now - since)));
         }
+
         let t = ctx.animate_bool_with_time(id, shown, TIP_FADE);
+
         if shown {
             ctx.data_mut(|d| d.insert_temp(last, now));
         }
+
         // its text is the widget's name for the system's accessibility too (screen readers, agents)
         let text = text.into();
+
         self.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &text));
+
         if t > 0.0 {
             paint_tip(&ctx, id, self.rect, &text, t);
         }
+
         self
     }
 }
@@ -216,8 +244,10 @@ impl Tip for egui::Response {
 /// The tip itself: centered under `widget` (over it when there is no room), kept inside the window.
 fn paint_tip(ctx: &Context, id: egui::Id, widget: Rect, text: &str, t: f32) {
     let dark = ctx.global_style().visuals.dark_mode;
+
     let (fill, ink) =
         if dark { (Color32::from_rgb(0x3a, 0x3a, 0x3c), Color32::from_rgb(0xf5, 0xf5, 0xf7)) } else { (Color32::from_rgb(0x1d, 0x1d, 0x1f), Color32::WHITE) };
+
     let p = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, id));
     let screen = ctx.content_rect();
     let galley = p.layout(text.to_string(), FontId::proportional(13.0), ink.gamma_multiply(t), 320.0);
@@ -228,6 +258,7 @@ fn paint_tip(ctx: &Context, id: egui::Id, widget: Rect, text: &str, t: f32) {
     let top = if below { widget.bottom() + 8.0 - slide } else { widget.top() - 8.0 - size.y + slide };
     let left = (widget.center().x - size.x / 2.0).clamp(screen.left() + 6.0, (screen.right() - 6.0 - size.x).max(screen.left() + 6.0));
     let rect = Rect::from_min_size(Pos2::new(left, top), size);
+
     p.rect_filled(rect, 8, fill.gamma_multiply(t));
     p.rect_stroke(rect, 8, Stroke::new(1.0, Color32::from_white_alpha(if dark { 0x1f } else { 0 }).gamma_multiply(t)), StrokeKind::Inside);
     p.galley(rect.min + Vec2::new(9.0, 5.0), galley, ink);
@@ -236,6 +267,7 @@ fn paint_tip(ctx: &Context, id: egui::Id, widget: Rect, text: &str, t: f32) {
 /// The hair between two groups of buttons on glass.
 pub(crate) fn glass_divider(ui: &mut egui::Ui, dark: bool) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(1.0, GLASS_BUTTON), Sense::hover());
+
     ui.painter().vline(rect.center().x, rect.shrink2(Vec2::new(0.0, 5.0)).y_range(), Stroke::new(1.0, glass_ink(dark).gamma_multiply(0.2)));
 }
 
@@ -320,6 +352,7 @@ pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: C
         // OpenCode's: a tall frame with a smaller one in its lower half
         "opencode" => {
             let outer = Rect::from_center_size(at, Vec2::new(11.0, 14.0));
+
             p.rect_stroke(outer, 1.5, Stroke::new(1.4, color), StrokeKind::Inside);
             p.rect_filled(Rect::from_min_max(Pos2::new(outer.left() + 3.0, outer.center().y), outer.max - Vec2::new(3.0, 3.0)), 0.5, color);
         }
@@ -338,6 +371,7 @@ pub(crate) fn terminal_icon(p: &Painter, spec: &TerminalSpec, at: Pos2, color: C
 /// Which mark a terminal shows: the chosen one, else its agent's, else the terminal.
 fn icon_key(spec: &TerminalSpec) -> &str {
     let command = spec.command.split_whitespace().next().unwrap_or_default();
+
     match spec.icon.as_str() {
         "" if matches!(command, "claude" | "codex" | "opencode") => command,
         "" => "terminal",
@@ -352,16 +386,20 @@ pub(crate) fn terminal_icon_scaled(p: &Painter, spec: &TerminalSpec, at: Pos2, c
     let layer = p.layer_id();
     let next = || p.ctx().graphics_mut(|g| g.entry(layer).next_idx());
     let start = next();
+
     terminal_icon(p, spec, at, color);
     let end = next();
     let transform = egui::emath::TSTransform::new(at.to_vec2() * (1.0 - scale), scale);
+
     p.ctx().graphics_mut(|g| g.entry(layer).transform_range(start, end, transform));
 }
 
 /// The Maestro's mark in a terminal's title strip: a small crown, drawn from convex pieces.
 pub(crate) fn maestro_crown(p: &Painter, at: Pos2, zoom: f32, color: Color32) {
     let pt = |x: f32, y: f32| at + Vec2::new(x, y) * zoom;
+
     p.rect_filled(Rect::from_min_max(pt(-6.0, 1.0), pt(6.0, 5.0)), 0, color);
+
     for spike in [[(-6.5, 1.0), (-6.0, -4.0), (-3.0, 1.0)], [(-3.5, 1.0), (0.0, -6.0), (3.5, 1.0)], [(3.0, 1.0), (6.0, -4.0), (6.5, 1.0)]] {
         p.add(Shape::convex_polygon(spike.map(|(x, y)| pt(x, y)).to_vec(), color, Stroke::NONE));
     }
@@ -376,18 +414,26 @@ pub(crate) fn cross(p: &Painter, at: Pos2, r: f32, stroke: Stroke) {
 /// Pills in a row, centered; the chosen one filled. Returns true when the choice changed.
 pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], c: &UiColors) -> bool {
     let mut changed = false;
+
     ui.horizontal(|ui| {
         let widths: Vec<f32> = labels.iter().map(|l| ui.painter().layout_no_wrap(l.to_string(), FontId::proportional(13.0), c.text).size().x + 28.0).collect();
+
         ui.add_space(((ui.available_width() - widths.iter().sum::<f32>() - 4.0) / 2.0).max(0.0));
+
         group_frame(c).inner_margin(2).show(ui, |ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
+
             for (i, (label, width)) in labels.iter().zip(widths).enumerate() {
                 let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 24.0), Sense::click());
+
                 if i == *chosen {
                     ui.painter().rect_filled(rect, 6, PRIMARY);
                 }
+
                 let color = if i == *chosen { Color32::WHITE } else { c.text };
+
                 ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, FontId::proportional(13.0), color);
+
                 if response.on_hover_cursor(CursorIcon::PointingHand).clicked() && i != *chosen {
                     *chosen = i;
                     changed = true;
@@ -395,6 +441,7 @@ pub(crate) fn segmented(ui: &mut egui::Ui, chosen: &mut usize, labels: &[&str], 
             }
         });
     });
+
     changed
 }
 
@@ -409,6 +456,7 @@ pub(crate) const HISTORY_WIDTH: f32 = 2.0 * CORNER_BUTTON + GLASS_GAP + 2.0 * GL
 /// field has no state yet.
 pub(crate) fn select_all_text(ctx: &Context, id: egui::Id, chars: usize) -> bool {
     let Some(mut state) = egui::TextEdit::load_state(ctx, id) else { return false };
+
     state.cursor.set_char_range(Some(egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(chars))));
     state.store(ctx, id);
     true
@@ -435,10 +483,12 @@ pub(crate) fn swatch(ui: &mut egui::Ui, color: [u8; 4], selected: bool, size: f3
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let p = ui.painter();
     let inner = rect.shrink(1.0);
+
     if color[3] == 0 {
         // checkerboard for "transparent"
         p.rect_filled(inner, 4, Color32::WHITE);
         let cell = inner.width() / 4.0;
+
         for row in 0..4 {
             for col in 0..4 {
                 if (row + col) % 2 == 0 {
@@ -449,15 +499,19 @@ pub(crate) fn swatch(ui: &mut egui::Ui, color: [u8; 4], selected: bool, size: f3
     } else {
         p.rect_filled(inner, 4, themed(rgba(color), dark));
     }
+
     p.rect_stroke(inner, 4, Stroke::new(1.0, Color32::from_black_alpha(25)), StrokeKind::Inside);
+
     if selected {
         p.rect_stroke(rect.expand(1.5), 5, Stroke::new(1.0, PRIMARY), StrokeKind::Outside);
     }
+
     response
 }
 
 pub(crate) fn color_picker(ui: &mut egui::Ui, rgba_value: &mut [u8; 4]) {
     let mut color = rgba(*rgba_value);
+
     if ui.color_edit_button_srgba(&mut color).tip("Mais cores").changed() {
         *rgba_value = [color.r(), color.g(), color.b(), color.a()];
     }
@@ -466,6 +520,7 @@ pub(crate) fn color_picker(ui: &mut egui::Ui, rgba_value: &mut [u8; 4]) {
 pub(crate) fn configure_visuals(ctx: &Context, dark: bool) {
     let c = UiColors::new(dark);
     let mut v = if dark { egui::Visuals::dark() } else { egui::Visuals::light() };
+
     v.selection.bg_fill = c.selected;
     v.selection.stroke = Stroke::new(1.0, PRIMARY);
     v.widgets.inactive.weak_bg_fill = c.surface_low;
@@ -508,14 +563,17 @@ pub(crate) const SYSTEM_SEMIBOLD: &str = "system-ui-semibold";
 /// The app's fonts; `ligatures` keeps the code font's (=>, !=, ::) joined.
 pub(crate) fn install_fonts(ctx: &Context, ligatures: bool) {
     let mut fonts = egui::FontDefinitions::default();
+
     fonts.font_data.insert("Assistant".into(), egui::FontData::from_static(ASSISTANT_FONT).into());
     fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "Assistant".into());
     fonts.font_data.insert(HAND_FONT.into(), egui::FontData::from_static(HAND_FACE).into());
     let mut names = vec![HAND_FONT.to_string(), "Assistant".into()];
+
     // symbols the bundled fonts lack (→ ✓ ★ …) come from the system, then egui's emoji font
     for (i, path) in SYMBOL_FONTS.iter().enumerate() {
         if let Ok(data) = fs::read(path) {
             let name = format!("symbols{i}");
+
             fonts.font_data.insert(name.clone(), egui::FontData::from_owned(data).into());
             names.push(name.clone());
             fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().push(name.clone());
@@ -523,21 +581,28 @@ pub(crate) fn install_fonts(ctx: &Context, ligatures: bool) {
             fonts.families.get_mut(&egui::FontFamily::Monospace).unwrap().push(name);
         }
     }
+
     let proportional = fonts.families[&egui::FontFamily::Proportional].clone();
     let faces = SYSTEM_FACES.iter().find_map(|(regular, semibold)| Some((fs::read(regular).ok()?, fs::read(semibold).ok()?)));
+
     for (family, data) in [(SYSTEM_FONT, faces.as_ref().map(|faces| &faces.0)), (SYSTEM_SEMIBOLD, faces.as_ref().map(|faces| &faces.1))] {
         let mut family_names = proportional.clone();
+
         if let Some(data) = data {
             fonts.font_data.insert(family.into(), egui::FontData::from_owned(data.clone()).into());
             family_names.insert(0, family.into());
         }
+
         fonts.families.insert(egui::FontFamily::Name(family.into()), family_names);
     }
+
     let egui_fallbacks: Vec<String> = fonts.families[&egui::FontFamily::Proportional].iter().filter(|n| !names.contains(n)).cloned().collect();
+
     names.extend(egui_fallbacks);
     fonts.families.insert(egui::FontFamily::Name(HAND_FONT.into()), names);
     crate::editor::theme::add_fonts(&mut fonts, ligatures);
     ctx.set_fonts(fonts);
+
     ctx.all_styles_mut(|s| {
         s.text_styles.insert(egui::TextStyle::Body, FontId::proportional(14.0));
         s.text_styles.insert(egui::TextStyle::Button, FontId::proportional(14.0));
@@ -546,6 +611,7 @@ pub(crate) fn install_fonts(ctx: &Context, ligatures: bool) {
         s.spacing.interact_size.y = 28.0;
         s.spacing.scroll = scroll_style();
     });
+
     ctx.options_mut(|o| o.zoom_with_keyboard = false);
 }
 

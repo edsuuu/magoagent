@@ -7,10 +7,12 @@ mod files;
 mod interface;
 mod scripted;
 mod shells;
+mod spacing;
 mod transcripts;
 
 fn rect_element(x: f32, y: f32, width: f32, height: f32, fill: Option<[u8; 4]>) -> Element {
     let mut e = DrawingApp::default().new_element(ElementKind::Rectangle { x, y, width, height });
+
     e.style.fill = fill;
     e
 }

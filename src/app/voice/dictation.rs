@@ -63,12 +63,15 @@ pub(crate) fn dictation_engine(api_chosen: bool, key: Option<String>) -> Result<
 /// What was heard at the end of the box, a space after what was there.
 pub(crate) fn dictated_into(draft: &mut String, text: &str) {
     let text = text.trim();
+
     if text.is_empty() {
         return;
     }
+
     if !draft.is_empty() && !draft.ends_with([' ', '\n']) {
         draft.push(' ');
     }
+
     draft.push_str(text);
 }
 
@@ -78,19 +81,24 @@ impl DrawingApp {
         if !super::DICTATION_ON && self.dictation.is_none() {
             return;
         }
+
         if self.dictation.take().is_some() {
             // off: a lower tick, as the call's mute
             self.dictation_tone = if cfg!(test) { None } else { crate::voice::chime(crate::voice::CALL_MUTE) };
+
             return;
         }
+
         if self.voice.on {
             self.voice_toggle();
         }
+
         // Codex's voice has no dictation: with it chosen the API hears, as it does when chosen itself
         let openai = match dictation_engine(self.prefs.voice_openai || self.prefs.voice_codex, crate::voice::openai::key(&self.prefs)) {
             Ok(openai) => openai,
             Err(why) => return self.toast(why),
         };
+
         let setup = VoiceSetup {
             language: self.voice_language().into(),
             pause: self.prefs.voice_pause,
@@ -99,16 +107,20 @@ impl DrawingApp {
             dictionary: self.prefs.dictionary.clone(),
             mic: self.prefs.voice_mic.clone(),
         };
+
         let shared = VoiceShared::default();
         let events = crate::voice::start(shared.clone(), setup);
+
         self.dictation = Some(Dictation { shared, events, ready: false, hearing: false, status: String::new(), tone: None });
     }
 
     /// Every frame while dictating: what was heard goes into the box; an error ends it, said in a toast.
     pub(crate) fn dictation_tick(&mut self, ctx: &Context) {
         let Some(dictation) = self.dictation.as_mut() else { return };
+
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
         let (mut heard, mut failed) = (Vec::new(), None);
+
         for event in dictation.events.try_iter() {
             match event {
                 VoiceEvent::Ready => {
@@ -123,9 +135,11 @@ impl DrawingApp {
                 VoiceEvent::Interrupt => {}
             }
         }
+
         for text in heard {
             dictated_into(&mut self.chat_draft, &text);
         }
+
         if let Some(why) = failed {
             self.dictation = None;
             self.toast(format!("Ditado parado: {why}"));
@@ -147,6 +161,7 @@ mod tests {
     #[test]
     fn what_is_dictated_goes_at_the_end_of_the_box() {
         let mut draft = String::new();
+
         dictated_into(&mut draft, " rode os testes ");
         assert_eq!(draft, "rode os testes");
         dictated_into(&mut draft, "e me diga");

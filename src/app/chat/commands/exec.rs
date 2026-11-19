@@ -17,37 +17,48 @@ impl DrawingApp {
         // while the login waits, the words in the box are the code the browser showed
         let code = self.chat_cmds.get_mut(id).filter(|r| matches!(r.kind, Kind::Login) && !text.trim_start().starts_with('/')).and_then(|r| {
             let stdin = r.stdin.as_mut()?;
+
             writeln!(stdin, "{}", text.trim()).and_then(|_| stdin.flush()).ok()
         });
+
         if code.is_some() {
             self.chat_note(id, "Código enviado ao login.");
+
             return true;
         }
+
         let parsed = self.chat_of(id).filter(|_| text == prompt).and_then(|c| parse(text, &c.agent));
         let Some(parsed) = parsed else { return self.chat_send(ctx, id, prompt) };
+
         match parsed {
             Err(error) => self.chat_note(id, error),
             Ok(local) => {
                 if self.chat_cmds.contains_key(id) && local != Local::Clear {
                     self.toast("Um comando ainda está rodando neste chat: espere ou pare com Esc.");
+
                     return false;
                 }
+
                 self.run_local(ctx, id, local);
             }
         }
+
         true
     }
 
     pub(super) fn run_local(&mut self, ctx: &Context, id: &str, local: Local) {
         let Some(chat) = self.chat_of(id) else { return };
+
         match local {
             Local::Clear => self.chat_clear(id),
             Local::Help => {
                 let mut lines = vec!["Comandos do chat".to_string()];
                 let custom = self.slash_custom(&chat);
+
                 for e in catalog(&chat.agent).iter().chain(&custom) {
                     lines.push(if e.args.is_empty() { format!("/{} · {}", e.name, e.desc) } else { format!("/{} {} · {}", e.name, e.args, e.desc) });
                 }
+
                 lines.push("Qualquer outro /comando vai direto ao agente.".into());
                 self.chat_note(id, lines.join("\n"));
             }
@@ -68,6 +79,7 @@ impl DrawingApp {
                             Local::Doctor => Kind::Plain("/doctor"),
                             _ => Kind::Plain("/update"),
                         };
+
                         self.start_cmd(ctx, id, args, kind);
                     }
                 }
@@ -77,9 +89,11 @@ impl DrawingApp {
 
     pub(super) fn chat_summary(&self, chat: &Chat) -> String {
         let (model, effort) = (agent_default(&chat.agent), (&chat.model, &chat.effort));
+
         let or_default = |own: &str, default: &str| {
             if own.is_empty() { format!("{} (padrão)", if default.is_empty() { "do agente" } else { default }) } else { own.into() }
         };
+
         format!(
             "Pasta: {}\nModelo: {}\nEsforço: {}\nPermissão: {}\n",
             chat.cwd,
@@ -92,38 +106,52 @@ impl DrawingApp {
     /// Runs the agent's CLI hidden in the chat's folder; what it prints comes in `poll_cmds`.
     pub(super) fn start_cmd(&mut self, ctx: &Context, id: &str, args: Vec<String>, kind: Kind) {
         let Some(chat) = self.chat_of(id) else { return };
+
         if wsl_settling() {
             self.chat_note(id, "O WSL ainda está sendo preparado: tente de novo em alguns segundos.");
+
             return;
         }
+
         let Some(cli) = agent_cli(&chat.agent) else {
             self.chat_note(id, format!("{} não foi encontrado no PATH nem no WSL.", chat.agent));
+
             return;
         };
+
         let mut command = cli.command();
+
         command.args(args).env("NO_COLOR", "1");
+
         if let Some(dir) = folder(&chat.cwd).filter(|d| d.is_dir()) {
             command.current_dir(dir);
         }
+
         let mut command = cli.finish(command);
         // a login may ask for the code the browser shows: its stdin stays open for the chat's box
         let stdin = if matches!(kind, Kind::Login) { std::process::Stdio::piped() } else { std::process::Stdio::null() };
+
         command.stdin(stdin).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+
         let mut child = match command.spawn() {
             Ok(child) => child,
             Err(error) => return self.chat_note(id, format!("Não foi possível rodar {}: {error}", chat.agent)),
         };
+
         let (tx, rx) = channel();
         let (stdout, stderr, stdin) = (child.stdout.take(), child.stderr.take(), child.stdin.take());
         let live = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let (live_out, live_err) = (live.clone(), live.clone());
         let repaint = ctx.clone();
+
         std::thread::spawn(move || {
             let errors = std::thread::spawn(move || stderr.map(|e| pump(e, &live_err)).unwrap_or_default());
             let out = stdout.map(|o| pump(o, &live_out)).unwrap_or_default();
             let _ = tx.send((out, errors.join().unwrap_or_default()));
+
             repaint.request_repaint();
         });
+
         self.chat_cmds.insert(id.to_string(), CmdRun { child, rx, since: self.now, kind, ctx: ctx.clone(), live, stdin, shown_url: false });
     }
 
@@ -132,6 +160,7 @@ impl DrawingApp {
         if let Some(mut run) = self.chat_cmds.remove(id) {
             let _ = run.child.kill();
             let _ = run.child.wait();
+
             self.chat_note(id, "Comando cancelado.");
         }
     }
@@ -139,16 +168,20 @@ impl DrawingApp {
     /// Each frame: the commands that ended put their output in the conversation.
     pub(crate) fn poll_cmds(&mut self) {
         let ids: Vec<String> = self.chat_cmds.keys().cloned().collect();
+
         for id in ids {
             // the login's address, in case the browser didn't open by itself
             let url = self.chat_cmds.get_mut(&id).filter(|r| matches!(r.kind, Kind::Login) && !r.shown_url).and_then(|r| {
                 let url = first_url(&clean(&r.live.lock().unwrap()))?;
+
                 r.shown_url = true;
                 Some(url)
             });
+
             if let Some(url) = url {
                 self.chat_note(&id, format!("Se o navegador não abriu, abra este endereço: {url}"));
             }
+
             let Some((out, err)) = self.chat_cmds.get(&id).and_then(|r| r.rx.try_recv().ok()) else { continue };
             let Some(mut run) = self.chat_cmds.remove(&id) else { continue };
             let ok = run.child.wait().is_ok_and(|s| s.success());
@@ -166,12 +199,14 @@ impl DrawingApp {
                     if let Ok(args) = cli_args(&agent, &Local::Status) {
                         self.start_cmd(&run.ctx, &id, args, Kind::Check);
                     }
+
                     continue;
                 }
                 Kind::Check => match status(&said) {
                     (true, who) if agent == "codex" => format!("Pronto, login feito. {who}"),
                     (true, who) if self.slash.sent.contains_key(&id) => {
                         self.slash.retry.insert(id.clone());
+
                         format!(
                             "Pronto. {who}.
 Clique em Mandar de novo para reenviar a última mensagem."
@@ -183,6 +218,7 @@ Clique em Mandar de novo para reenviar a última mensagem."
                 Kind::Status(summary) => format!("{summary}{}", status(&said).1),
                 Kind::Plain(title) => format!("{title}\n{}", if said.is_empty() { "(sem saída)" } else { &said }),
             };
+
             self.chat_note(&id, note);
             run.ctx.request_repaint();
         }
@@ -194,14 +230,17 @@ Clique em Mandar de novo para reenviar a última mensagem."
     pub(crate) fn chat_clear(&mut self, id: &str) {
         self.chat_stop(id);
         let kept = self.archive_conversation(id);
+
         self.transcripts.insert(id.to_string(), Transcript::new(PathBuf::new()));
         self.chat_images.borrow_mut().clear();
         self.save_chats();
         self.chat_transcript(id).items.push(ChatItem::System(crate::app::chat::direct::new_session_mark(now_ms())));
+
         let note = match kept {
             Some(title) => format!("A conversa anterior ficou na lista Conversas, como \"{title}\": abra para ler ou continuar."),
             None => "A próxima mensagem começa a conversa do zero.".into(),
         };
+
         self.chat_note(id, note);
     }
 }

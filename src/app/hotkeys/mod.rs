@@ -143,15 +143,18 @@ pub(crate) fn keys_of(def: &ShortcutDef, stored: &Bindings) -> Vec<Combo> {
 /// `def`'s keys as Ajustes shows them: "Ctrl+Shift+Z ou Ctrl+Y", "Sem tecla".
 pub(crate) fn shown_keys(def: &ShortcutDef, stored: &Bindings) -> String {
     let combos = keys_of(def, stored);
+
     if combos.is_empty() {
         return display("");
     }
+
     combos.iter().map(|combo| keys::combo_label(combo, def.scope() == Scope::App)).collect::<Vec<_>>().join(" ou ")
 }
 
 /// Keeps `binding` for `def`; one that is the default (its only keys, on) is not kept at all.
 pub(crate) fn set_binding(stored: &mut Bindings, def: &ShortcutDef, binding: Binding) {
     let default = matches!(def.defaults, [keys] if parse_keys(keys).is_some() && parse_keys(keys) == parse_keys(&binding.keys));
+
     if binding.enabled && default {
         stored.remove(def.id);
     } else {
@@ -195,14 +198,18 @@ impl Status {
 /// What each action registers, in `ACTIONS`' order, before the system is asked anything: its combination, or why none.
 pub(crate) fn plan(stored: &Bindings) -> Vec<Result<Combo, Status>> {
     let mut seen = HashSet::new();
+
     ACTIONS
         .iter()
         .map(|def| {
             let binding = effective(def, stored);
+
             if !binding.enabled || binding.keys.trim().is_empty() {
                 return Err(Status::Off);
             }
+
             let combo = parse(&binding.keys).ok_or(Status::Invalid)?;
+
             if seen.insert(combo) { Ok(combo) } else { Err(Status::Duplicate) }
         })
         .collect()
@@ -252,9 +259,11 @@ impl DrawingApp {
         let stored = &mut self.prefs.shortcuts;
         let global = def.scope() == Scope::Global;
         let refused = |problem: editor::Problem, combo: Option<&Combo>| format!("{} Nada mudou.", problem.words(def, combo));
+
         match value.trim() {
             switch @ ("off" | "desligado" | "on" | "ligado") if global => {
                 let binding = Binding { enabled: matches!(switch, "on" | "ligado"), ..effective(def, stored) };
+
                 set_binding(stored, def, binding);
             }
             "none" | "nenhuma" | "clear" | "limpar" | "off" | "desligado" => {
@@ -263,10 +272,13 @@ impl DrawingApp {
             "default" | "padrão" => editor::apply(def, editor::Pending::Default, stored).map_err(|problem| refused(problem, None))?,
             keys => {
                 let combo = parse_keys(keys).ok_or_else(|| format!("{keys} não é uma combinação de teclas: use algo como Ctrl+Alt+K."))?;
+
                 editor::apply(def, editor::Pending::Keys(combo), stored).map_err(|problem| refused(problem, Some(&combo)))?;
             }
         }
+
         let off = if global && !enabled(def, stored) { ", desligado" } else { "" };
+
         Ok(format!("{}: {}{off}.", def.label, shown_keys(def, stored)))
     }
 
@@ -276,22 +288,30 @@ impl DrawingApp {
         if !self.settings_open || settings::SETTINGS_TABS.get(self.settings_tab) != Some(&"Atalhos") {
             self.hotkeys.recording = None;
         }
+
         let heard = self.prefs.island && self.hotkeys.recording.is_none();
         let plan = plan(&self.prefs.shortcuts);
+
         if self.hotkeys.applied.as_ref().is_none_or(|(applied, was_heard)| *applied != plan || *was_heard != heard) {
             // the old thread lets its keys go before the new one asks for them
             self.hotkeys.listener = None;
             let keys: Vec<(usize, Combo)> = plan.iter().enumerate().filter_map(|(index, outcome)| Some((index, (*outcome).ok()?))).collect();
             let real = heard && !cfg!(test) && self.script.is_none();
+
             if real && !keys.is_empty() {
                 let wake = ctx.clone();
+
                 self.hotkeys.listener = os::listen(keys, move || wake.request_repaint());
             }
+
             let waiting = if real && self.hotkeys.listener.is_none() { Status::Unsupported } else { Status::Paused };
+
             self.hotkeys.statuses = plan.iter().map(|outcome| outcome.err().unwrap_or(waiting)).collect();
             self.hotkeys.applied = Some((plan, heard));
         }
+
         let events: Vec<os::Event> = self.hotkeys.listener.iter().flat_map(|listener| listener.events.try_iter()).collect();
+
         for event in events {
             match event {
                 os::Event::Registered(results) => {
@@ -322,20 +342,26 @@ mod tests {
     #[test]
     fn every_default_is_ctrl_alt_on_a_key_abnt2_types_nothing_with_and_no_two_are_the_same() {
         let plan = plan(&Bindings::new());
+
         assert_eq!(plan.len(), ACTIONS.len());
+
         for (def, outcome) in ACTIONS.iter().zip(&plan) {
             let combo = outcome.unwrap_or_else(|status| panic!("{}: {status:?}", def.id));
+
             assert!(keys::is_altgr(&combo), "{}", def.id);
             assert!(!keys::ABNT2_ALTGR.iter().any(|(key, _)| *key == combo.key), "{} types a character on ABNT2", def.id);
             assert_eq!([keys::format(&combo).as_str()], def.defaults, "{}: kept as it is written", def.id);
         }
+
         let ids: Vec<&str> = ACTIONS.iter().map(|def| def.id).collect();
+
         assert_eq!(ids, ["openChat", "goToAlert", "jumpToTerminal", "nextPill", "prevPill", "muteToggle"], "the ids are kept in prefs.json");
     }
 
     #[test]
     fn no_two_defaults_clash_and_none_is_reserved() {
         let stored = Bindings::new();
+
         for def in every() {
             for combo in keys_of(def, &stored) {
                 assert_eq!(editor::check(def, &combo, &stored), Ok(()), "{}: {}", def.id, keys::format(&combo));
@@ -347,12 +373,14 @@ mod tests {
     fn the_keys_set_in_ajustes_replace_the_defaults_and_one_can_be_turned_off() {
         let mut stored = Bindings::new();
         let (chat, alert, terminal, mute) = (&ACTIONS[0], &ACTIONS[1], &ACTIONS[2], &ACTIONS[5]);
+
         set_binding(&mut stored, chat, bound("Ctrl+Shift+K", true));
         set_binding(&mut stored, mute, bound("Ctrl+Alt+S", false));
         set_binding(&mut stored, terminal, bound("", true));
         assert_eq!(effective(chat, &stored).keys, "Ctrl+Shift+K");
         assert_eq!(effective(alert, &stored), bound("Ctrl+Alt+A", true), "untouched: its default");
         let plan = plan(&stored);
+
         assert_eq!(plan[0], Ok(Combo { ctrl: true, alt: false, shift: true, win: false, key: Key::K }));
         assert_eq!((plan[2], plan[5]), (Err(Status::Off), Err(Status::Off)), "without a key, and turned off");
         assert_eq!(keys_of(mute, &stored), [parse("Ctrl+Alt+S").unwrap()], "turned off, its keys are still its own");
@@ -363,8 +391,10 @@ mod tests {
         assert!(!stored.contains_key("muteToggle"));
         // kept in prefs.json by id; an entry written by hand without `enabled` stays on
         let json = serde_json::to_string(&stored).unwrap();
+
         assert_eq!(json, r#"{"jumpToTerminal":{"keys":"","enabled":true},"openChat":{"keys":"Ctrl+Shift+K","enabled":true}}"#);
         let by_hand: Bindings = serde_json::from_str(r#"{"openChat":{"keys":"Ctrl+Alt+K"}}"#).unwrap();
+
         assert!(by_hand["openChat"].enabled);
     }
 
@@ -372,28 +402,34 @@ mod tests {
     fn what_is_saved_comes_back_from_the_prefs_and_older_prefs_keep_every_default() {
         let mut prefs = Prefs::default();
         let (save, redo, chat) = (find("save").unwrap(), find("redo").unwrap(), find("openChat").unwrap());
+
         editor::apply(save, editor::Pending::Keys(parse_keys("Ctrl+Alt+F5").unwrap()), &mut prefs.shortcuts).unwrap();
         editor::apply(redo, editor::Pending::Clear, &mut prefs.shortcuts).unwrap();
         let json = serde_json::to_string(&prefs).unwrap();
         let back: Prefs = serde_json::from_str(&json).unwrap();
+
         assert_eq!(back.shortcuts, prefs.shortcuts);
         assert_eq!(shown_keys(save, &back.shortcuts), keys_label("Cmd+Alt+F5"));
         assert_eq!(shown_keys(redo, &back.shortcuts), "Sem tecla");
         // a prefs.json from before the app's shortcuts could change: its global keys, and the defaults for the rest
         let old: Prefs = serde_json::from_str(r#"{"shortcuts":{"openChat":{"keys":"Ctrl+Alt+K","enabled":true}}}"#).unwrap();
+
         assert_eq!(shown_keys(chat, &old.shortcuts), "Ctrl+Alt+K");
         assert_eq!(shown_keys(save, &old.shortcuts), keys_label("Cmd+S"));
         assert_eq!(shown_keys(redo, &old.shortcuts), keys_label("Cmd+Shift+Z ou Cmd+Y"));
         let older: Prefs = serde_json::from_str("{}").unwrap();
+
         assert!(older.shortcuts.is_empty(), "no shortcuts at all: every one on its default");
     }
 
     #[test]
     fn the_same_keys_twice_register_once_and_a_bad_combination_registers_nothing() {
         let mut stored = Bindings::new();
+
         stored.insert("jumpToTerminal".into(), bound("Ctrl+Alt+A", true));
         stored.insert("muteToggle".into(), bound("S", true));
         let planned = plan(&stored);
+
         assert!(planned[1].is_ok(), "the first one keeps the keys");
         assert_eq!((planned[2], planned[5]), (Err(Status::Duplicate), Err(Status::Invalid)));
         // a shortcut turned off is not registered
@@ -405,6 +441,7 @@ mod tests {
     fn the_mcp_sets_a_shortcuts_keys_turns_it_off_and_brings_the_default_back() {
         let mut app = DrawingApp::default();
         let set = |app: &mut DrawingApp, name: &str, value: &str| app.act("set_setting", &json!({ "name": name, "value": value }));
+
         assert_eq!(set(&mut app, "shortcut_openChat", "ctrl+shift+K").unwrap(), "Abrir o chat da ilha: Ctrl+Shift+K.");
         assert_eq!(app.prefs.shortcuts["openChat"], bound("Ctrl+Shift+K", true));
         assert_eq!(set(&mut app, "shortcut_openChat", "off").unwrap(), "Abrir o chat da ilha: Ctrl+Shift+K, desligado.");
@@ -415,6 +452,7 @@ mod tests {
         assert!(set(&mut app, "shortcut_nada", "off").unwrap_err().contains("muteToggle"));
         // the app's own: the keys of another one are refused, saying whose
         let taken = set(&mut app, "shortcut_save", "Ctrl+Z").unwrap_err();
+
         assert!(taken.contains("Desfazer") && taken.contains("Nada mudou"), "{taken}");
         assert!(set(&mut app, "shortcut_openChat", "Ctrl+S").unwrap_err().contains("Salvar"), "nor a global one over an app's");
         assert_eq!(set(&mut app, "shortcut_save", "Ctrl+Alt+F5").unwrap(), keys_label("Salvar: Cmd+Alt+F5."));
@@ -424,9 +462,11 @@ mod tests {
         let tools = crate::mcp::app_tools::app_tools();
         let tool = tools.iter().find(|tool| tool["name"] == "set_setting").unwrap();
         let names = tool["inputSchema"]["properties"]["name"]["enum"].as_array().unwrap();
+
         for def in every() {
             assert!(names.contains(&json!(format!("shortcut_{}", def.id))), "{}", def.id);
         }
+
         assert!(tool["description"].as_str().unwrap().contains("shortcut_save (salvar)"));
     }
 
@@ -434,12 +474,15 @@ mod tests {
     fn a_shortcut_pressed_runs_its_action_and_the_system_says_which_ones_it_took() {
         let ctx = Context::default();
         let mut app = DrawingApp::default();
+
         app.prefs.island = true;
         let (sender, events) = std::sync::mpsc::channel();
         let bindings = app.prefs.shortcuts.clone();
+
         app.hotkeys.listen_to(events, &bindings, true);
         sender.send(os::Event::Registered(vec![(0, true), (1, false)])).unwrap();
         let sound = app.prefs.island_sound;
+
         sender.send(os::Event::Pressed(5)).unwrap();
         app.hotkeys_tick(&ctx);
         assert_eq!(app.hotkeys.statuses[..3], [Status::Active, Status::InUse, Status::Paused]);

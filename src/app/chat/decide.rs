@@ -24,6 +24,7 @@ pub(crate) struct Question {
 /// The questions of an AskUserQuestion's input; none for any other tool.
 pub(crate) fn questions(input: &Value) -> Vec<Question> {
     let text = |value: &Value| value.as_str().unwrap_or_default().to_string();
+
     input["questions"]
         .as_array()
         .into_iter()
@@ -65,6 +66,7 @@ impl PersonAsk {
         let input = request["input"].clone();
         let questions = questions(&input);
         let count = questions.len();
+
         PersonAsk {
             chat,
             tool: request["tool_name"].as_str().unwrap_or_default().to_string(),
@@ -84,9 +86,11 @@ impl PersonAsk {
     /// them for a multiple choice; anything else (nothing, two for one) fails there and the terminal asks.
     fn hook_answers(&self) -> serde_json::Map<String, Value> {
         let mut answers = serde_json::Map::new();
+
         for (index, question) in self.questions.iter().enumerate() {
             let labels: Vec<Value> =
                 self.picked[index].iter().filter_map(|option| question.options.get(*option)).map(|(label, _)| label.clone().into()).collect();
+
             let answer = if question.multiple {
                 Value::Array(labels)
             } else if labels.len() == 1 {
@@ -94,21 +98,27 @@ impl PersonAsk {
             } else {
                 Value::Null
             };
+
             answers.insert(question.text.clone(), answer);
         }
+
         answers
     }
 
     /// Each question's answer as Claude Code takes it: the labels picked (joined by ", ") and what was typed.
     pub(crate) fn answers(&self) -> serde_json::Map<String, Value> {
         let mut answers = serde_json::Map::new();
+
         for (index, question) in self.questions.iter().enumerate() {
             let mut parts: Vec<String> = self.picked[index].iter().filter_map(|option| question.options.get(*option).map(|(label, _)| label.clone())).collect();
+
             if !self.other[index].trim().is_empty() {
                 parts.push(self.other[index].trim().to_string());
             }
+
             answers.insert(question.text.clone(), parts.join(", ").into());
         }
+
         answers
     }
 
@@ -122,18 +132,23 @@ impl PersonAsk {
     pub(crate) fn pick(&mut self, option: usize) -> bool {
         let step = self.step.min(self.questions.len().saturating_sub(1));
         let Some(question) = self.questions.get(step) else { return false };
+
         if option >= question.options.len() {
             return false;
         }
+
         let picked = &mut self.picked[step];
+
         if question.multiple {
             if picked.contains(&option) {
                 picked.retain(|chosen| *chosen != option)
             } else {
                 picked.push(option)
             }
+
             return false;
         }
+
         *picked = vec![option];
         // one answer: an option picked takes the place of words typed in "Outro"
         self.other[step].clear();
@@ -145,12 +160,15 @@ impl PersonAsk {
     pub(crate) fn answer_other(&mut self) -> bool {
         let step = self.step.min(self.questions.len().saturating_sub(1));
         let Some(question) = self.questions.get(step) else { return false };
+
         if self.other[step].trim().is_empty() {
             return false;
         }
+
         if !question.multiple {
             self.picked[step].clear();
         }
+
         self.next()
     }
 
@@ -158,11 +176,13 @@ impl PersonAsk {
     /// written in "Outro" goes as the reason of a refusal, which Claude Code reads and goes on with.
     pub(crate) fn answers_in_words(&self) -> String {
         let answers = self.answers();
+
         let lines: Vec<String> = self
             .questions
             .iter()
             .map(|question| format!("- {}: {}", question.text, answers.get(&question.text).and_then(Value::as_str).unwrap_or_default()))
             .collect();
+
         format!("A pessoa respondeu no MagoAgent (com palavras próprias, fora das opções); siga com estas respostas:\n{}", lines.join("\n"))
     }
 
@@ -170,8 +190,10 @@ impl PersonAsk {
     pub(crate) fn next(&mut self) -> bool {
         if self.step + 1 < self.questions.len() {
             self.step += 1;
+
             return false;
         }
+
         self.complete()
     }
 
@@ -185,12 +207,15 @@ impl PersonAsk {
         if !allow {
             return deny("A pessoa recusou.");
         }
+
         let mut input = self.input.clone();
+
         if !self.questions.is_empty()
             && let Some(object) = input.as_object_mut()
         {
             object.insert("answers".into(), Value::Object(self.answers()));
         }
+
         json!({ "behavior": "allow", "updatedInput": input }).to_string()
     }
 
@@ -209,6 +234,7 @@ impl PersonAsk {
             Some(source) if self.other.iter().any(|other| !other.trim().is_empty()) => refusal(&source.event, &self.answers_in_words()),
             Some(source) => question_answer(&source.event, &self.input, &self.hook_answers()),
         };
+
         let _ = self.reply.send(Ok(text));
     }
 
@@ -224,12 +250,14 @@ impl PersonAsk {
         let field = SAYS.iter().find_map(|key| self.input[*key].as_str().filter(|text| !text.trim().is_empty()));
         let first = || self.input.as_object().and_then(|object| object.values().find_map(Value::as_str));
         let text = field.or_else(first).map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "));
+
         text.unwrap_or_else(|| self.tool_label())
     }
 
     /// The tool asked for, readable: `mcp__ccd_session__start_session` is "start session · ccd session".
     pub(crate) fn tool_label(&self) -> String {
         let words = |name: &str| name.replace('_', " ").trim().to_string();
+
         match self.tool.strip_prefix("mcp__").and_then(|rest| rest.split_once("__")) {
             Some((server, tool)) => format!("{} · {}", words(tool), words(server)),
             None => words(&self.tool),
@@ -240,13 +268,16 @@ impl PersonAsk {
     /// as indented JSON.
     pub(crate) fn details(&self) -> String {
         let Some(object) = self.input.as_object() else { return serde_json::to_string_pretty(&self.input).unwrap_or_default() };
+
         let fields = object.iter().map(|(key, value)| {
             let shown = match value {
                 Value::String(text) => text.clone(),
                 other => serde_json::to_string_pretty(other).unwrap_or_default(),
             };
+
             if shown.contains('\n') { format!("{key}:\n{shown}") } else { format!("{key}: {shown}") }
         });
+
         fields.collect::<Vec<_>>().join("\n\n")
     }
 }
@@ -261,12 +292,15 @@ impl DrawingApp {
     pub(crate) fn ask_person(&mut self, from: &str, request: &Value, reply: Sender<Result<String, String>>) {
         if !self.is_chat(from) {
             let _ = reply.send(Ok(deny("Só um chat do app pergunta à pessoa por aqui.")));
+
             return;
         }
+
         // one at a time per chat: a new one means the agent gave the old one up
         self.person_asks.get_mut().retain(|ask| ask.chat != from);
         let ask = PersonAsk::new(from.to_string(), request, reply);
         let name = self.chats.iter().find(|chat| chat.id == from).map(|chat| chat.name.clone()).unwrap_or_default();
+
         self.toast(if ask.questions.is_empty() { format!("{name} pede permissão") } else { format!("{name} tem uma pergunta para você") });
         self.person_asks.get_mut().push(ask);
     }
@@ -279,6 +313,7 @@ impl DrawingApp {
     /// Sends the decision of `chat`'s ask.
     pub(crate) fn answer_person(&self, chat: &str, allow: bool) {
         let mut asks = self.person_asks.borrow_mut();
+
         if let Some(index) = asks.iter().position(|ask| ask.chat == chat) {
             asks.remove(index).send(allow);
         }
@@ -287,6 +322,7 @@ impl DrawingApp {
     /// The MCP's `chat_decide`: the Maestro answers for the person (`answers`: question → answer; `allow` false refuses).
     pub(crate) fn act_chat_decide(&mut self, args: &Value) -> Result<String, String> {
         let wanted = args["chat"].as_str().unwrap_or_default().trim().to_lowercase();
+
         let chat = self
             .person_asks
             .borrow()
@@ -294,7 +330,9 @@ impl DrawingApp {
             .map(|ask| ask.chat.clone())
             .find(|id| wanted.is_empty() || *id == wanted || self.chats.iter().any(|chat| chat.id == *id && chat.name.to_lowercase() == wanted))
             .ok_or("Nenhum chat esperando uma decisão.")?;
+
         let allow = args["allow"].as_bool().unwrap_or(true);
+
         if let Some(ask) = self.person_asks.get_mut().iter_mut().find(|ask| ask.chat == chat) {
             for (index, question) in ask.questions.clone().iter().enumerate() {
                 if let Some(answer) = args["answers"][&question.text].as_str() {
@@ -304,11 +342,14 @@ impl DrawingApp {
                     }
                 }
             }
+
             if allow && !ask.complete() {
                 let missing: Vec<String> = ask.questions.iter().map(|question| question.text.clone()).collect();
+
                 return Err(format!("Responda todas as perguntas em `answers`: {}", missing.join(" | ")));
             }
         }
+
         self.answer_person(&chat, allow);
         Ok(if allow { "Respondido.".into() } else { "Recusado.".into() })
     }
@@ -317,9 +358,11 @@ impl DrawingApp {
     /// longer runs.
     pub(crate) fn decide_card(&self, ui: &mut egui::Ui, chat: &str, look: &Look, time: f64) {
         let mut asks = self.person_asks.borrow_mut();
+
         if !self.chat_runs.contains_key(chat) && !chat.starts_with(ASK_PREFIX) {
             asks.retain(|ask| ask.chat != chat);
         }
+
         let Some(index) = asks.iter().position(|ask| ask.chat == chat) else { return };
         let name = self.chats.iter().find(|item| item.id == chat).map(|item| item.name.clone()).unwrap_or_default();
         let card = AmberCard::new(look.dark);
@@ -331,38 +374,49 @@ impl DrawingApp {
         let name = outside.as_ref().map_or(name, |(label, _)| label.clone());
         let guarded = ask.guarded(time);
         let before = (ask.picked.clone(), ask.other.clone(), ask.step);
+
         card.frame().show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 6.0;
             let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 20.0), Sense::hover());
+
             pulse_dot(ui.painter(), Pos2::new(rect.left() + 5.0, rect.center().y), 4.5, AMBER, 2.0, time);
+
             let head = match (outside.is_some(), ask.questions.is_empty()) {
                 (true, true) => format!("{name} precisa de permissão: {}", ask.tool),
                 (true, false) => format!("{name} está perguntando"),
                 (false, true) => format!("{name} pede permissão: {}", ask.tool),
                 (false, false) => format!("{name} precisa de você"),
             };
+
             bold(ui.painter(), Pos2::new(rect.left() + 20.0, rect.top()), &head, 14.0, title);
+
             if ask.questions.is_empty() {
                 // a permission: what it is about, Permitir / Negar
                 let summary = ask.summary();
+
                 card.well_frame().inner_margin(egui::Margin::symmetric(12, 8)).show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     ui.add(egui::Label::new(egui::RichText::new(summary).monospace().size(13.0).color(look.text)).wrap());
                 });
+
                 ui.horizontal(|ui| {
                     if pill(ui, "Permitir", true, look, edge).clicked() {
                         decided = Some(true);
                     }
+
                     if pill(ui, "Negar", false, look, edge).clicked() {
                         decided = Some(false);
                     }
+
                     if outside.is_some() && pill(ui, "Responder no terminal", false, look, edge).clicked() {
                         terminal = true;
                     }
                 });
+
                 return;
             }
+
             // the questions' tabs, as Claude Code's: their headers, the one shown lit, ✓ on the answered
             if ask.questions.len() > 1 {
                 ui.horizontal(|ui| {
@@ -370,18 +424,23 @@ impl DrawingApp {
                         let answered = !ask.picked[step].is_empty() || !ask.other[step].trim().is_empty();
                         let header = &ask.questions[step].header;
                         let label = format!("{}{}", if answered { "✓ " } else { "" }, if header.is_empty() { format!("{}", step + 1) } else { header.clone() });
+
                         if pill(ui, &label, step == ask.step, look, edge).clicked() {
                             ask.step = step;
                         }
                     }
                 });
             }
+
             let step = ask.step.min(ask.questions.len() - 1);
             let question = ask.questions[step].clone();
+
             ui.add(egui::Label::new(egui::RichText::new(&question.text).size(14.5).color(look.text)).wrap());
+
             if question.multiple {
                 ui.label(egui::RichText::new("Escolha uma ou mais").size(12.0).color(look.muted));
             }
+
             for (option, (label, meaning)) in question.options.iter().enumerate() {
                 let on = ask.picked[step].contains(&option);
                 // the whole label and what it means, wrapped
@@ -395,19 +454,25 @@ impl DrawingApp {
                 let response = response.on_hover_cursor(CursorIcon::PointingHand);
                 let painter = ui.painter();
                 let ground = if response.hovered() { AMBER.gamma_multiply(0.22) } else { well };
+
                 painter.rect(rect, 8, ground, Stroke::new(1.0, if on { AMBER } else { well_edge }), StrokeKind::Inside);
                 let title_bottom = rect.top() + 8.0 + title_galley.size().y;
+
                 painter.galley(Pos2::new(rect.left() + 12.0, rect.top() + 8.0), title_galley, look.text);
+
                 if let Some(galley) = meaning_galley {
                     painter.galley(Pos2::new(rect.left() + 12.0, title_bottom + 3.0), galley, look.muted);
                 }
+
                 if response.clicked() {
                     let picked = &mut ask.picked[step];
+
                     if question.multiple {
                         if on { picked.retain(|chosen| *chosen != option) } else { picked.push(option) }
                     } else {
                         *picked = vec![option];
                         ask.other[step].clear();
+
                         // one answer: on to the next question, or send when it was the last
                         if step + 1 < ask.questions.len() {
                             ask.step = step + 1;
@@ -417,45 +482,57 @@ impl DrawingApp {
                     }
                 }
             }
+
             // another answer, written (a session outside the app gets it as words: `answers_in_words`)
             {
                 let other = &mut ask.other[step];
+
                 card.well_frame().inner_margin(egui::Margin::symmetric(10, 6)).show(ui, |ui| {
                     let field = egui::TextEdit::singleline(other)
                         .hint_text("Outra resposta…")
                         .frame(egui::Frame::NONE)
                         .text_color(look.text)
                         .desired_width(f32::INFINITY);
+
                     ui.add(field);
                 });
             }
+
             ui.horizontal(|ui| {
                 let last = step + 1 == ask.questions.len();
+
                 if step > 0 && pill(ui, "Voltar", false, look, edge).clicked() {
                     ask.step = step - 1;
                 }
+
                 if !last && pill(ui, "Próxima", true, look, edge).clicked() {
                     ask.step = step + 1;
                 }
+
                 if last && ask.complete() && pill(ui, "Enviar", true, look, edge).clicked() {
                     decided = Some(true);
                 }
+
                 if pill(ui, "Recusar", false, look, edge).clicked() {
                     decided = Some(false);
                 }
+
                 if outside.is_some() && pill(ui, "Responder no terminal", false, look, edge).clicked() {
                     terminal = true;
                 }
             });
         });
+
         if guarded {
             (ask.picked, ask.other, ask.step) = before;
             (decided, terminal) = (None, false);
         }
+
         if terminal {
             if let Some((_, session)) = outside {
                 self.outside.declined.borrow_mut().push((session, now_ms()));
             }
+
             asks.remove(index).send_terminal();
         } else if let Some(allow) = decided {
             asks.remove(index).send(allow);
@@ -468,11 +545,13 @@ fn pill(ui: &mut egui::Ui, text: &str, strong: bool, look: &Look, edge: Color32)
     let galley = ui.painter().layout_no_wrap(text.to_string(), FontId::proportional(13.5), look.text);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(galley.size().x + 24.0, 30.0), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
+
     let ground = match (strong, response.hovered()) {
         (true, _) => AMBER.gamma_multiply(if response.hovered() { 0.4 } else { 0.28 }),
         (false, true) => AMBER.gamma_multiply(0.18),
         (false, false) => Color32::TRANSPARENT,
     };
+
     ui.painter().rect(rect, 15, ground, Stroke::new(1.0, edge), StrokeKind::Inside);
     ui.painter().galley(Pos2::new(rect.center().x - galley.size().x / 2.0, rect.center().y - galley.size().y / 2.0), galley, look.text);
     response
@@ -484,16 +563,19 @@ mod tests {
 
     fn asked() -> (PersonAsk, std::sync::mpsc::Receiver<Result<String, String>>) {
         let (reply, answers) = std::sync::mpsc::channel();
+
         let request = json!({ "tool_name": "AskUserQuestion", "input": { "questions": [
             { "question": "Qual cor?", "header": "Cor", "multiSelect": false, "options": [{ "label": "Azul", "description": "fria" }, { "label": "Verde" }] },
             { "question": "Quais frutas?", "header": "Frutas", "multiSelect": true, "options": [{ "label": "Maçã" }, { "label": "Uva" }] },
         ] } });
+
         (PersonAsk::new("chat".into(), &request, reply), answers)
     }
 
     #[test]
     fn the_answers_go_back_as_claude_code_takes_them() {
         let (mut ask, answers) = asked();
+
         assert_eq!(ask.questions.len(), 2);
         assert_eq!(ask.questions[0].options[0], ("Azul".to_string(), "fria".to_string()));
         assert!(ask.questions[1].multiple && !ask.complete());
@@ -503,6 +585,7 @@ mod tests {
         assert!(ask.complete());
         ask.send(true);
         let sent: Value = serde_json::from_str(&answers.recv().unwrap().unwrap()).unwrap();
+
         assert_eq!(sent["behavior"], "allow");
         assert_eq!(sent["updatedInput"]["answers"], json!({ "Qual cor?": "Verde", "Quais frutas?": "Maçã, Uva, banana" }));
         assert_eq!(sent["updatedInput"]["questions"][0]["header"], "Cor", "the questions stay as they came");
@@ -511,6 +594,7 @@ mod tests {
     #[test]
     fn a_pick_answers_and_moves_on_and_a_multiple_choice_waits_for_ok() {
         let (mut ask, _answers) = asked();
+
         assert!(!ask.pick(5), "an option that isn't there does nothing");
         assert!(!ask.pick(1) && ask.step == 1, "one answer goes on to the next question");
         assert!(!ask.pick(0) && !ask.pick(1) && !ask.pick(0), "a multiple choice only ticks");
@@ -522,6 +606,7 @@ mod tests {
     #[test]
     fn words_of_ones_own_take_the_place_of_the_option_and_the_other_way_round() {
         let (mut ask, _answers) = asked();
+
         assert!(!ask.answer_other(), "nothing typed: nothing answered");
         ask.picked[0] = vec![0];
         ask.other[0] = "Roxo".into();
@@ -533,12 +618,15 @@ mod tests {
         assert!(ask.answer_other(), "the last question answered");
         assert_eq!(ask.picked[1], vec![1]);
         assert_eq!(Value::Object(ask.answers()), json!({ "Qual cor?": "Roxo", "Quais frutas?": "Uva, Caqui" }));
+
         assert_eq!(
             ask.answers_in_words(),
             "A pessoa respondeu no MagoAgent (com palavras próprias, fora das opções); siga com estas respostas:\n- Qual cor?: Roxo\n- Quais frutas?: Uva, Caqui"
         );
+
         // an option picked after the words takes their place
         let (mut ask, _answers) = asked();
+
         ask.other[0] = "Roxo".into();
         ask.pick(1);
         assert!(ask.other[0].is_empty() && ask.picked[0] == vec![1]);
@@ -548,6 +636,7 @@ mod tests {
     fn a_permission_is_allowed_as_it_came_or_denied() {
         let (reply, answers) = std::sync::mpsc::channel();
         let ask = PersonAsk::new("chat".into(), &json!({ "tool_name": "Bash", "input": { "command": "rm -rf build" } }), reply);
+
         assert!(ask.questions.is_empty());
         assert_eq!(ask.summary(), "rm -rf build");
         assert_eq!(ask.tool_label(), "Bash");
@@ -559,16 +648,20 @@ mod tests {
     #[test]
     fn another_tools_permission_reads_as_text_not_json() {
         let (reply, _answers) = std::sync::mpsc::channel();
+
         let request = json!({
             "tool_name": "mcp__ccd_session__hand_off_to_session",
             "input": { "title": "Vídeo do app", "remaining_plan": "Gravar a cena.\nMontar o vídeo.", "tags": ["a", "b"] }
         });
+
         let ask = PersonAsk::new("chat".into(), &request, reply);
+
         assert_eq!(ask.summary(), "Vídeo do app");
         assert_eq!(ask.tool_label(), "hand off to session · ccd session");
         assert_eq!(ask.details(), "title: Vídeo do app\n\nremaining_plan:\nGravar a cena.\nMontar o vídeo.\n\ntags:\n[\n  \"a\",\n  \"b\"\n]");
         let (reply, _answers) = std::sync::mpsc::channel();
         let bare = PersonAsk::new("chat".into(), &json!({ "tool_name": "mcp__app__ping", "input": { "times": 3 } }), reply);
+
         assert_eq!(bare.summary(), "ping · app", "no text: the tool's name, not the JSON");
     }
 }

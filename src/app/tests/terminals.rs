@@ -5,16 +5,20 @@ fn a_terminal_taken_by_undo_keeps_its_shell_while_redo_can_bring_it_back() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+
     e.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
     let id = e.id.clone();
+
     app.snapshot();
     app.scene.elements.push(e);
     let program = if cfg!(windows) { ("powershell", &["-NoProfile", "-Command", "Start-Sleep 30"][..]) } else { ("sh", &["-c", "sleep 30"][..]) };
     let mut session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(program), 10_000).unwrap();
+
     session.started_ms = 1; // marks this very shell
     app.terminals.insert(id.clone(), Ok(session));
     app.terminal_focus = Some(id.clone());
     let same = |app: &DrawingApp| app.terminals.get(&id).is_some_and(|s| s.as_ref().is_ok_and(|s| s.started_ms == 1));
+
     app.undo();
     app.sync_terminals(&ctx);
     assert!(same(&app), "the undo keeps its shell");
@@ -35,16 +39,21 @@ fn unload_ends_a_terminals_shell_and_reload_brings_it_back_as_undo_steps() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+
     e.terminal = Some(TerminalSpec { name: "Revisor".into(), ..Default::default() });
     let mut page = app.new_element(ElementKind::Rectangle { x: 500.0, y: 0.0, width: 400.0, height: 300.0 });
+
     page.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
     let (id, page_id) = (e.id.clone(), page.id.clone());
+
     app.scene.elements.extend([e, page]);
     // a shell that couldn't start stands in for one: no process in this test
     app.terminals.insert(id.clone(), Err("x".into()));
+
     for target in [Target::Element(id.clone()), Target::Element(page_id.clone())] {
         app.context_action(&ctx, &target, "unload");
     }
+
     assert!(app.scene.elements.iter().all(|e| e.unloaded()));
     assert_eq!(app.undo.len(), 2);
     app.sync_terminals(&ctx);
@@ -71,36 +80,47 @@ fn ctrl_insert_and_shift_delete_send_nothing_to_the_shell() {
         fn SetKeyboardState(keys: *const u8) -> i32;
         fn GetKeyState(key: i32) -> i16;
     }
+
     const VK_INSERT: usize = 0x2D;
     const VK_DELETE: usize = 0x2E;
     let mut saved = [0u8; 256];
+
     // SAFETY: a 256-byte buffer, as both calls expect
     unsafe { GetKeyboardState(saved.as_mut_ptr()) };
     let mut probe = saved;
+
     probe[VK_INSERT] = 0x80;
     unsafe { SetKeyboardState(probe.as_ptr()) };
     let held = unsafe { GetKeyState(VK_INSERT as i32) } < 0;
+
     unsafe { SetKeyboardState(saved.as_ptr()) };
+
     if !held {
         // an anti-cheat (Arena Breakout's) makes SetKeyboardState a no-op that still says ok
         eprintln!("SetKeyboardState has no effect here: skipped");
+
         return;
     }
+
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let id = terminal_at(&mut app, &ctx, Pos2::new(400.0, 300.0));
     let script = "[Console]::TreatControlCAsInput = $true; Write-Host pronto; Write-Host (1..3 | % { [int][Console]::ReadKey($true).KeyChar })";
     let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some(("powershell", &["-NoProfile", "-Command", script][..])), 10_000).unwrap();
     // a ^C before PowerShell takes it as input would end it
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+
     while !session.handle.screen_text().contains("pronto") && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
+
     // ConPTY takes the new input mode a moment after the text shows: a ^C right away still ended it
     std::thread::sleep(std::time::Duration::from_millis(200));
     app.terminals.insert(id.clone(), Ok(session));
     app.terminal_focus = Some(id.clone());
+
     for (held, event) in [
         (Some(VK_INSERT), egui::Event::Copy),
         (Some(VK_DELETE), egui::Event::Cut),
@@ -109,23 +129,30 @@ fn ctrl_insert_and_shift_delete_send_nothing_to_the_shell() {
         (None, egui::Event::Text("a".into())),
     ] {
         let mut keys = saved;
+
         if let Some(key) = held {
             keys[key] = 0x80;
         }
+
         unsafe { SetKeyboardState(keys.as_ptr()) };
         let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), events: vec![event], ..Default::default() };
+
         ctx.run_ui(raw, |_| app.terminal_overlay(&ctx)).textures_delta.clear();
     }
+
     unsafe { SetKeyboardState(saved.as_ptr()) };
     let Some(Ok(session)) = app.terminals.get(&id) else { unreachable!() };
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     // ConPTY can hand over the last output after the exit: wait for that line too
     let answered = || session.exited() && session.handle.screen_text().lines().last() != Some("pronto");
+
     while !answered() && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
+
     assert!(session.exited());
     // ^C and ^X without the keys held, then the a: nothing from the two with Insert / Delete
     let screen = session.handle.screen_text();
+
     assert_eq!(screen.lines().last(), Some("3 24 97"), "{screen}");
 }

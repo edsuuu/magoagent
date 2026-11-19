@@ -32,7 +32,9 @@ pub(crate) fn home() -> Option<PathBuf> {
     if cfg!(test) {
         return Some(crate::app::maestro::claude_hooks::test_folder("hermes"));
     }
+
     let var = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty()).map(PathBuf::from);
+
     var("HERMES_HOME").or_else(|| var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(|home| home.join(".hermes")))
 }
 
@@ -47,12 +49,14 @@ fn indent(line: &str) -> usize {
 
 fn blank(line: &str) -> bool {
     let text = line.trim();
+
     text.is_empty() || text.starts_with('#')
 }
 
 /// What comes after `key:` on a line that is that key at `depth` spaces, less a comment.
 fn value_of<'a>(line: &'a str, depth: usize, key: &str) -> Option<&'a str> {
     let rest = line.strip_prefix(&" ".repeat(depth))?.strip_prefix(key)?.strip_prefix(':')?;
+
     (rest.is_empty() || rest.starts_with(' ')).then(|| rest.split(" #").next().unwrap_or_default().trim())
 }
 
@@ -65,11 +69,13 @@ fn bare(item: &str) -> &str {
 fn inline_list(line: &str, add: bool) -> Option<Option<String>> {
     let (open, close) = (line.find('[')?, line.find(']')?);
     let items: Vec<&str> = line[open + 1..close].split(',').map(str::trim).filter(|item| !item.is_empty()).collect();
+
     let kept: Vec<&str> = match (add, items.iter().any(|item| bare(item) == NAME)) {
         (true, false) => items.into_iter().chain([NAME]).collect(),
         (false, true) => items.into_iter().filter(|item| bare(item) != NAME).collect(),
         _ => return Some(None),
     };
+
     Some(Some(format!("{}[{}]{}", &line[..open], kept.join(", "), &line[close + 1..])))
 }
 
@@ -83,24 +89,29 @@ pub(crate) fn merged(config: &str, add: bool) -> Result<String, String> {
     let (mark, body) = config.strip_prefix('\u{feff}').map_or(("", config), |body| ("\u{feff}", body));
     let newline = if body.contains("\r\n") { "\r\n" } else { "\n" };
     let mut lines: Vec<String> = body.lines().map(String::from).collect();
+
     if lines.iter().any(|line| line.contains('\t')) {
         return refuse("usa tabulação");
     }
+
     if let Some(first) = lines.iter().position(|line| !blank(line)) {
         // a second `plugins` key appended to one of these would break the file
         if lines[first].starts_with(['{', '[']) || lines.iter().any(|line| line.starts_with("\"plugins\"") || line.starts_with("'plugins'")) {
             return refuse("não está escrito em blocos");
         }
+
         if lines.iter().skip(first + 1).any(|line| line.trim_end() == "---") {
             return refuse("tem mais de um documento");
         }
     }
+
     match lines.iter().position(|line| value_of(line, 0, "plugins").is_some()) {
         None if !add => return unchanged(),
         None => {
             if lines.last().is_some_and(|line| !line.trim().is_empty()) {
                 lines.push(String::new());
             }
+
             lines.extend(["plugins:".to_string(), "  enabled:".to_string(), format!("    - {NAME}")]);
         }
         Some(plugins) => {
@@ -110,20 +121,28 @@ pub(crate) fn merged(config: &str, add: bool) -> Result<String, String> {
                 Some("{}" | "null" | "~") => return unchanged(),
                 _ => return refuse("tem `plugins` escrito numa linha só"),
             }
+
             let end = (plugins + 1..lines.len()).find(|index| !blank(&lines[*index]) && indent(&lines[*index]) == 0).unwrap_or(lines.len());
             let section = &lines[plugins + 1..end];
+
             if section.iter().filter(|line| !blank(line)).any(|line| line.contains('\t') || line.contains(" &") || line.contains(" *") || line.contains("<<")) {
                 return refuse("usa tabulação ou âncoras em `plugins`");
             }
+
             let depth = section.iter().find(|line| !blank(line)).map_or(2, |line| indent(line));
+
             let Some(enabled) = (plugins + 1..end).find(|index| value_of(&lines[*index], depth, "enabled").is_some()) else {
                 if !add {
                     return unchanged();
                 }
+
                 lines.splice(plugins + 1..plugins + 1, [format!("{}enabled:", pad(depth)), format!("{}- {NAME}", pad(depth * 2))]);
+
                 return Ok(format!("{mark}{}{}", lines.join(newline), if body.ends_with('\n') { newline } else { "" }));
             };
+
             let value = value_of(&lines[enabled], depth, "enabled").unwrap_or_default().to_string();
+
             if value.starts_with('[') {
                 match inline_list(&lines[enabled], add) {
                     Some(Some(line)) => lines[enabled] = line,
@@ -133,11 +152,14 @@ pub(crate) fn merged(config: &str, add: bool) -> Result<String, String> {
             } else if matches!(value.as_str(), "" | "null" | "~") {
                 // a list down the lines; its items may sit at the key's own depth
                 let mut items = Vec::new();
+
                 for index in enabled + 1..end {
                     let text = lines[index].trim_start();
+
                     if blank(&lines[index]) {
                         continue;
                     }
+
                     if text == "-" || text.starts_with("- ") {
                         items.push(index);
                     } else if indent(&lines[index]) > depth {
@@ -146,19 +168,24 @@ pub(crate) fn merged(config: &str, add: bool) -> Result<String, String> {
                         break;
                     }
                 }
+
                 let ours: Vec<usize> = items.iter().copied().filter(|index| bare(lines[*index].trim_start().trim_start_matches('-')) == NAME).collect();
+
                 match (add, ours.is_empty()) {
                     (true, true) => {
                         if !value.is_empty() {
                             lines[enabled] = format!("{}enabled:", pad(depth));
                         }
+
                         let item = format!("{}- {NAME}", pad(items.last().map_or(depth * 2, |index| indent(&lines[*index]))));
+
                         lines.insert(items.last().map_or(enabled, |index| *index) + 1, item);
                     }
                     (false, false) => {
                         for index in ours.iter().rev() {
                             lines.remove(*index);
                         }
+
                         // the last one gone: an empty list said as one (a bare `enabled:` reads as nothing, not a list)
                         if ours.len() == items.len() {
                             lines[enabled] = format!("{}enabled: []", pad(depth));
@@ -171,6 +198,7 @@ pub(crate) fn merged(config: &str, add: bool) -> Result<String, String> {
             }
         }
     }
+
     Ok(format!("{mark}{}{}", lines.join(newline), if body.is_empty() || body.ends_with('\n') { newline } else { "" }))
 }
 
@@ -210,8 +238,10 @@ pub(crate) fn status_at(home: &Path, exe: &str) -> Status {
     if !home.is_dir() {
         return Status::NoHermes;
     }
+
     let source = fs::read_to_string(plugin_folder(home).join("__init__.py")).unwrap_or_default();
     let enabled = fs::read_to_string(home.join("config.yaml")).is_ok_and(|config| enabled_in(&config));
+
     match (source.contains(MARK), enabled && source == plugin_source(exe)) {
         (false, _) => Status::NotInstalled,
         (true, true) => Status::Installed,
@@ -232,8 +262,10 @@ fn read_config(path: &Path) -> Result<String, String> {
 fn write_config(path: &Path, new: &str) -> Result<(), String> {
     if path.is_file() {
         let backup = path.with_file_name(format!("config.yaml.magoagent-{}.bak", now_ms()));
+
         fs::copy(path, &backup).map_err(|error| format!("Sem backup, não mexi no config.yaml do Hermes ({error})."))?;
     }
+
     write_atomic(path, new).map_err(|error| format!("Não consegui gravar {}: {error}", path.display()))
 }
 
@@ -243,21 +275,28 @@ pub(crate) fn install_at(home: &Path, exe: &str) -> Result<String, String> {
     if !home.is_dir() {
         return Err(Status::NoHermes.words().into());
     }
+
     let folder = plugin_folder(home);
     let theirs = fs::read_to_string(folder.join("__init__.py")).is_ok_and(|source| !source.contains(MARK));
+
     if theirs {
         return Err(format!("Já existe um plugin que não é nosso em {}: não mexi nele.", folder.display()));
     }
+
     let config_path = home.join("config.yaml");
     let config = read_config(&config_path)?;
     let new_config = merged(&config, true)?;
+
     fs::create_dir_all(&folder).map_err(|error| format!("Não consegui criar {}: {error}", folder.display()))?;
+
     for (name, text) in [("plugin.yaml", MANIFEST.to_string()), ("__init__.py", plugin_source(exe))] {
         write_atomic(&folder.join(name), text).map_err(|error| format!("Não consegui gravar {name}: {error}"))?;
     }
+
     if new_config != config {
         write_config(&config_path, &new_config)?;
     }
+
     Ok(format!("Plugin instalado em {}: as sessões novas do Hermes aparecem na ilha (reinicie o Hermes).", folder.display()))
 }
 
@@ -268,9 +307,11 @@ pub(crate) fn remove_at(home: &Path) -> Result<String, String> {
     let ours = fs::read_to_string(folder.join("__init__.py")).is_ok_and(|source| source.contains(MARK));
     let config_path = home.join("config.yaml");
     let config = read_config(&config_path)?;
+
     if !ours && !enabled_in(&config) {
         return Ok("O plugin do MagoAgent não estava instalado no Hermes.".into());
     }
+
     if ours {
         let _ = fs::remove_file(folder.join("__init__.py"));
         let _ = fs::remove_file(folder.join("plugin.yaml"));
@@ -278,11 +319,13 @@ pub(crate) fn remove_at(home: &Path) -> Result<String, String> {
         // only when empty: anything else there is not ours to delete
         let _ = fs::remove_dir(&folder);
     }
+
     match merged(&config, false) {
         Ok(new_config) if new_config != config => write_config(&config_path, &new_config)?,
         Ok(_) => {}
         Err(why) => return Ok(format!("Plugin removido, mas {why}")),
     }
+
     Ok("Plugin removido do Hermes: o resto do config.yaml ficou como estava.".into())
 }
 
@@ -291,6 +334,7 @@ impl DrawingApp {
     pub(crate) fn act_hermes(&mut self, action: &str) -> Result<String, String> {
         let home = home().ok_or("Não achei a pasta do Hermes (~/.hermes).")?;
         let exe = std::env::current_exe().map_err(|error| error.to_string())?.to_string_lossy().into_owned();
+
         match action {
             "install" => install_at(&home, &exe),
             "remove" => remove_at(&home),

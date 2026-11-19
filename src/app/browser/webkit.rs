@@ -24,6 +24,7 @@ pub(crate) const PAGES_UNAVAILABLE: &str = "No Linux o navegador abre só no X11
 
 fn next_number() -> u64 {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
     NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
@@ -40,6 +41,7 @@ struct Parent(std::ffi::c_ulong);
 impl HasWindowHandle for Parent {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
         let raw = RawWindowHandle::Xlib(XlibWindowHandle::new(self.0));
+
         // SAFETY: an X11 window id; X keeps it valid while the app's window lives, and a page's window goes with it
         Ok(unsafe { WindowHandle::borrow_raw(raw) })
     }
@@ -53,9 +55,11 @@ pub(crate) struct GtkProfile {
 impl GtkProfile {
     pub(crate) fn new(folder: Option<PathBuf>) -> Self {
         let number = next_number();
+
         toolkit::run(move || {
             PROFILES.with(|profiles| profiles.borrow_mut().insert(number, wry::WebContext::new(folder)));
         });
+
         Self { number }
     }
 }
@@ -63,8 +67,10 @@ impl GtkProfile {
 impl Drop for GtkProfile {
     fn drop(&mut self) {
         let number = self.number;
+
         toolkit::run(move || {
             let profile = PROFILES.with(|profiles| profiles.borrow_mut().remove(&number));
+
             drop(profile);
         });
     }
@@ -88,8 +94,10 @@ pub(crate) struct GtkPage {
 impl Drop for GtkPage {
     fn drop(&mut self) {
         let number = self.number;
+
         toolkit::run(move || {
             let page = PAGES.with(|pages| pages.borrow_mut().remove(&number));
+
             drop(page);
         });
     }
@@ -99,6 +107,7 @@ impl GtkPage {
     /// Runs `job` with the page on GTK's thread, after what was asked before (nothing if the page is gone).
     fn with(&self, job: impl FnOnce(&wry::WebView) + Send + 'static) -> wry::Result<()> {
         let number = self.number;
+
         toolkit::run(move || {
             PAGES.with(|pages| {
                 if let Some(page) = pages.borrow().get(&number) {
@@ -106,16 +115,20 @@ impl GtkPage {
                 }
             })
         });
+
         Ok(())
     }
 
     /// Puts the page over `page` (window points at `scale` pixels a point), its zoom the card's.
     pub(crate) fn place(&self, page: Rect, zoom: f32, scale: f32) -> wry::Result<()> {
         let pixels = page_pixels(page, scale);
+
         if self.placed.replace(Some((pixels, zoom, scale))) == Some((pixels, zoom, scale)) {
             return Ok(());
         }
+
         let bounds = bounds_of(pixels);
+
         self.with(move |page| {
             use gtk::prelude::WidgetExt;
             use wry::WebViewExtUnix;
@@ -128,9 +141,12 @@ impl GtkPage {
         if self.visible.replace(visible) == visible {
             return Ok(());
         }
+
         let placed = self.placed.get().map(|(pixels, ..)| bounds_of(pixels));
+
         self.with(move |page| {
             let _ = page.set_visible(visible);
+
             // shown, GTK lays out the window that holds the page at its own size, 200×200 (wry sets only the X11
             // window's): the page stayed that small in a black box until the next zoom. Its box once more after
             if let (true, Some(bounds)) = (visible, placed) {
@@ -141,6 +157,7 @@ impl GtkPage {
 
     pub(crate) fn load_url(&self, url: &str) -> wry::Result<()> {
         let url = url.to_string();
+
         self.with(move |page| {
             let _ = page.load_url(&url);
         })
@@ -154,6 +171,7 @@ impl GtkPage {
 
     pub(crate) fn evaluate_script(&self, script: &str) -> wry::Result<()> {
         let script = script.to_string();
+
         self.with(move |page| {
             let _ = page.evaluate_script(&script);
         })
@@ -163,6 +181,7 @@ impl GtkPage {
     /// them then without an answer; the callback goes unanswered (dropped) there, as with a page that is gone.
     pub(crate) fn evaluate_script_with_callback(&self, script: &str, callback: impl Fn(String) + Send + 'static) -> wry::Result<()> {
         let script = script.to_string();
+
         self.with(move |page| {
             let _ = page.evaluate_script_with_callback(&script, callback);
         })
@@ -188,6 +207,7 @@ impl GtkPage {
             let view = page.webview();
             let scale = view.zoom_level() * f64::from(view.scale_factor().max(1));
             let cancel: Option<&gtk::gio::Cancellable> = None;
+
             view.snapshot(webkit2gtk::SnapshotRegion::Visible, webkit2gtk::SnapshotOptions::NONE, cancel, move |surface| {
                 done(surface.ok().and_then(surface_rgba).map(|(width, height, rgba)| (width, height, rgba, scale)));
             });
@@ -203,6 +223,7 @@ impl GtkPage {
             use wry::WebViewExtUnix;
             let view = page.webview();
             let (x, y, width, height) = view.parent_window().map_or((0, 0, 0, 0), |holder| holder.geometry());
+
             done([x, y, width, height], [view.allocated_width(), view.allocated_height()], view.zoom_level());
         });
     }
@@ -213,6 +234,7 @@ impl GtkPage {
 pub(crate) fn snapshot(page: &GtkPage, rect: [f64; 4], done: impl FnOnce(Option<Vec<u8>>) + Send + 'static) {
     page.picture(move |picture| {
         let cut = picture.and_then(|(width, height, rgba, scale)| crop(width, height, &rgba, rect, scale));
+
         done(cut.and_then(|(width, height, rgba)| crate::app::browser::shot::png(width, height, rgba).ok()));
     });
 }
@@ -232,27 +254,36 @@ pub(super) fn new_tab_view(
         Ok(RawWindowHandle::Xcb(handle)) => handle.window.get() as std::ffi::c_ulong,
         _ => return Err(PAGES_UNAVAILABLE.into()),
     };
+
     let uid = next_number();
     let seen = Arc::new(Mutex::new(url.to_string()));
+
     let (portal, address, events, ctx, extras, profile, kept) =
         (portal.to_string(), url.to_string(), events.clone(), ctx.clone(), extras.clone(), web_context.number, seen.clone());
+
     let made = toolkit::call(MAKING, move || -> Result<u32, String> {
         if !toolkit::on_x11() {
             return Err(PAGES_UNAVAILABLE.into());
         }
+
         let page = PROFILES.with(|profiles| {
             let mut profiles = profiles.borrow_mut();
             let context = profiles.get_mut(&profile).ok_or("o perfil do navegador não abriu")?;
+
             page_builder(context, &portal, uid, &address, &events, &ctx, &extras).build_as_child(&Parent(parent)).map_err(|error| error.to_string())
         })?;
+
         let holder = watch(&page, kept);
+
         // the page's windows exist for the app's own X11 calls (the holes) once GTK has sent them
         if let Some(display) = gtk::gdk::Display::default() {
             display.flush();
         }
+
         PAGES.with(|pages| pages.borrow_mut().insert(uid, page));
         Ok(holder)
     });
+
     match made {
         Some(Ok(holder)) => {
             // wry leaves the window that holds the page in the app's, 200×200 at its corner and shown though the page is
@@ -260,6 +291,7 @@ pub(super) fn new_tab_view(
             // page was first placed (never, with the canvas out of sight). Cut away until `sync` places and cuts it
             crate::app::island::x11::veil(holder);
             let webview = GtkPage { number: uid, url: seen, holder, parent: parent as u32, placed: Default::default(), visible: Default::default() };
+
             Ok(TabView { webview, uid, url: url.into(), loading: true, secret: None })
         }
         Some(Err(error)) => Err(error),
@@ -278,11 +310,13 @@ fn watch(page: &wry::WebView, seen: Arc<Mutex<String>>) -> u32 {
     use webkit2gtk::WebViewExt;
     use wry::WebViewExtUnix;
     let view = page.webview();
+
     view.connect_notify_local(Some("uri"), move |view, _| {
         if let (Some(uri), Ok(mut seen)) = (view.uri(), seen.lock()) {
             *seen = uri.to_string();
         }
     });
+
     // X gives the keys to the window that has the keyboard (the app's, which the window manager gave it), or to a window
     // inside it under the pointer that asks for keys: a click on the page takes the keyboard into the page's window, as
     // WebView2 and WKWebView take it, and the page asks for keys only then, until the app has the keyboard again
@@ -290,11 +324,14 @@ fn watch(page: &wry::WebView, seen: Arc<Mutex<String>>) -> u32 {
     view.connect_button_press_event(|view, _| {
         take_keys(view, true);
         activate(view, true);
+
         if let Some(window) = view.window().and_then(xid) {
             crate::app::island::x11::give_keyboard(window);
         }
+
         gtk::glib::Propagation::Proceed
     });
+
     // the page's own X11 window (`xid` makes it one), with GDK's mask, keys included: none until a click
     take_keys(&view, false);
     // the page's parent window is the one wry made inside the app's
@@ -305,6 +342,7 @@ fn watch(page: &wry::WebView, seen: Arc<Mutex<String>>) -> u32 {
 fn take_keys(view: &webkit2gtk::WebView, on: bool) {
     use gtk::prelude::WidgetExt;
     let keys = gtk::gdk::EventMask::KEY_PRESS_MASK | gtk::gdk::EventMask::KEY_RELEASE_MASK;
+
     if let Some(window) = view.window() {
         window.set_events(if on { window.events() | keys } else { window.events() - keys });
     }
@@ -317,22 +355,29 @@ fn activate(view: &webkit2gtk::WebView, on: bool) {
     use gtk::glib::object::Cast;
     use gtk::glib::translate::{ToGlibPtr, ToGlibPtrMut};
     use gtk::prelude::{GtkWindowExt, WidgetExt};
+
     if on {
         view.grab_focus();
     }
+
     let Some(toplevel) = view.toplevel().and_then(|toplevel| toplevel.downcast::<gtk::Window>().ok()) else { return };
+
     if toplevel.is_active() == on {
         return;
     }
+
     let mut event = gtk::gdk::Event::new(gtk::gdk::EventType::FocusChange);
     let raw: *mut gtk::gdk::ffi::GdkEvent = event.to_glib_none_mut().0;
+
     // SAFETY: a FocusChange event is a GdkEventFocus; freeing the event lets go of its window, so it takes a reference
     unsafe {
         (*raw).focus_change.in_ = i16::from(on);
+
         if let Some(window) = toplevel.window() {
             (*raw).focus_change.window = window.to_glib_full();
         }
     }
+
     toplevel.send_focus_change(&event);
 }
 
@@ -343,12 +388,14 @@ fn activate(view: &webkit2gtk::WebView, on: bool) {
 pub(crate) fn release_keys(parent: Option<u32>) {
     toolkit::run(move || {
         use wry::WebViewExtUnix;
+
         PAGES.with(|pages| {
             for page in pages.borrow().values() {
                 take_keys(&page.webview(), false);
                 activate(&page.webview(), false);
             }
         });
+
         if let Some(parent) = parent {
             crate::app::island::x11::give_keyboard(parent);
         }
@@ -358,6 +405,7 @@ pub(crate) fn release_keys(parent: Option<u32>) {
 /// A GDK window's X11 id (made a real X11 window if it was only GDK's).
 fn xid(window: gtk::gdk::Window) -> Option<u32> {
     use gtk::glib::object::Cast;
+
     window.downcast::<gdkx11::X11Window>().ok().map(|window| window.xid() as u32)
 }
 
@@ -365,6 +413,7 @@ fn xid(window: gtk::gdk::Window) -> Option<u32> {
 /// floating UI over it shows through while the page keeps its size; `origin` is where the page's box starts.
 pub(super) fn cut_page(page: &GtkPage, origin: Pos2, holes: &[Rect], pixels_per_point: f32) {
     let holes: Vec<_> = holes.iter().map(|hole| crate::app::island::x11::pixels(hole.translate(-origin.to_vec2()), pixels_per_point)).collect();
+
     if page.holder != 0 {
         crate::app::island::x11::cut(page.holder, &holes);
     }
@@ -387,6 +436,7 @@ pub(super) fn veil(page: &GtkPage) {
 pub(crate) fn page_pixels(page: Rect, scale: f32) -> [i32; 4] {
     let (min, max) = (page.min.ceil(), page.max.floor());
     let pixels = |points: f32| (points * scale).round() as i32;
+
     [pixels(min.x), pixels(min.y), pixels(max.x - min.x).max(1), pixels(max.y - min.y).max(1)]
 }
 
@@ -401,23 +451,30 @@ pub(crate) fn crop(width: u32, height: u32, rgba: &[u8], [x, y, w, h]: [f64; 4],
     let clamp = |value: f64, most: u32| value.clamp(0.0, f64::from(most)) as u32;
     let (left, top) = (clamp((x * scale).floor(), width), clamp((y * scale).floor(), height));
     let (right, bottom) = (clamp(((x + w) * scale).ceil(), width), clamp(((y + h) * scale).ceil(), height));
+
     if right <= left || bottom <= top || rgba.len() < (width * height * 4) as usize {
         return None;
     }
+
     let mut out = Vec::with_capacity(((right - left) * (bottom - top) * 4) as usize);
+
     for row in top..bottom {
         let start = ((row * width + left) * 4) as usize;
+
         out.extend_from_slice(&rgba[start..start + ((right - left) * 4) as usize]);
     }
+
     Some((right - left, bottom - top, out))
 }
 
 /// Cairo's picture (BGRA, rows `stride` bytes apart) as opaque RGBA.
 fn surface_rgba(surface: gtk::cairo::Surface) -> Option<(u32, u32, Vec<u8>)> {
     let image = gtk::cairo::ImageSurface::try_from(surface).ok()?;
+
     image.flush();
     let (width, height, stride) = (image.width().max(0) as usize, image.height().max(0) as usize, image.stride().max(0) as usize);
     let mut pixels = None;
+
     image.with_data(|data| pixels = rows(data, width, height, stride)).ok()?;
     Some((width as u32, height as u32, crate::app::browser::shot::opaque_rgba(pixels?)))
 }
@@ -427,5 +484,6 @@ pub(crate) fn rows(data: &[u8], width: usize, height: usize, stride: usize) -> O
     if width == 0 || height == 0 || stride < width * 4 || data.len() < stride * (height - 1) + width * 4 {
         return None;
     }
+
     Some((0..height).flat_map(|row| &data[row * stride..row * stride + width * 4]).copied().collect())
 }

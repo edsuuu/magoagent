@@ -28,6 +28,7 @@ pub(crate) struct Listener {
 impl Drop for Listener {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -64,12 +65,14 @@ pub(crate) fn listen(keys: Vec<(usize, hotkeys::Combo)>, wake: impl Fn() + Send 
         point: [i32; 2],
         private: u32,
     }
+
     #[link(name = "user32")]
     unsafe extern "system" {
         fn RegisterHotKey(window: isize, id: i32, modifiers: u32, key: u32) -> i32;
         fn UnregisterHotKey(window: isize, id: i32) -> i32;
         fn PeekMessageW(message: *mut Message, window: isize, first: u32, last: u32, remove: u32) -> i32;
     }
+
     const MOD_ALT: u32 = 1;
     const MOD_CONTROL: u32 = 2;
     const MOD_SHIFT: u32 = 4;
@@ -81,6 +84,7 @@ pub(crate) fn listen(keys: Vec<(usize, hotkeys::Combo)>, wake: impl Fn() + Send 
     let (sender, events) = std::sync::mpsc::channel();
     let stop = Arc::new(AtomicBool::new(false));
     let stopped = stop.clone();
+
     let hear = move || {
         // registered and heard here: WM_HOTKEY goes to the queue of the thread that registered
         let registered: Vec<(usize, bool)> = keys
@@ -89,27 +93,36 @@ pub(crate) fn listen(keys: Vec<(usize, hotkeys::Combo)>, wake: impl Fn() + Send 
                 let modifiers = [(combo.ctrl, MOD_CONTROL), (combo.alt, MOD_ALT), (combo.shift, MOD_SHIFT), (combo.win, MOD_WIN)];
                 let modifiers = modifiers.into_iter().filter(|(held, _)| *held).fold(MOD_NOREPEAT, |all, (_, flag)| all | flag);
                 let key = hotkeys::keys::virtual_key(combo.key).unwrap_or_default();
+
                 // SAFETY: no window (the thread's own queue), an id of ours and plain numbers
                 (*index, key != 0 && unsafe { RegisterHotKey(0, *index as i32 + 1, modifiers, key) } != 0)
             })
             .collect();
+
         let _ = sender.send(Event::Registered(registered.clone()));
+
         wake();
         let mut message = Message::default();
+
         // shortcut: the queue is looked at every 15 ms instead of waiting on it, so stopping needs no message posted; GetMessageW and PostThreadMessageW if the wake-ups ever matter
         while !stopped.load(Ordering::Relaxed) {
             // SAFETY: a MSG of ours to fill in, only this thread's WM_HOTKEY taken from its queue
             while unsafe { PeekMessageW(&mut message, 0, WM_HOTKEY, WM_HOTKEY, PM_REMOVE) } != 0 {
                 let _ = sender.send(Event::Pressed(message.wparam.wrapping_sub(1)));
+
                 wake();
             }
+
             std::thread::sleep(Duration::from_millis(15));
         }
+
         for (index, _) in registered.into_iter().filter(|(_, taken)| *taken) {
             // SAFETY: an id this thread registered
             unsafe { UnregisterHotKey(0, index as i32 + 1) };
         }
     };
+
     let thread = std::thread::Builder::new().name("magoagent-atalhos".into()).spawn(hear).ok()?;
+
     Some(Listener { stop, thread: Some(thread), events })
 }

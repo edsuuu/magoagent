@@ -11,15 +11,20 @@ use std::sync::Arc;
 pub(super) fn squeeze(galley: &mut egui::Galley, rows: &[(usize, bool)], row_h: f32) {
     let after = rows.last().map_or(0, |(row, _)| row + 1);
     let mut last = 0.0;
+
     for (line, row) in galley.rows.iter_mut().enumerate() {
         let (display, shown) = rows.get(line).copied().unwrap_or((after + line - rows.len(), true));
+
         row.pos.y = display as f32 * row_h;
         last = row.pos.y + row_h;
+
         if !shown {
             let row = Arc::make_mut(&mut row.row);
+
             row.visuals = Default::default();
         }
     }
+
     galley.rect.max.y = last;
     galley.mesh_bounds.max.y = last;
 }
@@ -52,18 +57,23 @@ pub(super) fn column(
     previous_caret: Option<usize>,
 ) -> (Typed, Option<usize>) {
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_size(origin, size)).layout(egui::Layout::top_down(egui::Align::Min)));
+
     child.set_clip_rect(clip.intersect(ui.clip_rect()));
     child.visuals_mut().selection.bg_fill = t::EDITOR_SELECTION;
     child.visuals_mut().selection.stroke = Stroke::new(1.0, t::TEXT);
     child.visuals_mut().text_cursor.stroke = Stroke::new((2.0 * z).max(1.0), t::CARET);
+
     let mut layouter = |ui: &egui::Ui, buffer: &dyn egui::TextBuffer, _width: f32| {
         // the colored job is of the text before this frame's typing: a text that moved on is colored on its own
         let mut made = if hash(buffer.as_str(), font.size) == job.0 { job.1.clone() } else { highlight::layout(lang, buffer.as_str(), font.clone(), row_h) };
+
         made.wrap.max_width = f32::INFINITY;
         let mut galley = ui.fonts_mut(|fonts| fonts.layout_job(made));
+
         squeeze(Arc::make_mut(&mut galley), rows, row_h);
         galley
     };
+
     let out = egui::TextEdit::multiline(text)
         .id(id)
         .frame(egui::Frame::NONE)
@@ -74,8 +84,10 @@ pub(super) fn column(
         .desired_width(size.x)
         .desired_rows(1)
         .show(&mut child);
+
     let caret = out.state.cursor.char_range().map(|range| range.primary.index.0);
     let moved_caret = (caret != previous_caret).then(|| caret.map(|at| out.galley.pos_from_cursor(egui::text::CCursor::new(at)))).flatten();
     let focused = out.response.has_focus();
+
     (Typed { changed: out.response.changed(), moved_caret, focused }, caret)
 }

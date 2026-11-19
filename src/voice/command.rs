@@ -15,26 +15,33 @@ pub(crate) enum VoiceCmd {
 pub(crate) fn voice_command(text: &str, name: &str, ok_mago: bool) -> Option<VoiceCmd> {
     let clean: String = text.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c.is_whitespace() { c } else { ' ' }).collect();
     let words: Vec<&str> = clean.split_whitespace().collect();
+
     let mut aliases: Vec<&str> = match name {
         "codex" => vec!["codex", "códex", "kodex", "codecs"],
         _ => vec!["claude", "cloud", "claud", "claudio", "clode", "cláudio", "claudio"],
     };
+
     if ok_mago {
         aliases.extend(["mago", "mágo", "magô", "maggo", "magu"]);
     }
+
     // "ei Claude", "ok Claude", "hey Claude", "ok Mago"
     let start = words.iter().position(|w| aliases.contains(w)).filter(|&i| i <= 1)?;
     let rest = words[start + 1..].join(" ");
     let has = |options: &[&str]| options.iter().any(|o| rest.contains(o));
+
     if has(&["desmuta", "desmute", "unmute", "pode ouvir", "volta a ouvir", "acorda", "liga o microfone", "wake up"]) {
         return Some(VoiceCmd::Unmute);
     }
+
     if has(&["se muta", "muta", "mudo", "silêncio", "silencio", "fica quieto", "cala", "para de ouvir", "mute", "quiet", "stop listening"]) {
         return Some(VoiceCmd::Mute);
     }
+
     if rest.is_empty() || has(&["pode falar", "fala", "pode responder", "responde", "manda", "go ahead", "you can talk", "speak", "answer"]) {
         return Some(VoiceCmd::Speak);
     }
+
     Some(VoiceCmd::Ask(rest))
 }
 
@@ -42,8 +49,10 @@ pub(crate) fn voice_command(text: &str, name: &str, ok_mago: bool) -> Option<Voi
 pub(crate) fn yes_or_no(text: &str) -> Option<bool> {
     let clean: String = text.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c.is_whitespace() { c } else { ' ' }).collect();
     let first = clean.split_whitespace().next()?;
+
     if ["não", "nao", "no", "nope", "deixa", "negativo"].contains(&first) {
         return Some(false);
     }
+
     ["sim", "pode", "isso", "quero", "claro", "fica", "por", "yes", "yeah", "ok", "okay", "beleza", "positivo", "exato"].contains(&first).then_some(true)
 }

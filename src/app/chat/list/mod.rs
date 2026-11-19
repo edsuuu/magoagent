@@ -43,6 +43,7 @@ impl AmberCard {
         let [fill, edge, title, note, well, well_edge] =
             if dark { [0x2a2213, 0x7a5a22, 0xf6c46f, 0xd8c7a6, 0x17130b, 0x3d2f14] } else { [0xfdf3e1, 0xe6b866, 0x8a5a00, 0x6b5a3a, 0xfffaf0, 0xefd3a0] }
                 .map(rgb_hex);
+
         AmberCard { fill, edge, title, note, well, well_edge }
     }
 
@@ -131,6 +132,7 @@ impl Look {
             }
         } else {
             let line = Color32::from_black_alpha(24);
+
             Look {
                 dark,
                 bg: Color32::WHITE,
@@ -156,6 +158,7 @@ impl Look {
 pub(crate) fn state_mark(p: &Painter, at: Pos2, size: f32, state: &AgentState, look: &Look, t: f64) {
     let r = size / 2.0;
     let grey = |v: u8| if look.dark { Color32::from_gray(v) } else { look.muted };
+
     match state {
         AgentState::Working(_) => pulse_dot(p, at, r, GREEN, 1.6, t),
         AgentState::Waiting => pulse_dot(p, at, r, AMBER, 2.0, t),
@@ -175,6 +178,7 @@ pub(crate) fn state_mark(p: &Painter, at: Pos2, size: f32, state: &AgentState, l
 /// `period` seconds.
 pub(crate) fn pulse_dot(p: &Painter, at: Pos2, r: f32, color: Color32, period: f64, t: f64) {
     let eased = 1.0 - (1.0 - (t.rem_euclid(period) / period) as f32).powi(2);
+
     p.circle_filled(at, r * (1.0 + 1.6 * eased), color.gamma_multiply(0.6 * (1.0 - eased)));
     p.circle_filled(at, r, color);
 }
@@ -182,6 +186,7 @@ pub(crate) fn pulse_dot(p: &Painter, at: Pos2, r: f32, color: Color32, period: f
 /// A line icon from the design's 24-unit drawings, `size` across centered at `at`.
 pub(crate) fn glyph(p: &Painter, at: Pos2, size: f32, width: f32, color: Color32, lines: &[&[(f32, f32)]]) {
     let k = size / 24.0;
+
     for points in lines {
         p.add(Shape::line(points.iter().map(|&(x, y)| at + Vec2::new(x - 12.0, y - 12.0) * k).collect(), Stroke::new(width * k, color)));
     }
@@ -209,6 +214,7 @@ pub(crate) fn elapsed(seconds: f64) -> String {
 pub(crate) fn bold(p: &Painter, at: Pos2, text: &str, size: f32, color: Color32) -> Rect {
     let galley = p.layout_no_wrap(text.into(), FontId::proportional(size), color);
     let rect = Rect::from_min_size(at, galley.size());
+
     p.galley(at + Vec2::new(1.0 / p.pixels_per_point(), 0.0), galley.clone(), color);
     p.galley(at, galley, color);
     rect
@@ -259,7 +265,9 @@ pub(crate) fn subchat_parents(ids: &[&str], maestro: &[bool], links: &std::colle
             if maestro[i] {
                 return None;
             }
+
             let roped = links.get(ids[i])?;
+
             (0..ids.len()).find(|&j| maestro[j] && roped.iter().any(|r| r == ids[j]))
         })
         .collect()
@@ -268,6 +276,7 @@ pub(crate) fn subchat_parents(ids: &[&str], maestro: &[bool], links: &std::colle
 /// One line of text cut with "…" to fit `width`.
 pub(crate) fn clipped(painter: &Painter, text: String, font: FontId, color: Color32, width: f32) -> std::sync::Arc<egui::Galley> {
     let mut job = egui::text::LayoutJob::simple_singleline(text, font, color);
+
     job.wrap = egui::text::TextWrapping::truncate_at_width(width);
     painter.layout_job(job)
 }
@@ -285,15 +294,18 @@ pub(crate) fn code_card(ui: &mut egui::Ui, info: &str, code: &str, c: &UiColors,
 pub(crate) fn code_box(ui: &mut egui::Ui, info: &str, shown: &str, code: &str, c: &UiColors, dark: bool) {
     let (lang, file) = info.split_once([' ', ':']).map_or((info, ""), |(lang, file)| (lang, file.trim().trim_start_matches("title=").trim_matches('"')));
     let title = if file.is_empty() { lang.to_string() } else { format!("{lang} · {file}") };
+
     let (fill, edge, quiet, ink) = if dark {
         (rgb_hex(ink::DARK_BAND), rgb_hex(ink::DARK_LINE), rgb_hex(ink::DARK_MUTED), rgb_hex(ink::DARK_TEXT))
     } else {
         (c.surface_low, tint(false, 20), c.muted, c.text)
     };
+
     egui::Frame::new().fill(fill).stroke(Stroke::new(1.0, edge)).corner_radius(10).show(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         let (head, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::hover());
         let p = ui.painter();
+
         p.text(Pos2::new(head.left() + 12.0, head.center().y), egui::Align2::LEFT_CENTER, title, FontId::monospace(13.0), quiet);
         p.hline(head.x_range(), head.bottom() - 0.5, Stroke::new(1.0, edge));
         // "Copiado" with a ✓ for a moment after a click, as the Claude Desktop does
@@ -301,28 +313,36 @@ pub(crate) fn code_box(ui: &mut egui::Ui, info: &str, shown: &str, code: &str, c
         let now = ui.input(|input| input.time);
         let since = ui.ctx().data(|data| data.get_temp::<f64>(id)).map(|at| now - at).filter(|since| (0.0..COPIED_FOR).contains(since));
         let label = p.layout_no_wrap(if since.is_some() { "Copiado" } else { "Copiar" }.into(), FontId::proportional(13.0), quiet);
+
         let button = Rect::from_min_max(
             Pos2::new(head.right() - 6.0 - (8.0 + 13.0 + 5.0 + label.size().x + 8.0), head.center().y - 12.0),
             Pos2::new(head.right() - 6.0, head.center().y + 12.0),
         );
+
         let response = ui.interact(button, id, Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
         let p = ui.painter();
+
         if response.hovered() {
             p.rect_filled(button, 6, tint(dark, 18));
         }
+
         let copy: &[&[(f32, f32)]] = &[
             &[(8.5, 10.5), (8.5, 8.5), (20.5, 8.5), (20.5, 20.5), (8.5, 20.5), (8.5, 10.5)],
             &[(15.5, 5.5), (15.5, 5.0), (14.0, 3.5), (5.0, 3.5), (3.5, 5.0), (3.5, 14.0), (5.0, 15.5), (5.5, 15.5)],
         ];
+
         glyph(p, Pos2::new(button.left() + 14.5, button.center().y), 13.0, 2.0, quiet, if since.is_some() { CHECK } else { copy });
         p.galley(Pos2::new(button.left() + 26.0, button.center().y - label.size().y / 2.0), label, quiet);
+
         if response.clicked() {
             ui.ctx().copy_text(code.into());
             ui.ctx().data_mut(|data| data.insert_temp(id, now));
         }
+
         if let Some(since) = since {
             ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(COPIED_FOR - since));
         }
+
         egui::Frame::new().inner_margin(egui::Margin::symmetric(14, 10)).show(ui, |ui| {
             ui.label(egui::RichText::new(shown).monospace().size(13.0).color(ink));
         });
@@ -341,14 +361,18 @@ pub(crate) fn message_menu(response: &egui::Response, text: &str, cite: &mut Opt
     } else {
         None
     };
+
     let dark = response.ctx.global_style().visuals.dark_mode;
+
     egui::Popup::menu(response).open_memory(open).at_pointer_fixed().frame(crate::app::ui::menu_look::menu_frame(dark)).show(|ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         ui.set_min_width(crate::app::ui::menu_look::MENU_MIN);
+
         if menu_row(ui, Some(Icon::Duplicate), "Copiar", "", None) {
             ui.ctx().copy_text(text.into());
             ui.close();
         }
+
         if menu_row(ui, Some(Icon::Edit), "Citar", "", None) {
             *cite = Some(text.into());
             ui.close();
@@ -361,9 +385,11 @@ pub(crate) fn quote_into(draft: &mut String, text: &str) {
     if !draft.is_empty() && !draft.ends_with('\n') {
         draft.push('\n');
     }
+
     for line in text.trim_end().lines() {
         draft.push_str(&format!("> {line}\n"));
     }
+
     draft.push('\n');
 }
 
@@ -373,6 +399,7 @@ pub(crate) const CHAT_SEARCH: &str = "chat_search";
 /// Which of the person's and the agent's messages say `query` (already lowercase), in order.
 pub(crate) fn found(items: &[ChatItem], query: &str) -> Vec<usize> {
     let says = |item: &ChatItem| matches!(item, ChatItem::User(t) | ChatItem::Agent(t) if t.to_lowercase().contains(query));
+
     items.iter().enumerate().filter(|(_, item)| says(item)).map(|(i, _)| i).collect()
 }
 
@@ -384,6 +411,7 @@ mod tests {
     fn a_maestros_agents_are_its_subchats() {
         let links = std::collections::HashMap::from([("r1".to_string(), vec!["m".to_string()]), ("t".to_string(), vec!["x".to_string()])]);
         let parents = subchat_parents(&["m", "r1", "t", "x"], &[true, false, false, false], &links);
+
         // r1 is roped to the Maestro m; t is roped only to another agent: both stay apart otherwise
         assert_eq!(parents, [None, Some(0), None, None]);
     }
@@ -392,11 +420,14 @@ mod tests {
     fn copiar_copies_the_code_and_reads_copiado_for_a_moment() {
         let ctx = Context::default();
         let c = UiColors::new(true);
+
         // one frame at `time` with `events`: the words painted and what went to the clipboard
         let frame = |time: f64, events: Vec<egui::Event>| {
             let raw =
                 egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(500.0, 300.0))), time: Some(time), events, ..Default::default() };
+
             let output = ctx.run_ui(raw, |ui| code_card(ui, "bash", "wsl -d Ubuntu", &c, true));
+
             let texts: Vec<String> = output
                 .shapes
                 .iter()
@@ -405,6 +436,7 @@ mod tests {
                     _ => None,
                 })
                 .collect();
+
             let copied: Vec<String> = output
                 .platform_output
                 .commands
@@ -414,19 +446,26 @@ mod tests {
                     _ => None,
                 })
                 .collect();
+
             (texts, copied)
         };
+
         let (texts, _) = frame(0.0, vec![]);
+
         assert!(texts.iter().any(|text| text == "Copiar"), "{texts:?}");
         // the button sits at the head's right, 34 tall
         let at = Pos2::new(470.0, 17.0);
         let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+
         frame(0.1, vec![egui::Event::PointerMoved(at), press(true)]);
         let (_, copied) = frame(0.2, vec![press(false)]);
+
         assert_eq!(copied, ["wsl -d Ubuntu"]);
         let (texts, _) = frame(1.0, vec![]);
+
         assert!(texts.iter().any(|text| text == "Copiado") && !texts.iter().any(|text| text == "Copiar"), "{texts:?}");
         let (texts, _) = frame(1.8, vec![]);
+
         assert!(texts.iter().any(|text| text == "Copiar"), "back after 1.5 s: {texts:?}");
     }
 }

@@ -52,6 +52,7 @@ pub(crate) struct WebPlayer {
 /// A text of the answer as the app shows it: one line, no control characters, at most `most` characters.
 fn text(value: &Value, key: &str, most: usize) -> String {
     let text: String = value.get(key).and_then(Value::as_str).unwrap_or_default().chars().filter(|letter| !letter.is_control()).take(most).collect();
+
     text.trim().to_string()
 }
 
@@ -63,8 +64,10 @@ fn whole(value: Option<&Value>) -> Option<u64> {
 /// last; only one of Spotify's own picture servers.
 pub(crate) fn small_image(images: &Value) -> String {
     let images: Vec<&Value> = images.as_array().into_iter().flatten().filter(|image| image["url"].as_str().is_some_and(cover_allowed)).collect();
+
     let wide_enough =
         images.iter().filter(|image| image["width"].as_u64().is_none_or(|width| width >= 64)).min_by_key(|image| image["width"].as_u64().unwrap_or(u64::MAX));
+
     wide_enough.or(images.last()).and_then(|image| image["url"].as_str()).unwrap_or_default().to_string()
 }
 
@@ -72,8 +75,10 @@ pub(crate) fn small_image(images: &Value) -> String {
 pub(crate) fn parse_track(value: &Value) -> Option<QueueItem> {
     let artists: Vec<String> =
         value["artists"].as_array().into_iter().flatten().map(|artist| text(artist, "name", 100)).filter(|name| !name.is_empty()).collect();
+
     let artist = if artists.is_empty() { text(&value["show"], "name", 200) } else { artists.join(", ") };
     let images = if value["album"]["images"].is_array() { &value["album"]["images"] } else { &value["images"] };
+
     QueueItem::new(value["uri"].as_str().unwrap_or_default(), &text(value, "name", 200), &artist, &small_image(images), whole(value.get("duration_ms")))
 }
 
@@ -82,6 +87,7 @@ pub(crate) fn parse_playlist(value: &Value) -> Option<PlaylistItem> {
     let uri = value["uri"].as_str().filter(|uri| uri_allowed(uri) && uri.starts_with("spotify:playlist:"))?;
     let name = text(value, "name", 200);
     let total = whole(value["items"].get("total")).or(whole(value["tracks"].get("total")));
+
     (!name.is_empty()).then(|| PlaylistItem {
         uri: uri.into(),
         name,
@@ -94,6 +100,7 @@ pub(crate) fn parse_playlist(value: &Value) -> Option<PlaylistItem> {
 /// `GET /search`'s answer: the tracks and the playlists (an entry may come as null).
 pub(crate) fn parse_search(root: &Value, query: &str) -> Found {
     let items = |kind: &str| root[kind]["items"].as_array().cloned().unwrap_or_default();
+
     Found {
         query: query.to_string(),
         tracks: items("tracks").iter().filter_map(parse_track).take(SEARCH_MOST).collect(),
@@ -129,6 +136,7 @@ pub(crate) fn parse_contains(root: &Value) -> Option<bool> {
 pub(crate) fn parse_device(value: &Value) -> Option<Device> {
     let id = text(value, "id", 100);
     let name = text(value, "name", 100);
+
     (!id.is_empty() && !name.is_empty()).then(|| Device {
         id,
         name,
@@ -146,14 +154,19 @@ pub(crate) fn parse_devices(root: &Value) -> Vec<Device> {
 /// `GET /me/player` (None: nothing plays anywhere, a 204).
 pub(crate) fn parse_player(root: &Value) -> Option<WebPlayer> {
     let item = root.get("item").filter(|item| item.is_object());
+
     let context = root.get("context").filter(|context| context.is_object()).and_then(|context| {
         let uri = context["uri"].as_str().unwrap_or_default().trim().to_string();
+
         (!uri.is_empty()).then_some(PlayContext { uri, name: String::new() })
     });
+
     let device = parse_device(&root["device"]);
+
     if item.is_none() && device.is_none() {
         return None;
     }
+
     Some(WebPlayer {
         track_uri: item.and_then(|item| item["uri"].as_str()).filter(|uri| uri_allowed(uri)).unwrap_or_default().to_string(),
         title: item.map(|item| text(item, "name", 200)).unwrap_or_default(),
@@ -169,17 +182,21 @@ pub(crate) fn parse_player(root: &Value) -> Option<WebPlayer> {
 
 pub(crate) fn parse_profile(root: &Value) -> Option<Profile> {
     let id = text(root, "id", 100);
+
     (!id.is_empty()).then(|| Profile { name: Some(text(root, "display_name", 100)).filter(|name| !name.is_empty()).unwrap_or_else(|| id.clone()), id })
 }
 
 /// The Web API's answer: its JSON (None when empty, as a 204), or why not in words. `path` tells a player's call.
 pub(crate) fn read_answer(path: &str, status: u16, body: &str) -> Result<Option<Value>, Failure> {
     let root: Option<Value> = serde_json::from_str(body).ok();
+
     if (200..300).contains(&status) {
         return Ok(root);
     }
+
     let reason = root.as_ref().and_then(|root| root["error"]["reason"].as_str()).unwrap_or_default();
     let player = path.starts_with("/me/player");
+
     let message = match (status, reason) {
         (401, _) => account::RELINK.to_string(),
         (_, "NO_ACTIVE_DEVICE") => "Nenhum aparelho do Spotify ativo: toque algo no Spotify (ou no Soloist) primeiro.".into(),
@@ -192,6 +209,7 @@ pub(crate) fn read_answer(path: &str, status: u16, body: &str) -> Result<Option<
         (500.., _) => format!("O Spotify falhou agora ({status}): tente de novo."),
         _ => format!("O Spotify respondeu {status}."),
     };
+
     Err(Failure { message, unauthorized: status == 401, status })
 }
 
@@ -199,9 +217,11 @@ pub(crate) fn read_answer(path: &str, status: u16, body: &str) -> Result<Option<
 /// body (an empty one: Spotify wants its length).
 fn call(shared: &Shared, method: &str, path: &str, body: Option<Value>) -> Result<Option<Value>, Failure> {
     let url = format!("{API}{path}");
+
     for attempt in 0..2 {
         let token = account::bearer(shared)?;
         let mut headers = vec![format!("Authorization: Bearer {token}"), "Accept: application/json".into(), "User-Agent: MagoAgent".into()];
+
         let body = match (&body, method) {
             (Some(json), _) => {
                 headers.push("Content-Type: application/json".into());
@@ -210,14 +230,19 @@ fn call(shared: &Shared, method: &str, path: &str, body: Option<Value>) -> Resul
             (None, "GET") => None,
             (None, _) => Some(String::new()),
         };
+
         let request = Request { method, url: &url, headers, body, timeout_seconds: TIMEOUT };
         let answer = http::send(&request).map_err(|_| Failure { message: "Sem conexão com o Spotify.".into(), unauthorized: false, status: 0 })?;
+
         if answer.status == 401 && attempt == 0 {
             account::expire(shared);
+
             continue;
         }
+
         return read_answer(path, answer.status, &answer.body);
     }
+
     Err(Failure { message: account::RELINK.into(), unauthorized: true, status: 401 })
 }
 
@@ -234,8 +259,10 @@ pub(crate) fn profile_with(access: &str) -> Result<Profile, Failure> {
         body: None,
         timeout_seconds: TIMEOUT,
     };
+
     let answer = http::send(&request).map_err(|_| Failure { message: "Sem conexão com o Spotify.".into(), unauthorized: false, status: 0 })?;
     let root = read_answer("/me", answer.status, &answer.body)?.unwrap_or_default();
+
     parse_profile(&root).ok_or(Failure { message: "A resposta do Spotify veio sem a conta.".into(), unauthorized: false, status: answer.status })
 }
 
@@ -245,6 +272,7 @@ pub(crate) fn profile(shared: &Shared) -> Result<Profile, Failure> {
 
 pub(crate) fn search(shared: &Shared, query: &str) -> Result<Found, Failure> {
     let root = get(shared, &format!("/search?q={}&type=track,playlist&limit={SEARCH_MOST}", encode(query)))?;
+
     Ok(parse_search(&root, query))
 }
 
@@ -258,6 +286,7 @@ pub(crate) fn liked(shared: &Shared) -> Result<Vec<QueueItem>, Failure> {
 
 pub(crate) fn contains(shared: &Shared, uri: &str) -> Result<bool, Failure> {
     let root = get(shared, &format!("/me/library/contains?uris={}", encode(uri)))?;
+
     parse_contains(&root).ok_or(Failure { message: "A resposta do Spotify não disse se a música é curtida.".into(), unauthorized: false, status: 200 })
 }
 
@@ -284,7 +313,9 @@ pub(crate) fn songs_path(uri: &str, offset: usize) -> Option<String> {
     if is_liked_songs(uri) {
         return Some(format!("/me/tracks?limit={LIST_MOST}&offset={offset}"));
     }
+
     let id = uri.strip_prefix("spotify:playlist:").filter(|_| uri_allowed(uri))?;
+
     Some(format!("/playlists/{id}/items?limit={LIST_MOST}&offset={offset}"))
 }
 
@@ -296,17 +327,20 @@ pub(crate) fn parse_songs(root: &Value) -> (Vec<QueueItem>, bool) {
 /// A page of 50 of `uri`'s songs (a playlist, or Liked Songs) from `offset`, and whether more follow.
 pub(crate) fn songs(shared: &Shared, uri: &str, offset: usize) -> Result<(Vec<QueueItem>, bool), Failure> {
     let path = songs_path(uri, offset).ok_or(Failure { message: "Essa lista não abre aqui.".into(), unauthorized: false, status: 0 })?;
+
     let root = match get(shared, &path) {
         // the older spelling, where `/items` is not known yet
         Err(failure) if failure.status == 404 && path.contains("/items?") => get(shared, &path.replace("/items?", "/tracks?"))?,
         other => other?,
     };
+
     Ok(parse_songs(&root))
 }
 
 /// A playlist's name, for "de onde" (`fields=name`: nothing else comes).
 pub(crate) fn playlist_name(shared: &Shared, uri: &str) -> Result<String, Failure> {
     let id = uri.strip_prefix("spotify:playlist:").filter(|_| uri_allowed(uri)).ok_or(Failure { message: String::new(), unauthorized: false, status: 0 })?;
+
     Ok(text(&get(shared, &format!("/playlists/{id}?fields=name"))?, "name", 200))
 }
 
@@ -336,6 +370,7 @@ fn on_a_device(shared: &Shared, method: &str, path: &str, body: Option<Value>) -
             let devices = devices(shared)?;
             let chosen = devices.iter().find(|device| device.active).or(devices.iter().find(|device| device.kind == "Computer")).or(devices.first());
             let Some(device) = chosen else { return Err(failure) };
+
             call(shared, method, &on_device(path, Some(&device.id)), body).map(drop)
         }
         other => other.map(drop),
@@ -347,9 +382,11 @@ pub(crate) fn play(shared: &Shared, uri: &str) -> Result<(), Failure> {
     match on_a_device(shared, "PUT", "/me/player/play", Some(play_body(uri))) {
         Err(failure) if failure.status == 400 && is_liked_songs(uri) => {
             let uris: Vec<String> = liked(shared)?.into_iter().map(|item| item.uri).filter(|uri| !uri.is_empty()).collect();
+
             if uris.is_empty() {
                 return Err(failure);
             }
+
             on_a_device(shared, "PUT", "/me/player/play", Some(json!({ "uris": uris })))
         }
         other => other,
@@ -365,6 +402,7 @@ pub(crate) fn play_in_body(track: &str, context: &str) -> Value {
 /// the queue by hand) alone.
 pub(crate) fn play_in(shared: &Shared, track: &str, context: Option<&str>) -> Result<(), Failure> {
     let Some(context) = context else { return play(shared, track) };
+
     match on_a_device(shared, "PUT", "/me/player/play", Some(play_in_body(track, context))) {
         Err(failure) if !failure.unauthorized => play(shared, track),
         other => other,
@@ -385,6 +423,7 @@ pub(crate) fn control(shared: &Shared, command: &Command, playing: bool) -> Resu
         Command::PlayUri(uri) => return play(shared, uri),
         Command::Enqueue(uri) => ("POST", format!("/me/player/queue?uri={}", encode(uri))),
     };
+
     on_a_device(shared, method, &path, None)
 }
 

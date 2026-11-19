@@ -13,6 +13,7 @@ pub(crate) fn reveal_duration(e: &Element) -> f64 {
         _ if e.image.is_some() || e.created.is_some() || e.frame.is_some() => 0.35,
         _ => {
             let length: f32 = rough_outlines(e).iter().flat_map(|o| o.windows(2).map(|w| dist(w[0], w[1]))).sum();
+
             (length as f64 / 1400.0).clamp(0.3, 1.0)
         }
     }
@@ -24,6 +25,7 @@ pub(crate) fn reveal_pen(e: &Element) -> Pos2 {
         ElementKind::Text { .. } => local_bounds(e).right_center(),
         ElementKind::Line { points, .. } | ElementKind::FreeDraw { points } if !points.is_empty() => {
             let last = points[points.len() - 1];
+
             Pos2::new(last[0], last[1])
         }
         _ => element_bounds(e).right_bottom(),
@@ -35,50 +37,63 @@ pub(crate) fn reveal_pen(e: &Element) -> Pos2 {
 /// position on screen.
 pub(crate) fn paint_partial(painter: &Painter, e: &Element, view: &View, progress: f32) -> Pos2 {
     let (center, angle) = (e.center(), e.angle);
+
     let to = |p: [f32; 2]| {
         let p = if angle == 0.0 { Pos2::new(p[0], p[1]) } else { center + rot(Pos2::new(p[0], p[1]) - center, angle) };
+
         Pos2::new(view.origin.x + p.x * view.zoom, view.origin.y + p.y * view.zoom)
     };
+
     let mut part = e.clone();
+
     match &mut part.kind {
         ElementKind::Text { value, .. } => {
             let n = (value.chars().count() as f32 * progress).ceil() as usize;
+
             *value = value.chars().take(n).collect();
             paint_element(painter, &part, view, false, false, false);
             let b = local_bounds(&part);
+
             return to([b.max.x, b.center().y]);
         }
         _ if e.image.is_some() || e.created.is_some() || e.frame.is_some() => {
             part.style.opacity = (e.style.opacity as f32 * progress) as u8;
             paint_element(painter, &part, view, false, false, false);
             let b = local_bounds(e);
+
             return to([b.max.x, b.max.y]);
         }
         _ => {}
     }
+
     let outlines = rough_outlines(e);
     let total: f32 = outlines.iter().flat_map(|o| o.windows(2).map(|w| dist(w[0], w[1]))).sum();
     let mut budget = total * (progress / 0.8).min(1.0);
     let width = if matches!(e.kind, ElementKind::FreeDraw { .. }) { e.style.stroke_width * 1.5 } else { e.style.stroke_width };
     let stroke = Stroke::new(width * view.zoom, themed(with_opacity(e.style.stroke, e.style.opacity), view.dark));
     let mut pen = to(outlines.first().and_then(|o| o.first()).copied().unwrap_or([center.x, center.y]));
+
     'outer: for outline in &outlines {
         for w in outline.windows(2) {
             if budget <= 0.0 {
                 break 'outer;
             }
+
             let seg = dist(w[0], w[1]);
             let t = if seg > 0.0 { (budget / seg).min(1.0) } else { 1.0 };
             let end = [w[0][0] + (w[1][0] - w[0][0]) * t, w[0][1] + (w[1][1] - w[0][1]) * t];
+
             painter.line_segment([to(w[0]), to(end)], stroke);
             pen = to(end);
             budget -= seg;
         }
     }
+
     if progress > 0.8 {
         part.style.opacity = (e.style.opacity as f32 * (progress - 0.8) / 0.2) as u8;
         paint_element(painter, &part, view, false, false, false);
     }
+
     pen
 }
 
@@ -87,11 +102,13 @@ pub(crate) fn paint_agent_cursor(painter: &Painter, at: Pos2, name: &str, alpha:
     let color = AGENT_COLOR.gamma_multiply(alpha);
     let shadow = Color32::from_black_alpha((60.0 * alpha) as u8);
     let arrow = |o: Vec2| [at, at + Vec2::new(0.0, 16.0), at + Vec2::new(4.5, 12.0), at + Vec2::new(11.0, 11.5)].map(|p| p + o).to_vec();
+
     // a soft shadow under the arrow and the name tag, so they read over any drawing
     painter.add(Shape::convex_polygon(arrow(Vec2::new(0.5, 1.5)), shadow, Stroke::NONE));
     painter.add(Shape::convex_polygon(arrow(Vec2::ZERO), color, Stroke::new(1.5, Color32::WHITE.gamma_multiply(alpha))));
     let galley = painter.layout_no_wrap(name.to_string(), egui::FontId::proportional(13.0), Color32::WHITE.gamma_multiply(alpha));
     let pill = Rect::from_min_size(at + Vec2::new(12.0, 16.0), galley.size() + Vec2::new(16.0, 8.0));
+
     painter.rect_filled(pill.translate(Vec2::new(0.0, 1.5)), pill.height() / 2.0, shadow);
     painter.rect_filled(pill, pill.height() / 2.0, color);
     painter.galley(pill.min + Vec2::new(8.0, 4.0), galley, Color32::WHITE);

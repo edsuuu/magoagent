@@ -15,6 +15,7 @@ const SOCKET: &str = "/tmp/magoagent-teste/tmux.sock";
 
 fn app() -> DrawingApp {
     let mut app = DrawingApp { bridge: Bridge::start(None).ok(), ..Default::default() };
+
     app.prefs.island = true;
     app
 }
@@ -22,11 +23,13 @@ fn app() -> DrawingApp {
 /// A hook of session s1 in /w/loja as the relay sends it, from inside tmux pane %3 or not.
 fn hook(event: &str, tool: &str, input: Value, tmux: bool) -> Value {
     let mut payload = json!({ "hook_event_name": event, "session_id": "s1", "cwd": "/w/loja", "tool_name": tool, "tool_input": input });
+
     let env = move |name: &str| match name {
         "TMUX" if tmux => Some(format!("{SOCKET},4242,0")),
         "TMUX_PANE" if tmux => Some("%3".to_string()),
         _ => None,
     };
+
     relay::tag(&mut payload, &env);
     payload
 }
@@ -35,8 +38,10 @@ fn hook(event: &str, tool: &str, input: Value, tmux: bool) -> Value {
 fn fake(app: &mut DrawingApp, front: &'static str, screen: &'static str, works: bool) -> Rc<RefCell<Vec<Vec<String>>>> {
     let calls = Rc::new(RefCell::new(Vec::new()));
     let seen = calls.clone();
+
     app.outside.fake_tmux = Some(Box::new(move |args: &[String]| {
         seen.borrow_mut().push(args.to_vec());
+
         match args.get(2).map(String::as_str) {
             _ if !works => Err("no server running on /tmp/magoagent-teste/tmux.sock".into()),
             Some("display-message") => Ok(format!("{front}\n")),
@@ -44,6 +49,7 @@ fn fake(app: &mut DrawingApp, front: &'static str, screen: &'static str, works: 
             _ => Ok(String::new()),
         }
     }));
+
     calls
 }
 
@@ -56,6 +62,7 @@ fn take(app: &mut DrawingApp) -> Value {
     let Ok(UiCommand::Hook { from, payload, reply }) = app.bridge.as_ref().unwrap().commands.recv_timeout(Duration::from_secs(5)) else {
         panic!("o hook não chegou")
     };
+
     app.take_hook(&from, &payload, reply);
     payload
 }
@@ -63,10 +70,12 @@ fn take(app: &mut DrawingApp) -> Value {
 /// The session's Stop through the real relay: what the hook printed.
 fn stop(app: &mut DrawingApp) -> String {
     let bridge = app.bridge.as_ref().unwrap();
+
     let printed =
         relay::send((bridge.address.clone(), bridge.token.clone()), json!({ "hook_event_name": "Stop", "session_id": "s1", "cwd": "/w/loja" }), false, &|_| {
             None
         });
+
     take(app);
     printed
 }
@@ -74,10 +83,13 @@ fn stop(app: &mut DrawingApp) -> String {
 #[test]
 fn a_message_is_typed_in_the_tmux_pane_when_nothing_waits_on_its_screen() {
     let mut app = app();
+
     app.take_hook("ext:s1", &hook("UserPromptSubmit", "", Value::Null, true), None);
     let calls = fake(&mut app, "claude", TYPING_BOX, true);
+
     assert_eq!(app.outside_message(PILL, "  roda os testes\n"), Ok(Delivery::Typed));
     let tmux = |words: &[&str]| ["-S", SOCKET].iter().chain(words).map(|word| word.to_string()).collect::<Vec<_>>();
+
     assert_eq!(
         *calls.borrow(),
         [
@@ -87,10 +99,13 @@ fn a_message_is_typed_in_the_tmux_pane_when_nothing_waits_on_its_screen() {
             tmux(&["send-keys", "-t", "%3", "Enter"]),
         ]
     );
+
     assert_eq!(app.outside_pending(PILL), 0);
+
     // a shell in front (Claude Code left), a question on its screen, a tmux that is gone: nothing typed but the checks, and it waits in the queue
     for (front, screen, works) in [("zsh", TYPING_BOX, true), ("claude", PERMISSION, true), ("claude", TYPING_BOX, false)] {
         let calls = fake(&mut app, front, screen, works);
+
         assert_eq!(app.outside_message(PILL, "oi"), Ok(Delivery::Queued { idle: false }), "{front}");
         assert!(!calls.borrow().iter().any(|call| call.contains(&"-l".to_string())), "{front}: nada digitado");
         locked(&app.bridge.as_ref().unwrap().shared).outbox.clear();
@@ -101,10 +116,12 @@ fn a_message_is_typed_in_the_tmux_pane_when_nothing_waits_on_its_screen() {
 fn while_a_permission_waits_the_message_is_queued_and_the_stop_hands_it_to_claude_code() {
     let mut app = app();
     let calls = fake(&mut app, "claude", TYPING_BOX, true);
+
     app.take_hook("ext:s1", &hook("PreToolUse", "Bash", json!({ "command": "cargo test" }), true), None);
     // a permission on the terminal's screen (the island off: it is the terminal's): the words would answer it
     app.prefs.island = false;
     let (reply, _answer) = std::sync::mpsc::channel();
+
     app.take_hook("ext:s1", &hook("PermissionRequest", "Bash", json!({ "command": "cargo test" }), true), Some(reply));
     assert_eq!(app.outside_message(PILL, "roda os testes"), Ok(Delivery::Queued { idle: false }));
     assert!(calls.borrow().is_empty(), "nem olhou o tmux");
@@ -118,8 +135,10 @@ fn while_a_permission_waits_the_message_is_queued_and_the_stop_hands_it_to_claud
     assert_eq!(app.outside_pending(PILL), 3);
     // the turn ends: the hook prints the block with all of them, the pill says so and goes on working
     let printed: Value = serde_json::from_str(&stop(&mut app)).unwrap();
+
     assert_eq!(printed, json!({ "decision": "block", "reason": "Mensagem da pessoa pelo MagoAgent:\nroda os testes\n\ne o lint\n\ne me diz" }));
     let pill = &app.outside_pills()[0];
+
     assert_eq!((pill.activity.as_str(), pill.state, pill.badge), ("3 mensagens entregues", crate::app::ui::agents::AgentState::Working(0.0), None));
     assert_eq!(app.outside_pending(PILL), 0);
     // and the next Stop is a stop
@@ -132,6 +151,7 @@ fn while_a_permission_waits_the_message_is_queued_and_the_stop_hands_it_to_claud
 #[test]
 fn an_idle_session_without_tmux_gets_it_when_its_next_turn_ends_and_its_pill_stays_meanwhile() {
     let mut app = app();
+
     app.take_hook("ext:s1", &hook("UserPromptSubmit", "", Value::Null, false), None);
     assert_eq!(app.outside_message(PILL, "oi"), Ok(Delivery::Queued { idle: false }), "working, no tmux: the end of this turn");
     locked(&app.bridge.as_ref().unwrap().shared).outbox.clear();
@@ -156,9 +176,11 @@ fn an_idle_session_without_tmux_gets_it_when_its_next_turn_ends_and_its_pill_sta
 fn only_claude_code_takes_messages() {
     let mut app = app();
     let mut desktop = hook("UserPromptSubmit", "", Value::Null, true);
+
     desktop["mago_origin"] = "claude-desktop".into();
     app.take_hook("ext:s1", &desktop, None);
     let id = app.outside_pills()[0].id.clone();
+
     assert!(!app.outside_takes_messages(&id));
     assert!(app.outside_message(&id, "oi").unwrap_err().contains("responda no terminal"));
     assert!(app.outside_message("pill:code:/nada", "oi").is_err() && app.outside_message("chat-1", "oi").is_err());
@@ -173,23 +195,29 @@ fn only_claude_code_takes_messages() {
 #[test]
 fn the_mcp_sends_by_the_sessions_name() {
     let mut app = app();
+
     assert!(app.act("outside_message", &json!({ "text": "oi" })).unwrap_err().starts_with("Nenhuma sessão do Claude Code"));
     app.take_hook("ext:s1", &hook("UserPromptSubmit", "", Value::Null, false), None);
     let mut other = hook("UserPromptSubmit", "", Value::Null, false);
+
     (other["session_id"], other["cwd"]) = ("s2".into(), "/w/loja-api".into());
     app.take_hook("ext:s2", &other, None);
+
     // "loja" is the folder of one and part of the other's: the folder wins
     assert_eq!(
         app.act("outside_message", &json!({ "session": "loja", "text": "roda os testes" })).as_deref(),
         Ok("Claude Code · loja: Na fila: entra quando o Claude terminar esta vez.")
     );
+
     assert_eq!(locked(&app.bridge.as_ref().unwrap().shared).outbox["s1"], ["roda os testes"]);
     assert!(app.act("outside_message", &json!({ "session": "API", "text": "oi" })).unwrap().starts_with("Claude Code · loja-api:"));
     // a worktree's folder, cut on its pill ("agent-a47cc47"), is found by its whole name too
     let mut worktree = hook("UserPromptSubmit", "", Value::Null, false);
+
     (worktree["session_id"], worktree["cwd"]) = ("s3".into(), "/w/.claude/worktrees/agent-a47cc47699b17a639".into());
     app.take_hook("ext:s3", &worktree, None);
     let found = app.act("outside_message", &json!({ "session": "agent-a47cc47699b17a639", "text": "oi" }));
+
     assert!(found.as_deref().is_ok_and(|said| said.starts_with("Claude Code · agent-a47cc47:")), "{found:?}");
     assert!(app.act("outside_message", &json!({ "text": "oi" })).unwrap_err().contains("Mais de uma sessão"));
     assert!(app.act("outside_message", &json!({ "session": "blog", "text": "oi" })).unwrap_err().contains("\"Claude Code · loja\""));
@@ -221,45 +249,57 @@ fn at(texts: &[(String, Rect)], text: &str) -> Rect {
 fn the_islands_box_sends_and_says_how_it_went() {
     let ctx = Context::default();
     let mut app = app();
+
     app.take_hook("ext:s1", &hook("UserPromptSubmit", "", Value::Null, false), None);
     let mut time = 1.0;
+
     rest(&mut app, &ctx, &mut time, Pos2::new(ISLAND_SCREEN.x / 2.0, 10.0), 20);
     let middle = island_rect(&app).center();
     let press = |at, pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+
     for events in [vec![press(middle, true)], vec![press(middle, false)]] {
         step(&mut app, &ctx, &mut time, events);
     }
+
     app.island_show(PILL, time);
     let middle = island_rect(&app).center();
     let texts = rest(&mut app, &ctx, &mut time, middle, 20);
+
     assert!(texts.iter().any(|text| text == "Mensagem para esta sessão…") && texts.iter().any(|text| text == "Ir ao terminal"), "{texts:?}");
     assert!(!texts.iter().any(|text| text == "Responder no terminal" || text.ends_with("na fila")), "{texts:?}");
     // a click in the box, the words and Enter
     let rect = island_rect(&app);
     let field = Pos2::new(rect.left() + 10.0 + 84.0 + 40.0, rect.bottom() - 10.0 - 14.0 - 20.0);
+
     for events in [vec![egui::Event::PointerMoved(field)], vec![press(field, true)], vec![press(field, false)]] {
         step(&mut app, &ctx, &mut time, events);
     }
+
     step(&mut app, &ctx, &mut time, vec![egui::Event::Text("roda os testes".into())]);
     let enter = |pressed| egui::Event::Key { key: egui::Key::Enter, physical_key: None, pressed, repeat: false, modifiers: Default::default() };
+
     step(&mut app, &ctx, &mut time, vec![enter(true), enter(false)]);
     rest(&mut app, &ctx, &mut time, field, 3);
     assert_eq!(locked(&app.bridge.as_ref().unwrap().shared).outbox["s1"], ["roda os testes"]);
     // the notice in the box, before the way to the terminal; the count beside the name, on its row, before it
     let texts = painted(&mut app, &ctx, &mut time, vec![egui::Event::PointerMoved(field)]);
     let (notice, go) = (at(&texts, "Na fila: entra quando o Claude terminar esta vez."), at(&texts, "Ir ao terminal"));
+
     assert!(notice.right() < go.left() && (notice.center().y - go.center().y).abs() < 4.0, "{notice:?} {go:?}");
     let name = texts.iter().find(|(text, _)| text.starts_with("loja · ")).map(|(_, rect)| *rect).unwrap();
     let queued = at(&texts, "1 na fila");
+
     assert!(queued.right() < name.left() && (queued.center().y - name.center().y).abs() < 4.0 && queued.bottom() < notice.top(), "{queued:?} {name:?}");
     assert!(island_rect(&app).contains_rect(queued) && island_rect(&app).contains_rect(notice));
     // the longest notice goes whole, in two lines inside the box
     app.island.session.as_mut().unwrap().notice(Delivery::Queued { idle: true }.notice(), time);
     let texts = painted(&mut app, &ctx, &mut time, vec![egui::Event::PointerMoved(field)]);
     let idle = at(&texts, "Na fila: a sessão está parada; entra quando ela trabalhar de novo.");
+
     assert!(idle.right() < go.left() && idle.height() > notice.height() / 2.0 && idle.height() < 40.0, "{idle:?} {go:?}");
     // the turn ends with it: delivered, and the box's count goes
     stop(&mut app);
     let texts = rest(&mut app, &ctx, &mut time, field, 4);
+
     assert!(!texts.iter().any(|text| text.ends_with("na fila")), "{texts:?}");
 }

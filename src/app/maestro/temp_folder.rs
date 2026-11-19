@@ -22,6 +22,7 @@ pub(crate) fn temp_rule(prefs: &Prefs) -> String {
     if !prefs.work_outside_temp {
         return String::new();
     }
+
     format!(
         " Pasta temporária: não guarde em {} nada que precise durar (clones, worktrees, rascunhos, arquivos do projeto), porque ela pode ser \
          apagada quando o computador reinicia. Trabalhe na pasta do projeto; worktrees do git ficam em <repo>/.magoagent/worktrees, onde o \
@@ -38,15 +39,19 @@ pub(crate) fn temp_rule(prefs: &Prefs) -> String {
 pub(crate) fn with_temp_rule(command: &str, prefs: &Prefs) -> String {
     let command = command.trim();
     let rule = temp_rule(prefs);
+
     let Some(rest) = command.strip_prefix("claude").filter(|rest| rest.starts_with(char::is_whitespace) || rest.is_empty()) else {
         return command.to_string();
     };
+
     if rule.is_empty() || command.contains("--append-system-prompt") {
         return command.to_string();
     }
+
     let (_, task) = crate::app::maestro::recruit_flags(rest);
     let flags = rest[..rest.len() - task.len()].trim();
     let words = ["claude", flags, &format!("--append-system-prompt \"{}\"", rule.trim()), task.trim()];
+
     words.into_iter().filter(|word| !word.is_empty()).collect::<Vec<_>>().join(" ")
 }
 
@@ -57,8 +62,10 @@ mod tests {
     #[test]
     fn the_rule_keeps_work_out_of_the_temp_folder_and_says_where_it_goes() {
         let mut prefs = Prefs::default();
+
         assert!(prefs.work_outside_temp, "on by default");
         let rule = temp_rule(&prefs);
+
         assert!(rule.contains(temp_folders()) && rule.contains("<repo>/.magoagent/worktrees") && rule.contains("logs"), "{rule}");
         // typed between double quotes into a terminal's shell
         assert!(!rule.contains(['"', '$', '`', '!', '\n']), "{rule}");
@@ -71,14 +78,17 @@ mod tests {
         let mut prefs = Prefs::default();
         let told = with_temp_rule("claude --model sonnet --effort high \"rode os testes\"", &prefs);
         let flag = format!("--append-system-prompt \"{}\"", temp_rule(&prefs).trim());
+
         assert_eq!(told, format!("claude --model sonnet --effort high {flag} \"rode os testes\""));
         // the card still reads its model and effort
         assert_eq!(crate::app::maestro::tuning::of_command(&told, ""), ("claude".into(), "sonnet".into(), "high".into()));
         assert_eq!(with_temp_rule("claude", &prefs), format!("claude {flag}"));
+
         // another program, one already told, a shell's own command, or the setting off: as it was
         for command in ["codex \"rode os testes\"", "claude --append-system-prompt \"x\" oi", "claudette oi", "npm test"] {
             assert_eq!(with_temp_rule(command, &prefs), command);
         }
+
         prefs.work_outside_temp = false;
         assert_eq!(with_temp_rule("claude oi", &prefs), "claude oi");
     }

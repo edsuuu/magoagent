@@ -40,6 +40,7 @@ impl Luna {
     fn groove(&self, time: f64) -> Option<Groove> {
         let dizzy = mago_pokes("island-main", time).1;
         let (ear, playing) = self.ear.as_ref()?;
+
         Some(ear.groove(*playing)).filter(|groove| self.calm && groove.dance != Dance::Nap && !dizzy)
     }
 
@@ -50,6 +51,7 @@ impl Luna {
             None => {
                 let pointer = self.eyes.and_then(|(scale, origin)| cursor::eye_cursor().and_then(|at| cursor::eye_target(at, scale, origin))).or(self.pointer);
                 let pointer = if self.window_pointer { pointer.or_else(|| painter.ctx().pointer_latest_pos()) } else { pointer };
+
                 paint_mago_toward(painter, "island-main", center, size, self.state, time, pointer);
             }
         }
@@ -61,6 +63,7 @@ impl DrawingApp {
     pub(super) fn island_luna(&self, calm: bool) -> Luna {
         let spotify = &self.integrations.spotify;
         let ear = spotify.now.as_ref().filter(|_| self.prefs.integrations.luna_dances).map(|now| (spotify.dancer.ear(), now.playing));
+
         Luna { ear, calm, colour: self.luna_colour(LUME), state: MagoState::Idle, eyes: self.island.eyes, pointer: None, window_pointer: false }
     }
 }

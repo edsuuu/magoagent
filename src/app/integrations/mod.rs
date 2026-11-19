@@ -114,9 +114,11 @@ impl DrawingApp {
     /// Each frame: every integration that is on.
     pub(crate) fn integrations_tick(&mut self, ctx: &Context) {
         let time = ctx.input(|input| input.time);
+
         for action in std::mem::take(self.integrations.pressed.get_mut()) {
             self.integration_press(&action, time);
         }
+
         self.github_tick(ctx);
         self.spotify_tick(ctx);
         self.soloist_setup_tick(ctx);
@@ -143,40 +145,49 @@ impl DrawingApp {
     /// A press on an integration's pill: its page opens. False when `id` is not an integration's.
     pub(crate) fn integration_open(&mut self, id: &str) -> bool {
         let Some(name) = id.strip_prefix(ITEM_PREFIX) else { return false };
+
         if name == "github" {
             let notice = self.integrations.github.notice.as_ref().map(|notice| notice.url.clone()).filter(|url| !url.is_empty());
+
             open_page(&notice.unwrap_or_else(|| github::PULLS_PAGE.into()));
             self.github_seen();
         } else if name == "whatsapp" {
             self.whatsapp_open();
         }
+
         true
     }
 
     /// The integrations that are on, for the island.
     pub(crate) fn integration_items(&self) -> Vec<IslandItem> {
         let mut items = Vec::new();
+
         if self.prefs.integrations.github && self.integrations.github.has_token() {
             items.push(self.github_item());
         }
+
         if self.spotify_sources() != spotify::Sources::default() {
             items.extend(self.spotify_item());
         }
+
         if self.prefs.integrations.whatsapp {
             items.push(self.whatsapp_item());
         }
+
         items
     }
 
     /// WhatsApp's pill: how the gateway is, and one button (what a click on its line in Início does too).
     fn whatsapp_item(&self) -> IslandItem {
         let whatsapp = &self.integrations.whatsapp;
+
         let (text, color, failed) = match whatsapp.link {
             whatsapp::Link::Unknown => ("Gateway ainda não testado", DIM, false),
             whatsapp::Link::Connected => ("Gateway conectado", GREEN, false),
             whatsapp::Link::NeedsPairing => ("WhatsApp precisa ser pareado no gateway", AMBER, false),
             whatsapp::Link::Unavailable => ("Gateway indisponível ou resposta inválida", RED, true),
         };
+
         IslandItem {
             id: format!("{ITEM_PREFIX}whatsapp"),
             name: "WhatsApp",
@@ -194,10 +205,13 @@ impl DrawingApp {
     fn github_item(&self) -> IslandItem {
         let github = &self.integrations.github;
         let mut rows = Vec::new();
+
         if let Some(notice) = &github.notice {
             let action = (!notice.url.is_empty()).then(|| format!("open {}", notice.url));
+
             rows.push(ItemRow { text: notice.text.clone(), color: if notice.failure { RED } else { GREEN }, action });
         }
+
         match (&github.pulse, &github.error) {
             (_, Some(error)) => rows.push(ItemRow { text: error.clone(), color: RED, action: None }),
             (None, None) => rows.push(ItemRow { text: "Buscando os seus pull requests…".into(), color: DIM, action: None }),
@@ -205,6 +219,7 @@ impl DrawingApp {
                 if pulse.open().next().is_none() && pulse.to_review.is_empty() {
                     rows.push(ItemRow { text: "Nenhum PR aberto nem revisão pedida.".into(), color: DIM, action: None });
                 }
+
                 for request in pulse.open() {
                     let color = match request.ci {
                         github::CiState::Failure => RED,
@@ -212,28 +227,35 @@ impl DrawingApp {
                         github::CiState::Pending => AMBER,
                         github::CiState::Unknown => INK,
                     };
+
                     rows.push(ItemRow {
                         text: format!("{} {} {}", request.ci.label().0, request.id, request.title),
                         color,
                         action: Some(format!("open {}", request.page())),
                     });
                 }
+
                 // a default branch whose checks failed: its Actions, where the run is
                 for branch in pulse.main.iter().filter(|branch| branch.ci == github::CiState::Failure) {
                     let text = format!("✕ {} · CI da {} falhou", branch.repo, branch.branch);
+
                     rows.push(ItemRow { text, color: RED, action: Some(format!("open {}/actions", branch.url)) });
                 }
+
                 for request in &pulse.to_review {
                     rows.push(ItemRow { text: format!("Revisar {} {}", request.id, request.title), color: INK, action: Some(format!("open {}", request.url)) });
                 }
             }
         }
+
         let login = github.pulse.as_ref().map(|pulse| format!("@{}", pulse.login)).unwrap_or_default();
+
         let badge = match &github.notice {
             Some(notice) if notice.failure => Some(Badge::Error),
             Some(_) => Some(Badge::Finished),
             None => None,
         };
+
         IslandItem {
             id: format!("{ITEM_PREFIX}github"),
             name: "GitHub",
@@ -263,6 +285,7 @@ mod tests {
         for good in ["https://github.com/ana-dev/loja/pull/42", github::TOKENS_PAGE, github::PULLS_PAGE, spotify::setup::DASHBOARD] {
             assert!(page_allowed(good), "{good}");
         }
+
         for bad in [
             "file:///C:/Windows/System32/calc.exe",
             "http://github.com/a",
@@ -279,15 +302,19 @@ mod tests {
     #[test]
     fn github_is_on_the_island_when_on_and_with_a_token() {
         let mut app = DrawingApp::default();
+
         app.integrations.github = github::GitHub::with_token(TOKEN);
         assert!(app.integration_items().is_empty(), "off: nothing on the island");
         app.prefs.integrations.github = true;
         let waiting = app.integration_items();
+
         assert_eq!((waiting.len(), waiting[0].rows[0].text.as_str()), (1, "Buscando os seus pull requests…"));
         app.integrations.github.pulse = Some(recorded_pulse());
         let item = app.integration_items().remove(0);
+
         assert_eq!((item.id.as_str(), item.name, item.kind.as_str()), ("integration:github", "GitHub", "@ana-dev"));
         let rows: Vec<&str> = item.rows.iter().map(|row| row.text.as_str()).collect();
+
         assert_eq!(rows[..3], ["✓ ana-dev/loja#42 Adiciona o checkout", "• ana-dev/loja#43 Rascunho do frete", "✕ ana-dev/site#7 Corrige o carrinho quebrado"]);
         assert!(rows[3].starts_with("Revisar time/api#310 "), "{rows:?}");
         assert_eq!(item.rows[0].action.as_deref(), Some("open https://github.com/ana-dev/loja/pull/42"));
@@ -299,6 +326,7 @@ mod tests {
     #[test]
     fn a_press_on_the_pill_is_the_integrations_and_no_one_elses() {
         let mut app = DrawingApp::default();
+
         assert!(app.integration_open("integration:github"));
         assert!(!app.integration_open("terminal-1") && !app.integration_open("outside:abc"));
         // what a card wrote down is done by the next tick, whatever it is

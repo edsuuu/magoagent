@@ -14,19 +14,24 @@ struct Write {
 /// The writer's thread, started at its first write.
 fn writer() -> &'static Sender<Write> {
     static WRITER: OnceLock<Sender<Write>> = OnceLock::new();
+
     WRITER.get_or_init(|| {
         let (sender, writes) = channel::<Write>();
+
         std::thread::spawn(move || {
             for write in writes {
                 let written = write.prefs.map_or(Ok(()), |(path, prefs, before)| {
                     let json = serde_json::to_string_pretty(&prefs_for_file(&prefs, &before)).map_err(|error| error.to_string())?;
+
                     write_atomic(&path, json).map_err(|error| error.to_string())
                 });
+
                 if let Some(done) = write.done {
                     let _ = done.send(written);
                 }
             }
         });
+
         sender
     })
 }
@@ -44,12 +49,16 @@ pub(crate) fn prefs_written() {
 
 fn send(mut write: Write, wait: bool) -> Result<(), String> {
     let (done, written) = channel();
+
     if wait {
         write.done = Some(done);
     }
+
     writer().send(write).map_err(|_| "o gravador das preferências parou".to_string())?;
+
     if !wait {
         return Ok(());
     }
+
     written.recv_timeout(std::time::Duration::from_secs(10)).map_err(|_| "as preferências demoraram a gravar".to_string())?
 }

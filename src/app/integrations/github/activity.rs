@@ -33,9 +33,11 @@ impl Activity {
         let viewer = root.get("data")?.get("viewer")?;
         let calendar = viewer.get("contributionsCollection")?.get("contributionCalendar")?;
         let mut activity = Activity { total: calendar.get("totalContributions")?.as_i64()?.max(0), ..Default::default() };
+
         // a year is 53 weeks of 7 days: anything longer is not GitHub's answer
         for week in calendar.get("weeks")?.as_array()?.iter().take(60) {
             let Some(days) = week.get("contributionDays").and_then(Value::as_array) else { continue };
+
             let days: Vec<Day> = days
                 .iter()
                 .take(7)
@@ -53,16 +55,20 @@ impl Activity {
                     weekday: day.get("weekday").and_then(Value::as_u64).filter(|weekday| *weekday < 7).map_or(index as u8, |weekday| weekday as u8),
                 })
                 .collect();
+
             if let Some(last) = days.last() {
                 activity.today = last.count;
                 activity.weeks.push(days);
             }
         }
+
         if let Some(repositories) = viewer.get("repositories") {
             activity.repos = repositories.get("totalCount").and_then(Value::as_i64).unwrap_or(0).max(0);
             let stars = super::nodes(Some(repositories)).iter().filter_map(|node| node.get("stargazerCount").and_then(Value::as_i64));
+
             activity.stars = stars.map(|count| count.max(0)).sum();
         }
+
         Some(activity)
     }
 
@@ -72,9 +78,11 @@ impl Activity {
         let all: Vec<&Day> = self.weeks.iter().flatten().collect();
         let days: Vec<Day> = all[all.len().saturating_sub(count)..].iter().map(|day| (*day).clone()).collect();
         let busiest = days.iter().map(|day| day.count).max().unwrap_or(0);
+
         if busiest == 0 {
             return days;
         }
+
         days.into_iter().map(|day| Day { level: if day.count == 0 { 0 } else { ((4 * day.count + busiest - 1) / busiest).clamp(1, 4) as u8 }, ..day }).collect()
     }
 
@@ -84,14 +92,17 @@ impl Activity {
             1 => "1 contribuição no último ano".to_string(),
             total => format!("{} contribuições no último ano", thousands(total)),
         }];
+
         match self.repos {
             0 => {}
             1 => parts.push("1 repositório".into()),
             repos => parts.push(format!("{repos} repositórios")),
         }
+
         if self.stars > 0 {
             parts.push(format!("★ {}", short_count(self.stars)));
         }
+
         parts.join(" · ")
     }
 }
@@ -100,12 +111,15 @@ impl Activity {
 fn thousands(number: i64) -> String {
     let digits = number.to_string();
     let mut out = String::new();
+
     for (index, digit) in digits.chars().enumerate() {
         if index > 0 && (digits.len() - index).is_multiple_of(3) {
             out.push('.');
         }
+
         out.push(digit);
     }
+
     out
 }
 
@@ -118,15 +132,18 @@ pub(crate) fn short_count(number: i64) -> String {
 pub(crate) fn day_words(day: &Day) -> String {
     const MONTHS: [&str; 12] = ["jan.", "fev.", "mar.", "abr.", "mai.", "jun.", "jul.", "ago.", "set.", "out.", "nov.", "dez."];
     let mut parts = day.date.splitn(3, '-').skip(1).map(|part| part.parse::<usize>().ok());
+
     let date = match (parts.next().flatten(), parts.next().flatten()) {
         (Some(month @ 1..=12), Some(number @ 1..=31)) => format!("{number} de {}", MONTHS[month - 1]),
         _ => day.date.clone(),
     };
+
     let count = match day.count {
         0 => "nenhuma contribuição".to_string(),
         1 => "1 contribuição".to_string(),
         count => format!("{count} contribuições"),
     };
+
     [date, count].into_iter().filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" · ")
 }
 

@@ -9,12 +9,14 @@ struct Drawing(PathBuf);
 impl Drawing {
     fn new(name: &str) -> Self {
         let drawing = Drawing(std::env::temp_dir().join(format!("magoagent-persist-{name}-{}.mago", std::process::id())));
+
         drawing.clean();
         drawing
     }
 
     fn set_aside(&self) -> Vec<PathBuf> {
         let name = self.0.file_name().unwrap().to_string_lossy().to_string();
+
         fs::read_dir(self.0.parent().unwrap())
             .unwrap()
             .filter_map(|e| e.ok().map(|e| e.path()))
@@ -32,11 +34,13 @@ impl Drawing {
     fn write_outside(&self, data: &str) {
         fs::write(&self.0, data).unwrap();
         let later = SystemTime::now() + std::time::Duration::from_secs(5);
+
         fs::File::options().write(true).open(&self.0).unwrap().set_modified(later).unwrap();
     }
 
     fn app(&self) -> DrawingApp {
         let mut app = DrawingApp { autosave: Some(self.0.clone()), ..Default::default() };
+
         app.load_autosave();
         app
     }
@@ -56,6 +60,7 @@ fn boxed(app: &DrawingApp, x: f32) -> Element {
 fn only_this_builds_drawings_parse() {
     let scene = Scene::default();
     let mut newer = serde_json::to_value(&scene).unwrap();
+
     newer["version"] = json!(SCENE_VERSION + 1);
     assert!(matches!(parse_scene(&newer.to_string()), Err(SceneError::Newer(Some(_)))));
     assert!(matches!(parse_scene("{\"version\":"), Err(SceneError::Unreadable(_))));
@@ -66,6 +71,7 @@ fn only_this_builds_drawings_parse() {
 fn unreadable_preferences_are_set_aside_not_written_over() {
     mock_keyring();
     let file = Drawing::new("prefs");
+
     file.write_outside("{ quebrado");
     // where it went comes back, for the warning
     assert_eq!(read_prefs(&file.0), (None, file.set_aside().pop()));
@@ -78,13 +84,16 @@ fn unreadable_preferences_are_set_aside_not_written_over() {
 #[test]
 fn unreadable_chats_are_set_aside_not_written_over() {
     let file = Drawing::new("chats");
+
     assert_eq!(read_chats(&file.0), (Vec::new(), None));
     file.write_outside("[{\"id\":");
     // where it went comes back, for the warning; the list starts empty
     assert_eq!(read_chats(&file.0), (Vec::new(), file.set_aside().pop()));
     let kept = file.set_aside();
+
     assert_eq!((kept.len(), file.0.exists()), (1, false));
     assert_eq!(fs::read_to_string(&kept[0]).unwrap(), "[{\"id\":");
+
     let chat = crate::app::chat::direct::Chat {
         id: "a".into(),
         agent: "claude".into(),
@@ -98,6 +107,7 @@ fn unreadable_chats_are_set_aside_not_written_over() {
         named: false,
         draft: false,
     };
+
     write_atomic(&file.0, serde_json::to_string(&vec![chat.clone()]).unwrap()).unwrap();
     assert_eq!(read_chats(&file.0), (vec![chat], None));
     file.clean();
@@ -106,9 +116,11 @@ fn unreadable_chats_are_set_aside_not_written_over() {
 #[test]
 fn an_unreadable_drawing_is_set_aside_at_startup_not_written_over() {
     let drawing = Drawing::new("unreadable");
+
     drawing.write_outside("{\"version\":1,\"elements\":[");
     let mut app = drawing.app();
     let kept = drawing.set_aside();
+
     assert_eq!(kept.len(), 1);
     assert_eq!(fs::read_to_string(&kept[0]).unwrap(), "{\"version\":1,\"elements\":[");
     assert!(app.status.contains("ilegível"));
@@ -124,10 +136,12 @@ fn a_drawing_from_a_newer_build_is_shown_but_never_written() {
     let drawing = Drawing::new("newer");
     let app = DrawingApp::default();
     let mut file = serde_json::to_value(Scene { elements: vec![boxed(&app, 0.0)], ..Default::default() }).unwrap();
+
     file["version"] = json!(SCENE_VERSION + 1);
     file["elements"][0]["fieldFromTheFuture"] = json!(true);
     drawing.write_outside(&file.to_string());
     let mut app = drawing.app();
+
     assert_eq!(app.scene.elements.len(), 1);
     assert!(app.autosave.is_some(), "the preferences still save");
     app.scene.elements.push(boxed(&app, 200.0));
@@ -140,6 +154,7 @@ fn a_drawing_from_a_newer_build_is_shown_but_never_written() {
 fn a_drawing_gone_while_open_is_written_back() {
     let drawing = Drawing::new("gone");
     let mut app = drawing.app();
+
     app.scene.elements.push(boxed(&app, 0.0));
     app.dirty = true;
     app.write_autosave();
@@ -160,6 +175,7 @@ fn a_drawing_gone_while_open_is_written_back() {
 fn a_drawing_gone_and_remade_by_an_ai_keeps_both() {
     let drawing = Drawing::new("remade");
     let mut app = drawing.app();
+
     app.scene.elements.push(boxed(&app, 0.0));
     app.dirty = true;
     app.write_autosave();
@@ -167,6 +183,7 @@ fn a_drawing_gone_and_remade_by_an_ai_keeps_both() {
     app.sync_from_file();
     // the MCP starts a fresh file with its own box before this window writes again
     let theirs = Scene { elements: vec![boxed(&app, 300.0)], ..Default::default() };
+
     drawing.write_outside(&serde_json::to_string(&theirs).unwrap());
     app.save_on_exit();
     assert_eq!(read_scene_file(&drawing.0).unwrap().0.elements.len(), 2);
@@ -176,6 +193,7 @@ fn a_drawing_gone_and_remade_by_an_ai_keeps_both() {
 fn a_drawing_spoiled_while_open_is_not_written_over() {
     let drawing = Drawing::new("spoiled");
     let mut app = drawing.app();
+
     app.scene.elements.push(boxed(&app, 0.0));
     app.dirty = true;
     app.write_autosave();
@@ -192,11 +210,13 @@ fn a_drawing_spoiled_while_open_is_not_written_over() {
 fn closing_mid_edit_keeps_the_text_and_what_an_ai_drew_meanwhile() {
     let drawing = Drawing::new("exit");
     let mut app = drawing.app();
+
     app.scene.elements.push(boxed(&app, 0.0));
     app.dirty = true;
     app.write_autosave();
     // an AI adds a box, and the user is still typing when the window closes
     let mut external = app.scene.clone();
+
     external.elements.push(boxed(&app, 200.0));
     drawing.write_outside(&serde_json::to_string(&external).unwrap());
     app.scene.elements.push(app.new_element(ElementKind::Text { x: 0.0, y: 100.0, value: "quase".into() }));
@@ -204,6 +224,7 @@ fn closing_mid_edit_keeps_the_text_and_what_an_ai_drew_meanwhile() {
     app.save_on_exit();
     assert_eq!(app.editing, None);
     let saved = read_scene_file(&drawing.0).unwrap().0;
+
     assert_eq!(saved.elements.len(), 3);
     assert!(saved.elements.iter().any(|e| matches!(&e.kind, ElementKind::Text { value, .. } if value == "quase")));
 }
@@ -212,6 +233,7 @@ fn closing_mid_edit_keeps_the_text_and_what_an_ai_drew_meanwhile() {
 fn api_keys_move_to_the_keychain_and_stay_out_of_the_preferences_file() {
     mock_keyring();
     let file = Drawing::new("prefs-keys");
+
     // an earlier build's file, the key in plain text
     file.write_outside(r#"{"openai_key":"sk-antiga"}"#);
     assert_eq!(read_prefs(&file.0).0.unwrap().openai_key, "sk-antiga");
@@ -220,6 +242,7 @@ fn api_keys_move_to_the_keychain_and_stay_out_of_the_preferences_file() {
     assert_eq!(read_prefs(&file.0).0.unwrap().openai_key, "sk-antiga");
     // a new key never reaches the file
     let (before, now) = (Prefs::default(), Prefs { voice_studio_key: "chave-nova".into(), ..Default::default() });
+
     assert!(prefs_for_file(&now, &before).voice_studio_key.is_empty());
     assert_eq!(crate::app::browser::vault::take_secret("prefs-voice-studio-key").as_deref(), Some("chave-nova"));
     // emptied, it leaves the keychain
@@ -231,14 +254,17 @@ fn api_keys_move_to_the_keychain_and_stay_out_of_the_preferences_file() {
 #[test]
 fn the_background_autosave_goes_in_order_and_the_last_one_is_on_disk_after_exit() {
     let dir = std::env::temp_dir().join(format!("mago-fundo-{}", uuid::Uuid::new_v4().simple()));
+
     fs::create_dir_all(&dir).unwrap();
     let path = dir.join("cena.mago");
     let mut app = DrawingApp { autosave: Some(path.clone()), ..Default::default() };
+
     for index in 0..5 {
         app.scene.elements.push(app.new_element(ElementKind::Rectangle { x: index as f32, y: 0.0, width: 1.0, height: 1.0 }));
         app.dirty = true;
         app.write_autosave_in_background();
     }
+
     assert!(!app.dirty || app.autosave_busy() || app.scene.elements.len() == 5);
     app.save_on_exit();
     assert!(!app.autosave_busy());
@@ -253,12 +279,16 @@ fn the_background_autosave_goes_in_order_and_the_last_one_is_on_disk_after_exit(
 fn preferences_reach_the_disk_once_they_stop_changing_not_every_frame() {
     let (mut app, dir) = app_in_folder("prefs-later");
     let ctx = Context::default();
+
     let at = |app: &mut DrawingApp, time: f64, events: Vec<egui::Event>| {
         let _ = ctx.run_ui(egui::RawInput { time: Some(time), events, ..Default::default() }, |ui| app.save_prefs_when_due(ui.ctx()));
+
         prefs_written();
     };
+
     let ligatures =
         || fs::read_to_string(dir.join("preferences.json")).ok().and_then(|json| serde_json::from_str::<Prefs>(&json).ok()).map(|prefs| prefs.ligatures);
+
     app.prefs.ligatures = false;
     at(&mut app, 1.0, vec![]);
     at(&mut app, 1.3, vec![]);
@@ -267,6 +297,7 @@ fn preferences_reach_the_disk_once_they_stop_changing_not_every_frame() {
     assert_eq!(ligatures(), Some(false), "0.5 s after");
     // a drag: the pointer held
     let press = egui::Event::PointerButton { pos: Pos2::new(10.0, 10.0), button: egui::PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE };
+
     app.prefs.ligatures = true;
     at(&mut app, 2.0, vec![egui::Event::PointerMoved(Pos2::new(10.0, 10.0)), press]);
     at(&mut app, 2.8, vec![]);

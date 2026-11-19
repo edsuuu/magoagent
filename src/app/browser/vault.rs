@@ -63,6 +63,7 @@ impl VaultEntry {
     /// Of `site`: the same domain or name, ignoring case and a `www.`-like prefix on either side.
     pub(crate) fn is_of(&self, site: &str) -> bool {
         let (a, b) = (self.site.trim().to_lowercase(), site.trim().to_lowercase());
+
         !b.is_empty() && (a == b || a.ends_with(&format!(".{b}")) || b.ends_with(&format!(".{a}")))
     }
 }
@@ -78,6 +79,7 @@ pub(crate) fn read_vault(path: &std::path::Path) -> Vec<VaultEntry> {
 #[allow(dead_code)]
 pub(crate) fn save_vault(entries: &[VaultEntry]) -> Result<(), String> {
     let path = vault_path().ok_or("pasta de dados do usuário não encontrada")?;
+
     write_vault(&path, entries).map_err(|e| e.to_string())
 }
 
@@ -86,6 +88,7 @@ pub(crate) fn write_vault(path: &std::path::Path, entries: &[VaultEntry]) -> std
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
+
     write_atomic(path, serde_json::to_string_pretty(entries).map_err(std::io::Error::other)?)
 }
 
@@ -94,6 +97,7 @@ fn item(id: &str) -> Result<keyring_core::Entry, String> {
     if keyring_core::get_default_store().is_none() {
         keyring::Entry::store_status().as_ref().map_err(|e| e.to_string())?;
     }
+
     keyring_core::Entry::new("MagoAgent", id).map_err(|e| match e {
         keyring_core::Error::NoDefaultStore => "O cofre do sistema não está disponível".to_string(),
         e => e.to_string(),
@@ -126,6 +130,7 @@ pub(crate) fn accounts<'a>(entries: &'a [VaultEntry], site: &str) -> Vec<&'a Vau
 pub(crate) fn pick_account<'a>(entries: &'a [VaultEntry], site: &str, user: Option<&str>) -> Result<&'a VaultEntry, String> {
     let found = accounts(entries, site);
     let users = || found.iter().map(|e| e.user.as_str()).collect::<Vec<_>>().join(", ");
+
     match (&found[..], user.map(str::trim).filter(|u| !u.is_empty())) {
         ([], _) => Err(format!("Nenhuma conta de {site} no cofre: peça à pessoa para cadastrar em ☰ › Cofre…")),
         (_, Some(user)) => {
@@ -140,6 +145,7 @@ pub(crate) fn pick_account<'a>(entries: &'a [VaultEntry], site: &str, user: Opti
 #[cfg(test)]
 pub(crate) fn mock_keyring() {
     static ONCE: std::sync::Once = std::sync::Once::new();
+
     ONCE.call_once(|| keyring_core::set_default_store(keyring_core::mock::Store::new().unwrap()));
 }
 
@@ -155,12 +161,15 @@ mod tests {
     fn vault_json_round_trips_without_secrets() {
         let dir = std::env::temp_dir().join(format!("magoagent-vault-{}", std::process::id()));
         let path = dir.join("vault.json");
+
         let entries = vec![
             entry("github.com", "ana@exemplo.com", VaultKind::Senha),
             VaultEntry { note: "conta do trabalho".into(), ..entry("Figma", "ana@exemplo.com", VaultKind::Google) },
         ];
+
         write_vault(&path, &entries).unwrap();
         let json = fs::read_to_string(&path).unwrap();
+
         assert!(json.contains("\"kind\": \"google\"") && !json.contains("secret"));
         assert_eq!(read_vault(&path), entries);
         assert!(read_vault(&dir.join("nada.json")).is_empty());
@@ -171,6 +180,7 @@ mod tests {
     fn secrets_live_in_the_keyring_only() {
         mock_keyring();
         let e = entry("github.com", "ana@exemplo.com", VaultKind::Senha);
+
         assert_eq!(take_secret(&e.id), None);
         set_secret(&e.id, "s3gr3do").unwrap();
         assert_eq!(take_secret(&e.id).as_deref(), Some("s3gr3do"));
@@ -186,7 +196,9 @@ mod tests {
             entry("GitHub.com", "trabalho@exemplo.com", VaultKind::Google),
             entry("figma.com", "ana@exemplo.com", VaultKind::Senha),
         ];
+
         let users = |site: &str| accounts(&entries, site).iter().map(|e| e.user.clone()).collect::<Vec<_>>();
+
         assert_eq!(users("github.com"), ["ana@exemplo.com", "trabalho@exemplo.com"]);
         assert_eq!(users("www.figma.com"), ["ana@exemplo.com"]);
         assert!(users("gitlab.com").is_empty());

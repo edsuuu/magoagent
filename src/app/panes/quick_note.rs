@@ -10,6 +10,7 @@ impl DrawingApp {
     /// The panel's text, `height` tall at least: what is typed is kept as it is (no markdown).
     pub(crate) fn quick_note_pane(&mut self, ui: &mut egui::Ui, height: f32) {
         let colors = self.colors();
+
         let edit = egui::TextEdit::multiline(&mut self.prefs.quick_note)
             .id(egui::Id::unique("quick_note"))
             .font(FontId::monospace(13.0))
@@ -19,7 +20,9 @@ impl DrawingApp {
             .margin(Vec2::ZERO)
             .desired_width(f32::INFINITY)
             .min_size(Vec2::new(ui.available_width(), height));
+
         let field = ui.add(edit);
+
         // opened: ready to type
         if std::mem::take(&mut self.panes.focus_note) {
             field.request_focus();
@@ -32,13 +35,16 @@ impl DrawingApp {
         let text = self.prefs.quick_note.trim();
         let lines = if text.is_empty() { 0 } else { text.lines().count() };
         let mut take = false;
+
         ui.horizontal_centered(|ui| {
             let size = match lines {
                 0 => "Vazia".to_string(),
                 1 => "1 linha".to_string(),
                 n => format!("{n} linhas"),
             };
+
             ui.label(egui::RichText::new(size).size(12.0).color(colors.muted));
+
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 take = ui
                     .add_enabled(lines > 0, egui::Button::new("Levar para o canvas"))
@@ -46,6 +52,7 @@ impl DrawingApp {
                     .clicked();
             });
         });
+
         if take && super::live(ui) {
             match self.quick_note_to_canvas() {
                 Ok(said) => self.toast(said),
@@ -58,12 +65,15 @@ impl DrawingApp {
     /// markdown); the panel empties. One Cmd+Z takes the note back. What happened.
     pub(crate) fn quick_note_to_canvas(&mut self) -> Result<String, String> {
         let text = self.prefs.quick_note.trim_end().to_string();
+
         if text.trim().is_empty() {
             return Err("A nota rápida está vazia.".into());
         }
+
         let middle = self.to_world(self.canvas_rect.center());
         let spot = self.free_spot(Rect::from_center_size(middle, NOTE_SIZE));
         let [mut note, label] = self.new_note(spot, text);
+
         note.note.raw = true;
         self.snapshot();
         self.scene.elements.extend([note, label]);
@@ -76,6 +86,7 @@ impl DrawingApp {
     /// The MCP's `quick_note`: show (opens the panel), get, set `text`, append `text` (a line under it), to_canvas.
     pub(crate) fn act_quick_note(&mut self, args: &Value) -> Result<String, String> {
         let text = args["text"].as_str().unwrap_or_default();
+
         match args["action"].as_str().unwrap_or("get") {
             "show" => {
                 self.chat_open = false;
@@ -90,6 +101,7 @@ impl DrawingApp {
             }
             "append" => {
                 let gap = if self.prefs.quick_note.is_empty() || self.prefs.quick_note.ends_with('\n') { "" } else { "\n" };
+
                 self.prefs.quick_note = format!("{}{gap}{text}", self.prefs.quick_note);
                 Ok("Texto juntado à nota rápida.".into())
             }

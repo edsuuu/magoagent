@@ -10,6 +10,7 @@ impl DrawingApp {
     pub(super) fn act_integrations(&mut self, args: &Value) -> Result<String, String> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_lowercase();
         let (integration, action) = (text("integration"), text("action"));
+
         match (integration.as_str(), action.as_str()) {
             ("", "" | "status") => {
                 let hermes = match (crate::app::integrations::hermes::available(), self.prefs.integrations.hermes) {
@@ -17,7 +18,9 @@ impl DrawingApp {
                     (true, true) => "ligado.",
                     (true, false) => "desligado.",
                 };
+
                 let soloist = if cfg!(any(windows, target_os = "macos")) { String::new() } else { format!("\nSoloist: {}", self.soloist_report()) };
+
                 Ok(format!("{}\nSpotify: {}{soloist}\nHermes Agent: {hermes}\n{}", self.github_report(), self.spotify_report(), self.whatsapp_report()))
             }
             ("hermes", _) if !crate::app::integrations::hermes::available() => Err("o Hermes Agent está desativado por enquanto".into()),
@@ -36,10 +39,13 @@ impl DrawingApp {
             // the pull request's id and the text keep their case and their lines
             ("github", "pr" | "pr_body" | "pr_comment" | "pr_approve" | "pr_merge") => {
                 let pr = args["pr"].as_str().unwrap_or_default().trim().to_string();
+
                 if pr.is_empty() {
                     return Err("diga o `pr`: dono/repo#número ou o endereço dele (como `prs` lista)".into());
                 }
+
                 let words = args["text"].as_str().unwrap_or_default();
+
                 match action.as_str() {
                     "pr" => self.github_pr_report(&pr),
                     "pr_body" => self
@@ -75,6 +81,7 @@ impl DrawingApp {
             ("soloist", "update" | "install") => self.soloist_setup_run(Job::Download),
             ("soloist", "enable") => {
                 let name = self.integrations.soloist_setup.name_field.clone();
+
                 self.soloist_setup_run(Job::TurnOn { key: None, name })
             }
             ("soloist", "start") => self.soloist_setup_run(Job::Start),

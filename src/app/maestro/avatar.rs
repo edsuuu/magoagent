@@ -56,10 +56,13 @@ impl Avatar {
     pub(crate) fn tick(&mut self, dt: f32) -> bool {
         if self.glide >= 1.0 {
             self.pos = self.target;
+
             return false;
         }
+
         self.glide = (self.glide + dt / GLIDE).min(1.0);
         let eased = 1.0 - (1.0 - self.glide).powi(3);
+
         self.pos = self.from.lerp(self.target, eased);
         self.glide < 1.0
     }
@@ -75,6 +78,7 @@ pub(crate) fn first_sentence(text: &str) -> String {
     let line = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or_default();
     let end = line.char_indices().find(|(_, c)| matches!(c, '.' | '!' | '?' | ':')).map_or(line.len(), |(i, c)| i + c.len_utf8());
     let sentence = line[..end].trim();
+
     match sentence.char_indices().nth(SAYS_CHARS) {
         Some((cut, _)) => format!("{}…", sentence[..cut].trim_end()),
         None => sentence.to_string(),
@@ -92,6 +96,7 @@ impl DrawingApp {
         if screen == self.avatar.target {
             return;
         }
+
         self.avatar.from = self.avatar.pos;
         self.avatar.target = screen;
         self.avatar.glide = 0.0;
@@ -104,8 +109,10 @@ impl DrawingApp {
     /// From now on the avatar says what the agent of chat `id` answers.
     pub(crate) fn avatar_follow(&mut self, id: &str) {
         self.avatar.heard = Some((id.to_string(), self.agent_answers(id)));
+
         if let Some(chat) = self.chats.iter().find(|c| c.id == id) {
             let name = chat.name.split(" · ").next().unwrap_or(&chat.agent).to_string();
+
             self.avatar.who = (chat.agent.clone(), name);
         }
     }
@@ -114,14 +121,18 @@ impl DrawingApp {
     pub(crate) fn avatar_listen(&mut self) {
         let Some((id, heard)) = self.avatar.heard.clone() else { return };
         let answers = self.agent_answers(&id);
+
         if answers <= heard {
             return;
         }
+
         let newest = self.transcripts[&id].items.iter().rev().find_map(|i| match i {
             ChatItem::Agent(text) => Some(first_sentence(text)),
             _ => None,
         });
+
         self.avatar.heard = Some((id, answers));
+
         if let Some(text) = newest.filter(|t| !t.is_empty()) {
             self.avatar_say(text);
             self.avatar_set(AvatarState::Speaking);
@@ -138,14 +149,18 @@ impl DrawingApp {
         let (outer, monitor) = ctx.input(|i| (i.viewport().outer_rect, i.viewport().monitor_size));
         let origin = outer.map_or(Pos2::ZERO, |r| r.min);
         let focused = self.focused_window().and_then(|id| self.scene.elements.iter().find(|e| &e.id == id));
+
         if let Some(element) = focused {
             let (rect, _) = self.terminal_frame(element);
+
             return origin + Vec2::new(rect.center().x - AVATAR_SIZE.x / 2.0, rect.bottom() - AVATAR_SIZE.y - 12.0);
         }
+
         let screen = match monitor {
             Some(size) => Rect::from_min_size(Pos2::ZERO, size),
             None => outer.unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0))),
         };
+
         Pos2::new(screen.center().x - AVATAR_SIZE.x / 2.0, screen.bottom() - AVATAR_SIZE.y - 64.0)
     }
 
@@ -159,6 +174,7 @@ impl DrawingApp {
             // the same as the Maestro's voice_call; what keeps it from starting is said in the bar
             AvatarClick::Call => {
                 let state = if self.voice.on { "off" } else { "on" };
+
                 if let Err(why) = self.act("voice_call", &json!({ "state": state })) {
                     self.avatar_say(why);
                 }
@@ -189,34 +205,46 @@ impl DrawingApp {
     pub(crate) fn avatar_ui(&mut self, ctx: &Context) {
         if !self.prefs.avatar {
             self.avatar.shown = false;
+
             // shown again, it is a new window
             #[cfg(windows)]
             {
                 self.avatar.plain = false;
             }
+
             return;
         }
+
         self.avatar_listen();
+
         if self.avatar.says.as_ref().is_some_and(|(_, since)| self.now - since > SAYS_FOR) {
             self.avatar.says = None;
+
             if self.avatar.state == AvatarState::Speaking {
                 self.avatar.state = AvatarState::Idle;
             }
         }
+
         let placed = self.prefs.avatar_at.map(|[x, y]| Pos2::new(x, y));
+
         if !self.avatar.shown {
             // appearing: where it was left, else right where it belongs; no slide from wherever it was
             let at = placed.unwrap_or_else(|| self.avatar_target(ctx));
+
             (self.avatar.pos, self.avatar.target, self.avatar.glide, self.avatar.shown) = (at, at, 1.0, true);
         } else if placed.is_none() {
             let target = self.avatar_target(ctx);
+
             self.avatar_go_to(target);
         }
+
         // left somewhere, the system keeps it there: its window is asked for no other position
         let moving = placed.is_none() && self.avatar.tick(ctx.input(|i| i.stable_dt).min(0.05));
+
         if moving || self.avatar.state != AvatarState::Idle || self.avatar.says.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(40));
         }
+
         // ponytail: on Linux without a compositor the window comes out opaque; a shaped window
         // (X11 shape extension) would need its own code
         let builder = egui::ViewportBuilder::default()
@@ -229,37 +257,47 @@ impl DrawingApp {
             .with_active(false)
             .with_inner_size(AVATAR_SIZE)
             .with_position(self.avatar.pos);
+
         let (state, says, now, who) = (self.avatar.state, self.avatar.says.clone(), self.now, self.avatar.who.clone());
         let demand = self.demand_line();
         let plan = self.usage.plan.short(now_ms() / 1000);
         let call = self.voice.on;
+
         let (click, grabbed, at) = ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("avatar"), builder, |ui, _| {
             let rect = ui.max_rect();
             // dragged by anywhere: the system moves the window (the buttons, made after, keep their clicks)
             let grabbed = ui.interact(rect, ui.scope_id().with("avatar_drag"), Sense::drag()).drag_started();
+
             if grabbed {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
+
             let shown = BarText { says: says.as_ref().map(|(t, _)| t.as_str()), demand: demand.as_deref(), plan: plan.as_deref(), call };
+
             paint_avatar(ui.painter(), rect, state, shown, now, &who);
             let buttons = [(AvatarClick::Mute, mute_button(rect)), (AvatarClick::Close, close_button(rect)), (AvatarClick::Call, call_button(rect))];
+
             // the call on hold (voice::CALL_ON): no call button
             let click = buttons.into_iter().filter(|(click, _)| crate::app::voice::CALL_ON || *click != AvatarClick::Call).find_map(|(click, button)| {
                 ui.interact(button, ui.scope_id().with(click), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked().then_some(click)
             });
+
             (click, grabbed, ui.ctx().input(|i| i.viewport().outer_rect).map(|r| r.min))
         });
+
         // a square frame around the bar's rounded shape, with its shadow: the bar goes without it
         #[cfg(windows)]
         if !self.avatar.plain && !cfg!(test) {
             self.avatar.plain = crate::app::voice::popup::plain::strip("Avatar");
         }
+
         if grabbed {
             self.avatar_place(at.unwrap_or(self.avatar.pos));
         } else if let (true, Some(_), Some(at)) = (self.avatar.grabbed, self.prefs.avatar_at, at) {
             // where the system left it, for the next run too
             self.prefs.avatar_at = Some([at.x, at.y]);
         }
+
         if let Some(click) = click {
             self.avatar_click(click);
         }
@@ -317,24 +355,31 @@ pub(crate) struct BarText<'a> {
 pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, shown: BarText<'_>, now: f64, who: &(String, String)) {
     let BarText { says, demand, plan, call } = shown;
     let bar = rect.shrink(2.0);
+
     painter.rect(bar, 18.0, BAR, Stroke::new(1.0, BAR_EDGE), StrokeKind::Inside);
+
     // the speech, one line, or the hint
     let (text, color) = match says {
         Some(text) => (text.to_string(), Color32::WHITE),
         None if who.1.is_empty() => ("Trabalhe com o MagoAgent".to_string(), DIM),
         None => (format!("Trabalhe com o {}", who.1), DIM),
     };
+
     // what doesn't fit before the mascot ends in "…": two lines of speech, one of demands
     let fitted = |text: String, size: f32, color: Color32, rows: usize| {
         let mut job = egui::text::LayoutJob::simple(text, FontId::proportional(size), color, bar.width() - 220.0);
+
         job.wrap.max_rows = rows;
         painter.layout_job(job)
     };
+
     painter.galley(bar.min + Vec2::new(16.0, 14.0), fitted(text, 13.0, color, 2), color);
+
     // the demands: how many and the most urgent, one line
     if let Some(demand) = demand {
         painter.galley(bar.min + Vec2::new(16.0, 50.0), fitted(demand.to_string(), 12.0, crate::app::ui::agents::AMBER, 1), Color32::WHITE);
     }
+
     let label = match state {
         AvatarState::Idle => "Pronto",
         AvatarState::Listening => "Ouvindo",
@@ -342,14 +387,18 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sh
         AvatarState::Speaking => "Falando",
         AvatarState::Muted => "Microfone desligado",
     };
+
     let label_color = match state {
         AvatarState::Listening => LISTENING,
         AvatarState::Muted => MUTED,
         _ => DIM,
     };
+
     // how much of the plan's 5-hour window is used goes beside the state
     let label = plan.map_or(label.to_string(), |plan| format!("{label} · {plan}"));
+
     painter.text(Pos2::new(bar.left() + 16.0, bar.bottom() - 30.0), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.0), label_color);
+
     match who.0.as_str() {
         "claude" => {
             crate::app::mascot::mago::paint_mago_for(painter, "avatar", orb_center(rect), 84.0, crate::app::mascot::mago::MagoState::from_voice(state), now)
@@ -357,35 +406,46 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sh
         "codex" => paint_codex(painter, orb_center(rect), state),
         _ => paint_orb(painter, orb_center(rect), 13.0, state, now),
     }
+
     // mute: a red disc when the microphone is off
     let mute = mute_button(rect);
     let muted = state == AvatarState::Muted;
+
     if muted {
         painter.circle_filled(mute.center(), 14.0, MUTED);
     }
+
     let ink = if muted { Color32::WHITE } else { DIM };
     let c = mute.center();
+
     painter.rect_filled(Rect::from_center_size(c - Vec2::new(0.0, 2.5), Vec2::new(6.0, 11.0)), 3.0, ink);
     let cup = vec![c + Vec2::new(-5.0, 0.0), c + Vec2::new(-5.0, 3.0), c + Vec2::new(0.0, 7.0), c + Vec2::new(5.0, 3.0), c + Vec2::new(5.0, 0.0)];
+
     painter.add(Shape::line(cup, Stroke::new(1.5, ink)));
     painter.line_segment([c + Vec2::new(0.0, 7.0), c + Vec2::new(0.0, 10.0)], Stroke::new(1.5, ink));
+
     if muted {
         painter.line_segment([c + Vec2::new(-7.0, 8.0), c + Vec2::new(7.0, -8.0)], Stroke::new(1.8, Color32::WHITE));
     }
+
     // the call: three bars to start talking, a red disc with a square to end it
     let c = call_button(rect).center();
+
     if !crate::app::voice::CALL_ON {
     } else if call {
         painter.circle_filled(c, 14.0, MUTED);
         painter.rect_filled(Rect::from_center_size(c, Vec2::splat(9.0)), 2.0, Color32::WHITE);
     } else {
         painter.circle_stroke(c, 13.0, Stroke::new(1.2, DIM));
+
         for (dx, half) in [(-4.5, 3.0), (0.0, 6.0), (4.5, 3.0)] {
             painter.line_segment([c + Vec2::new(dx, -half), c + Vec2::new(dx, half)], Stroke::new(1.8, DIM));
         }
     }
+
     // close
     let close = close_button(rect);
+
     painter.circle_filled(close.center(), 14.0, CLOSE);
     cross(painter, close.center(), 4.5, Stroke::new(1.8, Color32::WHITE));
 }
@@ -393,6 +453,7 @@ pub(crate) fn paint_avatar(painter: &Painter, rect: Rect, state: AvatarState, sh
 /// Codex: OpenAI's mark on a light disc (assets/editor-icons/NOTICE); grey when muted.
 pub(crate) fn paint_codex(painter: &Painter, center: Pos2, state: AvatarState) {
     let disc = if state == AvatarState::Muted { Color32::from_gray(0x80) } else { Color32::from_gray(0xf2) };
+
     painter.circle_filled(center, 14.0, disc);
     crate::editor::icons::paint_tint(painter, crate::editor::icons::OPENAI, Rect::from_center_size(center, Vec2::splat(18.0)), Color32::BLACK);
 }
@@ -401,6 +462,7 @@ pub(crate) fn paint_codex(painter: &Painter, center: Pos2, state: AvatarState) {
 /// while thinking, throbs while speaking and goes grey when muted.
 pub(crate) fn paint_orb(painter: &Painter, center: Pos2, radius: f32, state: AvatarState, now: f64) {
     let t = now as f32;
+
     let (radius, spin, base, light) = match state {
         AvatarState::Listening => (radius * (1.0 + 0.08 * (t * 3.0).sin()), 1.2, ORB, ORB_LIGHT),
         AvatarState::Thinking => (radius, 4.0, ORB, ORB_LIGHT),
@@ -408,15 +470,19 @@ pub(crate) fn paint_orb(painter: &Painter, center: Pos2, radius: f32, state: Ava
         AvatarState::Muted => (radius, 0.3, Color32::from_gray(0x70), Color32::from_gray(0xb0)),
         AvatarState::Idle => (radius, 0.6, ORB, ORB_LIGHT),
     };
+
     if state == AvatarState::Listening {
         painter.circle_stroke(center, radius + 5.0, Stroke::new(1.5, LISTENING.gamma_multiply(0.6 + 0.4 * (t * 3.0).sin())));
     }
+
     painter.circle_filled(center, radius, base);
     // the lights stay inside the sphere: offset + their radius <= the orb's
     let a = t * spin;
     let glow = center + Vec2::angled(a) * (radius * 0.35);
+
     painter.circle_filled(glow, radius * 0.62, light.gamma_multiply(0.55));
     let shine = center + Vec2::angled(a + 2.4) * (radius * 0.5);
+
     painter.circle_filled(shine, radius * 0.4, Color32::WHITE.gamma_multiply(0.7));
 }
 
@@ -427,9 +493,11 @@ mod tests {
     #[test]
     fn the_avatar_glides_to_its_target_and_stops() {
         let mut app = DrawingApp::default();
+
         app.avatar_go_to(Pos2::new(300.0, 200.0));
         assert!(app.avatar.tick(0.1));
         let halfway = app.avatar.pos();
+
         assert!(halfway.x > 0.0 && halfway.x < 300.0, "{halfway:?}");
         assert!(app.avatar.tick(0.1));
         assert!(app.avatar.pos().x > halfway.x);
@@ -444,6 +512,7 @@ mod tests {
     #[test]
     fn a_speech_shows_for_six_seconds_or_until_the_next() {
         let mut app = DrawingApp::default();
+
         app.prefs.avatar = true;
         app.now = 10.0;
         app.avatar_say("Olá");
@@ -452,10 +521,12 @@ mod tests {
         app.avatar_say("Pronto");
         assert_eq!(app.avatar.says.as_ref().map(|(t, _)| t.as_str()), Some("Pronto"));
         let ctx = Context::default();
+
         let frame = |app: &mut DrawingApp, time: f64| {
             app.now = time;
             ctx.run_ui(egui::RawInput { time: Some(time), ..Default::default() }, |ui| app.avatar_ui(ui.ctx())).textures_delta.clear();
         };
+
         frame(&mut app, 17.0);
         assert!(app.avatar.says.is_some(), "still showing at 5 s");
         assert!(app.avatar.shown);
@@ -470,7 +541,9 @@ mod tests {
     fn the_chat_hooks_move_the_state_along() {
         let mut app = DrawingApp { now: 1.0, ..DrawingApp::default() };
         let transcript = app.transcripts.entry("c1".into()).or_insert_with(|| crate::transcript::Transcript::new(PathBuf::new()));
+
         transcript.items.push(ChatItem::Agent("Resposta antiga.".into()));
+
         app.chats.push(crate::app::chat::direct::Chat {
             id: "c1".into(),
             agent: "claude".into(),
@@ -484,6 +557,7 @@ mod tests {
             named: false,
             draft: false,
         });
+
         app.avatar_follow("c1");
         assert_eq!(app.avatar.who, ("claude".to_string(), "Claude Code".to_string()));
         app.avatar_set(AvatarState::Thinking);
@@ -505,6 +579,7 @@ mod tests {
         assert_eq!(first_sentence("\n  Pronto! Fiz tudo."), "Pronto!");
         assert_eq!(first_sentence("Sem ponto final"), "Sem ponto final");
         let long = "a".repeat(80);
+
         assert_eq!(first_sentence(&long), format!("{}…", "a".repeat(60)));
         assert_eq!(first_sentence(""), "");
     }
@@ -512,6 +587,7 @@ mod tests {
     #[test]
     fn mute_toggles_the_microphone_and_close_hides_the_avatar() {
         let mut app = DrawingApp::default();
+
         app.prefs.avatar = true;
         app.avatar_set(AvatarState::Listening);
         app.avatar_click(AvatarClick::Mute);
@@ -521,6 +597,7 @@ mod tests {
         app.avatar_click(AvatarClick::Close);
         assert!(!app.prefs.avatar);
         let bar = Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE);
+
         assert!(bar.contains_rect(mute_button(bar)) && bar.contains_rect(close_button(bar)));
         assert!(!mute_button(bar).intersects(close_button(bar)));
     }
@@ -531,9 +608,11 @@ mod tests {
         let ctx = Context::default();
         let frame = |app: &mut DrawingApp| ctx.run_ui(egui::RawInput::default(), |ui| app.avatar_ui(ui.ctx())).textures_delta.clear();
         let mut app = DrawingApp::default();
+
         app.prefs.avatar = true;
         frame(&mut app);
         let followed = app.avatar.pos();
+
         assert_eq!(app.prefs.avatar_at, None, "it follows the action until it is picked up");
         // picked up and left at (900, 40): it stays there, whatever window is worked in
         app.avatar_place(Pos2::new(900.0, 40.0));
@@ -542,6 +621,7 @@ mod tests {
         assert_eq!(app.avatar.pos(), followed, "its window is asked for no other position");
         // the next run opens it where it was left
         let mut next = DrawingApp { prefs: app.prefs.clone(), ..Default::default() };
+
         frame(&mut next);
         assert_eq!(next.avatar.pos(), Pos2::new(900.0, 40.0));
         // Seguir a janela em uso: back to the action from there; off again, it stays where it is
@@ -565,17 +645,21 @@ mod tests {
     #[test]
     fn the_bar_paints_in_every_state() {
         let ctx = Context::default();
+
         let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
             let painter = Painter::new(ui.ctx().clone(), egui::LayerId::background(), Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE));
+
             for state in [AvatarState::Idle, AvatarState::Listening, AvatarState::Thinking, AvatarState::Speaking, AvatarState::Muted] {
                 for who in [(String::new(), String::new()), ("claude".into(), "Claude Code".into()), ("codex".into(), "Codex".into())] {
                     let full =
                         BarText { says: Some("Olá, tudo bem?"), demand: Some("2 demandas · Revisor pede permissão"), plan: Some("5 h 41%"), call: true };
+
                     paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, full, 0.3, &who);
                     paint_avatar(&painter, Rect::from_min_size(Pos2::ZERO, AVATAR_SIZE), state, BarText::default(), 0.3, &who);
                 }
             }
         });
+
         out.textures_delta.clear();
     }
 }

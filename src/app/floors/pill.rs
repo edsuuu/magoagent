@@ -65,27 +65,35 @@ enum FloorPick {
 fn floor_menu(ui: &mut egui::Ui, id: &str, colors: &UiColors) -> Option<FloorPick> {
     ui.set_width(200.0);
     let mut picked = None;
+
     if !id.is_empty() {
         if menu_item(ui, Icon::Edit, "Renomear andar", "", colors.text, colors) {
             picked = Some(FloorPick::Rename(id.into()));
         }
+
         if menu_item(ui, Icon::Backward, "Mover para cima", "", colors.text, colors) {
             picked = Some(FloorPick::Up(id.into()));
         }
+
         if menu_item(ui, Icon::Forward, "Mover para baixo", "", colors.text, colors) {
             picked = Some(FloorPick::Down(id.into()));
         }
+
         if menu_item(ui, Icon::Trash, "Excluir Andar", "", colors.danger, colors) {
             picked = Some(FloorPick::Delete(id.into()));
         }
+
         ui.separator();
     }
+
     if menu_item(ui, Icon::Layers(false), "Novo Andar", "", colors.text, colors) {
         picked = Some(FloorPick::New);
     }
+
     if picked.is_some() {
         ui.close();
     }
+
     picked
 }
 
@@ -95,6 +103,7 @@ fn stadium(rect: Rect) -> Vec<Pos2> {
     let arc = |center: Pos2, from: f32| (0..=16).map(move |step| center + Vec2::angled(from + std::f32::consts::PI * step as f32 / 16.0) * radius);
     let (left, right) = (Pos2::new(rect.left() + radius, rect.center().y), Pos2::new(rect.right() - radius, rect.center().y));
     let mut points: Vec<Pos2> = arc(right, -std::f32::consts::FRAC_PI_2).chain(arc(left, std::f32::consts::FRAC_PI_2)).collect();
+
     points.push(points[0]);
     points
 }
@@ -123,64 +132,86 @@ impl DrawingApp {
         let label = if has { galley.size().x.min(120.0) } else { 0.0 };
         let button_width = if has { (16.0 + 13.0 + 4.0 + label).max(38.0) } else { 38.0 };
         let glass_width = button_width + 2.0;
+
         let shown = egui::Area::new(egui::Id::unique("floors_pill")).anchor(egui::Align2::RIGHT_BOTTOM, (right, -CORNER_GAP)).show(ctx, |ui| {
             let (rect, _) = ui.allocate_exact_size(Vec2::new(glass_width, CORNER_HEIGHT), Sense::hover());
+
             paint_glass(ui.painter(), rect, CORNER_HEIGHT / 2.0, dark, false);
             let button = Rect::from_center_size(rect.center(), Vec2::new(button_width, 33.0));
             let response = ui.interact(button, ui.scope_id().with("floors_button"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
             if response.hovered() {
                 ui.painter().rect_filled(button, 17, ink.gamma_multiply(0.1));
             }
+
             let tint = if open { glass_accent(dark) } else { ink.gamma_multiply(0.85) };
             let icon_at = if has { Pos2::new(button.left() + 8.0 + 6.5, button.center().y) } else { button.center() };
+
             paint_icon_scaled(ui.painter(), Icon::Layers(open), icon_at, tint, 0.85, 0.0);
+
             if has {
                 let text = Rect::from_min_size(Pos2::new(button.left() + 8.0 + 13.0 + 4.0, button.top()), Vec2::new(label, button.height()));
+
                 ui.painter().with_clip_rect(text).galley(Pos2::new(text.left(), text.center().y - galley.size().y / 2.0), galley, ink);
             }
+
             // the name of the button for the system's accessibility: "Andares: Térreo" (the tip is the title)
             let response = response.tip("Andares");
+
             response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, format!("Andares: {title}")));
             response
         });
+
         let response = shown.inner;
+
         if response.clicked() {
             self.floors_ui.overview = !self.floors_ui.overview;
         }
+
         let mut pick = None;
         let mut new = false;
+
         crate::app::ui::menu_look::context_menu(&response, |ui| {
             ui.set_width(200.0);
             let active = self.current_space().map(|workspace| workspace.floor.clone()).unwrap_or_default();
+
             let stops: Vec<(String, String)> =
                 [(String::new(), GROUND.to_string())].into_iter().chain(self.floors().iter().map(|floor| (floor.id.clone(), floor.name.clone()))).collect();
+
             for (index, (id, label)) in stops.iter().enumerate() {
                 if index == 1 {
                     ui.separator();
                 }
+
                 if menu_item(ui, if *id == active { Icon::Check } else { Icon::Layers(false) }, label, "", colors.text, &colors) {
                     pick = Some(id.clone());
                     ui.close();
                 }
             }
+
             ui.separator();
+
             if menu_item(ui, Icon::Plus, "Novo Andar", "", colors.text, &colors) {
                 new = true;
                 ui.close();
             }
         });
+
         if let Some(Err(error)) = pick.map(|id| self.switch_floor(&id)) {
             self.toast(error);
         }
+
         if new {
             self.floors_ui.dialog = Some(FloorDialog::New { name: String::new(), copy: false });
         }
+
         if self.floors_ui.overview {
             self.floors_overview(ctx, &colors, right);
         } else {
             (self.floors_ui.counted, self.floors_ui.chips_up) = (false, false);
             self.floors_ui.chips.clear();
         }
+
         self.floors_dialog(ctx, &colors);
         shown.response.rect.width()
     }
@@ -192,42 +223,56 @@ impl DrawingApp {
     fn floors_overview(&mut self, ctx: &Context, colors: &UiColors, right: f32) {
         let (dark, screen, now) = (self.dark(), ctx.content_rect(), ctx.input(|input| input.time));
         let Some(space) = self.current_space().cloned() else { return };
+
         if !self.floors_ui.counted {
             let counts =
                 std::iter::once(String::new()).chain(space.floors.iter().map(|floor| floor.id.clone())).map(|id| (self.floor_items(&space.id, &id), id));
+
             self.floors_ui.counts = counts.map(|(count, id)| (id, count)).collect();
             self.floors_ui.counted = true;
         }
+
         // the stage takes the presses the canvas would (the chrome stays above it)
         let stage = self.canvas_rect;
+
         let back = egui::Area::new(egui::Id::unique("floors_back"))
             .order(egui::Order::Background)
             .fixed_pos(stage.min)
             .show(ctx, |ui| ui.allocate_exact_size(stage.size(), Sense::click()).1);
+
         let mut close = back.inner.clicked() || (self.floors_ui.dialog.is_none() && ctx.input(|input| input.key_pressed(Key::Escape)));
+
         // the chips from the top down: the floors above, then the ground (the chips that were there when the overview
         // opened stay put; the ones added after, and Novo Andar, pop in a beat after the one below)
         let stops: Vec<(String, String)> =
             space.floors.iter().rev().map(|floor| (floor.id.clone(), floor.name.clone())).chain([(String::new(), GROUND.to_string())]).collect();
+
         let (up, count) = (self.floors_ui.chips_up, stops.len());
+
         for (index, (id, _)) in stops.iter().rev().enumerate() {
             self.floors_ui.chips.entry(id.clone()).or_insert_with(|| {
                 let mut spring = Spring::new(if up { 0.0 } else { 1.0 }, ITEM);
+
                 spring.go(1.0, now, index as f64 * STAGGER);
                 spring
             });
         }
+
         self.floors_ui.chips.entry("+".into()).or_insert_with(|| {
             let mut spring = Spring::new(0.0, ITEM);
+
             spring.go(1.0, now, count as f64 * STAGGER);
             spring
         });
+
         self.floors_ui.chips.retain(|id, _| id == "+" || stops.iter().any(|(stop_id, _)| stop_id == id));
         self.floors_ui.chips_up = true;
         let pops: HashMap<String, f32> = self.floors_ui.chips.iter().map(|(id, spring)| (id.clone(), spring.value(now).clamp(0.0, 1.0))).collect();
+
         if self.floors_ui.chips.values().any(|spring| !spring.done(now)) {
             ctx.request_repaint();
         }
+
         let ink = glass_ink(dark);
         let accent = glass_accent(dark);
         let (mut pick, mut new) = (None, false);
@@ -238,63 +283,81 @@ impl DrawingApp {
         let right_edge = screen.right() + right;
         let mut y = screen.bottom() - CORNER_GAP - CORNER_HEIGHT - GAPS;
         let width_of = |text: &str| ctx.layer_painter(egui::LayerId::background()).layout_no_wrap(text.to_string(), FontId::proportional(13.0), ink).size().x;
+
         egui::Area::new(egui::Id::unique("floors_chips")).order(egui::Order::Middle).fixed_pos(Pos2::ZERO).show(ctx, |ui| {
             // the area is as big as the list, so a press on it is the chips' and not the stage's
             let widest = stops.iter().map(|(_, name)| width_of(name) + 17.0).fold(width_of("Novo Andar") + 8.0 + GAPS + 3.0, f32::max) + PAD * 2.0;
             let height = stops.len() as f32 * (30.0 + GAPS) + 32.0;
+
             ui.allocate_rect(Rect::from_min_max(Pos2::new(right_edge - widest - 8.0, y - height - 8.0), Pos2::new(right_edge + 8.0, y + 8.0)), Sense::hover());
+
             for (id, name) in stops.iter().rev() {
                 let pop = pops.get(id).copied().unwrap_or(1.0);
                 let ground = id.is_empty();
                 let on = space.floor == *id;
                 let width = PAD * 2.0 + width_of(name) + if ground { 12.0 + 5.0 } else { 0.0 };
                 let rest = Rect::from_min_size(Pos2::new(right_edge - width, y - 30.0), Vec2::new(width, 30.0));
+
                 y -= 30.0 + GAPS;
                 let response = ui.interact(rest, ui.scope_id().with(("floor_chip", id)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
                 let shown = Rect::from_center_size(rest.center(), rest.size() * (0.8 + 0.2 * pop));
                 let mut painter = ui.painter().clone();
+
                 painter.set_opacity(pop);
                 let text = if on { Color32::WHITE } else { ink };
+
                 if on {
                     painter.rect_filled(shown, shown.height() / 2.0, accent);
                 } else {
                     paint_glass(&painter, shown, shown.height() / 2.0, dark, false);
                 }
+
                 let galley = painter.layout_no_wrap(name.clone(), FontId::proportional(12.0 * (0.8 + 0.2 * pop)), text);
                 let mut x = shown.center().x - (galley.size().x + if ground { 17.0 } else { 0.0 }) / 2.0;
+
                 if ground {
                     paint_icon_scaled(&painter, Icon::Layers(false), Pos2::new(x + 6.0, shown.center().y), text, 0.75 * (0.8 + 0.2 * pop), 0.0);
                     x += 17.0;
                 }
+
                 let at = Pos2::new(x, shown.center().y - galley.size().y / 2.0);
+
                 if on {
                     // the floor on view in semibold: painted twice half a point apart (the UI font has no bold weight)
                     painter.galley(at + Vec2::new(0.5, 0.0), galley.clone(), text);
                 }
+
                 painter.galley(at, galley, text);
                 response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
+
                 if response.double_clicked() {
                     pick = Some(FloorPick::Commit(id.clone()));
                 } else if response.clicked() {
                     pick = Some(FloorPick::Switch(id.clone()));
                 }
+
                 crate::app::ui::menu_look::context_menu(&response, |ui| pick = floor_menu(ui, id, colors).or(pick.take()));
+
                 if on && !ground {
                     // the X over the chip's corner (22 points, 4.9 out of the corner)
                     let x = Rect::from_center_size(Pos2::new(rest.right() - 6.1, rest.top() + 6.1), Vec2::splat(22.0));
                     let hit = ui.interact(x, ui.scope_id().with(("floor_chip_x", id)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
                     // opaque under its glass, so the chip's blue does not show through
                     painter.circle_filled(x.center(), 11.0, if dark { Color32::from_rgb(0x2c, 0x2c, 0x2e) } else { Color32::WHITE });
                     paint_glass(&painter, x, 11.0, dark, false);
                     let tint = ink.gamma_multiply(if hit.hovered() { 1.0 } else { 0.7 });
+
                     for (from, to) in [((-3.0, -3.0), (3.0, 3.0)), ((-3.0, 3.0), (3.0, -3.0))] {
                         painter.line_segment([x.center() + Vec2::new(from.0, from.1), x.center() + Vec2::new(to.0, to.1)], Stroke::new(1.5, tint));
                     }
+
                     if hit.tip("Apagar").clicked() {
                         pick = Some(FloorPick::Delete(id.clone()));
                     }
                 }
             }
+
             // Novo Andar: a dashed pill in the accent
             let pop = pops.get("+").copied().unwrap_or(1.0);
             let width = PAD * 2.0 + 8.0 + GAPS + width_of("Novo Andar") + 3.0;
@@ -302,27 +365,34 @@ impl DrawingApp {
             let response = ui.interact(rest, ui.scope_id().with("floor_chip_new"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
             let shown = Rect::from_center_size(rest.center(), rest.size() * (0.8 + 0.2 * pop));
             let mut painter = ui.painter().clone();
+
             painter.set_opacity(pop);
+
             if response.hovered() {
                 painter.rect_filled(shown, shown.height() / 2.0, accent.gamma_multiply(0.12));
             }
+
             painter.add(Shape::dashed_line(&stadium(shown.shrink(0.75)), Stroke::new(1.5, accent.gamma_multiply(0.5)), 4.5, 3.0));
             let galley = painter.layout_no_wrap("Novo Andar".into(), FontId::proportional(12.0 * (0.8 + 0.2 * pop)), accent);
             let x = shown.center().x - (galley.size().x + 8.0 + GAPS) / 2.0;
+
             paint_icon_scaled(&painter, Icon::Plus, Pos2::new(x + 4.0, shown.center().y), accent, 0.5, 0.0);
             painter.galley(Pos2::new(x + 8.0 + GAPS, shown.center().y - galley.size().y / 2.0), galley, accent);
             response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Novo Andar"));
             new = response.clicked();
         });
+
         if new {
             pick = Some(FloorPick::New);
         }
+
         if let Some(pick) = pick {
             close |= matches!(pick, FloorPick::Commit(_));
             self.apply_floor_pick(&space.id, pick);
             // what a menu changed shows on the next frame
             self.floors_ui.counted = false;
         }
+
         if close {
             self.floors_ui.overview = false;
         }
@@ -333,6 +403,7 @@ impl DrawingApp {
         let index = |app: &Self, id: &str| {
             app.spaces.list.iter().find(|workspace| workspace.id == space).and_then(|workspace| workspace.floors.iter().position(|floor| floor.id == id))
         };
+
         let done = match pick {
             FloorPick::Switch(id) => self.switch_scope(space, &id),
             FloorPick::Commit(id) => {
@@ -345,6 +416,7 @@ impl DrawingApp {
             }
             FloorPick::Rename(id) => {
                 let name = self.floor_in(space, &id).map(|floor| floor.name.clone());
+
                 self.floors_ui.dialog = name.map(|name| FloorDialog::Rename { space: space.into(), id, name });
                 Ok(())
             }
@@ -355,6 +427,7 @@ impl DrawingApp {
                 Ok(())
             }
         };
+
         if let Err(error) = done {
             self.toast(error);
         }
@@ -370,13 +443,17 @@ impl DrawingApp {
                     ui.add_space(8.0);
                     dialog_check(ui, &mut copy, "Clonar layout do Térreo", colors);
                 });
+
                 if cancel {
                     return;
                 }
+
                 if !ok {
                     self.floors_ui.dialog = Some(FloorDialog::New { name, copy });
+
                     return;
                 }
+
                 match self.create_floor(&name, copy).and_then(|id| self.switch_floor(&id)) {
                     Ok(()) => self.floors_ui.counted = false,
                     Err(error) => {
@@ -389,9 +466,11 @@ impl DrawingApp {
                 let (ok, cancel) = dialog_ui(ctx, colors, "Renomear andar", "Salvar", |ui| {
                     dialog_field(ui, "Nome do andar", &mut name, "", DIALOG_WIDTH, colors);
                 });
+
                 if cancel {
                     return;
                 }
+
                 if !ok {
                     self.floors_ui.dialog = Some(FloorDialog::Rename { space, id, name });
                 } else if let Err(error) = self.rename_floor(&space, &id, &name) {
@@ -403,14 +482,17 @@ impl DrawingApp {
                 let found = self.floor_in(&space, &id).map(|floor| floor.name.clone());
                 let Some(name) = found else { return };
                 let items = self.floor_items(&space, &id);
+
                 let message = match items {
                     0 => format!("{name} está vazio. Excluir remove apenas o andar."),
                     count => format!("Excluir {name} também exclui tudo o que está nele: {}.", items_text(count)),
                 };
+
                 let (ok, cancel) = dialog_ui(ctx, colors, &format!("Apagar {name}"), "Apagar", |ui| {
                     ui.label(egui::RichText::new(message).size(14.0).color(colors.text));
                     dialog_note(ui, "Isso não pode ser desfeito.", colors);
                 });
+
                 if ok {
                     match self.delete_floor(&space, &id) {
                         Ok(message) => self.toast(message),
@@ -430,7 +512,9 @@ impl DrawingApp {
         let button = Rect::from_center_size(at, Vec2::splat(20.0));
         let response = ui.interact(button, ui.scope_id().with(("floors_toggle", space)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
         let tint = if shown || response.hovered() { ink.text } else { ink.muted };
+
         paint_icon_scaled(ui.painter(), Icon::Layers(false), at, tint, 14.0 / 16.0, 0.0);
+
         if response.tip(if shown { "Ocultar Andares" } else { "Mostrar Andares" }).clicked() && !self.floors_ui.shown.remove(space) {
             self.floors_ui.shown.insert(space.into());
         }
@@ -442,9 +526,11 @@ impl DrawingApp {
         if !self.floors_ui.shown.contains(space) {
             return;
         }
+
         let Some(workspace) = self.spaces.list.iter().find(|workspace| workspace.id == space).cloned() else { return };
         let on_space = self.spaces.current == workspace.id;
         let colors = self.colors();
+
         let stops: Vec<(String, String, [u8; 3])> = workspace
             .floors
             .iter()
@@ -452,24 +538,33 @@ impl DrawingApp {
             .map(|floor| (floor.id.clone(), floor.name.clone(), floor.color))
             .chain([(String::new(), GROUND.to_string(), workspace.color)])
             .collect();
+
         let mut pick = None;
+
         for (id, name, color) in &stops {
             let (rect, row) = ui.allocate_exact_size(Vec2::new(width, 26.0), Sense::click());
             let (on, over) = (on_space && workspace.floor == *id, ui.rect_contains_pointer(rect));
             let painter = ui.painter().clone();
+
             if on || over {
                 painter.rect_filled(rect, 6, if on { ink.active } else { ink.hover });
             }
+
             let [red, green, blue] = *color;
+
             paint_icon_scaled(&painter, Icon::Layers(false), Pos2::new(rect.left() + 36.0, rect.center().y), Color32::from_rgb(red, green, blue), 0.8, 0.0);
             let text = Rect::from_min_max(Pos2::new(rect.left() + 50.0, rect.top()), Pos2::new(rect.right() - 6.0, rect.bottom()));
+
             painter.with_clip_rect(text).text(text.left_center(), egui::Align2::LEFT_CENTER, name, FontId::proportional(13.0), ink.text);
             row.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, name));
+
             if row.clicked() {
                 pick = Some(FloorPick::Switch(id.clone()));
             }
+
             crate::app::ui::menu_look::context_menu(&row, |ui| pick = floor_menu(ui, id, &colors).or(pick.take()));
         }
+
         if let Some(pick) = pick {
             self.apply_floor_pick(space, pick);
         }

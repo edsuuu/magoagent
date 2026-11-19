@@ -34,6 +34,7 @@ pub(crate) struct TermProcs {
 pub(crate) fn descendants(table: &HashMap<u32, (u32, String)>, root: u32) -> Vec<(u32, String)> {
     let mut found: Vec<u32> = Vec::new();
     let mut todo = vec![root];
+
     while let Some(parent) = todo.pop() {
         for (&pid, (up, _)) in table {
             if *up == parent && pid != parent && pid != root && !found.contains(&pid) {
@@ -42,6 +43,7 @@ pub(crate) fn descendants(table: &HashMap<u32, (u32, String)>, root: u32) -> Vec
             }
         }
     }
+
     found.sort_unstable();
     found.into_iter().map(|pid| (pid, table[&pid].1.clone())).collect()
 }
@@ -59,6 +61,7 @@ pub(crate) fn processes_of(root: u32) -> Vec<Proc> {
 pub(crate) fn stop_process(pid: u32) -> bool {
     let pid = pid.to_string();
     let (program, args): (_, &[&str]) = if cfg!(windows) { ("taskkill", &["/PID", &pid, "/F"]) } else { ("kill", &["-TERM", &pid]) };
+
     crate::editor::command(program).args(args).output().is_ok_and(|output| output.status.success())
 }
 
@@ -89,6 +92,7 @@ impl DrawingApp {
         if !self.terminal_processes(id).iter().any(|p| p.pid == pid) {
             return Err(format!("O processo {pid} não roda neste terminal."));
         }
+
         if stop_process(pid) { Ok(()) } else { Err(format!("Não foi possível parar o processo {pid}.")) }
     }
 
@@ -102,21 +106,27 @@ impl DrawingApp {
     /// The popover over terminal `id`'s footer button: above it, its right edge on the button's.
     pub(crate) fn procs_ui(&mut self, ctx: &Context, button: Rect) {
         let Some(id) = self.term_ui.procs.as_ref().map(|p| p.id.clone()) else { return };
+
         if self.term_ui.procs.as_ref().is_some_and(|p| p.zoom != self.zoom) {
             self.term_ui.procs = None;
+
             return;
         }
+
         if self.now - self.term_ui.procs.as_ref().map_or(0.0, |p| p.read_at) >= REFRESH_SECONDS {
             let rows = self.terminal_processes(&id);
+
             if let Some(p) = &mut self.term_ui.procs {
                 (p.rows, p.read_at) = (rows, self.now);
             }
         }
+
         ctx.request_repaint_after(std::time::Duration::from_secs_f64(REFRESH_SECONDS));
         let colors = menu_colors(self.dark());
         let rows = self.term_ui.procs.as_ref().map(|p| p.rows.clone()).unwrap_or_default();
         let total: u64 = rows.iter().filter_map(|r| r.bytes).sum();
         let mut stop = None;
+
         let area = egui::Area::new(egui::Id::unique("terminal_procs"))
             .pivot(egui::Align2::RIGHT_BOTTOM)
             .fixed_pos(Pos2::new(button.right(), button.top() - 6.5))
@@ -130,40 +140,53 @@ impl DrawingApp {
                         let painter = ui.painter().clone();
                         // the heading: the button's icon, "Processos" in semibold and how many with their memory in a chip
                         let (head, _) = ui.allocate_exact_size(Vec2::new(POPOVER_WIDTH, 38.0), Sense::hover());
+
                         paint_menu_icon_sized(&painter, MenuIcon::Server, Pos2::new(head.left() + 20.0, head.center().y), colors.muted, 13.0);
                         let title = FontId::new(13.0, egui::FontFamily::Name(SYSTEM_SEMIBOLD.into()));
+
                         painter.text(head.left_center() + Vec2::new(34.0, 0.0), egui::Align2::LEFT_CENTER, "Processos", title, colors.text);
+
                         if !rows.is_empty() {
                             let count = format!("{} · {} MB", rows.len(), (total as f64 / 1048576.0).round());
                             let galley = painter.layout_no_wrap(count, FontId::monospace(10.5), colors.muted);
+
                             let chip = Rect::from_min_size(
                                 Pos2::new(head.right() - 12.0 - galley.size().x - 14.0, head.center().y - 10.0),
                                 Vec2::new(galley.size().x + 14.0, 20.0),
                             );
+
                             painter.rect_filled(chip, 10.0, colors.hover);
                             painter.galley(chip.center() - galley.size() / 2.0, galley, colors.muted);
                         }
+
                         painter.hline(head.x_range(), head.bottom(), Stroke::new(1.0, colors.border));
+
                         if rows.is_empty() {
                             let (empty, _) = ui.allocate_exact_size(Vec2::new(POPOVER_WIDTH, 56.0), Sense::hover());
+
                             painter.text(empty.center(), egui::Align2::CENTER_CENTER, "Nenhum processo filho", FontId::proportional(12.0), colors.muted);
                         }
+
                         egui::ScrollArea::vertical().max_height(320.0).auto_shrink([false, true]).show(ui, |ui| {
                             ui.add_space(4.0);
+
                             for row in &rows {
                                 let (slot, _) = ui.allocate_exact_size(Vec2::new(POPOVER_WIDTH, 44.0), Sense::hover());
                                 // each row a rounded line of its own, lit under the pointer
                                 let r = slot.shrink2(Vec2::new(4.0, 1.0));
                                 let painter = ui.painter();
+
                                 if ui.rect_contains_pointer(r) {
                                     painter.rect_filled(r, ITEM_RADIUS, colors.hover);
                                 }
+
                                 let x = Rect::from_center_size(Pos2::new(r.right() - 16.0, r.center().y), Vec2::splat(22.0));
                                 // its memory at the right, before the stop button; the name cut short of it
                                 let memory = painter.layout_no_wrap(memory_text(row.bytes), FontId::monospace(11.0), colors.text);
                                 let memory_at = Pos2::new(x.left() - 8.0 - memory.size().x, r.center().y - memory.size().y / 2.0);
                                 let words = Rect::from_min_max(Pos2::new(r.left() + 10.0, r.top()), Pos2::new(memory_at.x - 10.0, r.bottom()));
                                 let clipped = painter.with_clip_rect(words.intersect(painter.clip_rect()));
+
                                 clipped.text(
                                     Pos2::new(words.left(), r.center().y - 1.0),
                                     egui::Align2::LEFT_BOTTOM,
@@ -171,6 +194,7 @@ impl DrawingApp {
                                     FontId::proportional(12.5),
                                     colors.text,
                                 );
+
                                 clipped.text(
                                     Pos2::new(words.left(), r.center().y + 2.0),
                                     egui::Align2::LEFT_TOP,
@@ -178,24 +202,31 @@ impl DrawingApp {
                                     FontId::monospace(10.5),
                                     colors.muted,
                                 );
+
                                 painter.galley(memory_at, memory, colors.text);
                                 let response = ui.interact(x, egui::Id::unique(("stop_process", row.pid)), Sense::click());
+
                                 if response.hovered() {
                                     ui.painter().circle_filled(x.center(), 11.0, colors.hover);
                                 }
+
                                 let c = x.center();
                                 let s = Stroke::new(1.4, if response.hovered() { colors.text } else { colors.muted });
+
                                 ui.painter().add(Shape::line(vec![c + Vec2::new(-3.5, -3.5), c + Vec2::new(3.5, 3.5)], s));
                                 ui.painter().add(Shape::line(vec![c + Vec2::new(-3.5, 3.5), c + Vec2::new(3.5, -3.5)], s));
+
                                 if response.on_hover_cursor(CursorIcon::PointingHand).tip(format!("Parar {} (PID {})", row.name, row.pid)).clicked() {
                                     stop = Some(row.pid);
                                 }
                             }
+
                             ui.add_space(4.0);
                         });
                     },
                 );
             });
+
         if let Some(pid) = stop {
             match self.stop_terminal_process(&id, pid) {
                 Ok(()) => {
@@ -206,8 +237,10 @@ impl DrawingApp {
                 Err(why) => self.toast(why),
             }
         }
+
         // a press away from it (and from its button, which toggles it) or Esc closes it
         let away = ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !area.response.rect.contains(p) && !button.contains(p)));
+
         if away || ctx.input(|i| i.key_pressed(Key::Escape)) {
             self.term_ui.procs = None;
         }
@@ -233,10 +266,12 @@ mod tests {
             (20, (1, "other".into())),
             (21, (20, "x".into())),
         ]);
+
         assert_eq!(descendants(&table, 10), vec![(11, "node".to_string()), (12, "esbuild".to_string())]);
         assert!(descendants(&table, 12).is_empty());
         // a cycle in the table (a reused pid) ends
         let cyclic: HashMap<u32, (u32, String)> = HashMap::from([(5, (6, "a".into())), (6, (5, "b".into()))]);
+
         assert_eq!(descendants(&cyclic, 5).len(), 1);
     }
 
@@ -251,6 +286,7 @@ mod tests {
     fn a_process_that_is_not_under_the_shell_is_never_stopped() {
         let mut app = DrawingApp::default();
         let err = app.stop_terminal_process("nobody", std::process::id()).unwrap_err();
+
         assert!(err.contains("não roda neste terminal"));
     }
 
@@ -261,15 +297,19 @@ mod tests {
         let ctx = Context::default();
         let mut app = DrawingApp::default();
         let mut shell = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 640.0, height: 400.0 });
+
         shell.terminal = Some(TerminalSpec::default());
         let mut ide = app.new_element(ElementKind::Rectangle { x: 700.0, y: 0.0, width: 400.0, height: 300.0 });
+
         ide.filetree = Some(FileTreeSpec::default());
         let (shell_id, ide_id) = (shell.id.clone(), ide.id.clone());
+
         app.scene.elements = vec![shell, ide];
         // no frame of the canvas ran: the enlarged frame is measured from it
         app.canvas_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
         let draw = |app: &mut DrawingApp| ctx.run_ui(Default::default(), |_| app.terminal_extras(&ctx)).textures_delta.clear();
         let shown = || ctx.memory(|m| m.areas().visible_last_frame(&egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("terminal_procs"))));
+
         app.toggle_procs(&shell_id);
         draw(&mut app);
         assert!(app.term_ui.procs.is_some() && shown(), "open over its terminal");
@@ -289,11 +329,14 @@ mod tests {
         let ctx = Context::default();
         let mut app = DrawingApp::default();
         let mut shell = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 640.0, height: 400.0 });
+
         shell.terminal = Some(TerminalSpec::default());
         let id = shell.id.clone();
+
         app.scene.elements = vec![shell];
         app.canvas_rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
         let draw = |app: &mut DrawingApp| ctx.run_ui(Default::default(), |_| app.terminal_extras(&ctx)).textures_delta.clear();
+
         app.toggle_procs(&id);
         draw(&mut app);
         assert!(app.term_ui.procs.is_some());
@@ -306,30 +349,43 @@ mod tests {
     fn stops_a_child_of_the_shell_and_lists_it_first() {
         let mut app = DrawingApp::default();
         let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 640.0, height: 400.0 });
+
         e.terminal = Some(TerminalSpec::default());
         let id = e.id.clone();
+
         app.scene.elements.push(e);
+
         let (program, args): (&str, Vec<&str>) =
             if cfg!(windows) { ("cmd", vec!["/c", "ping -n 40 127.0.0.1 >nul"]) } else { ("sh", vec!["-c", "sleep 40; echo done"]) };
+
         let session = TerminalSession::spawn("", "", (40, 5), None, vec![], Some((program, &args)), 100).unwrap();
+
         app.terminals.insert(id.clone(), Ok(session));
         let mut child = None;
+
         for _ in 0..60 {
             child = app.terminal_processes(&id).into_iter().next();
+
             if child.is_some() {
                 break;
             }
+
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
+
         let child = child.expect("the shell's command shows as a process under it");
+
         assert!(child.pid != 0 && !child.name.is_empty());
         app.stop_terminal_process(&id, child.pid).unwrap();
+
         for _ in 0..60 {
             if !app.terminal_processes(&id).iter().any(|p| p.pid == child.pid) {
                 return;
             }
+
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
+
         panic!("the process is still there");
     }
 }

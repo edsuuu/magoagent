@@ -31,6 +31,7 @@ pub(crate) const RECRUIT_CARD: Vec2 = Vec2::new(380.0, 400.0);
 /// as it is.
 pub(crate) fn signed(who: &str, text: &str) -> String {
     let (who, text) = (who.trim(), text.trim());
+
     match () {
         _ if who.is_empty() => text.to_string(),
         _ if text.is_empty() => who.to_string(),
@@ -46,6 +47,7 @@ fn says_who(who: &str, text: &str) -> bool {
     let text = text.strip_prefix("agente ").unwrap_or(&text);
     let who = who.to_lowercase();
     let short = who.split(" (").next().unwrap_or(&who);
+
     [who.as_str(), short].iter().any(|name| text.strip_prefix(name).is_some_and(|rest| rest.chars().next().is_none_or(|next| !next.is_alphanumeric())))
 }
 
@@ -73,18 +75,24 @@ impl DrawingApp {
     pub(crate) fn recruit_in(&mut self, from: &str, command: &str, worktree: bool, mode: Option<AgentMode>, reply: Sender<Result<String, String>>) {
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else {
             let _ = reply.send(Err("recrute de dentro de um terminal do MagoAgent".into()));
+
             return;
         };
+
         let b = local_bounds(caller);
+
         // the ceiling of agents and the plan's limit hold the Maestro back (usage.rs)
         if let Some(why) = self.recruit_refusal() {
             let _ = reply.send(Err(why));
+
             return;
         }
+
         let chat_mode = mode.unwrap_or(self.prefs.agent_mode) == AgentMode::Chat;
         let raw = command;
         let command = crate::app::usage::recruit_command(command, &self.prefs.recruit_model);
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else { return };
+
         // a chat's card is smaller than any terminal: its recruit is a new terminal's size, in the chat's folder; a
         // recruit in chat mode is a card (its task and what it does, chat/recruit_card.rs), pulled bigger by hand
         let (mut cwd, size) = match (&caller.terminal, &caller.chat) {
@@ -92,6 +100,7 @@ impl DrawingApp {
             (_, Some(chat)) => (chat.cwd.clone(), self.new_terminal_size()),
             _ => (String::new(), b.size()),
         };
+
         let size = if chat_mode { RECRUIT_CARD } else { size };
         let at = self.free_spot_near(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), size), b);
         let side = side_of(at, b);
@@ -99,49 +108,63 @@ impl DrawingApp {
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
         // its own environment first: without it there is no recruit
         let mut own = String::new();
+
         if worktree {
             let folder = crate::app::chat::direct::folder(&cwd).unwrap_or_default();
+
             match crate::app::maestro::environments::make(&folder, &name, &terminal.id) {
                 Ok((path, branch)) => {
                     own = format!(
                         " Ele trabalha num ambiente próprio, {} (ramo {branch}): o que fizer fica nesse ramo até alguém juntar, e a pasta fica no disco até alguém tirar.",
                         path.display()
                     );
+
                     cwd = path.to_string_lossy().into_owned();
                 }
                 Err(why) => {
                     let _ = reply.send(Err(why));
+
                     return;
                 }
             }
         }
+
         terminal.style = node_style(terminal.style);
         let id = terminal.id.clone();
+
         self.snapshot();
+
         // the model and effort it runs, said with the dispatch (tuning.rs)
         let (kind, (agent, model, effort)) = if chat_mode {
             let spec = self.new_recruit_chat(&id, &name, &cwd, raw);
+
             terminal.chat = Some(spec);
             let chat = self.chats.iter().find(|chat| chat.id == id);
+
             ("um chat do app", chat.map(|chat| (chat.agent.clone(), chat.model.clone(), chat.effort.clone())).unwrap_or_default())
         } else {
             let tuning = crate::app::maestro::tuning::of_command(&command, "claude");
             // told to keep its work out of the temporary folder (Ajustes › Agentes), as a chat's agent is
             let command = temp_folder::with_temp_rule(&command, &self.prefs);
             let mut spec = TerminalSpec { name: name.clone(), cwd, command, maestro: false, ..Default::default() };
+
             // its agent only in WSL (system/wsl.rs): the terminal opens in that distro
             if let Some(distro) = spec.command.split_whitespace().next().and_then(agent_cli).as_ref().and_then(|cli| cli.wsl()) {
                 spec.look.shell = wsl_shell(&distro.name);
             }
+
             terminal.terminal = Some(spec);
             ("um terminal", tuning)
         };
+
         let tuning = crate::app::maestro::tuning::describe(&agent, &model, &effort);
+
         self.scene.elements.push(terminal);
         // one Cmd+Z takes back the recruit and its rope together
         self.rope_between(from, &id, false);
         self.publish_nodes();
         let who = self.speaker(from);
+
         self.agent_event(&id, EventKind::Started, format!("recrutado por {who} ({kind}): {tuning}"));
         let _ = reply.send(Ok(format!("Agente \"{name}\" criado {side} e conectado ({kind}; {tuning}); fale com ele com `magoagent ask \"{name}\" …`.{own}")));
     }
@@ -158,6 +181,7 @@ impl DrawingApp {
         let modes = crate::app::chat::direct::CHAT_MODES.len() - 1;
         let mode = flags.mode.or_else(|| crate::app::chat::footer::agent_mode(&agent)).unwrap_or(self.prefs.chat_mode).min(modes);
         let model = flags.model.unwrap_or_else(|| if agent == "claude" { self.prefs.recruit_model.clone() } else { String::new() });
+
         let chat = crate::app::chat::direct::Chat {
             id: id.into(),
             agent: agent.clone(),
@@ -171,11 +195,14 @@ impl DrawingApp {
             named: false,
             draft: false,
         };
+
         self.chats.push(chat);
         self.save_chats();
+
         if !prompt.is_empty() {
             self.chat_starts.push((id.into(), prompt.into()));
         }
+
         ChatSpec { name: name.into(), agent, cwd: cwd.into(), folded: None }
     }
 
@@ -183,20 +210,26 @@ impl DrawingApp {
     pub(crate) fn create_portal(&mut self, from: &str, url: &str, name: &str, reply: Sender<Result<String, String>>) {
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else {
             let _ = reply.send(Err("abra navegadores de dentro de um terminal do MagoAgent".into()));
+
             return;
         };
+
         let b = local_bounds(caller);
         let url = normalize_url(url);
+
         let name = match name.trim() {
             "" if host_of(&url).is_empty() => "Navegador".to_string(),
             "" => host_of(&url).to_string(),
             name => name.to_string(),
         };
+
         let at = self.free_spot_near(Rect::from_min_size(Pos2::new(b.max.x + 60.0, b.min.y), Vec2::new(720.0, 520.0)), b);
         let mut portal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
+
         portal.style = node_style(portal.style);
         portal.portal = Some(PortalSpec { name: name.clone(), url, ..Default::default() });
         let id = portal.id.clone();
+
         self.snapshot();
         self.scene.elements.push(portal);
         self.rope_between(from, &id, false);
@@ -210,13 +243,16 @@ impl DrawingApp {
     pub(crate) fn act_create_terminal(&mut self, args: &Value) -> Result<String, String> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
         let asker = text("asker");
+
         // a chat opens it from its card, put on the canvas shown when it is not there
         if !asker.is_empty() {
             self.add_chat_node(&asker, None);
         }
+
         let Some(caller) = self.scene.elements.iter().find(|e| !asker.is_empty() && e.id == asker) else {
             return Err("Abra terminais de dentro de um terminal ou chat do MagoAgent: o terminal fica ligado por corda a quem o abriu.".into());
         };
+
         let b = local_bounds(caller);
         let folder = caller.terminal.as_ref().map(|t| t.cwd.clone()).or_else(|| caller.chat.as_ref().map(|c| c.cwd.clone())).unwrap_or_default();
         let command = text("command");
@@ -226,15 +262,18 @@ impl DrawingApp {
         let at = self.free_spot_near(Rect::from_min_size(Pos2::new(b.max.x + 60.0, b.min.y), self.new_terminal_size()), b);
         let side = side_of(at, b);
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
+
         terminal.style = node_style(terminal.style);
         terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command: command.clone(), maestro: false, ..Default::default() });
         let id = terminal.id.clone();
+
         // one Cmd+Z takes back the terminal and its rope together
         self.snapshot();
         self.scene.elements.push(terminal);
         self.hang_from(&asker, std::slice::from_ref(&id));
         self.publish_nodes();
         let running = if command.is_empty() { String::new() } else { format!(", rodando `{command}`") };
+
         Ok(format!(
             "Terminal \"{name}\" aberto {side}{running} e ligado a você por corda: leia a tela com read_terminal \"{name}\" (ou `magoagent check \"{name}\"`), \
              mande teclas com ask_agent raw (\\x03 para parar) e veja os processos com terminal_processes."
@@ -244,15 +283,20 @@ impl DrawingApp {
     /// `connect`: a rope between two things on the canvas, by id (the bridge resolves names).
     pub(crate) fn connect_for_agent(&mut self, a: &str, b: &str, reply: Sender<Result<String, String>>) {
         let name = |id: &str| self.agent_nodes().into_iter().find(|n| n.id == id).map(|n| n.name);
+
         // the bridge resolved the ids a moment ago; an end deleted since would make no rope
         let (Some(first), Some(second)) = (name(a), name(b)) else {
             let _ = reply.send(Err("uma das pontas já não está no canvas".into()));
+
             return;
         };
+
         if self.links().get(a).is_some_and(|l| l.iter().any(|x| x == b)) {
             let _ = reply.send(Ok(format!("\"{first}\" e \"{second}\" já estavam conectados.")));
+
             return;
         }
+
         self.connect(a, b);
         self.publish_nodes();
         let _ = reply.send(Ok(format!("\"{first}\" e \"{second}\" conectados.")));
@@ -265,6 +309,7 @@ impl DrawingApp {
         let who = self.agent_nodes().into_iter().find(|n| n.id == from).map(|n| n.name).or_else(|| self.away.get(from).map(|(_, s)| s.label().to_string()));
         // a chat with no card on this canvas
         let who = who.or_else(|| self.chats.iter().find(|c| c.id == from).map(|c| self.maestro_name(&c.name)));
+
         who.unwrap_or_else(|| "Agente".into())
     }
 
@@ -272,12 +317,15 @@ impl DrawingApp {
     /// taskbar asks for a look.
     pub(crate) fn notify(&mut self, from: &str, text: &str) {
         let who = self.speaker(from);
+
         self.toast(signed(&who, text));
+
         // the tests notify too: they never reach the system's notifications (each `cargo test` left one on the desktop)
         #[cfg(all(target_os = "macos", not(test)))]
         {
             // the text goes as an argument, never inside the script; waited on so no zombie stays
             let (title, text) = (format!("MagoAgent · {who}"), text.to_string());
+
             std::thread::spawn(move || {
                 let _ = std::process::Command::new("osascript")
                     .args(["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run"])
@@ -285,13 +333,16 @@ impl DrawingApp {
                     .status();
             });
         }
+
         #[cfg(not(target_os = "macos"))]
         {
             self.attention = true;
+
             // `--`: a text that starts with a dash is not an option
             #[cfg(all(target_os = "linux", not(test)))]
             {
                 let (title, text) = (format!("MagoAgent · {who}"), text.to_string());
+
                 std::thread::spawn(move || std::process::Command::new("notify-send").arg("--").arg(title).arg(text).status());
             }
         }
@@ -315,37 +366,47 @@ pub(crate) struct RecruitFlags {
 pub(crate) fn recruit_flags(rest: &str) -> (RecruitFlags, &str) {
     let mut flags = RecruitFlags::default();
     let mut rest = rest.trim_start();
+
     loop {
         let (word, after) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+
         let (name, inline) = match word.split_once('=') {
             Some((n, v)) => (n, Some(v)),
             None => (word, None),
         };
+
         if name == "--dangerously-skip-permissions" {
             flags.mode = Some(1);
             rest = after.trim_start();
+
             continue;
         }
+
         if !matches!(name, "--model" | "-m" | "--effort" | "-c" | "--permission-mode") {
             return (flags, rest);
         }
+
         let (value, after) = match inline {
             Some(v) => (v, after),
             None => after.trim_start().split_once(char::is_whitespace).unwrap_or((after.trim_start(), "")),
         };
+
         // Codex's settings: its effort is one, any other ends the reading
         let (name, value) = match (name, value.strip_prefix("model_reasoning_effort=")) {
             ("-c", Some(effort)) => ("--effort", effort),
             ("-c", None) => return (flags, rest),
             (name, _) => (name, value),
         };
+
         let value = value.trim_matches('"');
+
         match name {
             "--model" | "-m" if !value.is_empty() => flags.model = Some(value.into()),
             "--effort" if crate::app::maestro::tuning::EFFORTS.contains(&value) => flags.effort = Some(value.into()),
             "--permission-mode" => flags.mode = Some(usize::from(value == "bypassPermissions")),
             _ => {}
         }
+
         rest = after.trim_start();
     }
 }
@@ -358,10 +419,12 @@ mod tests {
     fn what_an_agent_says_is_signed_with_its_name_once() {
         assert_eq!(signed("Ana", "estou parado"), "Ana: estou parado");
         assert_eq!(signed("Ana", "  terminei os testes "), "Ana: terminei os testes");
+
         // already said who it is: as it is
         for said in ["Ana aqui: estou parado", "Ana: terminei", "ana, preciso de você", "Agente Ana aqui: estou parado", "Ana"] {
             assert_eq!(signed("Ana", said), said, "{said}");
         }
+
         // a longer name that starts the same is someone else
         assert_eq!(signed("Ana", "Anabela pediu os testes"), "Ana: Anabela pediu os testes");
         // a Maestro told apart by its chat, by its first name too

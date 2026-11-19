@@ -14,15 +14,19 @@ pub(crate) const SHRINK: f64 = 0.34;
 pub(crate) fn cubic_bezier(x1: f32, y1: f32, x2: f32, y2: f32, x: f32) -> f32 {
     let curve =
         |along: f32, first: f32, second: f32| (1.0 - along).powi(2) * 3.0 * along * first + 3.0 * (1.0 - along) * along * along * second + along.powi(3);
+
     let (mut low, mut high, mut along) = (0.0f32, 1.0f32, x);
+
     for _ in 0..12 {
         if curve(along, x1, x2) < x {
             low = along;
         } else {
             high = along;
         }
+
         along = (low + high) / 2.0;
     }
+
     curve(along, y1, y2)
 }
 
@@ -65,15 +69,20 @@ impl Geometry {
     /// A new target: one smaller than the last is shrunk to along the curve, from `time`; any other is sprung to.
     pub(crate) fn aim(&mut self, size: Vec2, corner: f32, time: f64) {
         let target = [size.x, size.y, corner];
+
         if !self.placed {
             return self.jump(size, corner);
         }
+
         if target == self.target {
             return;
         }
+
         let shrinking = target[0] + target[1] < self.target[0] + self.target[1];
+
         self.target = target;
         self.moving = true;
+
         if shrinking {
             (self.curve, self.velocity) = (Some((self.value, time)), [0.0; 3]);
         } else {
@@ -86,27 +95,35 @@ impl Geometry {
         if !self.moving {
             return;
         }
+
         if let Some((from, start)) = self.curve {
             let progress = ((time - start) / SHRINK) as f32;
             let eased = close_curve(progress);
+
             for index in 0..3 {
                 self.value[index] = from[index] + (self.target[index] - from[index]) * eased;
             }
+
             if progress >= 1.0 {
                 (self.value, self.curve, self.moving) = (self.target, None, false);
             }
+
             return;
         }
+
         let omega = std::f32::consts::TAU / RESPONSE;
         let steps = (delta / SUBSTEP).ceil().max(1.0);
         let each = delta / steps;
+
         for _ in 0..steps as usize {
             for index in 0..3 {
                 let pull = omega * omega * (self.target[index] - self.value[index]) - 2.0 * DAMPING * omega * self.velocity[index];
+
                 self.velocity[index] += pull * each;
                 self.value[index] += self.velocity[index] * each;
             }
         }
+
         if (0..3).all(|index| (self.target[index] - self.value[index]).abs() < 0.02 && self.velocity[index].abs() < 0.2) {
             (self.value, self.velocity, self.moving) = (self.target, [0.0; 3], false);
         }
@@ -130,10 +147,12 @@ impl Spring {
         let omega = std::f32::consts::TAU / RESPONSE;
         let steps = (delta / SUBSTEP).ceil().max(1.0);
         let each = delta / steps;
+
         for _ in 0..steps as usize {
             self.velocity += (omega * omega * (self.target - self.value) - 2.0 * DAMPING * omega * self.velocity) * each;
             self.value += self.velocity * each;
         }
+
         if self.settled() {
             (self.value, self.velocity) = (self.target, 0.0);
         }
@@ -184,14 +203,17 @@ impl Fade {
     /// How far along it is, 0 to 1, at `time`.
     pub(crate) fn progress(&self, time: f64) -> f32 {
         let way = self.way();
+
         ((time - self.since - way.delay) / way.seconds).clamp(0.0, 1.0) as f32
     }
 
     pub(crate) fn value(&self, time: f64) -> f32 {
         let (to, progress) = (if self.on { 1.0 } else { 0.0 }, self.progress(time));
+
         if progress >= 1.0 {
             return to;
         }
+
         self.from + (to - self.from) * (self.way().ease)(progress)
     }
 
@@ -214,6 +236,7 @@ impl Fade {
 
     pub(crate) fn moving(&self, time: f64) -> bool {
         let way = self.way();
+
         time < self.since + way.delay + way.seconds
     }
 }
@@ -226,6 +249,7 @@ mod tests {
     fn a_fade_waits_its_delay_and_turns_back_from_where_it_is() {
         let way = Way { seconds: 0.3, delay: 0.16, ease: ease_out };
         let mut fade = Fade::new(way, Way { seconds: 0.16, delay: 0.0, ease: ease_in });
+
         assert_eq!(fade.value(0.0), 0.0);
         fade.set(true, 1.0);
         assert_eq!(fade.value(1.15), 0.0, "the delay first");
@@ -235,6 +259,7 @@ mod tests {
         assert_eq!(fade.value(1.6), 1.0, "set again, nothing changes");
         fade.set(false, 2.0);
         let middle = fade.value(2.08);
+
         assert!(middle > 0.0 && middle < 1.0);
         fade.set(true, 2.08);
         assert!((fade.value(2.08) - middle).abs() < 1e-6, "no jump when it turns back");
@@ -244,10 +269,12 @@ mod tests {
     fn the_wizards_spring_goes_a_little_past_and_settles() {
         let mut spring = Spring { value: 0.0, target: 20.0, velocity: 0.0 };
         let mut most = 0.0f32;
+
         for _ in 0..120 {
             spring.step(1.0 / 60.0);
             most = most.max(spring.value);
         }
+
         assert!(most > 20.3 && most < 21.5, "{most}");
         assert!(spring.settled() && spring.value == 20.0);
     }
@@ -265,11 +292,13 @@ mod tests {
     #[test]
     fn growing_it_overshoots_a_little_on_the_spring_and_settles() {
         let mut geometry = Geometry::default();
+
         geometry.aim(Vec2::new(288.0, 32.0), 14.0, 0.0);
         assert_eq!(geometry.size(), Vec2::new(288.0, 32.0), "the first size is taken at once");
         geometry.aim(Vec2::new(640.0, 160.0), 22.0, 0.0);
         let sizes = run(&mut geometry, 2.0);
         let widest = sizes.iter().map(|size| size.x).fold(0.0, f32::max);
+
         // SwiftUI's spring at 0.72 of damping goes about 4% past: 352 points of travel, some 14 over
         assert!(widest > 645.0 && widest < 665.0, "it goes a little past 640 and comes back: {widest}");
         assert!(sizes[14].x > 500.0 && sizes[14].x < 640.0, "a quarter of a second in it is most of the way: {:?}", sizes[14]);
@@ -279,13 +308,16 @@ mod tests {
     #[test]
     fn shrinking_it_follows_the_curve_for_340_ms_and_never_goes_past() {
         let mut geometry = Geometry::default();
+
         geometry.jump(Vec2::new(640.0, 160.0), 22.0);
         geometry.aim(Vec2::new(288.0, 32.0), 14.0, 0.0);
         let sizes = run(&mut geometry, 0.5);
+
         assert!(sizes.windows(2).all(|pair| pair[1].x <= pair[0].x && pair[1].y <= pair[0].y), "only ever smaller");
         assert!(sizes.iter().all(|size| size.x >= 288.0 && size.y >= 32.0), "never past the target: no overshoot");
         // halfway in time (170 ms) the curve is at 0.75 of the way: slow to start, quick in the middle
         let halfway = sizes[9].x;
+
         assert!((halfway - (640.0 - 352.0 * close_curve(10.0 / 60.0 / 0.34))).abs() < 0.01, "{halfway}");
         assert!(sizes[19].x > 288.0, "at 333 ms it is not there yet");
         assert_eq!(sizes[20], Vec2::new(288.0, 32.0), "at 350 ms it is: 340 ms it takes");
@@ -303,10 +335,12 @@ mod tests {
     #[test]
     fn a_target_changed_on_the_way_is_taken_from_where_it_is() {
         let mut geometry = Geometry::default();
+
         geometry.jump(Vec2::new(288.0, 32.0), 14.0);
         geometry.aim(Vec2::new(640.0, 160.0), 22.0, 0.0);
         run(&mut geometry, 0.1);
         let there = geometry.size();
+
         // it is told to close while it opens: from where it is, down, with no jump
         geometry.aim(Vec2::new(288.0, 32.0), 14.0, 0.1);
         geometry.step(1.0 / 60.0, 0.1 + 1.0 / 60.0);

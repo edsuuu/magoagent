@@ -39,20 +39,24 @@ fn note_pt(note: &str) -> String {
 /// (`ran_model`, named by `pretty`) shows even when it is in neither.
 fn claude_models() -> Vec<Choice> {
     let (now, _) = crate::app::chat::cli_models::split(&crate::app::chat::cli_models::claude_cli_models());
+
     if now.is_empty() { fixed_claude_models() } else { now.into_iter().map(|(id, name, note, _)| choice(&id, &name, &note_pt(&note))).collect() }
 }
 
 fn claude_more() -> Vec<Choice> {
     let models = crate::app::chat::cli_models::claude_cli_models();
+
     if models.is_empty() {
         return fixed_claude_more();
     }
+
     crate::app::chat::cli_models::split(&models).1.into_iter().map(|(id, name, _, _)| choice(&id, &name, "")).collect()
 }
 
 /// The efforts Claude Code says `model` takes; None when it has not said.
 fn claude_efforts(model: &str) -> Option<Vec<String>> {
     let (now, older) = crate::app::chat::cli_models::split(&crate::app::chat::cli_models::claude_cli_models());
+
     now.into_iter().chain(older).find(|m| m.0 == model).map(|m| m.3).filter(|e| !e.is_empty())
 }
 
@@ -94,20 +98,25 @@ pub(crate) fn effort_name(id: &str) -> String {
 /// efforts each takes; read once.
 fn codex_cache() -> &'static Vec<(Choice, Vec<String>)> {
     static CACHE: OnceLock<Vec<(Choice, Vec<String>)>> = OnceLock::new();
+
     CACHE.get_or_init(|| {
         let path = std::env::home_dir().map(|h| h.join(".codex").join("models_cache.json"));
         let json: Value = path.and_then(|p| read_json(&p)).unwrap_or_default();
         let mut models: Vec<&Value> = json["models"].as_array().map(|a| a.iter().filter(|m| m["visibility"] == "list").collect()).unwrap_or_default();
+
         models.sort_by_key(|m| m["priority"].as_i64().unwrap_or(99));
+
         models
             .iter()
             .filter_map(|m| {
                 let id = m["slug"].as_str()?;
                 let name = m["display_name"].as_str().unwrap_or(id);
+
                 let efforts = m["supported_reasoning_levels"]
                     .as_array()
                     .map(|l| l.iter().filter_map(|e| e["effort"].as_str().map(String::from)).collect())
                     .unwrap_or_default();
+
                 Some((choice(id, name, m["description"].as_str().unwrap_or_default()), efforts))
             })
             .collect()
@@ -118,7 +127,9 @@ pub(crate) fn models(agent: &str) -> Vec<Choice> {
     if agent != "codex" {
         return claude_models();
     }
+
     let cached: Vec<Choice> = codex_cache().iter().map(|(c, _)| c.clone()).collect();
+
     if cached.is_empty() { vec![choice("gpt-5-codex", "GPT-5 Codex", "")] } else { cached }
 }
 
@@ -137,6 +148,7 @@ pub(crate) fn efforts(agent: &str, model: &str) -> Vec<Choice> {
             .unwrap_or_else(|| ["low", "medium", "high", "xhigh"].map(String::from).to_vec()),
         _ => claude_efforts(model).unwrap_or_else(|| ["low", "medium", "high", "xhigh", "max"].map(String::from).to_vec()),
     };
+
     ids.iter().map(|id| choice(id, &effort_name(id), if id == "high" { "Recomendado" } else { "" })).collect()
 }
 
@@ -161,6 +173,7 @@ fn claude_mode(settings: &Value) -> Option<usize> {
 /// Codex's: no approvals and no sandbox is Bypass, any other set is Auto; None when it says nothing.
 fn codex_mode(config: &str) -> Option<usize> {
     let (approval, sandbox) = (toml_top(config, "approval_policy"), toml_top(config, "sandbox_mode"));
+
     (!approval.is_empty() || !sandbox.is_empty()).then(|| usize::from(approval == "never" && sandbox == "danger-full-access"))
 }
 
@@ -168,32 +181,40 @@ fn codex_mode(config: &str) -> Option<usize> {
 /// (then Ajustes says).
 pub(crate) fn agent_mode(agent: &str) -> Option<usize> {
     let home = std::env::home_dir().unwrap_or_default();
+
     if agent == "codex" {
         codex_mode(&fs::read_to_string(home.join(".codex").join("config.toml")).unwrap_or_default())
     } else {
         let settings: Value = read_json(&home.join(".claude").join("settings.json")).unwrap_or_default();
+
         claude_mode(&settings)
     }
 }
 
 pub(crate) fn agent_default(agent: &str) -> (String, String) {
     static FOUND: OnceLock<[(String, String); 2]> = OnceLock::new();
+
     let found = FOUND.get_or_init(|| {
         let home = std::env::home_dir().unwrap_or_default();
         let settings: Value = read_json(&home.join(".claude").join("settings.json")).unwrap_or_default();
         let claude_model = claude_alias(settings["model"].as_str().unwrap_or_default());
+
         let claude_effort =
             settings["modelSettings"][&claude_model]["effortLevel"].as_str().or(settings["effortLevel"].as_str()).unwrap_or_default().to_string();
+
         let config = fs::read_to_string(home.join(".codex").join("config.toml")).unwrap_or_default();
         let top = |key: &str| toml_top(&config, key);
+
         [(claude_model, claude_effort), (top("model"), top("model_reasoning_effort"))]
     });
+
     found[(agent == "codex") as usize].clone()
 }
 
 /// Claude Code's aliases to the model they run now: "opus[1m]" → claude-opus-5-5.
 pub(crate) fn claude_alias(model: &str) -> String {
     let base = model.split('[').next().unwrap_or(model).trim();
+
     match base {
         "opus" | "default" | "best" => "claude-opus-5-5",
         "sonnet" => "claude-sonnet-5-5",
@@ -212,6 +233,7 @@ pub(crate) fn tuning_names(chat: &Chat, ran: &str) -> (String, String) {
     let model = if chat.model.is_empty() { default_model } else { chat.model.clone() };
     let effort = if chat.effort.is_empty() { default_effort } else { chat.effort.clone() };
     let all: Vec<Choice> = models(&chat.agent).into_iter().chain(more_models(&chat.agent)).collect();
+
     (if model.is_empty() { model } else { label(&all, &model) }, if effort.is_empty() { effort } else { effort_name(&effort) })
 }
 
@@ -227,18 +249,22 @@ pub(crate) fn pretty(id: &str) -> String {
     let Some(family) = parts.next().filter(|f| f.chars().all(|c| c.is_ascii_alphabetic())) else { return id.to_string() };
     // a family and its version, numbers: anything else is not a model's id to rename
     let version: Vec<&str> = parts.collect();
+
     if version.is_empty() || !version.iter().all(|v| v.chars().all(|c| c.is_ascii_digit())) {
         return id.to_string();
     }
+
     format!("{}{} {}", family[..1].to_uppercase(), &family[1..], version.join("."))
 }
 
 /// The agent's flags for a model and an effort; none when they are its defaults.
 pub(crate) fn tuning_args(agent: &str, model: &str, effort: &str) -> Vec<String> {
     let mut args = Vec::new();
+
     if !model.is_empty() {
         args.extend([if agent == "codex" { "-m" } else { "--model" }.to_string(), model.to_string()]);
     }
+
     if !effort.is_empty() {
         if agent == "codex" {
             args.extend(["-c".to_string(), format!("model_reasoning_effort={effort}")]);
@@ -246,6 +272,7 @@ pub(crate) fn tuning_args(agent: &str, model: &str, effort: &str) -> Vec<String>
             args.extend(["--effort".to_string(), effort.to_string()]);
         }
     }
+
     args
 }
 
@@ -257,19 +284,24 @@ fn row(ui: &mut egui::Ui, name: &str, on: bool) -> bool {
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let painter = ui.painter();
+
     if response.hovered() {
         painter.rect_filled(rect, ITEM_RADIUS, colors.hover);
     }
+
     painter.text(Pos2::new(rect.left() + ROW_PAD, rect.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(MENU_TEXT_SIZE), colors.text);
+
     if on {
         paint_icon_scaled(painter, Icon::Check, Pos2::new(rect.right() - ROW_PAD - 7.0, rect.center().y), colors.text, 0.85, 0.0);
     }
+
     response.clicked()
 }
 
 /// A part's title in the menu, small and muted.
 fn section(ui: &mut egui::Ui, title: &str, c: &UiColors) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), Sense::hover());
+
     ui.painter().text(
         Pos2::new(rect.left() + crate::app::ui::menu_look::ROW_PAD, rect.center().y + 2.0),
         egui::Align2::LEFT_CENTER,
@@ -284,9 +316,11 @@ fn fold(ui: &mut egui::Ui, name: &str, open: bool, c: &UiColors) -> bool {
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let p = ui.painter();
+
     if response.hovered() {
         p.rect_filled(rect, crate::app::ui::menu_look::ITEM_RADIUS, menu_colors(ui.visuals().dark_mode).hover);
     }
+
     p.text(
         Pos2::new(rect.left() + crate::app::ui::menu_look::ROW_PAD, rect.center().y),
         egui::Align2::LEFT_CENTER,
@@ -294,8 +328,10 @@ fn fold(ui: &mut egui::Ui, name: &str, open: bool, c: &UiColors) -> bool {
         FontId::proportional(crate::app::ui::menu_look::MENU_TEXT_SIZE),
         c.muted,
     );
+
     let at = Pos2::new(rect.right() - 17.0, rect.center().y);
     let chevron: &[&[(f32, f32)]] = if open { &[&[(6.0, 9.0), (12.0, 15.0), (18.0, 9.0)]] } else { &[&[(9.0, 6.0), (15.0, 12.0), (9.0, 18.0)]] };
+
     glyph(p, at, 12.0, 2.0, c.muted, chevron);
     response.clicked()
 }
@@ -305,26 +341,32 @@ fn segments(ui: &mut egui::Ui, list: &[Choice], current: &str, c: &UiColors) -> 
     let (track, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::hover());
     let track = track.shrink2(Vec2::new(8.0, 2.0));
     let menu = menu_colors(ui.visuals().dark_mode);
+
     ui.painter().rect_filled(track, 9, menu.hover.gamma_multiply(0.5));
     let w = track.width() / list.len() as f32;
     let mut picked = None;
+
     for (i, e) in list.iter().enumerate() {
         let cell = Rect::from_min_size(Pos2::new(track.left() + w * i as f32, track.top()), Vec2::new(w, track.height())).shrink(2.0);
         let r = ui.interact(cell, ui.scope_id().with(("effort", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
         let r = if e.note.is_empty() { r } else { r.tip(e.note.clone()) };
         let on = e.id == current;
         let p = ui.painter();
+
         if on {
             p.rect_filled(cell, 7, menu.bg);
             p.rect_stroke(cell, 7, Stroke::new(1.0, menu.border), StrokeKind::Inside);
         } else if r.hovered() {
             p.rect_filled(cell, 7, menu.hover);
         }
+
         p.text(cell.center(), egui::Align2::CENTER_CENTER, &e.name, FontId::proportional(13.0), if on { c.text } else { c.muted });
+
         if r.clicked() {
             picked = Some(e.id.clone());
         }
     }
+
     picked
 }
 
@@ -351,56 +393,73 @@ fn chip_menu(chip: &egui::Response, dark: bool) -> egui::Popup<'_> {
 fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Folders, c: &UiColors, height: f32) -> Option<FooterAct> {
     let none = crate::file::projects_dir().map(|d| d.display().to_string()).unwrap_or_default();
     let filter_id = chip.id.with("filter");
+
     if chip.clicked() {
         ui.data_mut(|d| d.remove::<String>(filter_id));
     }
+
     let mut act = None;
     let dark = ui.visuals().dark_mode;
+
     chip_menu(chip, dark).show(|ui| {
         ui.set_width(240.0);
         ui.spacing_mut().item_spacing.y = 1.0;
         let mut filter = ui.data(|d| d.get_temp::<String>(filter_id)).unwrap_or_default();
+
         let field = egui::TextEdit::singleline(&mut filter)
             .hint_text(egui::RichText::new("Pesquisar pastas…").color(c.muted))
             .font(FontId::proportional(14.0))
             .text_color(c.text)
             .frame(egui::Frame::NONE)
             .margin(egui::Margin::ZERO);
+
         // the frameless field keeps no margin: its text lines up with the rows' (`ROW_PAD` in)
         let (strip, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 34.0), Sense::hover());
         let field = ui.put(strip.shrink2(Vec2::new(crate::app::ui::menu_look::ROW_PAD, 8.0)), field);
+
         if chip.clicked() {
             field.request_focus();
         }
+
         menu_line(ui, c);
         let words = filter.trim().to_lowercase();
+
         if words.is_empty() && row(ui, "Nenhuma pasta", same_folder(cwd, &none)) {
             act = Some(FooterAct::FolderPick(none.clone()));
         }
+
         // the chat's own folder first when the recent ones don't have it
         let own = (!folders.choices().iter().any(|(p, _)| same_folder(p, cwd))).then(|| cwd.to_string());
+
         let found: Vec<String> = own
             .into_iter()
             .chain(folders.choices().into_iter().map(|(path, _)| path))
             .filter(|p| !p.trim().is_empty() && !same_folder(p, &none) && folder_label(p).to_lowercase().contains(&words))
             .collect();
+
         if words.is_empty() && !found.is_empty() {
             section(ui, "Recente", c);
         }
+
         // the search, Nenhuma pasta, Recente and Abrir pasta… take about 150 of it
         let list = (height - 150.0).clamp(60.0, 280.0);
+
         egui::ScrollArea::vertical().max_height(list).min_scrolled_height(list).show(ui, |ui| {
             for path in &found {
                 // the row's own click: the scope around it (for the tip) never has one, and a recent folder did nothing
                 let picked = ui.scope(|ui| row(ui, &folder_label(path), same_folder(cwd, path)));
+
                 picked.response.tip(path.as_str());
+
                 if picked.inner {
                     act = Some(FooterAct::FolderPick(path.clone()));
                 }
             }
         });
+
         if found.is_empty() && !words.is_empty() {
             let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 30.0), Sense::hover());
+
             ui.painter().text(
                 Pos2::new(rect.left() + crate::app::ui::menu_look::ROW_PAD, rect.center().y),
                 egui::Align2::LEFT_CENTER,
@@ -409,15 +468,20 @@ fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Fo
                 c.muted,
             );
         }
+
         menu_line(ui, c);
+
         if row(ui, "Abrir pasta…", false) {
             act = Some(FooterAct::Folder);
         }
+
         if act.is_some() {
             ui.close();
         }
+
         ui.data_mut(|d| d.insert_temp(filter_id, filter));
     });
+
     act
 }
 
@@ -430,8 +494,10 @@ pub(crate) fn chip_folder(cwd: &str) -> String {
 fn same_folder(a: &str, b: &str) -> bool {
     let norm = |p: &str| {
         let p = p.trim().replace('\\', "/").trim_end_matches('/').to_string();
+
         if cfg!(target_os = "linux") { p } else { p.to_lowercase() }
     };
+
     !a.trim().is_empty() && norm(a) == norm(b)
 }
 
@@ -471,10 +537,12 @@ impl DrawingApp {
         let model_id = if chat.model.is_empty() { default_model.clone() } else { chat.model.clone() };
         let effort_id = if chat.effort.is_empty() { default_effort.clone() } else { chat.effort.clone() };
         let (mut list, more) = (models(&chat.agent), more_models(&chat.agent));
+
         // a model the lists don't have yet (a new one Claude Code runs): on the menu too, by its name
         if !model_id.is_empty() && !list.iter().chain(&more).any(|c| c.id == model_id) {
             list.insert(0, choice(&model_id, &pretty(&model_id), "O que esta conversa está usando"));
         }
+
         let all: Vec<Choice> = list.iter().chain(&more).cloned().collect();
         let effort_list = efforts(&chat.agent, &model_id);
         let model = if model_id.is_empty() { "Modelo padrão".to_string() } else { label(&all, &model_id) };
@@ -487,72 +555,94 @@ impl DrawingApp {
         let mut chips = vec![("model", tuning, "", true, Rect::from_min_max(Pos2::new(row_rect.right() - tuning_w, row_rect.top()), row_rect.max))];
         let end = chips[0].4.left() - 6.0;
         let mut x = row_rect.left();
+
         for (what, text, hint, enabled) in [("folder", chip_folder(&chat.cwd), "", !fixed), ("mode", mode, "", true)] {
             let w = width(&text, 10.0 + 13.0 + 6.0 + 10.0);
+
             if x + w > end {
                 break;
             }
+
             chips.push((what, text, hint, enabled, Rect::from_min_size(Pos2::new(x, row_rect.top()), Vec2::new(w, row_rect.height()))));
             x += w + 6.0;
         }
+
         // a chat too narrow for the model's button keeps only what fits
         chips.retain(|chip| chip.4.left() >= row_rect.left());
         let mut act = None;
         let room = self.mini.island_rect.unwrap_or_else(|| ui.ctx().content_rect());
+
         for (what, text, hint, enabled, chip) in chips {
             let sense = if enabled { Sense::click() } else { Sense::hover() };
             let response = ui.interact(chip, ui.scope_id().with(("chat_footer", what)), sense);
             let response = if hint.is_empty() { response } else { response.tip(hint) };
             let p = ui.painter();
+
             if enabled && response.hovered() {
                 p.rect_filled(chip, 14.0, look.hover);
                 response.clone().on_hover_cursor(CursorIcon::PointingHand);
             }
+
             let color = if enabled { look.soft } else { look.muted };
             let y = chip.center().y;
+
             if what == "model" {
                 let g = p.layout_no_wrap(text, font.clone(), color);
+
                 p.galley(Pos2::new(chip.left() + 10.0, y - g.size().y / 2.0), g, color);
                 glyph(p, Pos2::new(chip.right() - 14.0, y), 12.0, 2.4, color, DOWN);
             } else {
                 p.rect_stroke(chip, 14.0, Stroke::new(1.0, look.line), StrokeKind::Inside);
+
                 let icon: &[&[(f32, f32)]] =
                     if what == "folder" { &[&[(3.0, 7.0), (9.0, 7.0), (11.0, 9.0), (21.0, 9.0), (21.0, 19.0), (3.0, 19.0), (3.0, 7.0)]] } else { CHECK };
+
                 glyph(p, Pos2::new(chip.left() + 16.5, y), 13.0, 2.0, color, icon);
                 let g = p.layout_no_wrap(text, font.clone(), color);
+
                 p.galley(Pos2::new(chip.left() + 29.0, y - g.size().y / 2.0), g, color);
             }
+
             if what == "folder" {
                 if let Some(picked) = folder_menu(ui, &response, &chat.cwd, &self.prefs.folders, &c, menu_height(chip, room)) {
                     act = Some(picked);
                 }
+
                 continue;
             }
+
             // the others open a menu over the chip
             let dark = ui.visuals().dark_mode;
+
             chip_menu(&response, dark).show(|ui| {
                 // as wide as their rows need: a row takes the whole width it is given
                 ui.set_width(if what == "model" { 220.0 } else { 180.0 });
+
                 egui::ScrollArea::vertical().max_height(menu_height(chip, room)).min_scrolled_height(menu_height(chip, room)).auto_shrink([false, true]).show(
                     ui,
                     |ui| {
                         ui.spacing_mut().item_spacing.y = 1.0;
+
                         match what {
                             "model" => {
                                 ui.spacing_mut().item_spacing.y = 2.0;
                                 section(ui, "Modelo", &c);
+
                                 for model in &list {
                                     if row(ui, &model.name, model.id == model_id) {
                                         act = Some(FooterAct::Model(pick(&model.id, &default_model)));
                                         ui.close();
                                     }
                                 }
+
                                 if !more.is_empty() {
                                     let open_id = ui.scope_id().with("more_models");
                                     let open = ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(more.iter().any(|m| m.id == model_id));
+
                                     if fold(ui, "Mais modelos", open, &c) {
                                         ui.data_mut(|d| d.insert_temp(open_id, !open));
                                     }
+
                                     if open {
                                         for model in &more {
                                             if row(ui, &model.name, model.id == model_id) {
@@ -562,14 +652,17 @@ impl DrawingApp {
                                         }
                                     }
                                 }
+
                                 if !effort_list.is_empty() {
                                     ui.add_space(4.0);
                                     menu_line(ui, &c);
                                     section(ui, "Esforço", &c);
+
                                     if let Some(e) = segments(ui, &effort_list, &effort_id, &c) {
                                         act = Some(FooterAct::Effort(pick(&e, &default_effort)));
                                         ui.close();
                                     }
+
                                     ui.add_space(4.0);
                                 }
                             }
@@ -586,6 +679,7 @@ impl DrawingApp {
                 );
             });
         }
+
         act
     }
 
@@ -596,18 +690,22 @@ impl DrawingApp {
                 if let Some(dir) = rfd::FileDialog::new().set_title("Pasta de trabalho").pick_folder() {
                     self.chat_set_folder(&dir.to_string_lossy());
                 }
+
                 return;
             }
             FooterAct::FolderPick(dir) => return self.chat_set_folder(dir),
             _ => {}
         }
+
         let Some(chat) = self.current_chat_mut() else { return };
+
         match act {
             FooterAct::Model(model) => chat.model = model,
             FooterAct::Effort(effort) => chat.effort = effort,
             FooterAct::Mode(mode) => chat.mode = mode.min(CHAT_MODES.len() - 1),
             FooterAct::Folder | FooterAct::FolderPick(_) => {}
         }
+
         self.save_chats();
     }
 
@@ -616,24 +714,32 @@ impl DrawingApp {
         // the conversation lives in its folder: said, not a pick that does nothing
         if self.current_chat_mut().is_some_and(|chat| chat.session.is_some()) {
             self.toast("Esta conversa já começou na pasta dela: para usar outra pasta, abra uma conversa nova.".to_string());
+
             return;
         }
+
         let Some(chat) = self.current_chat_mut() else { return };
+
         chat.cwd = dir.trim().to_string();
+
         // a name the person gave stays
         if !chat.named {
             let agent = chat.name.split(" · ").next().unwrap_or(&chat.agent).to_string();
+
             chat.name = chat_name(&agent, &chat.cwd);
         }
+
         // the app's own folder ("Nenhuma pasta") is not one of the person's recent ones
         if !no_folder(dir) {
             self.prefs.folders.remember(dir);
         }
+
         self.save_chats();
     }
 
     fn current_chat_mut(&mut self) -> Option<&mut Chat> {
         let id = self.chat_agent.clone()?;
+
         self.chats.iter_mut().find(|c| c.id == id)
     }
 }
@@ -657,11 +763,13 @@ mod tests {
     fn the_chips_change_the_next_message_and_the_folder_locks_after_the_first() {
         let mut app = DrawingApp::default();
         let installed = vec![Preset::new("Claude Code", "claude")];
+
         app.create_chat(&NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &installed);
         app.chat_footer_act(FooterAct::Model("claude-opus-5-5".into()));
         app.chat_footer_act(FooterAct::Effort("medium".into()));
         app.chat_footer_act(FooterAct::Mode(1));
         let chat = app.chats[0].clone();
+
         assert_eq!((chat.model.as_str(), chat.effort.as_str(), chat.mode), ("claude-opus-5-5", "medium", 1));
         assert_eq!(tuning_args("claude", &chat.model, &chat.effort), ["--model", "claude-opus-5-5", "--effort", "medium"]);
         assert_eq!(tuning_args("codex", "gpt-5", "high"), ["-m", "gpt-5", "-c", "model_reasoning_effort=high"]);
@@ -691,6 +799,7 @@ mod tests {
     #[test]
     fn a_chat_without_a_folder_says_nenhuma_pasta_not_the_apps_own() {
         let own = crate::file::projects_dir().unwrap().display().to_string();
+
         assert_eq!(chip_folder(&own), "Nenhuma pasta");
         assert_eq!(chip_folder(&format!("{own}/")), "Nenhuma pasta");
         assert_eq!(chat_name("Claude Code", &own), "Claude Code");

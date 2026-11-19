@@ -47,21 +47,27 @@ pub(crate) fn short_path(path: &str, home: &str, room: usize) -> String {
     let path = path.trim();
     let home = home.trim_end_matches(['/', '\\']);
     let mut out = if path.is_empty() { "~".to_string() } else { path.to_string() };
+
     if !home.is_empty()
         && let Some(rest) = out.get(home.len()..).filter(|_| out.get(..home.len()).is_some_and(|h| h.eq_ignore_ascii_case(home)))
         && (rest.is_empty() || rest.starts_with(['/', '\\']))
     {
         out = format!("~{rest}");
     }
+
     let chars: Vec<char> = out.chars().collect();
+
     if chars.len() <= room {
         return out;
     }
+
     if room < 2 {
         return "…".into();
     }
+
     let tail = (room - 1) * 3 / 5;
     let head = room - 1 - tail;
+
     chars[..head].iter().chain(std::iter::once(&'…')).chain(&chars[chars.len() - tail..]).collect()
 }
 
@@ -69,23 +75,29 @@ pub(crate) fn short_path(path: &str, home: &str, room: usize) -> String {
 fn bar_button(ui: &mut egui::Ui, rect: Rect, salt: &str, look: &Look, on: bool, border: bool) -> egui::Response {
     let response = ui.interact(rect, ui.scope_id().with(salt), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
     let p = ui.painter();
+
     if on || response.hovered() {
         p.rect_filled(rect, 8, look.hover);
     }
+
     if border {
         p.rect_stroke(rect, 8, Stroke::new(1.0, look.line), StrokeKind::Inside);
     }
+
     response
 }
 
 /// The context ring: the used share of the window in blue over a grey track.
 fn ring(p: &Painter, at: Pos2, share: f32, look: &Look) {
     let (r, width) = (5.6, 2.4);
+
     p.circle_stroke(at, r, Stroke::new(width, look.raised));
     let share = share.clamp(0.0, 1.0);
+
     if share > 0.0 {
         let n = (share * 40.0).ceil() as usize;
         let points = (0..=n).map(|k| at + Vec2::angled(-std::f32::consts::FRAC_PI_2 + std::f32::consts::TAU * share * k as f32 / n as f32) * r).collect();
+
         p.add(Shape::line(points, Stroke::new(width, crate::app::chat::list::ACCENT)));
     }
 }
@@ -97,10 +109,12 @@ impl DrawingApp {
             Some(chat) => {
                 let name = chat.name.split(" · ").next().unwrap_or(&chat.name).to_string();
                 let model = crate::app::chat::footer::tuning_names(chat, &self.ran_model(&chat.id)).0;
+
                 (name, Some(chat.cwd.clone()), Some(model).filter(|m| !m.is_empty()))
             }
             None => {
                 let model = self.usage.agents.get(&row.id).map(|u| u.model.clone()).filter(|m| !m.is_empty());
+
                 (row.spec.label().to_string(), Some(row.spec.cwd.clone()).filter(|c| !c.trim().is_empty()), model)
             }
         }
@@ -135,12 +149,16 @@ impl DrawingApp {
         let rect = button(right, width);
         let r = bar_button(ui, rect, "chat_on_canvas", look, false, true).tip("Ver no canvas");
         let ink = if r.hovered() { look.text } else { look.soft };
+
         paint_icon(ui.painter(), Icon::Map, Pos2::new(if narrow { rect.center().x } else { rect.left() + 16.0 }, middle), ink);
         ui.painter().text(Pos2::new(rect.left() + 30.0, middle), egui::Align2::LEFT_CENTER, label, font.clone(), ink);
+
         if r.clicked() {
             act.on_canvas = Some(row.id.clone());
         }
+
         right = rect.left() - 6.0;
+
         if talks && !self.is_chat(&row.id) && !row.spec.chat {
             let label = if narrow { "" } else { "Terminal" };
             let width = if narrow { 32.0 } else { 34.0 + ui.painter().layout_no_wrap(label.into(), font.clone(), look.soft).size().x + 10.0 };
@@ -148,19 +166,25 @@ impl DrawingApp {
             let r = bar_button(ui, rect, "chat_live", look, self.chat_terminal, true).tip("A tela do terminal, ao vivo");
             let p = ui.painter();
             let ink = if self.chat_terminal || r.hovered() { look.text } else { look.soft };
+
             glyph(p, Pos2::new(if narrow { rect.center().x } else { rect.left() + 18.0 }, middle), 16.0, 2.0, ink, PROMPT);
             p.text(Pos2::new(rect.left() + 32.0, middle), egui::Align2::LEFT_CENTER, label, font.clone(), ink);
             act.terminal |= r.clicked();
+
             if row.state == AgentState::Waiting {
                 // it waits on that terminal: an amber badge on its corner
                 p.circle(rect.right_top() + Vec2::new(-2.0, 2.0), 6.0, AMBER, Stroke::new(2.0, look.bg));
             }
+
             right = rect.left() - 6.0;
         }
+
         match search.as_mut() {
             Some(words) => {
                 let field = button(right, if narrow { 130.0 } else { 200.0 });
+
                 ui.painter().rect_filled(field, 8, look.surface);
+
                 let edit = egui::TextEdit::singleline(words)
                     .id(egui::Id::unique(CHAT_SEARCH))
                     .hint_text(egui::RichText::new("Buscar na conversa").color(look.muted))
@@ -168,51 +192,67 @@ impl DrawingApp {
                     .text_color(look.text)
                     .margin(egui::Margin::ZERO)
                     .frame(egui::Frame::NONE);
+
                 // a frameless field keeps no margin: its room is left out of the rect
                 ui.put(Rect::from_min_max(field.min + Vec2::new(10.0, 7.0), field.max - Vec2::new(28.0, 7.0)), edit);
                 let close = Rect::from_center_size(Pos2::new(field.right() - 15.0, middle), Vec2::splat(22.0));
+
                 let x = ui
                     .interact(close, ui.scope_id().with("chat_search_close"), Sense::click())
                     .on_hover_cursor(CursorIcon::PointingHand)
                     .tip("Fechar a busca (Esc)");
+
                 glyph(ui.painter(), close.center(), 13.0, 2.0, if x.hovered() { look.text } else { look.soft }, CROSS);
+
                 if x.clicked() {
                     *search = None;
                 }
+
                 right = field.left() - 6.0;
             }
             None => {
                 let rect = button(right, 32.0);
                 let r = bar_button(ui, rect, "chat_search_open", look, false, false).tip(keys_label("Buscar na conversa (⌘F)"));
+
                 paint_icon(ui.painter(), Icon::Search, rect.center(), if r.hovered() { look.text } else { look.soft });
+
                 if r.clicked() {
                     *search = Some(String::new());
                     ui.memory_mut(|m| m.request_focus(egui::Id::unique(CHAT_SEARCH)));
                 }
+
                 right = rect.left() - 6.0;
             }
         }
+
         // the context ring: how much of the window is in use; it opens and closes the Contexto panel
         if self.context_wanted(&row.id) {
             let share = self.context_percent(&row.id);
             let words = share.filter(|_| !narrow).map(|s| format!("{s:.0}%"));
             let text = words.as_ref().map(|w| ui.painter().layout_no_wrap(w.clone(), font.clone(), look.soft));
             let rect = button(right, 36.0 + text.as_ref().map_or(0.0, |g| g.size().x + 8.0));
+
             let tip = match share {
                 Some(s) => format!("Contexto: {s:.0}% da janela em uso · clique para ver o painel"),
                 None => "Contexto e conectores".into(),
             };
+
             let r = bar_button(ui, rect, "chat_context", look, self.prefs.chat_panel, true).tip(tip);
             let p = ui.painter();
+
             ring(p, Pos2::new(rect.left() + 18.0, middle), share.unwrap_or(0.0) as f32 / 100.0, look);
+
             if let Some(g) = text {
                 p.galley(Pos2::new(rect.left() + 34.0, middle - g.size().y / 2.0), g, look.soft);
             }
+
             act.context |= r.clicked();
             right = rect.left() - 6.0;
         }
+
         // the plan's 5-hour window, when a session told it
         let now = now_ms() / 1000;
+
         if let Some(window) = self.usage.plan.five_hour.filter(|w| w.resets_at > now && !narrow) {
             let clock = crate::app::usage::local_clock(window.resets_at);
             let label = ui.painter().layout_no_wrap("5 h".into(), font.clone(), look.soft);
@@ -220,37 +260,48 @@ impl DrawingApp {
             let rect = button(right, 10.0 + label.size().x + 8.0 + 48.0 + 8.0 + words.size().x + 10.0);
             let r = ui.interact(rect, ui.scope_id().with("chat_plan"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
             let p = ui.painter();
+
             if r.hovered() {
                 p.rect_filled(rect, 8, look.hover);
             }
+
             // a click shows both windows, the session's and the week's
             let week = self.usage.plan.seven_day.filter(|w| w.resets_at > now);
+
             egui::Popup::menu(&r).show(|ui| {
                 ui.set_width(250.0);
                 plan_meter(ui, "Sessão (5 h)", window.used, format!("Renova às {clock}"), look);
+
                 if let Some(week) = week {
                     ui.add_space(10.0);
                     let when = format!("Renova {} às {}", crate::app::usage::local_day(week.resets_at), crate::app::usage::local_clock(week.resets_at));
+
                     plan_meter(ui, "Semanal", week.used, when, look);
                 }
             });
+
             p.rect_stroke(rect, 8, Stroke::new(1.0, look.line), StrokeKind::Inside);
             let mut x = rect.left() + 10.0;
+
             p.galley(Pos2::new(x, middle - label.size().y / 2.0), label.clone(), look.soft);
             x += label.size().x + 8.0;
             let bar = Rect::from_min_size(Pos2::new(x, middle - 2.0), Vec2::new(48.0, 4.0));
+
             p.rect_filled(bar, 2, look.surface);
             p.rect_filled(Rect::from_min_size(bar.min, Vec2::new(48.0 * (window.used as f32 / 100.0).clamp(0.0, 1.0), 4.0)), 2, used_color(window.used));
             p.galley(Pos2::new(bar.right() + 8.0, middle - words.size().y / 2.0), words, look.soft);
             right = rect.left() - 6.0;
         }
+
         // the mark, in its rounded square
         let (name, folder, model) = self.header_facts(row);
         let claude = program(&row.spec, self.agent_sessions.contains_key(&row.id)) == Some("Claude Code");
         let square = Rect::from_center_size(Pos2::new(left + 14.0, middle), Vec2::splat(28.0));
         let p = ui.painter();
+
         p.rect_filled(square, 8, if claude { look.bg.lerp_to_gamma(CLAUDE, 0.12) } else { look.hover });
         let working = matches!(row.state, AgentState::Working(_));
+
         agent_mark(p, &row.spec, claude, square.center(), 16.0, look.text, working, t);
         // name · folder
         let x = square.right() + 12.0;
@@ -261,8 +312,10 @@ impl DrawingApp {
         let name_at = Pos2::new(x, line1 - named.size().y / 2.0);
         // painted twice a pixel apart: the UI font has no bold weight
         let name_rect = Rect::from_min_size(name_at, named.size());
+
         p.galley(name_at + Vec2::new(1.0 / p.pixels_per_point(), 0.0), named.clone(), look.strong);
         p.galley(name_at, named, look.strong);
+
         if let Some(folder) = folder {
             let home = std::env::home_dir().map(|h| h.display().to_string()).unwrap_or_default();
             let dot = p.text(Pos2::new(name_rect.right() + 8.0, line1), egui::Align2::LEFT_CENTER, "·", FontId::proportional(14.0), look.muted);
@@ -272,17 +325,22 @@ impl DrawingApp {
             let fits = ((x + room - at) / char_w).floor().max(0.0) as usize;
             // the app's own folder is no folder
             let shown = if crate::app::chat::direct::no_folder(&folder) { "Nenhuma pasta".to_string() } else { short_path(&folder, &home, fits) };
+
             if fits > 1 {
                 let g = p.layout_no_wrap(shown.clone(), mono.clone(), look.soft);
                 let rect = Rect::from_min_size(Pos2::new(at, line1 - g.size().y / 2.0), g.size());
+
                 p.galley(rect.min, g, look.soft);
+
                 // the whole path in a tip only when it had to be cut
                 if shown.contains('…') {
                     let whole = crate::app::chat::direct::folder(&folder).map_or(folder.clone(), |f| f.display().to_string());
+
                     ui.interact(rect, ui.scope_id().with("chat_folder_path"), Sense::hover()).tip(whole);
                 }
             }
         }
+
         // the state's dot and words, and the model
         let words = match row.state {
             AgentState::Working(since) => format!("Trabalhando · há {}", elapsed(self.now - since)),
@@ -295,6 +353,7 @@ impl DrawingApp {
             AgentState::Idle(_) => "Pronto".into(),
             _ => self.state_note(row).map_or(row.state.label().to_string(), |n| format!("{} · {n}", row.state.label())),
         };
+
         // · model · space
         let space = Some(self.row_space(row)).filter(|space| !space.is_empty()).map(|space| self.space_name(&space));
         let line = [Some(words), model, space].into_iter().flatten().collect::<Vec<_>>().join(" · ");
@@ -302,18 +361,23 @@ impl DrawingApp {
         let dot = Pos2::new(x + 3.0, line2);
         let color = state_color(&row.state, look);
         let p = ui.painter();
+
         if matches!(row.state, AgentState::Working(_) | AgentState::Waiting) {
             crate::app::chat::list::pulse_dot(p, dot, 3.0, color, if working { 1.6 } else { 2.0 }, t);
         } else {
             p.circle_filled(dot, 3.0, color);
         }
+
         let g = clipped(p, line.clone(), font, look.muted, (room - 12.0).max(0.0));
         let text = Rect::from_min_size(Pos2::new(x + 12.0, line2 - g.size().y / 2.0), g.size());
+
         p.galley(text.min, g, look.muted);
+
         if matches!(row.state, AgentState::Active(_)) {
             ui.interact(text, ui.scope_id().with("chat_state"), Sense::hover())
                 .tip(format!("{line}\n\nPela saída do terminal: este programa não diz se está trabalhando"));
         }
+
         ui.painter().hline(main.x_range(), top + height - 0.5, Stroke::new(1.0, look.hover));
         top + height - main.top()
     }
@@ -333,9 +397,11 @@ fn plan_meter(ui: &mut egui::Ui, name: &str, used: f64, when: String, look: &Loo
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 46.0), Sense::hover());
     let p = ui.painter();
     let (left, right) = (rect.left() + 4.0, rect.right() - 4.0);
+
     p.text(Pos2::new(left, rect.top() + 2.0), egui::Align2::LEFT_TOP, name, FontId::proportional(14.0), look.text);
     p.text(Pos2::new(right, rect.top() + 2.0), egui::Align2::RIGHT_TOP, format!("{used:.0}%"), FontId::proportional(14.0), look.text);
     let bar = Rect::from_min_max(Pos2::new(left, rect.top() + 22.0), Pos2::new(right, rect.top() + 27.0));
+
     p.rect_filled(bar, 3, look.surface);
     p.rect_filled(Rect::from_min_size(bar.min, Vec2::new(bar.width() * (used as f32 / 100.0).clamp(0.0, 1.0), bar.height())), 3, used_color(used));
     p.text(Pos2::new(left, rect.top() + 32.0), egui::Align2::LEFT_TOP, when, FontId::proportional(12.0), look.soft);
@@ -354,6 +420,7 @@ mod tests {
         // another user's folder starting the same is not home
         assert_eq!(short_path("/home/anabela/x", "/home/ana", 60), "/home/anabela/x");
         let cut = short_path("/home/ana/Desktop/projetos/clientes/magoagent", "/home/ana", 20);
+
         assert_eq!(cut.chars().count(), 20);
         assert!(cut.starts_with("~/Desk") && cut.ends_with("magoagent") && cut.contains('…'), "{cut}");
         assert_eq!(short_path("/muito/longo", "", 1), "…");

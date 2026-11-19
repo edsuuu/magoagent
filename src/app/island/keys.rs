@@ -11,6 +11,7 @@ use crate::prelude::*;
 /// The pill `step` pills after `current` in `ids`, going around; from the first with none in focus.
 pub(crate) fn cycle_pill(ids: &[String], current: Option<&str>, step: isize) -> Option<String> {
     let at = current.and_then(|id| ids.iter().position(|other| other == id)).unwrap_or(0);
+
     ids.get((at as isize + step).rem_euclid(ids.len().max(1) as isize) as usize).cloned()
 }
 
@@ -19,18 +20,22 @@ impl DrawingApp {
     pub(crate) fn run_global(&mut self, ctx: &Context, action: GlobalAction) {
         let time = ctx.input(|input| input.time);
         let in_focus = self.hotkeys.pill.clone().or_else(|| self.hotkeys.shown.clone()).or_else(|| self.island.focus.clone());
+
         match action {
             GlobalAction::OpenChat => {
                 self.island_open_on(Tab::Chat, time);
+
                 if self.chat_agent.is_none() {
                     self.chat_agent = self.chats.first().map(|chat| chat.id.clone());
                 }
+
                 self.hotkeys.take_keyboard = true;
             }
             // a question or a permission keeps the island open on its card: the keyboard goes to it, so a number answers
             GlobalAction::GoToAlert if !self.person_asks.borrow().is_empty() => self.hotkeys.take_keyboard = true,
             GlobalAction::GoToAlert => {
                 let outside = self.outside_pills().into_iter().map(|pill| (pill.id, pill.state));
+
                 match self.agent_rows().into_iter().map(|row| (row.id, row.state)).chain(outside).find(|(_, state)| *state == AgentState::Waiting) {
                     Some((id, _)) => self.island_show(&id, time),
                     // nothing waits: the island says so
@@ -40,17 +45,21 @@ impl DrawingApp {
             GlobalAction::JumpToTerminal => {
                 if let Some(id) = in_focus {
                     self.hotkeys.terminal_jump = Some(id.clone());
+
                     if !id.starts_with(crate::app::maestro::outside::PILL_PREFIX) {
                         self.open_agent(&id);
                         self.raise_window = true;
                     }
+
                     self.island.machine.force_petit(time);
                 }
             }
             GlobalAction::NextPill | GlobalAction::PreviousPill => {
                 let step = if action == GlobalAction::NextPill { 1 } else { -1 };
+
                 if let Some(id) = cycle_pill(&self.hotkeys.pills, in_focus.as_deref(), step) {
                     let tab = Tab::of(&id);
+
                     self.hotkeys.pill = Some(id);
                     self.island_open_on(tab, time);
                     self.island_chime(sounds::BLIP, time);
@@ -62,6 +71,7 @@ impl DrawingApp {
                 self.island_chime(sounds::BLIP, time);
             }
         }
+
         ctx.request_repaint();
     }
 
@@ -77,29 +87,36 @@ impl DrawingApp {
         if self.hotkeys.pills.iter().ne(view.lines.iter().map(|line| &line.id)) {
             self.hotkeys.pills = view.lines.iter().map(|line| line.id.clone()).collect();
         }
+
         if self.hotkeys.shown != view.focus {
             self.hotkeys.shown = view.focus.clone();
         }
+
         // the pill the keyboard chose: until the pointer picks another, the island folds or the pill goes
         if out.focus.is_some() || !self.island.open || !self.hotkeys.pill.as_ref().is_some_and(|pill| self.hotkeys.pills.contains(pill)) {
             self.hotkeys.pill = None;
         } else {
             out.focus = self.hotkeys.pill.clone();
         }
+
         // once the panel shows (its box is there to take the typing)
         if self.hotkeys.take_keyboard && self.island.open && view.layers[2] > 0.0 {
             self.hotkeys.take_keyboard = false;
             crate::app::system::tray::focus_window(ui.ctx(), super::window::TITLE);
+
             if view.asks.is_empty() && view.tab == Tab::Chat {
                 ui.memory_mut(|memory| memory.request_focus(egui::Id::unique("chat_draft")));
             }
         }
+
         // typing in a field of the island (a question's "Outro", the chat's box): the digits, Y and N are its letters
         let typing = ui.ctx().egui_wants_keyboard_input();
+
         // a permission's N and Y, the keys its buttons show
         if self.island.open && !typing && self.person_asks.borrow().first().is_some_and(|ask| ask.questions.is_empty()) {
             let allow = ui.input(|input| {
                 let bare = input.modifiers.is_none();
+
                 if bare && input.key_pressed(egui::Key::Y) {
                     Some(true)
                 } else if bare && input.key_pressed(egui::Key::N) {
@@ -108,17 +125,21 @@ impl DrawingApp {
                     None
                 }
             });
+
             if let Some(allow) = allow {
                 self.person_asks.borrow_mut().remove(0).send(allow);
             }
         }
+
         let options = self.person_asks.borrow().first().and_then(|ask| ask.questions.get(ask.step)).map_or(0, |question| question.options.len());
         let option_count = if typing { 0 } else { options };
         let key_actions = actions(&ui.input(|input| input.clone()), self.island.open, option_count);
         let has_choose = key_actions.iter().any(|action| matches!(action, KeyAction::ChooseOption(_)));
+
         if has_choose && let Some(ask) = self.person_asks.borrow_mut().first_mut() {
             ask.shown = Some(f64::NEG_INFINITY);
         }
+
         for action in key_actions {
             match action {
                 KeyAction::Collapse => {
@@ -134,6 +155,7 @@ impl DrawingApp {
                 KeyAction::SelectPill(index) => {
                     if let Some(id) = self.hotkeys.pills.get(index).cloned() {
                         let tab = Tab::of(&id);
+
                         self.hotkeys.pill = Some(id);
                         self.island_open_on(tab, ui.input(|input| input.time));
                     }
@@ -156,6 +178,7 @@ impl DrawingApp {
                 KeyAction::ChooseOption(index) => {
                     // as a click on that option: a single answer goes on, and the last one sends
                     let mut asks = self.person_asks.borrow_mut();
+
                     if asks.first_mut().is_some_and(|ask| !ask.questions.is_empty() && ask.pick(index)) {
                         asks.remove(0).send(true);
                     }
@@ -192,9 +215,11 @@ mod tests {
     /// The app with the island on, closed, and two chats; the time it is at.
     fn island() -> (DrawingApp, Context, f64) {
         let mut app = DrawingApp::default();
+
         app.prefs.island = true;
         app.chats = vec![chat("a", "Claude Code · loja"), chat("b", "Codex · site")];
         let ctx = Context::default();
+
         step(&mut app, &ctx, 1.0, vec![]);
         (app, ctx, 1.0)
     }
@@ -202,6 +227,7 @@ mod tests {
     fn step(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>) {
         let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, SIZE)), time: Some(time), events, ..Default::default() };
         let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
+
         output.textures_delta.clear();
     }
 
@@ -216,6 +242,7 @@ mod tests {
     /// A question from a session outside the app, waiting on the island.
     fn ask(app: &mut DrawingApp, request: Value) -> std::sync::mpsc::Receiver<Result<String, String>> {
         let (reply, answers) = std::sync::mpsc::channel();
+
         app.person_asks.get_mut().push(PersonAsk::new(format!("{}1", crate::app::maestro::outside::ASK_PREFIX), &request, reply));
         answers
     }
@@ -224,17 +251,22 @@ mod tests {
     fn a_question_from_claude_code_shows_on_its_pill() {
         let (mut app, _ctx, _time) = island();
         let (reply, _answers) = std::sync::mpsc::channel();
+
         let payload =
             json!({ "hook_event_name": "PermissionRequest", "session_id": "s1", "cwd": "C:/proj", "tool_name": "Bash", "tool_input": { "command": "ls" } });
+
         app.take_outside_hook(&payload, Some(reply));
         let asks: Vec<String> = app.person_asks.borrow().iter().map(|ask| ask.chat.clone()).collect();
+
         assert_eq!(asks.len(), 1);
         let view = app.island_view(vec![], asks, crate::app::island::Mood::Needs(1), 1.0);
+
         assert!(
             view.lines.iter().any(|line| line.kind.ends_with("fora do app") && line.id.starts_with("pill:")),
             "{:?}",
             view.lines.iter().map(|line| &line.id).collect::<Vec<_>>()
         );
+
         assert!(app.ask_line(&view).is_some_and(|line| line.kind.ends_with("fora do app")), "the card is of the session's pill");
     }
     #[test]
@@ -242,38 +274,49 @@ mod tests {
         // the compact island shows its mini: opened, Início's list has it, and its pill lives on Claude Code's page
         let (mut app, _ctx, _time) = island();
         let payload = json!({ "hook_event_name": "UserPromptSubmit", "session_id": "s1", "cwd": "C:/proj", "prompt": "oi" });
+
         app.take_outside_hook(&payload, None);
         let view = app.island_view(vec![], vec![], crate::app::island::Mood::Working(1), 1.0);
+
         assert_eq!(app.island.tab(), Tab::Home);
         let pill = view.lines.iter().find(|line| line.id.starts_with(crate::app::maestro::outside::PILL_PREFIX)).expect("the session's pill");
         let (listed, _) = crate::app::island::feed::feed_lines(&view.lines, &Default::default());
+
         assert!(listed.iter().any(|line| line.id == pill.id), "Início lists the session");
         assert_eq!(Tab::of(&pill.id), Tab::Claude);
     }
     #[test]
     fn each_project_of_claude_code_has_a_mini_of_its_own_colour() {
         let (mut app, _ctx, _time) = island();
+
         for (session, cwd) in [("s1", "/var/www/projects/magoagent"), ("s2", "/home/edsu"), ("s3", "/tmp/teste")] {
             let payload = json!({ "hook_event_name": "UserPromptSubmit", "session_id": session, "cwd": cwd, "prompt": "oi" });
+
             app.take_outside_hook(&payload, None);
         }
+
         let colors: Vec<Color32> = app.outside_pills().iter().map(|pill| pill.color).collect();
+
         assert_eq!(colors.len(), 3);
         assert!(colors[0] != colors[1] && colors[1] != colors[2] && colors[0] != colors[2], "{colors:?}");
     }
     #[test]
     fn a_session_card_says_what_the_agent_is_doing() {
         let (mut app, _ctx, _time) = island();
+
         let payload =
             json!({ "hook_event_name": "PreToolUse", "session_id": "s1", "cwd": "/tmp/teste", "tool_name": "Bash", "tool_input": { "command": "cargo test" } });
+
         app.take_outside_hook(&payload, None);
         let view = app.island_view(vec![], vec![], crate::app::island::Mood::Working(1), 1.0);
         let line = view.lines.iter().find(|line| line.id.starts_with(crate::app::maestro::outside::PILL_PREFIX)).expect("the session's pill");
+
         assert!(line.detail.contains("cargo test"), "the step, not just \"Trabalhando\": {}", line.detail);
     }
     #[test]
     fn the_pills_are_walked_around_both_ways() {
         let ids = ["a".to_string(), "b".to_string(), "c".to_string()];
+
         assert_eq!(cycle_pill(&ids, Some("a"), 1).as_deref(), Some("b"));
         assert_eq!(cycle_pill(&ids, Some("c"), 1).as_deref(), Some("a"), "past the last: the first");
         assert_eq!(cycle_pill(&ids, Some("a"), -1).as_deref(), Some("c"), "before the first: the last");
@@ -285,6 +328,7 @@ mod tests {
     #[test]
     fn the_next_and_previous_pill_shortcuts_open_the_island_on_that_pill() {
         let (mut app, ctx, mut time) = island();
+
         assert_eq!(app.hotkeys.pills, ["a", "b"]);
         assert!(app.island.size().x < EXPANDED_W, "closed");
         app.run_global(&ctx, GlobalAction::NextPill);
@@ -308,6 +352,7 @@ mod tests {
     #[test]
     fn the_chat_shortcut_opens_the_islands_conversation_and_takes_the_keyboard() {
         let (mut app, ctx, mut time) = island();
+
         app.chat_agent = None;
         app.run_global(&ctx, GlobalAction::OpenChat);
         assert!(app.hotkeys.take_keyboard);
@@ -321,10 +366,12 @@ mod tests {
     fn the_alert_shortcut_goes_to_what_waits_and_says_when_nothing_does() {
         let (mut app, ctx, _) = island();
         let chimes = app.island.chimes();
+
         app.run_global(&ctx, GlobalAction::GoToAlert);
         assert_eq!(app.island.chimes(), chimes + 1, "nothing waits: the error tone");
         assert!(!app.hotkeys.take_keyboard);
         let _answers = ask(&mut app, json!({ "tool_name": "Bash", "input": { "command": "ls" } }));
+
         app.run_global(&ctx, GlobalAction::GoToAlert);
         assert!(app.hotkeys.take_keyboard, "a permission waits: the island takes the keyboard for it");
         assert_eq!(app.island.chimes(), chimes + 1);
@@ -333,6 +380,7 @@ mod tests {
     #[test]
     fn the_mute_shortcut_turns_the_sounds_off_and_on() {
         let (mut app, ctx, _) = island();
+
         assert!(app.prefs.island_sound);
         app.run_global(&ctx, GlobalAction::MuteToggle);
         assert!(!app.prefs.island_sound);

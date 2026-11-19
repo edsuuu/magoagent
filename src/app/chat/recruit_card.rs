@@ -42,6 +42,7 @@ impl DrawingApp {
     /// What the recruit was asked, as it was written: its first message (sent, or still waiting to be).
     fn recruit_prompt(&self, id: &str) -> Option<&str> {
         let sent = self.transcripts.get(id).and_then(|t| t.items.iter().find_map(|i| if let ChatItem::User(text) = i { Some(said(text)) } else { None }));
+
         sent.or_else(|| self.chat_starts.iter().find(|(c, _)| c == id).map(|(_, p)| p.as_str()))
     }
 
@@ -53,9 +54,11 @@ impl DrawingApp {
     /// The card folded to its header and task, or open again at the height it had.
     pub(crate) fn fold_chat_card(&mut self, id: &str) -> Option<bool> {
         let i = self.chat_node(id)?;
+
         self.snapshot();
         let e = &mut self.scene.elements[i];
         let (ElementKind::Rectangle { height, .. }, Some(spec)) = (&mut e.kind, e.chat.as_mut()) else { return None };
+
         Some(match spec.folded.take() {
             Some(was) => {
                 *height = was;
@@ -74,18 +77,22 @@ impl DrawingApp {
         if body.width() < 24.0 * zoom {
             return;
         }
+
         let rows = ((body.height() / (12.5 * zoom)).floor() as usize).max(1);
         // one row (folded): on one line; more, its lines kept for its lists
         let task = if rows == 1 { self.recruit_task(id) } else { self.recruit_prompt(id).map(|task| tight(task, usize::MAX)) };
+
         let (text, ink) = match task {
             Some(task) => (task, light.gamma_multiply(0.85)),
             None => ("Sem tarefa ainda.".into(), muted),
         };
+
         // in the chat's Markdown (no ** nor ` painted), as far as the card has rows for
         let colors = UiColors { text: ink, surface_low: light.gamma_multiply(0.1), code: crate::app::ui::code_ink(light), ..self.colors() };
         let galleys = md_galleys(painter, &text, 10.5 * zoom, ink, body.width(), rows, &colors);
         // one row: in the middle of what is left under the header
         let y = if rows == 1 { body.center().y - galleys.0.size().y / 2.0 } else { body.top() };
+
         paint_md(painter, Pos2::new(body.left(), y), galleys, ink);
     }
 
@@ -106,43 +113,55 @@ impl DrawingApp {
         let (mut interrupt, mut open, mut fold) = (false, false, None);
         // the recruit's folder for the paths its words name (`agent_words`)
         let outer_agent = self.chat_agent.replace(id.to_string());
+
         let area = egui::Area::new(egui::Id::unique(("recruit_card", id))).fixed_pos(Pos2::ZERO).constrain(false).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_clip_rect(clip);
             let rect = Rect::from_min_size(Pos2::ZERO, size);
+
             // the whole body is the card's: a click never reaches the canvas, a double-click opens the chat
             open = ui.allocate_rect(rect, Sense::click()).double_clicked();
             let inner = rect.shrink2(Vec2::new(10.0, 8.0));
             let key = pinned_key(id);
             let (top, bottom) = split_body(ui.ctx(), key, inner, if working { 56.0 } else { 18.0 }, 6.0);
+
             ui.scope_builder(egui::UiBuilder::new().max_rect(top), |ui| {
                 ui.set_max_width(inner.width());
                 ui.spacing_mut().scroll = crate::app::ui::scroll_style();
+
                 follow_scroll(ui, card_scroll(("recruit_scroll", id), top.height()), id, "recruit_card", talk_mark(transcript), |ui| {
                     // room between the words and the scroll bar at the right edge
                     let width = inner.width() - 14.0;
+
                     ui.set_max_width(width);
                     ui.spacing_mut().item_spacing.y = 4.0;
+
                     // with the model and effort the Maestro picked
                     let tuning =
                         self.chats.iter().find(|chat| chat.id == id).map(|chat| crate::app::maestro::tuning::describe(&chat.agent, &chat.model, &chat.effort));
+
                     ui.label(egui::RichText::new(tuning.map_or("Tarefa".into(), |tuning| format!("Tarefa · {tuning}"))).size(12.0).color(look.muted));
+
                     match self.recruit_prompt(id) {
                         Some(task) => self.agent_words_in(ui, task.trim(), width, &c, false),
                         None => {
                             ui.label(egui::RichText::new("Sem tarefa ainda.").size(14.0).color(look.muted));
                         }
                     }
+
                     ui.add_space(2.0);
                     let (line, _) = ui.allocate_exact_size(Vec2::new(width, 1.0), Sense::hover());
+
                     ui.painter().hline(line.x_range(), line.center().y, Stroke::new(1.0, look.line));
                     ui.add_space(2.0);
                     // what came after the task: its tools, what it said, what went wrong, what it was asked since
                     let Some(t) = transcript else { return };
                     let first = t.items.iter().position(|i| matches!(i, ChatItem::User(_))).map_or(0, |i| i + 1);
                     let items: Vec<&ChatItem> = t.items[first..].iter().filter(|i| !matches!(i, ChatItem::Image { .. } | ChatItem::System(_))).collect();
+
                     if items.is_empty() {
                         ui.label(egui::RichText::new(if working { "Começando…" } else { "Nada feito ainda." }).size(13.0).color(look.muted));
                     }
+
                     for item in &items[items.len().saturating_sub(ACTIVITY)..] {
                         match item {
                             ChatItem::Tool(step) => {
@@ -150,6 +169,7 @@ impl DrawingApp {
                                 // an accordion, no tip: a click opens its card under it (its whole command wrapped, what it
                                 // printed, why it failed), kept open as the chat's are (`chat_unfolded`)
                                 let card = format!("card:{}", step.id);
+
                                 if step_with_card(ui, step, live, &look, true, self.chat_unfolded.contains(&card), time, &c) {
                                     fold = Some(card);
                                 }
@@ -163,8 +183,10 @@ impl DrawingApp {
                                 ui.horizontal_top(|ui| {
                                     ui.label(egui::RichText::new("→").size(13.0).color(look.muted));
                                     let quiet = UiColors { text: look.muted, ..self.colors() };
+
                                     ui.vertical(|ui| {
                                         let room = ui.available_width();
+
                                         self.agent_words_in(ui, said(text).trim(), room, &quiet, false);
                                     });
                                 });
@@ -174,31 +196,41 @@ impl DrawingApp {
                     }
                 });
             });
+
             let pinned = ui.scope_builder(egui::UiBuilder::new().max_rect(bottom), |ui| {
                 ui.set_max_width(inner.width());
+
                 if working {
                     interrupt = self.work_band(ui, &row, transcript, &look, true, time);
                 } else {
                     let done = if transcript.is_some_and(|t| t.items.iter().any(|i| matches!(i, ChatItem::Agent(_)))) { "Pronto" } else { "Esperando" };
+
                     ui.label(egui::RichText::new(done).size(13.0).color(look.muted));
                 }
             });
+
             keep_pinned(ui.ctx(), key, pinned.response.rect);
         });
+
         self.chat_agent = outer_agent;
         ctx.set_transform_layer(area.response.layer_id, egui::emath::TSTransform::new(body.min.to_vec2(), z));
+
         if interrupt {
             let outer = self.chat_agent.replace(id.to_string());
+
             self.interrupt_agent();
             self.chat_agent = outer;
         }
+
         if let Some(card) = fold {
             // the row clicked stays where it is, its card opening below it
             hold_scroll(ctx, id);
+
             if !self.chat_unfolded.remove(&card) {
                 self.chat_unfolded.insert(card);
             }
         }
+
         if open {
             self.open_mini_chat(id);
         }
@@ -213,10 +245,12 @@ impl DrawingApp {
             .filter(|e| e.chat.is_some() && self.is_recruit_chat(&e.id))
             .map(|e| {
                 let (frame, z) = self.terminal_frame(e);
+
                 (e.id.clone(), fold_button(frame, z), z, e.chat.as_ref().is_some_and(|c| c.folded.is_some()))
             })
             .filter(|(_, button, z, _)| *z >= 0.45 && canvas.contains_rect(*button))
             .collect();
+
         for (id, button, z, folded) in buttons {
             let clicked = egui::Area::new(egui::Id::unique(("recruit_fold", id.as_str())))
                 .fixed_pos(button.min)
@@ -225,13 +259,16 @@ impl DrawingApp {
                 .show(ctx, |ui| {
                     let (rect, r) = ui.allocate_exact_size(button.size(), Sense::click());
                     let r = r.on_hover_cursor(CursorIcon::PointingHand).tip(if folded { "Mostrar o que ele faz" } else { "Ocultar: só o nome e a tarefa" });
+
                     if r.hovered() {
                         ui.painter().rect_filled(rect, 4.0 * z, Color32::from_white_alpha(26));
                     }
+
                     glyph(ui.painter(), rect.center(), 16.0 * z, 2.2, Color32::from_gray(0xb0), if folded { DOWN } else { UP });
                     r.clicked()
                 })
                 .inner;
+
             if clicked {
                 self.fold_chat_card(&id);
             }
@@ -242,21 +279,27 @@ impl DrawingApp {
     /// card doesn't show it.
     pub(crate) fn recruit_popups_tick(&mut self) {
         let ids: Vec<String> = self.chats.iter().filter(|c| c.recruit).map(|c| c.id.clone()).collect();
+
         for id in ids {
             let Some(t) = self.transcripts.get(&id) else { continue };
             let steps = t.items.iter().filter(|i| matches!(i, ChatItem::Tool(_))).count();
             let working = matches!(self.chat_state(&id), Some(AgentState::Working(_)));
             let Some((was_steps, was_working)) = self.recruit_seen.insert(id.clone(), (steps, working)) else { continue };
+
             let shown = self.chat_open
                 || self.chat_node(&id).is_some_and(|i| {
                     let e = &self.scene.elements[i];
                     let (frame, z) = self.terminal_frame(e);
+
                     e.chat.as_ref().is_some_and(|c| c.folded.is_none()) && chat_live(frame, z, true) && frame.intersects(self.canvas_rect)
                 });
+
             if shown {
                 continue;
             }
+
             let t = &self.transcripts[&id];
+
             let text = if was_working && !working {
                 match t.items.iter().rev().find_map(|i| match i {
                     ChatItem::Agent(text) => Some(Ok(text)),
@@ -275,13 +318,18 @@ impl DrawingApp {
             } else {
                 continue;
             };
+
             let who = self.maestro_name(&id);
+
             self.recruit_popups.push(RecruitPopup { chat: id, who, text, born: self.now });
         }
+
         let now = self.now;
+
         self.recruit_popups.retain(|p| now - p.born < POPUP_SECONDS);
         // the newest three
         let extra = self.recruit_popups.len().saturating_sub(3);
+
         self.recruit_popups.drain(..extra);
     }
 
@@ -290,37 +338,46 @@ impl DrawingApp {
         if self.recruit_popups.is_empty() || self.chat_open {
             return;
         }
+
         let look = Look::new(self.dark(), &self.colors());
         let mut go = None;
+
         egui::Area::new(egui::Id::unique("recruit_popups")).anchor(egui::Align2::CENTER_TOP, (0.0, TOOLBAR_BOTTOM + 10.0)).order(egui::Order::Foreground).show(
             ctx,
             |ui| {
                 for p in &self.recruit_popups {
                     let fade = ((POPUP_SECONDS - (self.now - p.born)) / 0.6).clamp(0.0, 1.0) as f32;
+
                     let r = self
                         .island()
                         .multiply_with_opacity(fade)
                         .inner_margin(egui::Margin::symmetric(12, 7))
                         .show(ui, |ui| {
                             ui.set_max_width(440.0);
+
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new(&p.who).strong().size(13.0).color(look.text.gamma_multiply(fade)));
                                 // cut, with no tip: a click goes to the card, where it is whole
                                 let text = egui::RichText::new(&p.text).size(13.0).color(look.soft.gamma_multiply(fade));
+
                                 ui.add(egui::Label::new(text).truncate().show_tooltip_when_elided(false));
                             });
                         })
                         .response
                         .interact(Sense::click())
                         .on_hover_cursor(CursorIcon::PointingHand);
+
                     if r.clicked() {
                         go = Some(p.chat.clone());
                     }
+
                     ui.add_space(4.0);
                 }
             },
         );
+
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
+
         if let Some(id) = go {
             self.recruit_popups.retain(|p| p.chat != id);
             let _ = self.show_chat_on_canvas(&id);

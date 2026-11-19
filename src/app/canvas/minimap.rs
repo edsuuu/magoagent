@@ -25,13 +25,18 @@ impl MinimapArea {
         if let Some(held) = self.held {
             return held;
         }
+
         let Some((since, from)) = self.settle else { return live };
         let progress = ((now - since) / SETTLE).min(1.0) as f32;
+
         if progress >= 1.0 {
             self.settle = None;
+
             return live;
         }
+
         let progress = progress * progress * (3.0 - 2.0 * progress);
+
         Rect::from_min_max(from.min + (live.min - from.min) * progress, from.max + (live.max - from.max) * progress)
     }
 
@@ -90,6 +95,7 @@ impl DrawingApp {
             _ if element.terminal.is_some() || element.portal.is_some() || element.filetree.is_some() => MapDot::Window,
             _ => MapDot::Shape,
         };
+
         // not the ropes between windows: their box would be a block over the map
         self.scene.elements.iter().filter(|element| !element.rope).map(|element| (element_bounds(element), dot(element))).collect()
     }
@@ -107,18 +113,21 @@ impl DrawingApp {
     /// World area the map covers at rest: the nodes' box with a margin, and what is on screen.
     pub(crate) fn minimap_world(&self) -> Rect {
         let view = self.visible_world();
+
         self.minimap_reach().map_or(view, |reach| reach.union(view))
     }
 
     /// Centers the view on a world point, kept inside the nodes' reach.
     pub(crate) fn minimap_go(&mut self, center: Pos2) {
         let center = self.minimap_reach().map_or(center, |reach| center.clamp(reach.min, reach.max));
+
         self.pan_to(center);
     }
 
     /// An arrow key on the map: a fifth of the view.
     pub(crate) fn minimap_nudge(&mut self, delta_x: f32, delta_y: f32) {
         let view = self.visible_world();
+
         self.minimap_go(view.center() + view.size() * Vec2::new(delta_x, delta_y) * 0.2);
     }
 }

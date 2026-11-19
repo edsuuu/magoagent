@@ -60,6 +60,9 @@ os alvos estão no `rust-toolchain.toml`). O CI confere todos no PR da `dev` par
 - Toda ação que a pessoa faz no app tem a sua ferramenta no MCP (`src/mcp/`).
 - Nada bloqueia o frame da interface: arquivo, rede e processos rodam numa thread.
 - Comentário explica o código; o motivo da mudança vai na descrição do PR.
+- Linhas em branco separam as partes de um bloco: depois dos `let`, em volta de uma instrução de várias linhas e antes
+  de `return`. O `cargo test` confere, e `MAGOAGENT_FIX_SPACING=1 cargo test --release statements_have_their_blank_lines`
+  arruma sozinho.
 
 ## Testar a interface sem mexer na tela
 

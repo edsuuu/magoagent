@@ -66,6 +66,7 @@ pub(crate) struct Probe {
 impl Default for Probe {
     fn default() -> Self {
         let (sender, receiver) = mpsc::channel();
+
         Probe { slots: Default::default(), next: 0.0, sender, receiver }
     }
 }
@@ -78,28 +79,37 @@ impl Probe {
     /// Takes the answers that came; true if any did.
     pub(crate) fn collect(&mut self) -> bool {
         let mut any = false;
+
         while let Ok((agent, answer)) = self.receiver.try_recv() {
             let slot = &mut self.slots[agent as usize];
+
             slot.busy = false;
             slot.failed = answer.is_err();
+
             if let Ok(reading) = answer {
                 (slot.reading, slot.at) = (Some(reading), now_ms() / 1000);
             }
+
             any = true;
         }
+
         any
     }
 
     /// Starts a read of each agent not already being read; the next one comes `REFRESH_SECS` after `now`.
     pub(crate) fn refresh(&mut self, now: f64) {
         self.next = now + REFRESH_SECS;
+
         for agent in Agent::ALL {
             let slot = &mut self.slots[agent as usize];
+
             if slot.busy {
                 continue;
             }
+
             slot.busy = true;
             let sender = self.sender.clone();
+
             std::thread::spawn(move || {
                 let _ = sender.send((agent, read(agent)));
             });
@@ -122,6 +132,7 @@ impl Probe {
             .into_iter()
             .map(|(agent, reading)| {
                 let plan = reading.plan.as_ref().map(|plan_label| format!(" ({plan_label})")).unwrap_or_default();
+
                 let meters: Vec<String> = reading
                     .meters
                     .iter()
@@ -130,6 +141,7 @@ impl Probe {
                         None => format!("{} {:.0}%", meter.title, meter.used * 100.0),
                     })
                     .collect();
+
                 format!("{}{plan}: {}", agent.name(), meters.join(", "))
             })
             .collect()
@@ -151,35 +163,44 @@ pub(crate) fn iso_seconds(text: &str) -> Option<i64> {
     let (hours, minutes, seconds) = (clock_parts.next()??, clock_parts.next()??, clock_parts.next().flatten().unwrap_or(0));
     let zone = &rest[clock.len()..];
     let zone = &zone[zone.find(['+', '-', 'Z']).unwrap_or(zone.len())..];
+
     let offset = match zone.as_bytes().first() {
         Some(b'+') | Some(b'-') => {
             let (zone_hours, zone_minutes) = zone[1..].split_once(':')?;
+
             (zone_hours.parse::<i64>().ok()? * 3600 + zone_minutes.parse::<i64>().ok()? * 60) * if zone.starts_with('-') { -1 } else { 1 }
         }
         _ => 0,
     };
+
     // days since 1970-01-01 of a civil date (Howard Hinnant's algorithm)
     let year = if month <= 2 { year - 1 } else { year };
     let era = year.div_euclid(400);
     let yoe = year - era * 400;
     let doy = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day - 1;
     let days = era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
+
     Some(days * 86400 + hours * 3600 + minutes * 60 + seconds - offset)
 }
 
 /// Claude Code's `get_usage` answer (the control response's inner `response`).
 pub(crate) fn parse_claude(response: &Value) -> Result<Reading, String> {
     let limits = &response["rate_limits"];
+
     let window = |title: &str, entry: &Value| {
         Some(Meter { title: title.to_string(), used: entry["utilization"].as_f64()? / 100.0, resets_at: entry["resets_at"].as_str().and_then(iso_seconds) })
     };
+
     let mut meters: Vec<Meter> = [window("Sessão", &limits["five_hour"]), window("Semanal", &limits["seven_day"])].into_iter().flatten().collect();
+
     if meters.is_empty() {
         return Err("sem limites de plano".into());
     }
+
     // the special ring: the first limit of a model alone
     let scoped = &limits["model_scoped"].as_array().or(response["model_scoped"].as_array()).and_then(|item| item.first()).cloned().unwrap_or(Value::Null);
     let title = scoped["display_name"].as_str().or(scoped["name"].as_str()).unwrap_or("Especial");
+
     meters.extend(window(title, scoped));
     Ok(Reading { plan: response["subscription_type"].as_str().map(plan_name), meters })
 }
@@ -187,6 +208,7 @@ pub(crate) fn parse_claude(response: &Value) -> Result<Reading, String> {
 /// Codex's `account/rateLimits/read` result.
 pub(crate) fn parse_codex(result: &Value) -> Result<Reading, String> {
     let limits = &result["rateLimits"];
+
     let window = |entry: &Value| {
         let title = match entry["windowDurationMins"].as_i64() {
             Some(minutes) if minutes <= 1440 => "Sessão".to_string(),
@@ -196,12 +218,16 @@ pub(crate) fn parse_codex(result: &Value) -> Result<Reading, String> {
             Some(minutes) => format!("{} h", minutes / 60),
             None => "Sessão".to_string(),
         };
+
         Some(Meter { title, used: entry["usedPercent"].as_f64()? / 100.0, resets_at: entry["resetsAt"].as_i64() })
     };
+
     let meters: Vec<Meter> = [window(&limits["primary"]), window(&limits["secondary"])].into_iter().flatten().collect();
+
     if meters.is_empty() {
         return Err("sem limites de plano".into());
     }
+
     Ok(Reading { plan: limits["planType"].as_str().map(plan_name), meters })
 }
 
@@ -211,6 +237,7 @@ pub(crate) fn reset_text(at: i64, now: i64) -> String {
     if at <= now {
         return "Redefinindo agora".into();
     }
+
     format!("Redefine {}", relative(at - now))
 }
 
@@ -221,6 +248,7 @@ pub(crate) fn reset_when(at: i64, now: i64, offset: i64) -> String {
     let day = local.div_euclid(86_400);
     let minutes = local.rem_euclid(86_400) / 60;
     let clock = format!("{:02}:{:02}", minutes / 60, minutes % 60);
+
     match day - today {
         0 => format!("hoje às {clock}"),
         1 => format!("amanhã às {clock}"),
@@ -234,6 +262,7 @@ pub(crate) fn reset_when(at: i64, now: i64, offset: i64) -> String {
             let shifted_month = (5 * doy + 2) / 153;
             let (day_of_month, month) = (doy - (153 * shifted_month + 2) / 5 + 1, if shifted_month < 10 { shifted_month + 3 } else { shifted_month - 9 });
             let week = ["qui", "sex", "sáb", "dom", "seg", "ter", "qua"][day.rem_euclid(7) as usize];
+
             format!("{week}, {day_of_month:02}/{month:02} às {clock}")
         }
     }
@@ -242,6 +271,7 @@ pub(crate) fn reset_when(at: i64, now: i64, offset: i64) -> String {
 /// "Atualizada há 5 minutos".
 pub(crate) fn updated_text(at: i64, now: i64) -> String {
     let ago = now - at;
+
     if ago < 1 { "Atualizada agora".into() } else { format!("Atualizada {}", relative(-ago)) }
 }
 
@@ -257,9 +287,11 @@ fn relative(seconds: i64) -> String {
         (60, "minuto", "minutos", "", ""),
         (1, "segundo", "segundos", "", ""),
     ];
+
     let abs = seconds.abs();
     let (size, one, many, next, last) = *UNITS.iter().find(|unit| abs >= unit.0).unwrap_or(&UNITS[6]);
     let count = (abs as f64 / size as f64).round() as i64;
+
     match (count, seconds > 0) {
         (1, true) if !next.is_empty() => next.to_string(),
         (1, false) if !last.is_empty() => last.to_string(),
@@ -276,6 +308,7 @@ fn read(agent: Agent) -> Result<Reading, String> {
         Agent::Codex => "codex",
     })
     .ok_or("CLI não encontrada")?;
+
     match agent {
         Agent::Claude => exchange(
             &program,
@@ -310,7 +343,9 @@ fn read(agent: Agent) -> Result<Reading, String> {
 /// takes as its own, up to `READ_LIMIT`; the program is killed whatever comes.
 fn exchange(program: &AgentCli, args: &[&str], requests: &[Value], answer: fn(&Value) -> Option<Result<Reading, String>>) -> Result<Reading, String> {
     let mut command = program.command();
+
     command.args(args);
+
     let mut child = program
         .finish(command)
         .stdin(std::process::Stdio::piped())
@@ -318,14 +353,18 @@ fn exchange(program: &AgentCli, args: &[&str], requests: &[Value], answer: fn(&V
         .stderr(std::process::Stdio::null())
         .spawn()
         .map_err(|error| format!("não foi possível iniciar a CLI: {error}"))?;
+
     let mut stdin = child.stdin.take();
+
     for request in requests {
         if let Some(stdin) = stdin.as_mut() {
             let _ = writeln!(stdin, "{request}");
             let _ = stdin.flush();
         }
     }
+
     let (lines, incoming) = mpsc::channel();
+
     if let Some(stdout) = child.stdout.take() {
         std::thread::spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
@@ -335,7 +374,9 @@ fn exchange(program: &AgentCli, args: &[&str], requests: &[Value], answer: fn(&V
             }
         });
     }
+
     let end = Instant::now() + READ_LIMIT;
+
     let result = loop {
         match incoming.recv_timeout(end.saturating_duration_since(Instant::now())) {
             Ok(line) => {
@@ -347,13 +388,17 @@ fn exchange(program: &AgentCli, args: &[&str], requests: &[Value], answer: fn(&V
             Err(mpsc::RecvTimeoutError::Disconnected) => break Err("a CLI fechou sem responder (sem login?)".into()),
         }
     };
+
     drop(stdin);
+
     // the npm shims are a shell around node: on Windows the whole tree goes
     if cfg!(windows) {
         let _ = crate::editor::command("taskkill").args(["/PID", &child.id().to_string(), "/T", "/F"]).output();
     }
+
     let _ = child.kill();
     let _ = child.wait();
+
     result
 }
 
@@ -368,9 +413,12 @@ mod tests {
             "seven_day": { "utilization": 43, "resets_at": "2026-11-17T05:00:00.923870+00:00" },
             "seven_day_opus": null,
             "model_scoped": [{ "display_name": "Fable", "utilization": 79, "resets_at": "2026-11-17T05:00:00+00:00" }] } });
+
         let reading = parse_claude(&said).unwrap();
+
         assert_eq!(reading.plan.as_deref(), Some("Max"));
         let titles: Vec<_> = reading.meters.iter().map(|meter| (meter.title.as_str(), meter.used)).collect();
+
         assert_eq!(titles, [("Sessão", 0.98), ("Semanal", 0.43), ("Fable", 0.79)]);
         assert_eq!(reading.meters[0].resets_at, Some(1794376800));
         // no subscription: nothing to show
@@ -382,13 +430,16 @@ mod tests {
         let said = json!({ "ordinaryUsageAllowed": true, "rateLimits": { "planType": "plus",
             "primary": { "usedPercent": 0, "windowDurationMins": 300, "resetsAt": 1794379303 },
             "secondary": { "usedPercent": 4, "windowDurationMins": 10080, "resetsAt": 1794442229 } } });
+
         let reading = parse_codex(&said).unwrap();
+
         assert_eq!(reading.plan.as_deref(), Some("Plus"));
         assert_eq!(reading.meters[0], Meter { title: "Sessão".into(), used: 0.0, resets_at: Some(1794379303) });
         assert_eq!((reading.meters[1].title.as_str(), reading.meters[1].used), ("Semanal", 0.04));
         assert!(parse_codex(&json!({ "rateLimits": { "primary": null } })).is_err());
         // Go: one window of 30 days, used up
         let go = json!({ "rateLimits": { "planType": "go", "primary": { "usedPercent": 100, "windowDurationMins": 43200, "resetsAt": 1797024807 } } });
+
         assert_eq!(parse_codex(&go).unwrap().meters[0], Meter { title: "Mensal".into(), used: 1.0, resets_at: Some(1797024807) });
     }
 
@@ -398,6 +449,7 @@ mod tests {
         assert_eq!(iso_seconds("2026-11-11T03:00:00-03:00"), iso_seconds("2026-11-11T06:00:00+00:00"));
         assert_eq!(iso_seconds("lixo"), None);
         let now = 1_000_000;
+
         assert_eq!(reset_text(now - 5, now), "Redefinindo agora");
         assert_eq!(reset_text(now + 40, now), "Redefine em 40 segundos");
         assert_eq!(reset_text(now + 5 * 3600 + 600, now), "Redefine em 5 horas");
@@ -406,6 +458,7 @@ mod tests {
         assert_eq!(reset_text(now + 3 * 86400, now), "Redefine em 3 dias");
         // 2026-11-11 21:00 UTC is 18:00 in Brasília (-3 h)
         let (now, brasilia) = (1_794_430_800, -3 * 3600);
+
         assert_eq!(reset_when(now + 4 * 3600 + 1800, now, brasilia), "hoje às 22:30");
         assert_eq!(reset_when(now + 11 * 3600, now, brasilia), "amanhã às 05:00");
         assert_eq!(reset_when(now + 5 * 86400 + 11 * 3600, now, brasilia), "ter, 17/11 às 05:00");
@@ -417,6 +470,7 @@ mod tests {
     fn answers_come_in_and_a_failure_keeps_the_last_reading() {
         let mut probe = Probe::default();
         let reading = Reading { plan: None, meters: vec![Meter { title: "Sessão".into(), used: 0.5, resets_at: None }] };
+
         probe.sender.send((Agent::Codex, Ok(reading.clone()))).unwrap();
         assert!(probe.collect());
         assert_eq!(probe.shown().len(), 1);

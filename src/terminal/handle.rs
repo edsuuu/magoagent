@@ -27,17 +27,20 @@ impl EventListener for Listener {
         // a terminal nobody sees doesn't repaint the app for its output (the idle repaint still
         // reads it); its end always shows
         let wake = !self.hidden.load(Ordering::Relaxed) || matches!(event, Event::ChildExit(_) | Event::Exit);
+
         match event {
             // replies the program asked for (cursor position, device attributes…)
             Event::PtyWrite(text) => self.reply(text),
             // OSC 4/10/11 queries: programs pick their colors from the terminal's
             Event::ColorRequest(index, format) => {
                 let look = self.look.lock().unwrap().clone();
+
                 let c = match index {
                     257 => look.bg,
                     i if i < 256 => indexed(i, &look),
                     _ => look.fg,
                 };
+
                 self.reply(format(Rgb { r: c.r(), g: c.g(), b: c.b() }));
             }
             Event::Title(title) => *self.title.lock().unwrap() = Some(title),
@@ -51,6 +54,7 @@ impl EventListener for Listener {
             Event::ChildExit(_) | Event::Exit => self.exited.store(true, Ordering::Relaxed),
             _ => {}
         }
+
         if wake && let Some(ctx) = &self.ctx {
             ctx.request_repaint();
         }
@@ -84,13 +88,16 @@ pub(super) fn menu_on(screen: &str, numbered: bool) -> bool {
     let tail: Vec<String> = screen.lines().rev().filter(|l| !l.trim().is_empty()).take(14).map(str::to_lowercase).collect();
     let typing = tail.iter().any(|l| l.contains("? for shortcuts") || l.trim_start().starts_with("│ >"));
     let footer = tail.iter().any(|l| l.contains("esc to cancel") || l.contains("enter to confirm"));
+
     let options = tail
         .iter()
         .filter(|l| {
             let option = l.trim_start().trim_start_matches(['❯', '›', '>']).trim_start();
+
             option.chars().next().is_some_and(|c| c.is_ascii_digit()) && option.get(1..3) == Some(". ")
         })
         .count();
+
     !typing && (footer || (numbered && options >= 2 && tail.iter().any(|l| l.contains('?'))))
 }
 
@@ -115,12 +122,15 @@ pub(crate) fn menu_choices(screen: &str) -> Option<Menu> {
     let start = (0..at).rev().take_while(|&i| inside(&lines[i])).last().unwrap_or(at);
     let end = (at + 1..lines.len()).take_while(|&i| inside(&lines[i])).last().map_or(at + 1, |i| i + 1);
     let picks: Vec<usize> = (start..end).filter(|&i| i == at || lead(&lines[i]) == column).collect();
+
     if picks.len() < 2 {
         return None;
     }
+
     let choices = picks.iter().map(|&i| if i == at { after.trim().to_string() } else { lines[i].trim().to_string() }).collect();
     // over it, up to a rule or a box's top: what it asks
     let rule = |l: &str| l.trim().chars().all(|c| "─━╭╮╰╯┌┐└┘═ ".contains(c));
+
     let mut question: Vec<String> = lines[..start]
         .iter()
         .rev()
@@ -129,6 +139,7 @@ pub(crate) fn menu_choices(screen: &str) -> Option<Menu> {
         .take(6)
         .map(|l| l.trim().to_string())
         .collect();
+
     question.reverse();
     question.retain(|l| !l.is_empty());
     Some(Menu { question, choices, marked: picks.iter().position(|&i| i == at).unwrap_or(0) })
@@ -140,10 +151,12 @@ impl TermHandle {
     pub(crate) fn pick(&self, from: usize, to: usize) {
         let app = self.mode().contains(TermMode::APP_CURSOR);
         let step = if to > from { Key::ArrowDown } else { Key::ArrowUp };
+
         for key in std::iter::repeat_n(step, from.abs_diff(to)).chain([Key::Enter]) {
             if let Some(bytes) = key_bytes(key, Modifiers::NONE, app) {
                 self.write(bytes);
             }
+
             std::thread::sleep(std::time::Duration::from_millis(60));
         }
     }
@@ -158,10 +171,12 @@ impl TermHandle {
     pub(crate) fn clear(&self) {
         use alacritty_terminal::vte::ansi::{ClearMode, Handler};
         let mut term = self.term.lock();
+
         term.grid_mut().clear_history();
         term.clear_screen(ClearMode::All);
         term.goto(0, 0);
         drop(term);
+
         // ConPTY keeps its own copy of the screen and paints it back on the next resize: ^L has
         // the shell clear it too and redraw the prompt, as Windows Terminal's Clear Buffer does
         if cfg!(windows) {
@@ -189,11 +204,13 @@ impl TermHandle {
         if let Some(why) = self.gate.lock().unwrap().clone() {
             return Err(why);
         }
+
         // the session's word over the screen's: only a menu's own footer still counts then (its
         // file may lag half a second behind the menu)
         if !self.exited() && menu_on(&self.screen_text(), !self.proven.load(Ordering::Relaxed)) {
             return Err("espera uma resposta no próprio terminal (um menu de permissão ou de escolha): o texto responderia a ele. Responda lá primeiro.".into());
         }
+
         Ok(())
     }
 
@@ -221,15 +238,19 @@ impl TermHandle {
     pub(crate) fn screen_text(&self) -> String {
         let term = self.term.lock();
         let grid = term.grid();
+
         let lines: Vec<String> = (0..term.screen_lines())
             .map(|i| {
                 let row = &grid[Line(i as i32)];
                 let cells = (0..term.columns()).map(|c| &row[Column(c)]);
+
                 let line: String =
                     cells.filter(|cell| !cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER)).map(|cell| cell.c).collect();
+
                 line.trim_end().to_string()
             })
             .collect();
+
         lines.join("\n").trim_end().to_string()
     }
 }

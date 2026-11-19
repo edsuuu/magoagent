@@ -22,6 +22,7 @@ pub(crate) const SERVER_NAME: &str = "email";
 /// `line` as words, a double-quoted stretch being one word.
 pub(crate) fn split_args(line: &str) -> Vec<String> {
     let (mut words, mut word, mut quoted, mut started) = (Vec::new(), String::new(), false, false);
+
     for ch in line.chars() {
         match ch {
             '"' => (quoted, started) = (!quoted, true),
@@ -37,9 +38,11 @@ pub(crate) fn split_args(line: &str) -> Vec<String> {
             }
         }
     }
+
     if started {
         words.push(word);
     }
+
     words
 }
 
@@ -47,6 +50,7 @@ impl EmailPrefs {
     /// The server for the agents' MCP config, when the bridge is on and has a program.
     pub(crate) fn server(&self) -> Option<Value> {
         let command = self.command.trim();
+
         (self.on && !command.is_empty()).then(|| json!({ "command": command, "args": split_args(&self.args) }))
     }
 
@@ -55,6 +59,7 @@ impl EmailPrefs {
         let Some(server) = self.server() else { return Vec::new() };
         let quoted = |text: &str| format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""));
         let args: Vec<String> = split_args(&self.args).iter().map(|arg| quoted(arg)).collect();
+
         vec![
             "-c".into(),
             format!("mcp_servers.{SERVER_NAME}.command={}", quoted(server["command"].as_str().unwrap_or_default())),
@@ -93,6 +98,7 @@ mod tests {
     #[test]
     fn only_a_bridge_that_is_on_and_has_a_program_reaches_the_agents() {
         let mut email = EmailPrefs { on: false, command: "npx".into(), args: "-y pacote".into() };
+
         assert!(email.server().is_none() && email.codex_args().is_empty());
         email.on = true;
         assert_eq!(email.server(), Some(json!({ "command": "npx", "args": ["-y", "pacote"] })));

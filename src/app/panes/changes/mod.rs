@@ -88,6 +88,7 @@ pub(crate) fn parse_numstat(root: &Path, out: &str) -> Counts {
         .filter_map(|line| {
             let mut parts = line.splitn(3, '\t');
             let (added, removed, path) = (parts.next()?.parse().ok()?, parts.next()?.parse().ok()?, parts.next()?);
+
             Some((key(&root.join(path)), (added, removed)))
         })
         .collect()
@@ -97,14 +98,18 @@ pub(crate) fn parse_numstat(root: &Path, out: &str) -> Counts {
 /// each new file.
 fn count_lines(roots: Vec<(PathBuf, Vec<PathBuf>)>) -> (Counts, Changed) {
     let (mut counts, mut changed) = (Counts::new(), Changed::new());
+
     for (root, untracked) in roots {
         if let Ok(out) = crate::editor::run_git(&root, &["diff", "--numstat", "--relative", "HEAD"]) {
             counts.extend(parse_numstat(&root, &out));
         }
+
         let lines = ["-c", "core.quotePath=false", "diff", "--relative", "-U0", "--no-color", "--no-ext-diff", "HEAD"];
+
         if let Ok(out) = crate::editor::run_git(&root, &lines) {
             changed.extend(parse_changed_lines(&root, &out));
         }
+
         for file in untracked {
             if let Ok(text) = fs::read_to_string(&file) {
                 counts.insert(key(&file), (text.lines().count(), 0));
@@ -112,6 +117,7 @@ fn count_lines(roots: Vec<(PathBuf, Vec<PathBuf>)>) -> (Counts, Changed) {
             }
         }
     }
+
     (counts, changed)
 }
 
@@ -123,11 +129,14 @@ fn read_changes(roots: Vec<(PathBuf, Vec<PathBuf>)>, folders: Vec<PathBuf>, work
             let read = TreeGit::read(path);
             let files = crate::app::filetree::changes::sorted(path, &read.files);
             let untracked = files.iter().filter(|(_, s)| *s == Status::Untracked).map(|(p, _)| p.clone()).collect();
+
             (vec![(path.clone(), untracked)], Some((read.branch, files)))
         }
         None => (roots, None),
     };
+
     let (counts, changed) = count_lines(roots);
+
     Reading { worktree, counts, changed, worktrees: worktrees::read_worktrees(&folders), git }
 }
 
@@ -137,19 +146,24 @@ impl DrawingApp {
     pub(crate) fn change_groups(&self) -> Vec<ChangeGroup> {
         let rows = self.agent_rows();
         let mut groups: Vec<ChangeGroup> = Vec::new();
+
         for element in &self.scene.elements {
             let Some(spec) = &element.filetree else { continue };
             let root = spec.root_path();
+
             if groups.iter().any(|g| key(&g.root) == key(&root)) {
                 continue;
             }
+
             let Some(view) = self.filetrees.views.get(&element.id).filter(|v| v.git.repo) else { continue };
             let agents: Vec<&str> = rows.iter().filter(|r| works_in(&r.spec.cwd, &root)).map(|r| r.spec.label()).collect();
             let name = folder_name(&root);
             let title = if agents.is_empty() { name } else { format!("{name} · {}", agents.join(", ")) };
             let files = crate::app::filetree::changes::sorted(&root, &view.git.files);
+
             groups.push(ChangeGroup { tree: element.id.clone(), title, root, files });
         }
+
         groups
     }
 
@@ -161,27 +175,34 @@ impl DrawingApp {
         let tree = self.scene.elements.iter().find(|e| e.filetree.as_ref().is_some_and(|s| key(&s.root_path()) == key(path)));
         let agents: Vec<String> = self.agent_rows().iter().filter(|r| works_in(&r.spec.cwd, path)).map(|r| r.spec.label().to_string()).collect();
         let mut title = folder_name(path);
+
         if !branch.is_empty() {
             title += &format!(" · {branch}");
         }
+
         if !agents.is_empty() {
             title += &format!(" · {}", agents.join(", "));
         }
+
         vec![ChangeGroup { tree: tree.map(|e| e.id.clone()).unwrap_or_default(), title, root: path.clone(), files: files.clone() }]
     }
 
     /// The branch `root` is on: its worktree's, else its tree's.
     pub(crate) fn branch_of(&self, root: &Path) -> String {
         let changes = &self.panes.changes;
+
         if changes.worktree.as_deref().is_some_and(|w| key(w) == key(root))
             && let Some((branch, _)) = &changes.worktree_git
         {
             return branch.clone();
         }
+
         if let Some(worktree) = changes.worktrees.iter().find(|w| key(&w.path) == key(root)) {
             return worktree.branch.clone();
         }
+
         let tree = self.scene.elements.iter().find(|e| e.filetree.as_ref().is_some_and(|s| key(&s.root_path()) == key(root)));
+
         tree.and_then(|e| self.filetrees.views.get(&e.id)).map_or(String::new(), |v| v.git.branch.clone())
     }
 
@@ -203,8 +224,10 @@ impl DrawingApp {
     pub(crate) fn changes_pane(&mut self, ui: &mut egui::Ui) {
         let colors = self.colors();
         let groups = self.shown_groups();
+
         self.recount_changes(ui.input(|i| i.time), &groups);
         self.worktree_switcher(ui);
+
         if groups.iter().all(|g| g.files.is_empty()) {
             let none = match &self.panes.changes.worktree {
                 Some(_) if self.panes.changes.worktree_git.is_none() => "Lendo o worktree…",
@@ -212,19 +235,23 @@ impl DrawingApp {
                 None if groups.is_empty() => "Nenhuma Árvore de Arquivos de um repositório git no canvas.",
                 None => "Nenhuma alteração pendente.",
             };
+
             ui.label(egui::RichText::new(none).color(colors.muted));
         } else if let Some((tree, path)) = self.changes_list(ui, &groups).filter(|_| live(ui)) {
             self.select_change(&tree, &path);
         }
+
         if let Some((tree, path)) = self.panes.changes.selected.clone() {
             self.diff_view(ui, &path);
             let root = groups.iter().find(|g| g.files.iter().any(|(p, _)| *p == path)).map(|g| g.root.clone());
+
             ui.horizontal(|ui| {
                 if ui.button("Abrir na Árvore").clicked() && live(ui) {
                     self.open_change_in_tree(&tree, root.as_deref(), &path);
                 }
             });
         }
+
         if groups.iter().any(|g| !g.files.is_empty()) || !self.panes.changes.review.comments.is_empty() {
             self.review_section(ui, &groups);
         }
@@ -233,11 +260,15 @@ impl DrawingApp {
     /// A file of the list clicked: its diff shows under it (a second click hides it).
     pub(crate) fn select_change(&mut self, tree: &str, path: &Path) {
         let changes = &mut self.panes.changes;
+
         changes.review.picked = None;
+
         if changes.selected.as_ref().is_some_and(|(_, p)| p == path) {
             (changes.selected, changes.diff) = (None, Vec::new());
+
             return;
         }
+
         changes.diff = file_diff(path);
         changes.selected = Some((tree.to_string(), path.to_path_buf()));
     }
@@ -245,6 +276,7 @@ impl DrawingApp {
     /// "Abrir na Árvore": the tree enlarged with the file's diff in its editor; a worktree no tree shows gets one first.
     pub(crate) fn open_change_in_tree(&mut self, tree: &str, root: Option<&Path>, path: &Path) {
         let mut index = self.scene.elements.iter().position(|e| e.id == tree);
+
         if index.is_none()
             && let Some(root) = root
         {
@@ -253,8 +285,10 @@ impl DrawingApp {
                 Err(why) => self.toast(why),
             }
         }
+
         let Some(index) = index else { return };
         let tree = self.scene.elements[index].id.clone();
+
         self.show_tree(index);
         self.ft_open_change(&tree, path);
     }
@@ -264,9 +298,11 @@ impl DrawingApp {
     fn recount_changes(&mut self, now: f64, groups: &[ChangeGroup]) {
         let folders = self.worktree_folders();
         let changes = &mut self.panes.changes;
+
         match changes.reading.as_ref().map(Receiver::try_recv) {
             Some(Ok(reading)) => {
                 changes.reading = None;
+
                 // read for another worktree than the one picked since: read again
                 if reading.worktree == changes.worktree {
                     (changes.counts, changes.changed, changes.worktree_git) = (reading.counts, reading.changed, reading.git);
@@ -278,20 +314,26 @@ impl DrawingApp {
             Some(Err(TryRecvError::Disconnected)) => changes.reading = None,
             _ => {}
         }
+
         if changes.reading.is_some() || changes.read_at.is_some_and(|at| now - at < RECOUNT) {
             return;
         }
+
         changes.read_at = Some(now);
+
         let roots: Vec<(PathBuf, Vec<PathBuf>)> = groups
             .iter()
             .filter(|g| !g.files.is_empty() && changes.worktree.is_none())
             .map(|g| (g.root.clone(), g.files.iter().filter(|(_, s)| *s == Status::Untracked).map(|(p, _)| p.clone()).collect()))
             .collect();
+
         let worktree = changes.worktree.clone();
         let (sender, receiver) = std::sync::mpsc::channel();
+
         std::thread::spawn(move || {
             let _ = sender.send(read_changes(roots, folders, worktree));
         });
+
         changes.reading = Some(receiver);
     }
 }
@@ -301,6 +343,7 @@ pub(crate) fn file_diff(path: &Path) -> Vec<DiffLine> {
     let old = head_text(path).unwrap_or_default();
     let new = fs::read_to_string(path).unwrap_or_default().replace("\r\n", "\n");
     let mut lines = diff_lines(&old, &new);
+
     diff::color_lines(&mut lines, highlight::detect(path), &old, &new);
     lines
 }
@@ -313,6 +356,7 @@ mod tests {
     fn numstat_counts_by_path_and_skips_binaries() {
         let root = Path::new("/repo");
         let counts = parse_numstat(root, "3\t1\tsrc/main.rs\n-\t-\tlogo.png\n10\t0\tREADME.md\n");
+
         assert_eq!(counts.get(&key(&root.join("src").join("main.rs"))), Some(&(3, 1)));
         assert_eq!(counts.get(&key(&root.join("README.md"))), Some(&(10, 0)));
         assert_eq!(counts.len(), 2, "the binary file has no lines");

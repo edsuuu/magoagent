@@ -30,8 +30,10 @@ fn markdown_buttons_wrap_the_selection_or_take_the_caret() {
 #[test]
 fn an_empty_note_can_be_typed_into_after_leaving_it() {
     let ctx = Context::default();
+
     install_fonts(&ctx, false);
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     app.tool = Tool::Sticky;
     drag(&mut app, &ctx, Pos2::new(400.0, 300.0), Pos2::new(401.0, 300.0));
@@ -43,6 +45,7 @@ fn an_empty_note_can_be_typed_into_after_leaving_it() {
     frame(&mut app, &ctx, vec![]);
     frame(&mut app, &ctx, vec![egui::Event::Text("Oi".into())]);
     let ElementKind::Text { value, .. } = &app.scene.elements[1].kind else { panic!() };
+
     assert_eq!(value, "Oi");
     // and so does a double-click on it
     app.scene.elements[1] = app.new_element(ElementKind::Text { x: 0.0, y: 0.0, value: String::new() });
@@ -54,6 +57,7 @@ fn an_empty_note_can_be_typed_into_after_leaving_it() {
     // a frame without the editor (it covers the whole text box while typing): the pointer on its way to the note
     frame(&mut app, &ctx, vec![]);
     let at = app.to_screen(element_bounds(&app.scene.elements[0]).center());
+
     click(&mut app, &ctx, at);
     assert!(app.editing.is_some(), "a click on an empty note edits it");
 }
@@ -61,26 +65,36 @@ fn an_empty_note_can_be_typed_into_after_leaving_it() {
 #[test]
 fn the_custom_color_picker_stays_open_and_changes_the_note() {
     let ctx = Context::default();
+
     install_fonts(&ctx, false);
     let mut app = DrawingApp::default();
     let [note, text] = app.new_note(Rect::from_min_size(Pos2::new(300.0, 300.0), Vec2::splat(200.0)), "Oi".into());
+
     app.scene.elements = vec![note, text];
     app.selected = vec![0];
     let before = app.scene.elements[0].style.fill;
+
     app.note_color = Some((Pos2::new(100.0, 100.0), Rect::NOTHING));
+
     let run = |app: &mut DrawingApp, events: Vec<egui::Event>| {
         let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), events, ..Default::default() };
+
         let mut output = ctx.run_ui(input, |ui| {
             let _ = ui;
+
             app.note_color_ui(&ctx);
         });
+
         output.textures_delta.clear();
     };
+
     run(&mut app, vec![]);
     let popover = app.note_color.expect("open").1;
+
     assert!(popover.is_positive(), "{popover:?}");
     // a press and a drag deep inside the popover (the picker's square) neither close it nor miss the note
     let at = popover.min + Vec2::new(70.0, 175.0);
+
     run(&mut app, vec![egui::Event::PointerMoved(at)]);
     run(&mut app, vec![button(at, true)]);
     run(&mut app, vec![egui::Event::PointerMoved(at + Vec2::new(20.0, -10.0))]);
@@ -93,18 +107,23 @@ fn the_custom_color_picker_stays_open_and_changes_the_note() {
 fn notes_stack_into_a_pile_flip_move_together_and_spill() {
     let mut app = DrawingApp::default();
     let mut cards = Vec::new();
+
     for (k, text) in ["um", "dois", "tres"].into_iter().enumerate() {
         let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(100.0 + 300.0 * k as f32, 100.0), Vec2::splat(200.0)), text.into());
+
         cards.push(app.scene.elements.len());
         app.scene.elements.extend([note, label]);
     }
+
     app.selected = cards.clone();
     assert!(app.stack_notes());
     // only the first (reading order) shows, every page sits on it
     assert_eq!(app.selected, vec![cards[0]]);
     let origin = element_bounds(&app.scene.elements[cards[0]]).min;
+
     assert!(cards.iter().all(|c| element_bounds(&app.scene.elements[*c]).min == origin));
     let hidden: Vec<bool> = app.scene.elements.iter().map(|e| hidden_page(&app.scene.elements, e)).collect();
+
     assert_eq!(hidden, [false, false, true, true, true, true]);
     assert!(app.is_card_text(cards[1]) && !app.is_card_text(cards[0]));
     // a click finds the front only, and the pile moves with all its pages
@@ -117,8 +136,10 @@ fn notes_stack_into_a_pile_flip_move_together_and_spill() {
     assert_eq!(app.selected, vec![cards[2]]);
     // dropping a loose note on the pile joins it
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(900.0, 900.0), Vec2::splat(200.0)), "quatro".into());
+
     app.scene.elements.extend([note, label]);
     let loose = app.scene.elements.len() - 2;
+
     app.selected = vec![loose];
     app.scene.elements[loose].move_by(origin - Pos2::new(900.0, 900.0) + Vec2::splat(20.0));
     app.drop_into_stack();
@@ -127,16 +148,19 @@ fn notes_stack_into_a_pile_flip_move_together_and_spill() {
     assert!(app.unstack(loose));
     assert!(app.scene.elements.iter().all(|e| !e.note.stacked));
     let pages = app.selected.clone();
+
     assert_eq!(pages.len(), 4);
     assert_eq!(element_bounds(&app.scene.elements[pages[1]]).min - element_bounds(&app.scene.elements[pages[0]]).min, Vec2::splat(24.0));
     // the pile survives the file
     app.selected = pages;
     assert!(app.stack_notes());
     let back = crate::tests::round_trip(&app.scene.elements);
+
     assert_eq!(back.iter().filter(|e| e.note.stacked).count(), 4);
     assert_eq!(back.iter().filter(|e| e.note.front).count(), 1);
     // a hidden page stays out of the export
     let svg = scene_svg(&app.scene, None);
+
     assert!(svg.matches("<text").count() <= 1, "{svg}");
     // and the MCP drives it by note name
     assert!(app.act_note_stack("next", &["um".into()]).is_ok());
@@ -148,15 +172,20 @@ fn notes_stack_into_a_pile_flip_move_together_and_spill() {
 fn group_rows_need_two_elements_and_ungroup_a_group() {
     let mut app = DrawingApp::default();
     let mut image = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 50.0, height: 50.0 });
+
     image.image = Some("data:image/png;base64,".into());
     let id = image.id.clone();
     let other = app.new_element(ElementKind::Rectangle { x: 100.0, y: 0.0, width: 50.0, height: 50.0 });
+
     app.scene.elements = vec![image, other];
+
     let shown = |app: &DrawingApp| {
         let mut shown = Vec::new();
+
         ids(&app.context_entries(&Target::Element(id.clone())), &mut shown);
         shown
     };
+
     app.selected = vec![0, 0];
     assert!(!shown(&app).iter().any(|s| s == "group" || s == "ungroup"), "{:?}", shown(&app));
     app.selected = vec![0, 1];
@@ -169,22 +198,31 @@ fn group_rows_need_two_elements_and_ungroup_a_group() {
 fn a_right_click_on_a_terminal_opens_its_menu() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let mut shell = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: 400.0, height: 300.0 });
+
     shell.terminal = Some(TerminalSpec { name: "Shell".into(), ..Default::default() });
     let id = shell.id.clone();
+
     app.scene.elements.push(shell);
     let at = app.to_screen(Pos2::new(300.0, 250.0));
     let secondary = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() };
+
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), secondary(true)]);
     let menu = app.context.as_ref().expect("the right click opens a menu");
+
     assert_eq!(menu.target, Target::Element(id.clone()));
     let mut shown = Vec::new();
+
     ids(&app.context_entries(&menu.target), &mut shown);
+
     // the reference app's order
     let order =
         ["copy_sel", "paste_text", "select_all_text", "rename", "edit", "monitor", "blur", "reload", "unload", "use_size", "copy_el", "dup", "lock", "delete"];
+
     let at: Vec<usize> = order.iter().map(|w| shown.iter().position(|s| s == w).unwrap_or_else(|| panic!("terminal menu has {w}: {shown:?}"))).collect();
+
     assert!(at.windows(2).all(|w| w[0] < w[1]), "terminal menu order: {shown:?}");
     // Desfocar hides its screen and takes the keys from it
     app.terminal_focus = Some(id.clone());
@@ -200,20 +238,27 @@ fn a_right_click_on_a_terminal_opens_its_menu() {
 fn a_right_click_on_a_file_trees_title_draws_its_menu() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let mut tree = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: 400.0, height: 300.0 });
+
     tree.filetree = Some(Default::default());
     let id = tree.id.clone();
+
     app.scene.elements.push(tree);
     let at = app.to_screen(Pos2::new(300.0, 110.0));
     let secondary = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() };
+
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(at), secondary(true)]);
     assert_eq!(app.context.as_ref().map(|m| m.target.clone()), Some(Target::Element(id)));
+
     for _ in 0..2 {
         ctx.run_ui(Default::default(), |_| app.context_ui(&ctx)).textures_delta.clear();
     }
+
     let menu = app.context.as_ref().expect("the menu stays open, drawn");
     let mut shown = Vec::new();
+
     ids(&app.context_entries(&menu.target), &mut shown);
     assert!(shown.starts_with(&["show_folder".to_string(), "edit".to_string()]), "{shown:?}");
 }
@@ -224,6 +269,7 @@ fn duplicate_from_the_menu_makes_a_copy() {
     let mut app = DrawingApp::default();
     let rect = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 50.0, height: 50.0 });
     let id = rect.id.clone();
+
     app.scene.elements.push(rect);
     app.selected = vec![0];
     app.context_action(&ctx, &Target::Element(id), "dup");
@@ -235,10 +281,13 @@ fn duplicate_from_the_menu_makes_a_copy() {
 fn a_click_on_a_note_focuses_it_and_typing_goes_in() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), "# Plano".into());
+
     app.scene.elements.extend([note, label]);
     let at = app.to_screen(Pos2::new(150.0, 150.0));
+
     click(&mut app, &ctx, at);
     assert_eq!(app.editing, Some(1), "the click puts the note's text in focus");
     assert_eq!(app.selected, vec![0]);
@@ -248,27 +297,34 @@ fn a_click_on_a_note_focuses_it_and_typing_goes_in() {
 fn a_click_types_into_a_note_under_its_header_and_without_a_modifier() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     // off the Mac the canvas starts under the title bar, which these frames leave out
     app.pan = Vec2::new(0.0, TITLE_BAR);
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), "uma linha".into());
+
     app.scene.elements.extend([note, label]);
     let header = app.to_screen(Pos2::new(150.0, 66.0));
+
     click(&mut app, &ctx, header);
     assert_eq!(app.editing, None, "the header doesn't type");
     // under the 44 px strip that picks up a note at rest
     let on_text = app.to_screen(Pos2::new(150.0, 120.0));
+
     for (modifiers, name) in [(Modifiers::CTRL, "Ctrl"), (Modifiers::SHIFT, "Shift"), (Modifiers::ALT, "Alt")] {
         let press = |pressed| egui::Event::PointerButton { pos: on_text, button: egui::PointerButton::Primary, pressed, modifiers };
+
         frame(&mut app, &ctx, vec![egui::Event::PointerMoved(on_text), press(true)]);
         frame(&mut app, &ctx, vec![press(false)]);
         assert_eq!(app.editing, None, "nor a click with {name}");
     }
+
     click(&mut app, &ctx, on_text);
     assert_eq!(app.editing, Some(1), "a plain click on the text does");
     // and one below the text, an empty note's body too: the person only wants to write
     app.finish_text();
     let below = app.to_screen(Pos2::new(150.0, 300.0));
+
     click(&mut app, &ctx, below);
     assert_eq!(app.editing, Some(1), "below the text it types too");
 }
@@ -277,8 +333,10 @@ fn a_click_types_into_a_note_under_its_header_and_without_a_modifier() {
 fn bold_wraps_the_selected_text_of_the_note() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), "abc".into());
+
     app.scene.elements.extend([note, label]);
     app.selected = vec![0];
     // the click on the bar has already taken the keys from the editor: what counts is the
@@ -287,6 +345,7 @@ fn bold_wraps_the_selected_text_of_the_note() {
     app.note_selection = Some((1, 0, 3));
     app.note_format(&ctx, 0, "**");
     let ElementKind::Text { value, .. } = &app.scene.elements[1].kind else { panic!("the note's label") };
+
     assert_eq!(value, "**abc**");
 }
 
@@ -294,8 +353,10 @@ fn bold_wraps_the_selected_text_of_the_note() {
 fn note_with_buttons(app: &mut DrawingApp, buttons: Vec<NoteButton>) {
     app.pan = Vec2::new(0.0, TITLE_BAR);
     let [mut note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::new(300.0, 200.0)), "# Painel".into());
+
     note.note.buttons = buttons;
     let mut shell = app.new_element(ElementKind::Rectangle { x: 500.0, y: 100.0, width: 400.0, height: 300.0 });
+
     shell.terminal = Some(TerminalSpec { name: "Shell".into(), ..Default::default() });
     app.scene.elements.extend([note, label, shell]);
 }
@@ -306,6 +367,7 @@ fn click_button(app: &mut DrawingApp, ctx: &Context, k: usize) {
     let b = local_bounds(note);
     let (rects, h) = crate::app::notes::buttons::layout(&note.note.buttons, b.width() - 2.0 * NOTE_PAD);
     let at = app.to_screen(b.min + Vec2::new(NOTE_PAD, b.height() - NOTE_PAD - h) + rects[k].center().to_vec2());
+
     frame(app, ctx, vec![egui::Event::PointerMoved(at)]);
     frame(app, ctx, vec![button(at, true)]);
     frame(app, ctx, vec![button(at, false)]);
@@ -315,9 +377,11 @@ fn click_button(app: &mut DrawingApp, ctx: &Context, k: usize) {
 fn a_note_button_runs_its_action_and_a_bad_one_only_warns() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let bad = NoteButton { label: "Quebrado".into(), action: "nao_existe".into(), args: Value::Null };
     let close = NoteButton { label: "Fechar".into(), action: "close_window".into(), args: json!({ "name": "Shell" }) };
+
     note_with_buttons(&mut app, vec![bad.clone(), close.clone()]);
     frame(&mut app, &ctx, vec![]);
     assert!(app.scene.elements.iter().any(|e| e.terminal.is_some()), "loading a scene runs nothing");
@@ -333,13 +397,16 @@ fn a_note_button_runs_its_action_and_a_bad_one_only_warns() {
 fn a_note_button_can_be_removed_and_buttons_survive_save_and_reopen() {
     let mut app = DrawingApp::default();
     let one = |label: &str| NoteButton { label: label.into(), action: "chat_list".into(), args: Value::Null };
+
     note_with_buttons(&mut app, vec![one("A"), one("B")]);
     app.remove_note_button(0, 0);
     assert_eq!(app.scene.elements[0].note.buttons, vec![one("B")]);
     let dir = std::env::temp_dir().join(format!("mago-note-buttons-{}", new_id()));
     let path = dir.join("cena.mago");
+
     write_scene_file(&path, &app.scene).unwrap();
     let (back, _) = read_scene_file(&path).unwrap();
+
     assert_eq!(back.elements[0].note.buttons, vec![one("B")]);
     let _ = fs::remove_dir_all(dir);
 }
@@ -349,9 +416,11 @@ fn a_note_with_buttons_grows_its_floor() {
     let app = DrawingApp::default();
     let long = |label: &str| NoteButton { label: label.into(), action: "chat_list".into(), args: Value::Null };
     let [mut note, _] = app.new_note(Rect::from_min_size(Pos2::ZERO, Vec2::new(250.0, 160.0)), String::new());
+
     assert_eq!(note.min_size(), Some(NOTE_MIN));
     note.note.buttons = vec![long("Abrir o projeto"), long("Ver o relatório"), long("Rodar os testes")];
     let floor = note.min_size().unwrap();
+
     assert!(floor.y > NOTE_MIN.y + 40.0, "three wide buttons wrap onto rows: {floor:?}");
 }
 
@@ -359,17 +428,22 @@ fn a_note_with_buttons_grows_its_floor() {
 fn a_note_paper_brings_its_ink_and_old_colors_turn_into_the_nearest_paper() {
     let app = DrawingApp::default();
     let [mut note, _] = app.new_note(Rect::from_min_size(Pos2::ZERO, NOTE_SIZE), String::new());
+
     for (k, (paper, _)) in NOTE_PAPERS.iter().enumerate() {
         note.style.fill = Some(*paper);
         let [r, g, b] = NOTE_INK[k];
+
         assert_eq!(note_colors(&note, 100).1, Color32::from_rgb(r, g, b));
     }
+
     // a scene from before: a sticky note with its own yellow and no settings opens as a note of the new kind
     let old = json!([
         { "id": "n", "type": "stickynote", "x": 10, "y": 10, "width": 200, "height": 200, "backgroundColor": "#ffdf6b", "created": 1700000000000i64, "groupIds": ["g"] },
         { "id": "n-label", "type": "text", "x": 20, "y": 20, "text": "texto antigo", "groupIds": ["g"] },
     ]);
+
     let elements = from_interop_elements(&old);
+
     assert_eq!(elements[0].style.fill, Some([0xff, 0xe0, 0xb2, 255]), "nearest paper");
     assert_eq!(elements[0].note, NoteSpec::default());
     assert!(matches!(&elements[1].kind, ElementKind::Text { value, .. } if value == "texto antigo"));
@@ -381,17 +455,22 @@ fn each_note_is_a_markdown_file_beside_the_scene() {
     let mut app = DrawingApp::default();
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::ZERO, NOTE_SIZE), "# Plano\n- um".into());
     let md = format!("{}.md", note.id);
+
     app.scene.elements.extend([note, label]);
     let dir = std::env::temp_dir().join(format!("mago-note-files-{}", new_id()));
     let path = dir.join("cena.mago");
+
     write_scene_file(&path, &app.scene).unwrap();
     let file = dir.join("notas").join(md);
+
     assert_eq!(fs::read_to_string(&file).unwrap(), "# Plano\n- um");
     // a file written in the notes folder after the scene (edited outside) is what the note reads back
     fs::write(&file, "# Plano\n- dois").unwrap();
     let later = SystemTime::now() + std::time::Duration::from_secs(30);
+
     fs::File::options().write(true).open(&file).unwrap().set_modified(later).unwrap();
     let (back, _) = read_scene_file(&path).unwrap();
+
     assert!(matches!(&back.elements[1].kind, ElementKind::Text { value, .. } if value == "# Plano\n- dois"));
     let _ = fs::remove_dir_all(dir);
 }
@@ -400,12 +479,14 @@ fn each_note_is_a_markdown_file_beside_the_scene() {
 fn a_dragged_note_takes_the_dragged_size_and_the_color_menu_sets_the_ink() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     app.tool = Tool::Sticky;
     drag(&mut app, &ctx, Pos2::new(400.0, 300.0), Pos2::new(740.0, 440.0));
     assert_eq!(element_bounds(&app.scene.elements[0]).size(), Vec2::new(340.0, 140.0), "not squared");
     app.finish_text();
     let id = app.scene.elements[0].id.clone();
+
     app.context_action(&ctx, &Target::Element(id), "color:2");
     assert_eq!(app.scene.elements[0].style.fill, Some(NOTE_PAPERS[2].0));
     assert_eq!(note_colors(&app.scene.elements[0], 100).1, Color32::from_rgb(0x0d, 0x47, 0xa1), "blue paper, its own ink");
@@ -417,15 +498,19 @@ fn the_note_and_canvas_menus_follow_the_reference_app() {
     let mut app = DrawingApp::default();
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), "# Plano".into());
     let id = note.id.clone();
+
     app.scene.elements.extend([note, label]);
     let mut shown = Vec::new();
+
     ids(&app.context_entries(&Target::Element(id)), &mut shown);
     let order = ["rename", "lock_content", "copy_content", "show_folder", "copy_el", "dup", "color:0", "lock", "delete"];
     let at: Vec<usize> = order.iter().map(|w| shown.iter().position(|s| s == w).unwrap_or_else(|| panic!("note menu has {w}: {shown:?}"))).collect();
+
     assert!(at.windows(2).all(|w| w[0] < w[1]), "note menu order: {shown:?}");
     // without presets "Terminal" is a plain row that opens the new terminal sheet
     app.prefs.presets.iter_mut().for_each(|p| p.on = false);
     let mut canvas = Vec::new();
+
     ids(&app.context_entries(&Target::Canvas(Pos2::ZERO)), &mut canvas);
     assert_eq!(canvas[0], "add_terminal");
     app.context_action(&ctx, &Target::Canvas(Pos2::ZERO), "add_terminal");
@@ -436,11 +521,14 @@ fn the_note_and_canvas_menus_follow_the_reference_app() {
 fn a_pile_takes_more_notes_shows_a_page_by_its_tab_and_lets_one_go() {
     let mut app = DrawingApp::default();
     let mut cards = Vec::new();
+
     for (k, text) in ["um", "dois", "tres"].into_iter().enumerate() {
         let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(100.0 + 300.0 * k as f32, 100.0), Vec2::splat(200.0)), text.into());
+
         cards.push(app.scene.elements.len());
         app.scene.elements.extend([note, label]);
     }
+
     app.selected = vec![cards[0], cards[1]];
     assert!(app.stack_notes());
     // Adicionar ao Fichário: the pile plus a loose note, the note goes behind the front page
@@ -451,6 +539,7 @@ fn a_pile_takes_more_notes_shows_a_page_by_its_tab_and_lets_one_go() {
     // one tab per page, 64 to 120 tall, 10 over each other, out of the page's right edge
     let frame = Rect::from_min_size(Pos2::ZERO, Vec2::splat(200.0));
     let tabs = crate::app::notes::stack::tab_rail(frame, 3, 1.0).tabs;
+
     assert_eq!(tabs.len(), 3);
     assert!(tabs.iter().all(|t| t.left() < frame.right() && t.right() > frame.right() + 20.0));
     assert!((64.0..=120.0).contains(&tabs[0].height()) && tabs[1].top() - tabs[0].top() == tabs[0].height() - 10.0);
@@ -460,6 +549,7 @@ fn a_pile_takes_more_notes_shows_a_page_by_its_tab_and_lets_one_go() {
     // Nova Página: a blank page in front, its text taking the keys
     assert!(app.new_stack_page(cards[2]));
     let fresh = app.scene.elements.len() - 2;
+
     assert_eq!(app.stack_pages(fresh).len(), 4);
     assert!(app.scene.elements[fresh].note.front && app.editing == Some(fresh + 1));
     // Remover do Fichário: the page lands beside the pile, the next one is the front
@@ -476,27 +566,36 @@ fn a_pile_takes_more_notes_shows_a_page_by_its_tab_and_lets_one_go() {
 fn a_pile_stands_as_a_page_with_its_own_menu_and_each_tab_has_its_page_s() {
     let mut app = DrawingApp::default();
     let mut cards = Vec::new();
+
     for (k, text) in ["Nota um", "dois"].into_iter().enumerate() {
         let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(100.0 + 300.0 * k as f32, 100.0), Vec2::splat(200.0)), text.into());
+
         cards.push(app.scene.elements.len());
         app.scene.elements.extend([note, label]);
     }
+
     app.scene.elements[cards[1]].style.fill = Some(NOTE_PAPERS[3].0);
     app.selected = cards.clone();
     assert!(app.stack_notes());
+
     // the pages take the reference's size: at least 270 wide, 1.4 times that with the rail tall, text at the center
     for card in &cards {
         let b = element_bounds(&app.scene.elements[*card]);
+
         assert_eq!((b.min, b.width(), b.height()), (Pos2::new(100.0, 100.0), 270.0, ((270.0f32 + 23.0) * 1.4).round()));
         let ElementKind::Text { x, y, .. } = app.scene.elements[card + 1].kind else { panic!() };
+
         assert_eq!(Pos2::new(x, y), b.center());
     }
+
     assert_eq!(crate::app::notes::stack::tab_name("Nota um\nresto"), "nota-um");
     // the page's menu is the pile's, a tab's is its page's
     let mut shown = Vec::new();
+
     ids(&app.context_entries(&Target::Element(app.scene.elements[cards[0]].id.clone())), &mut shown);
     assert_eq!(shown, ["stack_uniform", "unstack", "copy_el", "dup", "lock", "delete"]);
     let mut tab = Vec::new();
+
     ids(&app.note_rows(cards[1], &app.scene.elements[cards[1]].id.clone()), &mut tab);
     assert!(tab.ends_with(&["stack_page".into(), "stack_remove".into(), "stack_delete".into()]) && !tab.contains(&"copy_el".into()));
     // Cor Uniforme: every page the front's paper
@@ -504,6 +603,7 @@ fn a_pile_stands_as_a_page_with_its_own_menu_and_each_tab_has_its_page_s() {
     assert_eq!(app.scene.elements[cards[1]].style.fill, app.scene.elements[cards[0]].style.fill);
     // Apagar Nota: the page goes, the pile of one is gone
     let id = app.scene.elements[cards[1]].id.clone();
+
     app.delete_stack_page(cards[1]);
     assert!(app.scene.elements.iter().all(|e| e.id != id && !e.note.stacked));
 }
@@ -511,12 +611,16 @@ fn a_pile_stands_as_a_page_with_its_own_menu_and_each_tab_has_its_page_s() {
 #[test]
 fn a_pressed_note_comes_to_the_front_with_its_text() {
     let mut app = DrawingApp::default();
+
     for (k, text) in ["baixo", "cima"].into_iter().enumerate() {
         let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(100.0 + 50.0 * k as f32, 100.0), Vec2::splat(200.0)), text.into());
+
         app.scene.elements.extend([note, label]);
     }
+
     let below = app.scene.elements[0].id.clone();
     let i = app.raise_card(0);
+
     assert_eq!(i, 2, "the note goes over the other one");
     assert_eq!(app.scene.elements[2].id, below);
     assert_eq!(app.with_card_text(&[2]).len(), 2, "its text goes with it");
@@ -528,20 +632,25 @@ fn a_pressed_note_comes_to_the_front_with_its_text() {
 fn the_note_editor_follows_the_note_when_the_canvas_pans() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let [note, label] = app.new_note(Rect::from_min_size(Pos2::new(60.0, 60.0), Vec2::splat(260.0)), String::new());
+
     app.scene.elements.extend([note, label]);
     let at = app.to_screen(Pos2::new(150.0, 150.0));
+
     click(&mut app, &ctx, at);
     frame(&mut app, &ctx, vec![]);
     assert_eq!(app.editing, Some(1));
     let before = ctx.memory(|memory| memory.area_rect(egui::Id::unique("note_editor"))).expect("the editor is drawn");
+
     // the wheel and the touchpad add to the pan (update.rs)
     app.pan += Vec2::new(-1000.0, 80.0); // the note leaves the screen: its editor goes with it, not stuck at the edge
     frame(&mut app, &ctx, vec![]);
     let after = ctx.memory(|memory| memory.area_rect(egui::Id::unique("note_editor"))).expect("the editor is still drawn");
     let bounds = crate::geometry::local_bounds(&app.scene.elements[0]);
     let card = Rect::from_min_max(app.to_screen(bounds.min), app.to_screen(bounds.max));
+
     assert_ne!(after.min, before.min, "the editor moved");
     assert!(card.contains(after.min), "the editor stays on the note: {after:?} not in {card:?}");
 }
@@ -551,20 +660,27 @@ fn a_drawing_from_outside_cannot_point_a_note_at_another_file_or_bring_its_own_a
     let mut app = DrawingApp::default();
     let [mut note, label] = app.new_note(Rect::from_min_size(Pos2::ZERO, NOTE_SIZE), "texto".into());
     let dir = std::env::temp_dir().join(format!("mago-note-evil-{}", new_id()));
+
     fs::create_dir_all(&dir).unwrap();
     let victim = dir.join("importante.md");
+
     fs::write(&victim, "original").unwrap();
     note.note.file = Some(victim.to_string_lossy().into_owned());
+
     note.note.buttons = vec![
         NoteButton { label: "ruim".into(), action: "rm_rf".into(), args: json!({}) },
         NoteButton { label: "bom".into(), action: "open_path".into(), args: json!({}) },
     ];
+
     let id = note.id.clone();
+
     app.scene.elements.extend([note, label]);
     let json = serde_json::to_string(&app.scene).unwrap();
     let scene = parse_scene(&json).unwrap();
+
     assert_eq!(scene.elements[0].note.buttons.len(), 1, "the unknown action is dropped on load");
     let path = dir.join("cena.mago");
+
     write_scene_file(&path, &scene).unwrap();
     assert_eq!(fs::read_to_string(&victim).unwrap(), "original", "the file outside stays as it was");
     assert_eq!(fs::read_to_string(dir.join("notas").join(format!("{id}.md"))).unwrap(), "texto");
@@ -572,6 +688,7 @@ fn a_drawing_from_outside_cannot_point_a_note_at_another_file_or_bring_its_own_a
     register_moved_note_file(&path, &victim).unwrap();
     assert_eq!(note_file(&path, &scene.elements[0]), victim);
     let mut other = scene.elements[0].clone();
+
     other.note.file = Some("relativo.md".into());
     assert_ne!(note_file(&path, &other), PathBuf::from("relativo.md"));
     let _ = fs::remove_dir_all(dir);
@@ -581,13 +698,17 @@ fn a_drawing_from_outside_cannot_point_a_note_at_another_file_or_bring_its_own_a
 fn the_capital_c_cedilla_keeps_its_cedilla() {
     // the Assistant font drew Ç from an empty mark: "ESPAÇOS" painted as "ESPACOS"
     let ctx = Context::default();
+
     install_fonts(&ctx, false);
     let mut heights = [0.0; 2];
+
     let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
         for (index, letter) in ["C", "Ç"].into_iter().enumerate() {
             let galley = ui.painter().layout_no_wrap(letter.into(), FontId::proportional(12.0), Color32::WHITE);
+
             heights[index] = galley.rows[0].glyphs[0].uv_rect.size.y;
         }
     });
+
     assert!(heights[1] > heights[0] + 1.0, "the cedilla hangs under the C: {heights:?}");
 }
