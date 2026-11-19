@@ -582,7 +582,25 @@ pub(crate) fn app_tools() -> Vec<Value> {
     ];
 
     add_app_shortcuts(&mut tools);
+    add_chat_list_settings(&mut tools);
     tools
+}
+
+/// `set_setting` also sets how Conversas lists the chats (chat/list/display.rs, the list's Exibição button).
+fn add_chat_list_settings(tools: &mut [Value]) {
+    let Some(tool) = tools.iter_mut().find(|tool| tool["name"] == "set_setting") else { return };
+
+    if let Some(names) = tool["inputSchema"]["properties"]["name"]["enum"].as_array_mut() {
+        names.extend(["chat_list_density", "chat_list_group", "chat_list_order", "chat_list_agent"].map(|name| json!(name)));
+    }
+
+    let more = " Conversas, a lista da página Chats (o botão Exibição dela): chat_list_density (comfortable ou compact: compacta é uma linha por \
+                chat, sem a última mensagem), chat_list_group (on, off: agrupar por espaço), chat_list_order (created, recent ou name: a ordem de \
+                criação, a atividade mais recente primeiro ou o nome) e chat_list_agent (all, claude ou codex: só os chats desse agente).";
+
+    if let Some(description) = tool["description"].as_str().map(|text| format!("{text}{more}")) {
+        tool["description"] = json!(description);
+    }
 }
 
 /// `set_setting` also sets the app's own shortcuts (Ajustes › Atalhos), named from their table.

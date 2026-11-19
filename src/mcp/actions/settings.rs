@@ -126,6 +126,8 @@ impl DrawingApp {
             }
             ("chat_panel", "on" | "ligado") => self.prefs.chat_panel = true,
             ("chat_panel", "off" | "desligado") => self.prefs.chat_panel = false,
+            // Conversas' Exibição (chat/list/display.rs)
+            ("chat_list_density" | "chat_list_group" | "chat_list_order" | "chat_list_agent", _) => return self.prefs.chat_list.set(name, value),
             ("wsl", choice) => {
                 self.prefs.wsl = match choice.trim() {
                     "" | "auto" | "automático" | "automatico" => String::new(),

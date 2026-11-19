@@ -385,6 +385,11 @@ impl DrawingApp {
             self.set_team_open(&maestro, open);
         }
 
+        // Exibição, kept with the preferences
+        if let Some(display) = act.display.take() {
+            self.prefs.chat_list = display;
+        }
+
         if let Some(id) = act.rename.take()
             && let Some(row) = self.chat_rows().into_iter().find(|r| r.id == id)
         {

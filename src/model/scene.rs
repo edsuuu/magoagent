@@ -226,6 +226,8 @@ pub(crate) struct Prefs {
     /// The Maestros (chat or terminal ids) whose recruits show under them, in Conversas (chat/list/team.rs) and in
     /// Agentes deste espaço (ui/attention.rs); the others fold them to "N agentes", as they all start.
     pub(crate) teams_open: Vec<String>,
+    /// How Conversas lists the chats (chat/list/display.rs): density, groups, order and whose.
+    pub(crate) chat_list: crate::app::chat::list::display::ListPrefs,
     /// The right panel's width (app/panes/) as its edge was pulled; none: `PANE_WIDTH` (a double-click on the edge).
     pub(crate) pane_width: Option<f32>,
     /// Nota rápida's text (app/panes/quick_note.rs), as typed.
@@ -323,6 +325,7 @@ impl Default for Prefs {
             sidebar_agents_closed: false,
             sidebar_clear_hidden: false,
             teams_open: Vec::new(),
+            chat_list: Default::default(),
             pane_width: None,
             quick_note: String::new(),
             portal_size: Default::default(),
