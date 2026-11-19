@@ -1,9 +1,9 @@
-//! The Chats area off the canvas (chat/list/running.rs): everything running grouped by space, the chips and the search,
+//! The Chats area off the canvas (chat/list/running.rs): everything running in sections, the search,
 //! the answers on a row, Ver no canvas, and the title bar's badge and title.
 
 use super::*;
 use crate::app::chat::decide::PersonAsk;
-use crate::app::chat::list::{LIST, Show};
+use crate::app::chat::list::LIST;
 use crate::app::workspaces::Workspace;
 
 const SIZE: Vec2 = Vec2::new(1400.0, 900.0);
@@ -74,7 +74,7 @@ fn busy_app() -> (DrawingApp, std::sync::mpsc::Receiver<Result<String, String>>)
 }
 
 #[test]
-fn the_list_groups_everything_running_by_space_and_the_chips_and_the_search_filter_it() {
+fn the_list_groups_everything_running_by_space_in_sections_that_fold_and_the_search_filters_it() {
     let ctx = Context::default();
     let (mut app, _answer) = busy_app();
 
@@ -88,26 +88,19 @@ fn the_list_groups_everything_running_by_space_and_the_chips_and_the_search_filt
     let migrador = in_list(&texts, "Migrador").expect("Migrador's row");
 
     assert!(loja.top() < revisor.top() && revisor.top() < none.top() && none.top() < migrador.top(), "each under its space");
-    // each row's chip, and the session outside's last line is its prompt
-    assert!(in_list(&texts, "Pronto").is_some() && in_list(&texts, "arrume o rodapé").is_some(), "{texts:?}");
+    // a dot says each row's state, no word, and the session outside's last line is its prompt
+    assert!(in_list(&texts, "arrume o rodapé").is_some(), "{texts:?}");
+    assert!(["Pronto", "Esperando", "Trabalhando", "Todos"].iter().all(|word| in_list(&texts, word).is_none()), "no state words nor chips: {texts:?}");
     assert!(in_list(&texts, "Permissão: cargo test").is_some(), "what it waits on, under its name");
+    // a section folds under its name, and opens again
+    tap(&mut app, &ctx, loja.center());
+    let texts = settled(&mut app, &ctx);
 
-    // the chips over the list
-    for chip in ["Todos", "Trabalhando", "Esperando", "Prontos"] {
-        assert!(in_list(&texts, chip).is_some_and(|rect| rect.top() < loja.top()), "{chip}: {texts:?}");
-    }
-
-    let texts = tap(&mut app, &ctx, in_list(&texts, "Esperando").unwrap().center());
-
-    assert_eq!(app.chat_listing.show, Show::Waiting);
-
-    assert!(
-        in_list(&texts, "Revisor").is_some() && in_list(&texts, "Migrador").is_none() && in_list(&texts, "FORA DO APP").is_none(),
-        "only who waits: {texts:?}"
-    );
+    assert!(in_list(&texts, "LOJA").is_some() && in_list(&texts, "Revisor").is_none() && in_list(&texts, "Migrador").is_some(), "{texts:?}");
+    tap(&mut app, &ctx, in_list(&texts, "LOJA").unwrap().center());
+    assert!(in_list(&settled(&mut app, &ctx), "Revisor").is_some());
 
     // the search, over everything
-    app.chat_listing.show = Show::All;
     app.chat_listing.filter = "rodapé".into();
     let texts = shown(&mut app, &ctx, vec![]);
 
@@ -216,19 +209,18 @@ fn the_chat_button_shows_who_waits_and_the_title_what_runs() {
 }
 
 #[test]
-fn the_mcp_opens_the_area_on_a_chip_and_says_what_it_lists() {
+fn the_mcp_opens_the_area_and_says_what_it_lists() {
     let (mut app, _answer) = busy_app();
 
     app.chat_open = false;
-    let report = app.act("chats_view", &json!({ "filter": "waiting" })).unwrap();
+    let report = app.act("chats_view", &json!({})).unwrap();
 
-    assert!(app.chat_open && app.chat_listing.show == Show::Waiting);
-    assert!(report.starts_with("Chats · 2 rodando · 1 esperando (filtro: Esperando)"), "{report}");
-    assert!(report.contains("Loja:\n- Revisor — Esperando — Permissão: cargo test") && !report.contains("Migrador"), "{report}");
-    let report = app.act("chats_view", &json!({ "filter": "all", "query": "migra" })).unwrap();
+    assert!(app.chat_open);
+    assert!(report.starts_with("Chats · 2 rodando · 1 esperando"), "{report}");
+    assert!(report.contains("Loja:\n- Revisor — Esperando — Permissão: cargo test") && report.contains("Migrador"), "{report}");
+    let report = app.act("chats_view", &json!({ "query": "migra" })).unwrap();
 
-    assert!(report.contains("Sem espaço:\n- Migrador — Pronto") && !report.contains("Revisor"), "{report}");
-    assert!(app.act("chats_view", &json!({ "filter": "outro" })).is_err());
+    assert!(report.contains("(busca: migra)") && report.contains("Sem espaço:\n- Migrador — Pronto") && !report.contains("Revisor"), "{report}");
     app.act("chats_view", &json!({ "state": "close" })).unwrap();
     assert!(!app.chat_open);
 }
@@ -325,7 +317,7 @@ fn settled(app: &mut DrawingApp, ctx: &Context) -> Vec<(String, Rect)> {
 }
 
 #[test]
-fn a_maestros_recruits_fold_under_it_in_conversas_and_a_chip_shows_the_ones_it_finds() {
+fn a_maestros_recruits_fold_under_it_in_conversas_and_a_search_shows_the_ones_it_finds() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     let luna = luna_and_team(&mut app);
@@ -345,13 +337,13 @@ fn a_maestros_recruits_fold_under_it_in_conversas_and_a_chip_shows_the_ones_it_f
     let texts = settled(&mut app, &ctx);
 
     assert!(in_list(&texts, "Ana").is_none(), "folded back");
-    // a chip shows whom it keeps, with no fold in the way
-    app.chat_listing.show = Show::Working;
+    // a search shows whom it finds, with no fold in the way
+    app.chat_listing.filter = "ana".into();
     let texts = settled(&mut app, &ctx);
 
     assert!(in_list(&texts, "Ana").is_some() && in_list(&texts, "2 agentes").is_none(), "{texts:?}");
     // the MCP opens and folds them by Luna's name, and lists them under it
-    app.chat_listing.show = Show::All;
+    app.chat_listing.filter.clear();
     let said = app.act("chats_view", &json!({ "team": "Luna" })).unwrap();
 
     assert!(app.team_open(&luna) && said.starts_with("Agentes de Luna abertos (2 agentes · 1 trabalhando)."), "{said}");
@@ -437,12 +429,28 @@ fn exibicao_makes_the_list_compact_one_line_a_chat_from_its_menu() {
     let in_rows = |texts: &[(String, Rect)], words: &str| texts.iter().filter(|(text, rect)| text == words && rect.left() < LIST + 16.0).count();
     let gap = |texts: &[(String, Rect)]| in_list(texts, "Ana").unwrap().top() - in_list(texts, "Caio").unwrap().top();
 
-    assert_eq!((in_rows(&texts, "Nenhuma mensagem ainda"), in_rows(&texts, "Pronto")), (3, 3), "comfortable: two lines and a chip: {texts:?}");
+    assert_eq!((in_rows(&texts, "Nenhuma mensagem ainda"), in_rows(&texts, "Pronto")), (3, 0), "comfortable: two lines and a dot: {texts:?}");
     let comfortable = gap(&texts);
     let texts = tap(&mut app, &ctx, display_button(&texts));
 
-    for words in ["Densidade", "Confortável", "Compacta", "Agrupar por espaço", "Ordenar", "Criação", "Recentes", "Nome", "Agente", "Claude Code", "Codex"]
-    {
+    for words in [
+        "Densidade",
+        "Confortável",
+        "Compacta",
+        "Agrupar",
+        "Sem grupos",
+        "Por espaço",
+        "Por pasta",
+        "Por dia",
+        "Ordenar",
+        "Criação",
+        "Recentes",
+        "Nome",
+        "Agente",
+        "Claude Code",
+        "Codex",
+        "Mostrar a Luna",
+    ] {
         assert!(at(&texts, words).is_some(), "the menu's {words}: {texts:?}");
     }
 
@@ -450,14 +458,45 @@ fn exibicao_makes_the_list_compact_one_line_a_chat_from_its_menu() {
 
     assert!(app.prefs.chat_list.compact, "kept with the preferences");
     assert!(at(&texts, "Densidade").is_some(), "the menu stays open while the list changes behind it");
-    assert_eq!((in_rows(&texts, "Nenhuma mensagem ainda"), in_rows(&texts, "Pronto")), (0, 0), "one line a chat, a dot for the chip: {texts:?}");
+    assert_eq!(in_rows(&texts, "Nenhuma mensagem ainda"), 0, "one line a chat: {texts:?}");
     assert!(gap(&texts) < comfortable * 0.7, "the rows are shorter: {} against {comfortable}", gap(&texts));
-    // the space's name goes with Agrupar por espaço
+    // the space's name goes with Sem grupos
     assert!(in_list(&texts, "SEM ESPAÇO").is_some());
-    let texts = tap(&mut app, &ctx, at(&texts, "Agrupar por espaço").unwrap().center());
+    let texts = tap(&mut app, &ctx, at(&texts, "Sem grupos").unwrap().center());
 
-    assert!(!app.prefs.chat_list.by_space && in_list(&texts, "SEM ESPAÇO").is_none(), "{texts:?}");
+    assert!(!app.prefs.chat_list.grouped && in_list(&texts, "SEM ESPAÇO").is_none(), "{texts:?}");
     assert_eq!(rows(&texts, &["Caio", "Ana", "Bia"]), ["Caio", "Ana", "Bia"], "still all three, in the order they were made");
+    // without Luna the names start where her wizard was
+    let with_luna = in_list(&texts, "Caio").unwrap().left();
+    let texts = tap(&mut app, &ctx, at(&texts, "Mostrar a Luna").unwrap().center());
+
+    assert!(!app.prefs.chat_list.luna && in_list(&texts, "Caio").unwrap().left() < with_luna - 10.0, "{texts:?}");
+}
+
+#[test]
+fn exibicao_groups_the_list_by_folder_or_by_day() {
+    let ctx = Context::default();
+    let mut app = three_chats();
+
+    (app.chats[0].cwd, app.chats[1].cwd, app.chats[2].cwd) = ("/p/loja".into(), "/p/site".into(), "/p/loja".into());
+    app.act("set_setting", &json!({ "name": "chat_list_group", "value": "folder" })).unwrap();
+    shown(&mut app, &ctx, vec![]);
+    let texts = shown(&mut app, &ctx, vec![]);
+    let (loja, site) = (in_list(&texts, "LOJA").expect("loja's section"), in_list(&texts, "SITE").expect("site's section"));
+    let (caio, ana, bia) = (in_list(&texts, "Caio").unwrap(), in_list(&texts, "Ana").unwrap(), in_list(&texts, "Bia").unwrap());
+
+    assert!(loja.top() < caio.top() && bia.top() < site.top() && site.top() < ana.top(), "Caio and Bia under loja, Ana under site: {texts:?}");
+    // by day: all three ran today (`chat_ended`)
+    let said = app.act("set_setting", &json!({ "name": "chat_list_group", "value": "dia" })).unwrap();
+
+    assert!(said.contains("agrupada por dia"), "{said}");
+    let texts = shown(&mut app, &ctx, vec![]);
+
+    // (Ontem, run in the first minutes of a day)
+    assert!(
+        in_list(&texts, "HOJE").or_else(|| in_list(&texts, "ONTEM")).is_some_and(|today| today.top() < in_list(&texts, "Caio").unwrap().top()),
+        "{texts:?}"
+    );
 }
 
 #[test]
@@ -472,16 +511,13 @@ fn exibicao_orders_by_name_or_recency_and_shows_one_agents_chats() {
     assert_eq!(rows(&shown(&mut app, &ctx, vec![]), &names), ["Ana", "Bia", "Caio"]);
     app.act("set_setting", &json!({ "name": "chat_list_order", "value": "recent" })).unwrap();
     assert_eq!(rows(&shown(&mut app, &ctx, vec![]), &names), ["Bia", "Ana", "Caio"], "the newest first");
-    // only Codex's: the others go, and the chips count only what is left
+    // only Codex's: the others go
     let said = app.act("set_setting", &json!({ "name": "chat_list_agent", "value": "codex" })).unwrap();
 
     assert!(said.contains("só Codex"), "{said}");
     let texts = shown(&mut app, &ctx, vec![]);
 
     assert_eq!(rows(&texts, &names), ["Ana"], "{texts:?}");
-    let (all, working) = (in_list(&texts, "Todos").unwrap(), in_list(&texts, "Trabalhando").unwrap());
-
-    assert!(texts.iter().any(|(text, rect)| text == "1" && rect.left() > all.right() && rect.right() < working.left()), "Todos counts 1: {texts:?}");
     app.act("set_setting", &json!({ "name": "chat_list_agent", "value": "claude" })).unwrap();
     assert_eq!(rows(&shown(&mut app, &ctx, vec![]), &names), ["Bia", "Caio"]);
     app.prefs.chat_list.agent = crate::app::chat::list::display::AgentFilter::All;

@@ -1,7 +1,8 @@
 //! Conversas' Exibição, the button beside + and «: how the list shows the chats, kept with the preferences
 //! (`Prefs::chat_list`). Comfortable rows or compact ones (one line each: a smaller wizard, the name, a dot for the state
-//! and the time), grouped by space or in one list, in the order they were made, the most recent first or by name, and
-//! every agent or only Claude Code's or Codex's. The MCP's `set_setting` changes them too (`chat_list_*`).
+//! and the time), in sections by space, by folder or by day, or in one list, in the order they were made, the most recent
+//! first or by name, every agent or only Claude Code's or Codex's, and with Luna (the mini wizard) on each row or not. The
+//! MCP's `set_setting` changes them too (`chat_list_*`).
 
 use super::running::Entry;
 use super::{ACCENT, Look};
@@ -14,15 +15,59 @@ use crate::prelude::*;
 pub(crate) struct ListPrefs {
     /// One line a chat, without the last line under the name.
     pub(crate) compact: bool,
-    /// Under their space's name ("PRINCIPAL"); off, one list.
-    pub(crate) by_space: bool,
+    /// In sections by `group` ("PRINCIPAL", "MAGOAGENT", "HOJE"); off, one list. Earlier builds kept it as `by_space`.
+    #[serde(alias = "by_space")]
+    pub(crate) grouped: bool,
+    pub(crate) group: ListGroup,
     pub(crate) order: ListOrder,
     pub(crate) agent: AgentFilter,
+    /// Luna, the mini wizard at the left of each row; off, the name starts there.
+    pub(crate) luna: bool,
 }
 
 impl Default for ListPrefs {
     fn default() -> Self {
-        ListPrefs { compact: false, by_space: true, order: ListOrder::Made, agent: AgentFilter::All }
+        ListPrefs { compact: false, grouped: true, group: ListGroup::Space, order: ListOrder::Made, agent: AgentFilter::All, luna: true }
+    }
+}
+
+/// What the sections of the list are.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ListGroup {
+    #[default]
+    Space,
+    /// The folder each one works in.
+    Folder,
+    /// The day it last changed, the newest first.
+    Day,
+}
+
+impl ListGroup {
+    pub(crate) const ALL: [ListGroup; 3] = [ListGroup::Space, ListGroup::Folder, ListGroup::Day];
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            ListGroup::Space => "Espaço",
+            ListGroup::Folder => "Pasta",
+            ListGroup::Day => "Dia",
+        }
+    }
+
+    /// The MCP's name for it.
+    pub(crate) fn key(self) -> &'static str {
+        match self {
+            ListGroup::Space => "space",
+            ListGroup::Folder => "folder",
+            ListGroup::Day => "day",
+        }
+    }
+
+    /// By the MCP's name or the menu's.
+    pub(crate) fn named(name: &str) -> Option<ListGroup> {
+        let name = name.trim().to_lowercase();
+
+        ListGroup::ALL.into_iter().find(|group| group.key() == name || group.label().to_lowercase() == name || (name == "espaco" && *group == ListGroup::Space))
     }
 }
 
@@ -122,25 +167,30 @@ impl AgentFilter {
 }
 
 impl ListPrefs {
-    /// "compacta, agrupada por espaço, por nome, só Codex": the list as it shows now, for the MCP.
+    /// "compacta, agrupada por pasta, por nome, só Codex, sem a Luna": the list as it shows now, for the MCP.
     pub(crate) fn summary(&self) -> String {
         let density = if self.compact { "compacta" } else { "confortável" };
-        let grouped = if self.by_space { "agrupada por espaço" } else { "sem grupos" };
+        let grouped = if self.grouped { format!("agrupada por {}", self.group.label().to_lowercase()) } else { "sem grupos".into() };
         let order = format!("por {}", self.order.label().to_lowercase());
         let agent = if self.agent == AgentFilter::All { "todos os agentes".to_string() } else { format!("só {}", self.agent.label()) };
+        let luna = if self.luna { "" } else { ", sem a Luna" };
 
-        format!("{density}, {grouped}, {order}, {agent}")
+        format!("{density}, {grouped}, {order}, {agent}{luna}")
     }
 
-    /// The MCP's `set_setting` of `chat_list_density`, `chat_list_group`, `chat_list_order` and `chat_list_agent`.
+    /// The MCP's `set_setting` of `chat_list_density`, `chat_list_group`, `chat_list_order`, `chat_list_agent` and
+    /// `chat_list_luna`.
     pub(crate) fn set(&mut self, name: &str, value: &str) -> Result<String, String> {
         let unknown = || format!("ajuste desconhecido: {name} = {value}");
 
-        match (name, value.trim()) {
+        match (name, value.trim().to_lowercase().as_str()) {
             ("chat_list_density", "compact" | "compacta") => self.compact = true,
             ("chat_list_density", "comfortable" | "confortável" | "confortavel") => self.compact = false,
-            ("chat_list_group", "on" | "ligado") => self.by_space = true,
-            ("chat_list_group", "off" | "desligado") => self.by_space = false,
+            ("chat_list_group", "on" | "ligado") => self.grouped = true,
+            ("chat_list_group", "off" | "desligado" | "none" | "nenhum") => self.grouped = false,
+            ("chat_list_group", group) => (self.grouped, self.group) = (true, ListGroup::named(group).ok_or_else(unknown)?),
+            ("chat_list_luna", "on" | "ligado" | "mostrar") => self.luna = true,
+            ("chat_list_luna", "off" | "desligado" | "ocultar") => self.luna = false,
             ("chat_list_order", order) => self.order = ListOrder::named(order).ok_or_else(unknown)?,
             ("chat_list_agent", agent) => self.agent = AgentFilter::named(agent).ok_or_else(unknown)?,
             _ => return Err(unknown()),
@@ -178,7 +228,7 @@ pub(super) fn display_button(ui: &mut egui::Ui, rect: Rect, display: &mut ListPr
     *display != before
 }
 
-/// Densidade, Agrupar por espaço, Ordenar and Agente, each choice with the check on the current one.
+/// Densidade, Agrupar, Ordenar, Agente and Mostrar a Luna, each choice with the check on the current one.
 fn display_menu(ui: &mut egui::Ui, display: &mut ListPrefs) {
     ui.spacing_mut().item_spacing.y = 0.0;
     ui.set_min_width(MENU_MIN + 30.0);
@@ -192,8 +242,16 @@ fn display_menu(ui: &mut egui::Ui, display: &mut ListPrefs) {
 
     separator(ui);
 
-    if menu_choice(ui, display.by_space, "Agrupar por espaço", true) {
-        display.by_space = !display.by_space;
+    heading(ui, "Agrupar");
+
+    if menu_choice(ui, !display.grouped, "Sem grupos", true) {
+        display.grouped = false;
+    }
+
+    for group in ListGroup::ALL {
+        if menu_choice(ui, display.grouped && display.group == group, &format!("Por {}", group.label().to_lowercase()), true) {
+            (display.grouped, display.group) = (true, group);
+        }
     }
 
     separator(ui);
@@ -212,6 +270,12 @@ fn display_menu(ui: &mut egui::Ui, display: &mut ListPrefs) {
         if menu_choice(ui, display.agent == agent, agent.label(), true) {
             display.agent = agent;
         }
+    }
+
+    separator(ui);
+
+    if menu_choice(ui, display.luna, "Mostrar a Luna", true) {
+        display.luna = !display.luna;
     }
 }
 
@@ -252,10 +316,19 @@ mod tests {
         assert_eq!((display.order, ListOrder::named("recent"), ListOrder::named("criacao")), (ListOrder::Name, Some(ListOrder::Recent), Some(ListOrder::Made)));
         assert_eq!(AgentFilter::named("Claude Code"), Some(AgentFilter::Claude));
         assert!(display.set("chat_list_agent", "gemini").is_err() && display.set("chat_list_density", "grande").is_err());
+        display.set("chat_list_group", "pasta").unwrap();
+        let said = display.set("chat_list_luna", "off").unwrap();
+
+        assert_eq!(said, "Conversas agora: compacta, agrupada por pasta, por nome, só Codex, sem a Luna.");
+        assert!(display.set("chat_list_group", "dia").is_ok() && display.group == ListGroup::Day && display.set("chat_list_group", "mês").is_err());
         assert!(AgentFilter::Codex.keeps("Codex") && !AgentFilter::Codex.keeps("Claude Code") && AgentFilter::All.keeps("Cursor"));
         // an old preferences file, without them, lists as before
         let old: Prefs = serde_json::from_str("{}").unwrap();
 
         assert_eq!(old.chat_list, ListPrefs::default());
+        // one that turned the groups off before they had kinds keeps them off
+        let old: ListPrefs = serde_json::from_str(r#"{"by_space": false}"#).unwrap();
+
+        assert!(!old.grouped && old.luna);
     }
 }

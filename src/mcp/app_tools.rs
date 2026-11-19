@@ -283,10 +283,9 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "chats_view",
-            "description": "A área de Chats fora do canvas (o botão de chat da barra de título): tudo o que está rodando em todos os espaços (os chats do app, os terminais com Claude Code ou Codex e as sessões de fora do app), agrupado por espaço, com o estado (Trabalhando, Esperando, Pronto) e a última linha de cada um. `state` open (o padrão) abre a área e devolve a lista; close volta ao canvas. `filter` escolhe o chip: all (Todos), working (Trabalhando), waiting (Esperando) ou ready (Prontos); `query` busca nos nomes e nas últimas linhas (vazio limpa a busca). Os agentes que um Maestro (a Luna ou um terminal Maestro) recrutou ficam sob ele, recolhidos numa linha \"3 agentes\" que abre e fecha como um acordeão (fica salvo; vale também para a lateral): `team` com o nome do Maestro (ou all) os abre, e com `team_open` false os recolhe.",
+            "description": "A área de Chats fora do canvas (o botão de chat da barra de título): tudo o que está rodando em todos os espaços (os chats do app, os terminais com Claude Code ou Codex e as sessões de fora do app), agrupado por espaço, com o estado (Trabalhando, Esperando, Pronto; na tela, uma bolinha azul, âmbar ou verde) e a última linha de cada um. `state` open (o padrão) abre a área e devolve a lista; close volta ao canvas. `query` busca nos nomes e nas últimas linhas (vazio limpa a busca). Os agentes que um Maestro (a Luna ou um terminal Maestro) recrutou ficam sob ele, recolhidos numa linha \"3 agentes\" que abre e fecha como um acordeão (fica salvo; vale também para a lateral): `team` com o nome do Maestro (ou all) os abre, e com `team_open` false os recolhe.",
             "inputSchema": { "type": "object", "properties": {
                 "state": { "type": "string", "enum": ["open", "close"] },
-                "filter": { "type": "string", "enum": ["all", "working", "waiting", "ready"] },
                 "query": { "type": "string" },
                 "team": name("o Maestro cujos agentes recrutados abrir ou recolher sob ele: o nome dele na lista, ou all para todos"),
                 "team_open": { "type": "boolean", "description": "false recolhe os agentes do `team`; padrão true (abre)" },
@@ -612,12 +611,14 @@ fn add_chat_list_settings(tools: &mut [Value]) {
     let Some(tool) = tools.iter_mut().find(|tool| tool["name"] == "set_setting") else { return };
 
     if let Some(names) = tool["inputSchema"]["properties"]["name"]["enum"].as_array_mut() {
-        names.extend(["chat_list_density", "chat_list_group", "chat_list_order", "chat_list_agent"].map(|name| json!(name)));
+        names.extend(["chat_list_density", "chat_list_group", "chat_list_order", "chat_list_agent", "chat_list_luna"].map(|name| json!(name)));
     }
 
     let more = " Conversas, a lista da página Chats (o botão Exibição dela): chat_list_density (comfortable ou compact: compacta é uma linha por \
-                chat, sem a última mensagem), chat_list_group (on, off: agrupar por espaço), chat_list_order (created, recent ou name: a ordem de \
-                criação, a atividade mais recente primeiro ou o nome) e chat_list_agent (all, claude ou codex: só os chats desse agente).";
+                chat, sem a última mensagem), chat_list_group (space, folder ou day: seções recolhíveis por espaço, por pasta de trabalho ou \
+                por dia; off: uma lista só; on: volta a agrupar), chat_list_order (created, recent ou name: a ordem de criação, a atividade mais \
+                recente primeiro ou o nome), chat_list_agent (all, claude ou codex: só os chats desse agente) e chat_list_luna (on, off: a Luna, \
+                o mini mago à esquerda de cada linha).";
 
     if let Some(description) = tool["description"].as_str().map(|text| format!("{text}{more}")) {
         tool["description"] = json!(description);
