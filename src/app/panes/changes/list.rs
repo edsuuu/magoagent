@@ -1,13 +1,14 @@
 //! The list of Alterações: a field that looks for a file by its name or for a stretch of code in its changes (the
-//! lines added and removed, read with the counts), then the files of each folder in a box six rows tall that scrolls
-//! for the rest. A file found by its code shows the line that has it.
+//! lines added and removed, read with the counts), then the files of each repository by the folder they are in, in a
+//! box six rows tall that scrolls for the rest; a repository and a folder fold under their header, which counts their
+//! files. A file found by its code shows the line that has it.
 
 use super::{ChangeGroup, Changed, key};
 use crate::editor::{Status, icons};
 use crate::prelude::*;
 use std::path::Path;
 
-/// A file's row, the room between rows, and a folder's header.
+/// A file's row, the room between rows, and a repository's or a folder's header.
 const ROW: f32 = 26.0;
 const ROW_GAP: f32 = 2.0;
 const HEADER: f32 = 20.0;
@@ -80,8 +81,33 @@ pub(crate) fn parse_changed_lines(root: &Path, out: &str) -> Changed {
     changed
 }
 
+/// `files` by the folder each is in under `root` (its path with `/`, "" for the root's own), the folders by name and
+/// the files in the order they came.
+pub(crate) fn by_folder<T>(root: &Path, files: impl IntoIterator<Item = T>, path: impl Fn(&T) -> &Path) -> Vec<(String, Vec<T>)> {
+    let mut folders: Vec<(String, Vec<T>)> = Vec::new();
+
+    for file in files {
+        let folder = path(&file).strip_prefix(root).ok().and_then(Path::parent).map_or(String::new(), |parent| parent.to_string_lossy().replace('\\', "/"));
+
+        match folders.iter_mut().find(|(name, _)| *name == folder) {
+            Some((_, list)) => list.push(file),
+            None => folders.push((folder, vec![file])),
+        }
+    }
+
+    folders.sort_by_key(|(name, _)| name.to_lowercase());
+    folders
+}
+
+/// A repository's section in `collapsed` (a folder's is its `key`, which the root's own would share).
+pub(crate) fn group_key(root: &Path) -> String {
+    format!("repo:{}", key(root))
+}
+
 /// A file of the list: its path, its git mark and why the search kept it.
 type Shown<'a> = (&'a PathBuf, Status, FileMatch);
+/// How far a folder's header and its files sit in from the repository's.
+const INDENT: f32 = 12.0;
 
 impl DrawingApp {
     /// The search field and the files that answer it, a folder at a time, in a box `LIST_ROWS` tall; gives the one
@@ -124,31 +150,86 @@ impl DrawingApp {
             ui.label(egui::RichText::new(said).size(11.0).color(colors.muted));
         }
 
-        let mut pressed = None;
-        let tallest = LIST_ROWS as f32 * (ROW + ROW_GAP) + HEADER;
+        let (mut pressed, mut folded) = (None, None);
+        // the rows under a repository's header and its first folder's
+        let tallest = LIST_ROWS as f32 * (ROW + ROW_GAP) + 2.0 * (HEADER + ROW_GAP);
+        // a search shows every file it found, folded or not
+        let open = |section: &String| !query.trim().is_empty() || !self.panes.changes.collapsed.contains(section);
 
         egui::ScrollArea::vertical().id_salt("changes_files").max_height(tallest).auto_shrink([false, true]).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = ROW_GAP;
 
             for (group, files) in &shown {
-                let (header, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), HEADER), Sense::hover());
-                let room = header.shrink2(Vec2::new(2.0, 0.0));
+                let section = group_key(&group.root);
 
-                ui.painter().with_clip_rect(room).text(room.left_center(), egui::Align2::LEFT_CENTER, &group.title, FontId::proportional(12.0), colors.muted);
+                if self.change_header(ui, &group.title, files.len(), open(&section), 0.0) {
+                    folded = Some(section.clone());
+                }
 
-                for (path, status, found) in files {
-                    if self.change_row(ui, group, path, *status, found) {
-                        pressed = Some((group.tree.clone(), (*path).clone()));
+                if !open(&section) {
+                    continue;
+                }
+
+                for (folder, files) in by_folder(&group.root, files, |(path, ..)| path.as_path()) {
+                    let section = key(&group.root.join(&folder));
+                    let name = if folder.is_empty() { "(raiz)" } else { folder.as_str() };
+
+                    if self.change_header(ui, name, files.len(), open(&section), INDENT) {
+                        folded = Some(section.clone());
+                    }
+
+                    for (path, status, found) in files.into_iter().filter(|_| open(&section)) {
+                        if self.change_row(ui, group, path, *status, found) {
+                            pressed = Some((group.tree.clone(), (*path).clone()));
+                        }
                     }
                 }
             }
         });
 
+        if let Some(section) = folded.filter(|_| super::live(ui)) {
+            let collapsed = &mut self.panes.changes.collapsed;
+
+            if !collapsed.remove(&section) {
+                collapsed.insert(section);
+            }
+        }
+
         pressed
     }
 
-    /// A file's row: its icon, its path in the folder in its git color, its counts; under it, the line its code was
-    /// found in. True when pressed.
+    /// A section's header: the fold's arrow, its name and how many files it has, `indent` in. True when pressed.
+    fn change_header(&self, ui: &mut egui::Ui, title: &str, count: usize, open: bool, indent: f32) -> bool {
+        let colors = self.colors();
+        let (header, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), HEADER), Sense::click());
+        let p = ui.painter();
+
+        if response.hovered() {
+            p.rect_filled(header, 5, glass_ink(self.dark()).gamma_multiply(0.05));
+        }
+
+        // the arrow: right when folded, down when open
+        let center = Pos2::new(header.left() + indent + 7.0, header.center().y);
+        let points = if open {
+            [Vec2::new(-4.0, -2.0), Vec2::new(4.0, -2.0), Vec2::new(0.0, 3.0)]
+        } else {
+            [Vec2::new(-2.0, -4.0), Vec2::new(-2.0, 4.0), Vec2::new(3.0, 0.0)]
+        };
+
+        p.add(egui::Shape::convex_polygon(points.iter().map(|point| center + *point).collect(), colors.muted, Stroke::NONE));
+        let font = FontId::proportional(12.0);
+        let counted = p.text(Pos2::new(header.right() - 8.0, header.center().y), egui::Align2::RIGHT_CENTER, count.to_string(), font.clone(), colors.muted);
+        let room = Rect::from_min_max(Pos2::new(center.x + 9.0, header.top()), Pos2::new(counted.left() - 8.0, header.bottom()));
+
+        p.with_clip_rect(room).text(room.left_center(), egui::Align2::LEFT_CENTER, title, font, colors.muted);
+        let response = response.on_hover_cursor(CursorIcon::PointingHand);
+
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::DisclosureTriangle, true, format!("{title} ({count})")));
+        response.clicked()
+    }
+
+    /// A file's row, in from its folder's header: its icon, its name in its git color, its counts; under it, the line
+    /// its code was found in. True when pressed.
     fn change_row(&self, ui: &mut egui::Ui, group: &ChangeGroup, path: &Path, status: Status, found: &FileMatch) -> bool {
         let (colors, dark) = (self.colors(), self.dark());
 
@@ -160,7 +241,8 @@ impl DrawingApp {
         let height = if code.is_some() { ROW + 14.0 } else { ROW };
         let selected = self.panes.changes.selected.as_ref().is_some_and(|(_, p)| p == path);
         let (row, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
-        let line = Rect::from_min_size(row.min, Vec2::new(row.width(), ROW));
+        // in from its folder's header
+        let line = Rect::from_min_max(Pos2::new(row.left() + INDENT, row.top()), Pos2::new(row.right(), row.top() + ROW));
         let p = ui.painter();
 
         if selected || response.hovered() {
@@ -187,10 +269,12 @@ impl DrawingApp {
         }
 
         let name = path.strip_prefix(&group.root).unwrap_or(path).to_string_lossy().replace('\\', "/");
+        // its folder is the header's: the name alone
+        let file = path.file_name().map_or(name.clone(), |file| file.to_string_lossy().into_owned());
         let room = Rect::from_min_max(Pos2::new(line.left() + 28.0, line.top()), Pos2::new(end - 8.0, line.bottom()));
         let color = crate::app::filetree::ui::status_color(status, dark);
 
-        p.with_clip_rect(room).text(room.left_center(), egui::Align2::LEFT_CENTER, &name, font, color);
+        p.with_clip_rect(room).text(room.left_center(), egui::Align2::LEFT_CENTER, &file, font, color);
 
         if let Some(code) = code {
             let room = Rect::from_min_max(Pos2::new(line.left() + 28.0, line.bottom() - 4.0), Pos2::new(row.right() - 8.0, row.bottom()));
@@ -220,6 +304,18 @@ mod tests {
         assert_eq!(file_match("src/main.rs", Some(&lines), "Velha"), Some(FileMatch::Code("fn velha() {}".into())), "a removed line too");
         assert_eq!(file_match("src/main.rs", Some(&lines), "nada"), None);
         assert_eq!(file_match("src/main.rs", None, "soma"), None, "lines not read yet: by the name only");
+    }
+
+    #[test]
+    fn the_files_go_by_their_folder_with_the_roots_own_first() {
+        let root = Path::new("/repo");
+        let files = ["/repo/src/a.rs", "/repo/src/a/x.rs", "/repo/src/ab.rs", "/repo/README.md", "/repo/Docs/b.md"].map(PathBuf::from);
+        let folders = by_folder(root, &files, |path| path.as_path());
+        let names = |list: &Vec<&PathBuf>| list.iter().map(|path| path.file_name().unwrap().to_string_lossy().into_owned()).collect::<Vec<_>>();
+
+        assert_eq!(folders.iter().map(|(folder, _)| folder.as_str()).collect::<Vec<_>>(), ["", "Docs", "src", "src/a"], "by name, any case");
+        assert_eq!(names(&folders[2].1), ["a.rs", "ab.rs"], "a folder's files together, in the order they came");
+        assert_eq!(names(&folders[0].1), ["README.md"]);
     }
 
     #[test]

@@ -501,12 +501,12 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "doubts",
-            "description": "A tela Dúvidas: as perguntas que você deixa para a pessoa enquanto trabalha, sem parar (para uma pergunta que trava o trabalho, use ask_person). add acrescenta `questions` (textos, ou {question, options} com respostas sugeridas) e abre o painel, no canvas e no modo chat; a pessoa responde lá e as respostas chegam a você numa mensagem, só as respondidas ou todas (as sem resposta ficam para você decidir). list mostra as suas com o que já foi respondido; remove tira as que não precisa mais (ids, ou todas). answer (id, answer) e send (agent, all) são o que a pessoa faz no painel. Quando a pessoa pedir um .md de dúvidas, use esta tela.",
+            "description": "A tela Dúvidas: as perguntas que você deixa para a pessoa enquanto trabalha, sem parar (para uma pergunta que trava o trabalho, use ask_person). add acrescenta `questions` (textos, ou {question, options, recommendation}: as respostas sugeridas viram botões; a sua recomendação vai em recommendation, não na pergunta nem nas opções, e aparece à parte) e abre o painel, no canvas e no modo chat; a pessoa responde lá e as respostas chegam a você numa mensagem, só as respondidas ou todas (as sem resposta ficam para você decidir). list mostra as suas com o que já foi respondido; remove tira as que não precisa mais (ids, ou todas). answer (id, answer) e send (agent, all) são o que a pessoa faz no painel. Quando a pessoa pedir um .md de dúvidas, use esta tela.",
             "inputSchema": { "type": "object", "properties": {
                 "action": { "type": "string", "enum": ["add", "list", "answer", "send", "remove"] },
                 "questions": { "type": "array", "items": { "anyOf": [
                     { "type": "string" },
-                    { "type": "object", "properties": { "question": { "type": "string" }, "options": { "type": "array", "items": { "type": "string" } } }, "required": ["question"] },
+                    { "type": "object", "properties": { "question": { "type": "string" }, "options": { "type": "array", "items": { "type": "string" } }, "recommendation": { "type": "string", "description": "o que você escolheria e por quê" } }, "required": ["question"] },
                 ] }, "description": "add: as perguntas" },
                 "ids": { "type": "array", "items": { "type": "integer" }, "description": "remove: quais (vazio: todas as suas)" },
                 "id": { "type": "integer", "description": "answer: a dúvida respondida" },
