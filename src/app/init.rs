@@ -99,6 +99,8 @@ impl Default for DrawingApp {
             caption_hooked: false,
             chat_popup: false,
             caption_press: None,
+            caption_held: None,
+            caption_map: Default::default(),
             title_buttons: Rect::NOTHING,
             space_filter: String::new(),
             sidebar_slide: (0.0, 0.0, -1.0),

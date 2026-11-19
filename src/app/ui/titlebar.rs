@@ -260,6 +260,59 @@ impl DrawingApp {
 
             native_caption::set(&bare, ctx.pixels_per_point());
         }
+
+        self.caption_map = CaptionMap::read(ctx);
+    }
+}
+
+/// How far the pointer goes with the button held on the bar before the window moves: a press alone is half of a
+/// double-click.
+const DRAG_SLOP: f32 = 4.0;
+
+/// The title bar as the main window's frame left it: each of its two areas with the areas over it. The press is read on
+/// the raw input, before the frame, when egui's `layer_id_at` looks at the areas of whichever window it drew last: the
+/// island's, when it was, and a press on the bar then went to the canvas.
+#[derive(Default)]
+pub(crate) struct CaptionMap {
+    bars: Vec<(Rect, Vec<Rect>)>,
+}
+
+impl CaptionMap {
+    pub(crate) fn read(ctx: &Context) -> Self {
+        let bar = [egui::Id::unique("title_bar"), egui::Id::unique("title_bar_right")];
+
+        let layers: Vec<(egui::LayerId, Option<Rect>, bool)> =
+            ctx.memory(|memory| memory.layer_ids().map(|layer| (layer, memory.area_rect(layer.id), memory.areas().is_visible(&layer))).collect());
+
+        // back to front, as egui stacks them; tooltips let the pointer through
+        let shown: Vec<(egui::LayerId, Rect)> = layers
+            .into_iter()
+            .filter(|(layer, _, visible)| *visible && layer.order != egui::Order::Tooltip)
+            .filter_map(|(layer, rect, _)| {
+                let rect = rect?;
+
+                Some((layer, ctx.layer_transform_to_global(layer).map_or(rect, |to_global| to_global * rect)))
+            })
+            .collect();
+
+        let bars = shown
+            .iter()
+            .enumerate()
+            .filter(|(_, (layer, _))| bar.contains(&layer.id))
+            .map(|(index, (_, rect))| {
+                // Ajustes' veil and the like cover the bar and let its presses through
+                let over = shown[index + 1..].iter().filter(|(layer, over)| !bar.contains(&layer.id) && !covers_the_bar(layer.id) && over.intersects(*rect));
+
+                (*rect, over.map(|(_, over)| *over).collect())
+            })
+            .collect();
+
+        Self { bars }
+    }
+
+    /// On one of the bar's areas, with nothing over it there.
+    fn on_bar(&self, pos: Pos2) -> bool {
+        self.bars.iter().any(|(bar, over)| bar.contains(pos) && !over.iter().any(|rect| rect.contains(pos)))
     }
 }
 
@@ -279,10 +332,13 @@ pub(crate) fn raise_window_buttons(ctx: &Context, cover: egui::LayerId) {
 }
 
 impl DrawingApp {
-    /// A press on an empty stretch of the bar moves the window right away, as a native title bar
-    /// does, and a second one soon after maximizes (or restores). Runs on the raw input like
+    /// A press on an empty stretch of the bar and the pointer going on with the button held move the
+    /// window, and a second press soon after maximizes (or restores). Runs on the raw input like
     /// `edge_resize`: waiting for egui to see a drag, the move came too late while the first
-    /// frames are slow (pages and shells starting) and never started. With Ajustes open its veil
+    /// frames are slow (pages and shells starting) and never started. The move waits for the
+    /// pointer to go `DRAG_SLOP`: started at the press, the window manager took the button and
+    /// the second press of a double-click never came back (or, the button already up when the
+    /// frame got to it, the window went on following the pointer). With Ajustes open its veil
     /// covers the bar: the bar's stretches under it still move the window (the veil never sees
     /// that press, so Ajustes stays open).
     pub(crate) fn caption_drag(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
@@ -291,42 +347,55 @@ impl DrawingApp {
         let (buttons, panes) = (self.title_buttons, self.panes.buttons);
         // the welcome covers the whole bar: all of its top moves the window, but the window's own buttons
         let welcome = self.welcome.is_some();
+        let map = &self.caption_map;
 
         let empty = |pos: Pos2| {
             if welcome {
                 return pos.y < TITLE_BAR && pos.x < screen.right() - CAPTIONS;
             }
 
-            let bar = [egui::Id::unique("title_bar"), egui::Id::unique("title_bar_right")];
-
-            let on_bar = match ctx.layer_id_at(pos) {
-                Some(layer) if bar.contains(&layer.id) => true,
-                Some(layer) if covers_the_bar(layer.id) => {
-                    bar.iter().any(|id| ctx.memory(|memory| memory.area_rect(*id)).is_some_and(|rect| rect.contains(pos)))
-                }
-                _ => false,
-            };
-
             pos.y < TITLE_BAR
-                && on_bar
+                && map.on_bar(pos)
                 && !buttons.contains(pos)
                 && !panes.is_some_and(|rect| rect.expand(4.0).contains(pos))
                 && pos.x < screen.right() - CAPTIONS
         };
 
-        raw.events.retain(|e| {
-            let egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, .. } = e else { return true };
+        let (mut press, mut held) = (self.caption_press, self.caption_held);
 
-            if !empty(*pos) {
-                return true;
+        raw.events.retain(|event| match event {
+            egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, .. } if empty(*pos) => {
+                let again = press.is_some_and(|(at, from)| time - at < 0.5 && from.distance(*pos) < 6.0);
+
+                if again {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+                }
+
+                (press, held) = if again { (None, None) } else { (Some((time, *pos)), Some((*pos, *pos))) };
+                false
             }
-
-            let again = self.caption_press.is_some_and(|(t, p)| time - t < 0.5 && p.distance(*pos) < 6.0);
-
-            self.caption_press = if again { None } else { Some((time, *pos)) };
-            ctx.send_viewport_cmd(if again { egui::ViewportCommand::Maximized(!maximized) } else { egui::ViewportCommand::StartDrag });
-            false
+            egui::Event::PointerButton { button: egui::PointerButton::Primary, pressed: false, .. } | egui::Event::PointerGone => {
+                held = None;
+                true
+            }
+            egui::Event::PointerMoved(pos) => {
+                held = held.map(|(from, _)| (from, *pos));
+                true
+            }
+            _ => true,
         });
+
+        // the button still down after this frame's events, and the window focused (unfocused, egui leaves the move
+        // out): a move is no half of a double-click
+        if let Some((from, now)) = held
+            && from.distance(now) >= DRAG_SLOP
+            && raw.focused
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            (press, held) = (None, None);
+        }
+
+        (self.caption_press, self.caption_held) = (press, held);
     }
 }
 
