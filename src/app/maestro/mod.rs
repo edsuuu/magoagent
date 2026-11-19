@@ -60,7 +60,7 @@ impl DrawingApp {
     /// The same, around `around` (the window that opens it) when `want` is taken: a team of recruits, the terminals and
     /// the pages an agent opens stay around it instead of piling up on one side.
     pub(crate) fn free_spot_near(&self, want: Rect, around: Rect) -> Rect {
-        free_spot_among(self.scene.elements.iter(), want, around)
+        free_spot_among(self.scene.elements.iter().filter(|e| !e.docked()), want, around)
     }
 
     /// `recruit`: a terminal the caller's size and folder, below it, running `command`, with an agent's name.
@@ -237,9 +237,10 @@ impl DrawingApp {
         let _ = reply.send(Ok(format!("Navegador \"{name}\" aberto {} e conectado.", side_of(at, b))));
     }
 
-    /// The MCP's `create_terminal`: a terminal an agent opens to run what it watches (tests, an API), to its right and
-    /// roped to it (`asker`, the terminal or chat that asked: the bridge says which), in its folder unless `cwd` says
-    /// otherwise, running `command` as if typed. No agent to hang it from, no terminal: it would be loose on the canvas.
+    /// The MCP's `create_terminal`: a terminal an agent opens to run what it watches (tests, an API), roped to it
+    /// (`asker`, the terminal or chat that asked: the bridge says which), in its folder unless `cwd` says otherwise,
+    /// running `command` as if typed. It goes to the Comandos panel (panes/commands.rs), off the canvas; with `canvas`,
+    /// a card to the agent's right. No agent to hang it from, no terminal: it would be loose on the canvas.
     pub(crate) fn act_create_terminal(&mut self, args: &Value) -> Result<String, String> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
         let asker = text("asker");
@@ -264,7 +265,9 @@ impl DrawingApp {
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
 
         terminal.style = node_style(terminal.style);
-        terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command: command.clone(), maestro: false, ..Default::default() });
+        let docked = args["canvas"] != true;
+
+        terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command: command.clone(), maestro: false, docked, ..Default::default() });
         let id = terminal.id.clone();
 
         // one Cmd+Z takes back the terminal and its rope together
@@ -273,6 +276,13 @@ impl DrawingApp {
         self.hang_from(&asker, std::slice::from_ref(&id));
         self.publish_nodes();
         let running = if command.is_empty() { String::new() } else { format!(", rodando `{command}`") };
+
+        if docked {
+            self.panes.commands.open.insert(id);
+            self.toast(format!("{} abriu \"{name}\" em Comandos", self.speaker(&asker)));
+        }
+
+        let side = if docked { "no painel Comandos (fora do canvas; a pessoa pode levá-lo ao canvas)" } else { side };
 
         Ok(format!(
             "Terminal \"{name}\" aberto {side}{running} e ligado a você por corda: leia a tela com read_terminal \"{name}\" (ou `magoagent check \"{name}\"`), \

@@ -6,6 +6,7 @@
 //! back the 340. X, Esc or the same button close it; the MCP's `panel` opens, closes and widens them for the Maestro.
 
 pub(crate) mod changes;
+pub(crate) mod commands;
 mod doubts;
 mod quick_note;
 
@@ -27,12 +28,15 @@ pub(crate) enum Pane {
     QuickNote,
     /// The agents' questions (app/doubts/): also over the chat.
     Doubts,
+    /// The terminals that run commands, off the canvas (commands.rs).
+    Commands,
 }
 
 /// Each panel: its id (MCP), its name (screen) and its button's icon, in the buttons' order. Dúvidas is the last: over
 /// the chat it is the only one, at the right end of the bar.
-pub(crate) const PANES: [(Pane, &str, &str, Icon); 3] = [
+pub(crate) const PANES: [(Pane, &str, &str, Icon); 4] = [
     (Pane::Changes, "changes", "Alterações", Icon::Diff),
+    (Pane::Commands, "commands", "Comandos", Icon::Tool(Tool::Terminal)),
     (Pane::QuickNote, "note", "Nota rápida", Icon::Tool(Tool::Sticky)),
     (Pane::Doubts, "doubts", "Dúvidas", Icon::Question),
 ];
@@ -57,6 +61,7 @@ pub(crate) struct Panes {
     /// Where the title bar's buttons are (none while hidden): the caption leaves them alone.
     pub(crate) buttons: Option<Rect>,
     pub(crate) changes: changes::ChangesPane,
+    pub(crate) commands: commands::CommandsPane,
     /// Nota rápida just opened: its text takes the keys.
     pub(crate) focus_note: bool,
     /// The width while the edge is pulled: the prefs take it when it is let go (not at every frame of the pull).
@@ -116,6 +121,7 @@ impl DrawingApp {
         let counts = PANES.map(|(pane, ..)| match pane {
             Pane::Changes => self.changed_file_count(),
             Pane::Doubts => self.doubts.unanswered(),
+            Pane::Commands => self.docked_ids().len(),
             Pane::QuickNote => 0,
         });
 
@@ -230,7 +236,7 @@ impl DrawingApp {
             let bar = match pane {
                 Pane::Changes => self.comment_bar_height(),
                 Pane::QuickNote => 48.0,
-                Pane::Doubts => 0.0,
+                Pane::Doubts | Pane::Commands => 0.0,
             };
 
             let body = Rect::from_min_max(Pos2::new(rect.left() + 12.0, head.bottom() + 12.0), rect.max - Vec2::new(12.0, bar));
@@ -243,7 +249,7 @@ impl DrawingApp {
                 ui.scope_builder(egui::UiBuilder::new().max_rect(strip.shrink2(Vec2::new(12.0, 8.0))), |ui| match pane {
                     Pane::Changes => self.review_comment_bar(ui),
                     Pane::QuickNote => self.quick_note_bar(ui),
-                    Pane::Doubts => {}
+                    Pane::Doubts | Pane::Commands => {}
                 });
             }
 
@@ -255,6 +261,7 @@ impl DrawingApp {
                         Pane::Changes => self.changes_pane(ui),
                         Pane::QuickNote => self.quick_note_pane(ui, body.height() - 12.0),
                         Pane::Doubts => self.doubts_pane(ui),
+                        Pane::Commands => self.commands_pane(ui),
                     }
 
                     ui.add_space(12.0);
@@ -263,7 +270,7 @@ impl DrawingApp {
         });
     }
 
-    /// The MCP's `panel`: opens `name` (changes, note, doubts), closes it with `open`
+    /// The MCP's `panel`: opens `name` (changes, commands, note, doubts), closes it with `open`
     /// false, toggles it with no `open`; no name with `open` false closes whichever is open. `width` pulls the
     /// panel's edge (0: back to the default); `worktree` shows Alterações on that worktree ("todos": all the trees).
     pub(crate) fn act_panel(&mut self, args: &Value) -> Result<String, String> {
@@ -303,11 +310,11 @@ impl DrawingApp {
                 return Ok("Painel fechado.".into());
             }
 
-            return Err("Diga qual painel (name): changes, note ou doubts.".into());
+            return Err("Diga qual painel (name): changes, commands, note ou doubts.".into());
         }
 
         let pane = PANES.iter().find(|p| p.1 == name || p.2.to_lowercase() == name).map(|p| p.0);
-        let pane = pane.ok_or_else(|| format!("Painel desconhecido: {name}. Use changes, note ou doubts."))?;
+        let pane = pane.ok_or_else(|| format!("Painel desconhecido: {name}. Use changes, commands, note ou doubts."))?;
         let wanted = open.unwrap_or(self.panes.open != Some(pane));
 
         if wanted {

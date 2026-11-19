@@ -112,7 +112,7 @@ impl DrawingApp {
             _ => &[],
         };
 
-        for element in self.scene.elements.iter().filter(|element| element.rope) {
+        for element in self.scene.elements.iter().filter(|element| element.rope && !hidden_page(&self.scene.elements, element)) {
             let end = |binding: &Option<Binding>| binding.as_ref().map(|binding| binding.element_id.clone()).unwrap_or_default();
             let (start_id, end_id) = (end(&element.ends.start), end(&element.ends.end));
             let lit = asking.iter().any(|(x, y)| (*x == start_id && *y == end_id) || (*x == end_id && *y == start_id));

@@ -80,14 +80,18 @@ impl DrawingApp {
             .scene
             .elements
             .iter()
-            .filter(|e| e.terminal.is_some() && self.terminal_frame(e).0.intersects(shown))
+            .filter(|e| e.terminal.is_some() && !e.docked() && self.terminal_frame(e).0.intersects(shown))
             .map(|e| e.id.clone())
             .chain(self.chat_agent.clone().filter(|_| self.chat_open))
+            // and the ones in Comandos whose row is open (panes/commands.rs)
+            .chain(self.docked_shown())
             .collect();
 
         for (id, spec, size) in &live {
             let (theme, font, shell) = self.prefs.terminal.resolve(&spec.look);
-            let (look, shell, grid) = (Look::of(theme, self.dark()), shell.to_string(), grid_size_at(*size, font));
+            // in Comandos, the panel's width (panes/commands.rs)
+            let grid = if spec.docked { crate::app::panes::commands::docked_grid(self.panel_width(), font) } else { grid_size_at(*size, font) };
+            let (look, shell) = (Look::of(theme, self.dark()), shell.to_string());
 
             match self.terminals.get_mut(id) {
                 Some(Ok(session)) => {

@@ -10,6 +10,7 @@ mod chat_images;
 mod chat_node;
 mod chat_queue;
 mod chats_view;
+mod commands;
 mod conflicts;
 mod dialogs;
 mod doubts;

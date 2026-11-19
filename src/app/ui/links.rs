@@ -180,6 +180,10 @@ impl DrawingApp {
     pub(crate) fn focus_node(&mut self, id: &str) {
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return };
 
+        if self.show_docked(id) {
+            return;
+        }
+
         if self.scene.elements[i].terminal.is_some() {
             self.focus_terminal(i);
         } else {
