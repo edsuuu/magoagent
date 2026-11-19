@@ -2,7 +2,7 @@
 
 <!-- gerado por docs/mcp.py a partir do tools/list do app: não edite à mão -->
 
-O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.35) e tem **109 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
+O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.35) e tem **110 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
 
 ## Ligar
 
@@ -133,11 +133,11 @@ A lateral dos espaços, como a pessoa a usa: `next` vai ao próximo agente que p
 
 ### `panel`
 
-O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão) ou note (Nota rápida: texto simples da pessoa; o texto em si fica na ferramenta quick_note), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.
+O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão) ou note (Nota rápida: texto simples da pessoa; o texto em si fica na ferramenta quick_note), ao lado do canvas, ou doubts (Dúvidas: as perguntas dos agentes, também por cima do modo chat; as perguntas em si ficam na ferramenta doubts). As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `name` | string: `changes`, `note` |  |
+| `name` | string: `changes`, `note`, `doubts` |  |
 | `open` | boolean |  |
 | `width` | number | a largura do painel em pixels (de 300 até deixar 360 ao canvas); 0 volta à padrão |
 | `worktree` | string | Alterações: o worktree a mostrar (nome da pasta, ramo ou caminho); todos: as Árvores do canvas |
@@ -1079,3 +1079,19 @@ Abre na tela a apresentação do MagoAgent (a mesma de Ajustes › Geral › Ver
 | Parâmetro | Tipo | O que é |
 |---|---|---|
 | `step` | integer | o passo em que começa (0 a 6); sem ele, o primeiro |
+
+## Outras
+
+### `doubts`
+
+A tela Dúvidas: as perguntas que você deixa para a pessoa enquanto trabalha, sem parar (para uma pergunta que trava o trabalho, use ask_person). add acrescenta `questions` (textos, ou {question, options} com respostas sugeridas) e abre o painel, no canvas e no modo chat; a pessoa responde lá e as respostas chegam a você numa mensagem, só as respondidas ou todas (as sem resposta ficam para você decidir). list mostra as suas com o que já foi respondido; remove tira as que não precisa mais (ids, ou todas). answer (id, answer) e send (agent, all) são o que a pessoa faz no painel. Quando a pessoa pedir um .md de dúvidas, use esta tela.
+
+| Parâmetro | Tipo | O que é |
+|---|---|---|
+| `action` (obrigatório) | string: `add`, `list`, `answer`, `send`, `remove` |  |
+| `questions` | array | add: as perguntas |
+| `ids` | array | remove: quais (vazio: todas as suas) |
+| `id` | integer | answer: a dúvida respondida |
+| `answer` | string | answer: a resposta |
+| `agent` | string | send, list: o nome do agente (vazio: você) |
+| `all` | boolean | send: true manda todas (as sem resposta como decisão do agente); false, só as respondidas |
