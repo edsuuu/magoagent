@@ -26,13 +26,16 @@ public struct FileTreeView: View {
                     FTTreeColumn(state: state)
                         .frame(width: state.editorOpen ? tree : width)
                     if state.editorOpen {
-                        FTSeam(id: id, treeWidth: tree)
+                        FTSeam(id: id, treeWidth: tree, dark: state.dark)
                         FTEditorPane(state: state)
                             .frame(maxWidth: .infinity)
                     }
                 }
             }
-            .background(Color(nsColor: .windowBackgroundColor))
+            .background { Color(FTPalette(dark: state.dark).bg).allowsHitTesting(false) }
+            .clipShape(RoundedRectangle(cornerRadius: 8.125))
+            .overlay { RoundedRectangle(cornerRadius: 8.125).strokeBorder(Color(FTPalette(dark: state.dark).border), lineWidth: 1).allowsHitTesting(false) }
+            .overlay(alignment: .bottom) { if let words = state.linkBack { FTLinkBack(id: id, words: words, dark: state.dark).padding(.bottom, 45) } }
             .environment(\.colorScheme, state.dark ? .dark : .light)
             .sheet(isPresented: Binding(get: { state.findOpen }, set: { if !$0 { FT.send("find_close", id) } })) {
                 FTFindSheet(treeId: id, root: state.root)
@@ -53,11 +56,12 @@ public struct FileTreeView: View {
 struct FTSeam: View {
     let id: String
     let treeWidth: CGFloat
+    let dark: Bool
     @State private var start: CGFloat?
 
     var body: some View {
         Rectangle()
-            .fill(Color.primary.opacity(0.12))
+            .fill(Color(FTPalette(dark: dark).border))
             .frame(width: 1)
             .overlay(
                 Color.clear
@@ -74,5 +78,31 @@ struct FTSeam: View {
                             .onEnded { _ in start = nil }
                     )
             )
+    }
+}
+
+/// "Voltar ao chat" (or "Voltar") over the foot of the tree a file link opened (`link_back_ui`): back to where it came from; its x only lets it go.
+struct FTLinkBack: View {
+    let id: String
+    let words: String
+    let dark: Bool
+
+    var body: some View {
+        let ink = Color(FTPalette(dark: dark).fg)
+        HStack(spacing: 0) {
+            Button { Task { await FT.act("link_back", id) } } label: {
+                HStack(spacing: 6) {
+                    FTGlyph(name: "arrow-left", size: 13.5, color: FTPalette(dark: dark).fg, stroke: 1.4)
+                    Text(words).font(.app(13.5)).foregroundStyle(ink)
+                }
+                .padding(.leading, 14).padding(.trailing, 8).frame(height: 34).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button { FT.send("link_dismiss", id) } label: {
+                FTGlyph(name: "x", size: 12, color: FTPalette(dark: dark).muted, stroke: 1.4).frame(width: 24, height: 24).contentShape(Circle())
+            }
+            .buttonStyle(.plain).help("Fechar sem voltar").padding(.trailing, 5)
+        }
+        .glass()
     }
 }

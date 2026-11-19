@@ -202,9 +202,9 @@ fn node_of(element: &Element) -> Option<Node> {
         ("chat", chat.name.clone(), TERMINAL_HEADER)
     } else if let Some(portal) = &element.portal {
         ("portal", portal.name.clone(), PORTAL_HEADER)
-    } else if let Some(tree) = &element.filetree {
-        let name = std::path::Path::new(&tree.root).file_name().map_or(tree.root.clone(), |name| name.to_string_lossy().into_owned());
-        ("filetree", name, FT_BAR)
+    } else if element.filetree.is_some() {
+        // the tree draws its whole card, header row included (the egui header is one row with the name in it)
+        ("filetree", String::new(), 0.0)
     } else {
         return None;
     };

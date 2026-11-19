@@ -9,9 +9,9 @@ struct FTMessage: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Text(text).font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Text(text).font(.app(12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
             ForEach(Array(links.enumerated()), id: \.offset) { _, link in
-                Button(link.0, action: link.1).buttonStyle(.link).font(.system(size: 12))
+                Button(link.0, action: link.1).buttonStyle(.link).font(.app(12))
             }
         }
         .padding(13).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -50,7 +50,7 @@ struct FTMediaView: View {
                     ])
             }
             Divider()
-            Text(footer).font(.system(size: 11)).foregroundStyle(.secondary).frame(height: 22)
+            Text(footer).font(.app(11)).foregroundStyle(.secondary).frame(height: 22)
         }
     }
 
@@ -94,7 +94,7 @@ struct FTCommitDiff: View {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(text.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { _, line in
                         Text(String(line).isEmpty ? " " : String(line))
-                            .font(.system(size: 13, design: .monospaced))
+                            .font(.custom("Hack", size: 13))
                             .foregroundStyle(color(String(line), theme))
                             .textSelection(.enabled)
                     }
@@ -176,7 +176,7 @@ struct FTCompareView: View {
             Toggle("Unificado", isOn: Binding(get: { compare.unified }, set: { FT.send("compare", state.id, ["path": tab, "unified": $0]) }))
             Toggle("Recolher trechos sem mudança", isOn: Binding(get: { compare.collapse }, set: { FT.send("compare", state.id, ["path": tab, "collapse": $0]) }))
         }
-        .toggleStyle(.checkbox).controlSize(.small).font(.system(size: 11))
+        .toggleStyle(.checkbox).controlSize(.small).font(.app(11))
         .padding(.horizontal, 8).frame(height: 28)
     }
 
@@ -186,7 +186,7 @@ struct FTCompareView: View {
             Button {
                 FT.send("compare", state.id, ["path": tab, "fold": row.foldKey ?? 0])
             } label: {
-                Text("\(row.foldCount ?? 0) linhas sem mudança").font(.system(size: 11)).foregroundStyle(Color(hex: theme.muted))
+                Text("\(row.foldCount ?? 0) linhas sem mudança").font(.app(11)).foregroundStyle(Color(hex: theme.muted))
                     .frame(maxWidth: .infinity).frame(height: 22).background(Color.white.opacity(0.04))
             }
             .buttonStyle(.plain)
@@ -210,10 +210,10 @@ struct FTCompareView: View {
 
     private func line(number: Int?, text: String, words: [[Int]], fill: Color?, word: Color, _ theme: FTTheme) -> some View {
         HStack(spacing: 0) {
-            Text(number.map(String.init) ?? "").font(.system(size: 12, design: .monospaced)).foregroundStyle(Color(hex: theme.lineNumber))
+            Text(number.map(String.init) ?? "").font(.custom("Hack", size: 12)).foregroundStyle(Color(hex: theme.lineNumber))
                 .frame(width: 44, alignment: .trailing).padding(.trailing, 8)
             // ponytail: a long line is cut at the column's edge; scroll sideways when it matters
-            Text(ftWords(text.isEmpty ? " " : text, words, word)).font(.system(size: 13, design: .monospaced)).foregroundStyle(Color(hex: theme.text))
+            Text(ftWords(text.isEmpty ? " " : text, words, word)).font(.custom("Hack", size: 13)).foregroundStyle(Color(hex: theme.text))
                 .lineLimit(1).textSelection(.enabled)
             Spacer(minLength: 0)
         }
@@ -230,9 +230,9 @@ struct FTResultsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(results.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                Text(results.title).font(.app(12)).lineLimit(1)
                 Spacer()
-                Text(results.countNote).font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(results.countNote).font(.app(11)).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 10).frame(height: 28)
             Divider()
@@ -257,9 +257,9 @@ struct FTHitList: View {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(hits.enumerated()), id: \.element.id) { index, hit in
                         HStack(spacing: 10) {
-                            Text(hit.text.trimmingCharacters(in: .whitespaces)).font(.system(size: 12.5, design: .monospaced)).lineLimit(1)
+                            Text(hit.text.trimmingCharacters(in: .whitespaces)).font(.custom("Hack", size: 12.5)).lineLimit(1)
                             Spacer(minLength: 8)
-                            Text("\(hit.name) \(hit.line + 1)").font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
+                            Text("\(hit.name) \(hit.line + 1)").font(.app(11.5)).foregroundStyle(.secondary).lineLimit(1)
                         }
                         .padding(.horizontal, 14).frame(height: 24)
                         .background(RoundedRectangle(cornerRadius: 6).fill(selected == index ? Color.accentColor.opacity(0.28) : Color.clear).padding(.horizontal, 6))

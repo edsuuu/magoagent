@@ -8,10 +8,10 @@ struct FTEditorPane: View {
     var body: some View {
         VStack(spacing: 0) {
             FTTabStrip(state: state)
-            Divider()
+            FTRule(color: FTPalette(dark: state.dark).border)
             FTBody(state: state)
         }
-        .background(Color(nsColor: .textBackgroundColor).opacity(0.0))
+
     }
 }
 
@@ -21,6 +21,7 @@ struct FTTabStrip: View {
     @State private var problemsShown = false
 
     private var activeTab: FTTab? { state.tabs.first { $0.path == state.active } }
+    private var pal: FTPalette { FTPalette(dark: state.dark) }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -38,7 +39,7 @@ struct FTTabStrip: View {
             buttons
         }
         .frame(height: 30)
-        .background(Color.primary.opacity(0.05))
+        .background(Color(FTPalette(dark: state.dark).hover))
     }
 
     @ViewBuilder
@@ -53,7 +54,7 @@ struct FTTabStrip: View {
                         if state.errorCount > 0 { Label("\(state.errorCount)", systemImage: "xmark.circle.fill").foregroundStyle(.red) }
                         if state.warningCount > 0 { Label("\(state.warningCount)", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.yellow) }
                     }
-                    .font(.system(size: 11)).labelStyle(.titleAndIcon)
+                    .font(.app(11)).labelStyle(.titleAndIcon)
                 }
                 .buttonStyle(.plain).help("Problemas")
                 .popover(isPresented: $problemsShown, arrowEdge: .bottom) { FTProblemsList(state: state) }
@@ -62,26 +63,26 @@ struct FTTabStrip: View {
             if let tab = activeTab {
                 switch tab.kind {
                 case "text":
-                    iconButton("square.and.arrow.down", tip: "Salvar", on: tab.dirty) { FT.send("save", state.id) }
                     Menu {
                         Toggle("Quebrar Linhas", isOn: Binding(get: { state.wrap }, set: { _ in FT.send("wrap", state.id) }))
-                    } label: { Image(systemName: "slider.horizontal.3").font(.system(size: 11)) }
-                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Configurações do Editor")
+                    } label: { FTGlyph(name: "settings", size: 11.375, color: pal.muted).frame(width: 19.5, height: 19.5).contentShape(Rectangle()) }
+                        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().help("Configurações do Editor")
+                    iconButton("save", tip: "Salvar", on: tab.dirty) { FT.send("save", state.id) }
                 case "media", "external":
-                    iconButton("arrow.up.right.square", tip: "Abrir no App Padrão", on: true) { FT.send("open_default", state.id, ["path": tab.path]) }
+                    iconButton("open", tip: "Abrir no App Padrão", on: true) { FT.send("open_default", state.id, ["path": tab.path]) }
                 default: EmptyView()
                 }
             }
-            iconButton("xmark", tip: "Ocultar Editor", on: true) { FT.send("editor", state.id, ["show": false]) }
+            iconButton("x", tip: "Ocultar Editor", on: true) { FT.send("editor", state.id, ["show": false]) }
         }
         .padding(.trailing, 4)
     }
 
     private func iconButton(_ symbol: String, tip: String, on: Bool, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 11)).foregroundStyle(on ? Color.secondary : Color.secondary.opacity(0.4)).frame(width: 20, height: 20)
+        FTHoverButton(pal: pal, radius: 9.75, enabled: on, action: action) {
+            FTGlyph(name: symbol, size: 11.375, color: on ? pal.muted : pal.muted.withAlphaComponent(0.4)).frame(width: 19.5, height: 19.5)
         }
-        .buttonStyle(.plain).disabled(!on).help(tip)
+        .help(tip)
     }
 }
 
@@ -92,29 +93,34 @@ struct FTTabChip: View {
     @State private var overClose = false
 
     private var active: Bool { state.active == tab.path }
+    private var pal: FTPalette { FTPalette(dark: state.dark) }
+
+    /// The IDE's selected tab; on the light card, the same blue lightened (`tabs.rs`).
+    private var chipFill: Color { state.dark ? Color(hex: FT.theme?.tabSelected ?? "#2E436E") : Color(hex: "#DCE7FF") }
+    private var chipEdge: Color { state.dark ? Color(hex: FT.theme?.tabBorder ?? "#375FAD") : Color(hex: "#A6C0F7") }
 
     var body: some View {
         HStack(spacing: 5) {
             FTIcon(icon: tab.icon, dark: state.dark, size: 14)
-            Text(tab.name).font(tab.preview ? Font.system(size: 12).italic() : Font.system(size: 12)).lineLimit(1).frame(maxWidth: 170).foregroundStyle(active ? Color.primary : Color.secondary)
+            Text(tab.name).font(tab.preview ? Font.app(12).italic() : Font.app(12)).lineLimit(1).frame(maxWidth: 170).foregroundStyle(Color(active ? pal.fg : pal.muted))
             ZStack {
                 if tab.dirty && !overClose {
                     Circle().fill(Color(red: 0.94, green: 0.53, blue: 0.24)).frame(width: 6, height: 6)
                 } else if hover || active {
-                    Image(systemName: "xmark").font(.system(size: 8, weight: .semibold)).foregroundStyle(.secondary)
+                    FTGlyph(name: "x", size: 8.5, color: pal.muted)
                 }
             }
             .frame(width: 14, height: 14)
-            .background(RoundedRectangle(cornerRadius: 3).fill(overClose ? Color.primary.opacity(0.15) : Color.clear))
+            .background(RoundedRectangle(cornerRadius: 3).fill(overClose ? Color(pal.fg).opacity(0.15) : Color.clear))
             .onHover { overClose = $0 }
             .onTapGesture { FT.send("tab_close", state.id, ["path": tab.path]) }
         }
         .padding(.leading, 6).padding(.trailing, 4).frame(height: 22)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(active ? Color.accentColor.opacity(0.2) : (hover ? Color.primary.opacity(0.07) : Color.clear))
+                .fill(active ? chipFill : (hover ? Color(pal.fg).opacity(0.07) : Color.clear))
         )
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(active ? Color.accentColor.opacity(0.45) : Color.clear))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(active ? chipEdge : Color.clear))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture { FT.send("tab_select", state.id, ["path": tab.path]) }
@@ -141,20 +147,20 @@ struct FTProblemsList: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if state.problems.isEmpty {
-                    Text("Nenhum problema encontrado.").font(.system(size: 12)).foregroundStyle(.secondary).padding(10)
+                    Text("Nenhum problema encontrado.").font(.app(12)).foregroundStyle(.secondary).padding(10)
                 }
                 ForEach(state.problems) { file in
-                    Text(file.rel).font(.system(size: 12, weight: .medium)).padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 2)
+                    Text(file.rel).font(.app(12)).padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 2)
                     ForEach(Array(file.problems.enumerated()), id: \.offset) { _, problem in
                         Button {
                             FT.send("goto", state.id, ["path": file.path, "line": problem.line, "col": problem.col, "pinned": true])
                         } label: {
                             HStack(alignment: .top, spacing: 6) {
                                 Image(systemName: problem.severity == 1 ? "xmark.circle.fill" : "exclamationmark.triangle.fill")
-                                    .foregroundStyle(problem.severity == 1 ? Color.red : Color.yellow).font(.system(size: 11))
-                                Text(problem.message).font(.system(size: 12)).multilineTextAlignment(.leading).lineLimit(3)
+                                    .foregroundStyle(problem.severity == 1 ? Color.red : Color.yellow).font(.app(11))
+                                Text(problem.message).font(.app(12)).multilineTextAlignment(.leading).lineLimit(3)
                                 Spacer(minLength: 6)
-                                Text("\(problem.line + 1):\(problem.col + 1)").font(.system(size: 11)).foregroundStyle(.secondary)
+                                Text("\(problem.line + 1):\(problem.col + 1)").font(.app(11)).foregroundStyle(.secondary)
                             }
                             .padding(.horizontal, 10).padding(.vertical, 3).contentShape(Rectangle())
                         }
@@ -174,7 +180,7 @@ struct FTBody: View {
     var body: some View {
         if state.active == nil {
             Text("Selecione um arquivo para editá-lo ou pré-visualizá-lo aqui.")
-                .font(.system(size: 12)).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .font(.app(12)).foregroundStyle(Color(FTPalette(dark: state.dark).muted)).multilineTextAlignment(.center)
                 .padding(.horizontal, 13).frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let doc = MagoStore.shared.decode(FTDoc.self, topic: "filetree:\(state.id):doc"), doc.path == state.active || doc.kind == "none" {
             content(doc)
@@ -215,7 +221,7 @@ struct FTTextBody: View {
         VStack(spacing: 0) {
             if live?.external == true {
                 HStack {
-                    Text("Este arquivo mudou no disco enquanto você editava.").font(.system(size: 11))
+                    Text("Este arquivo mudou no disco enquanto você editava.").font(.app(11))
                     Spacer()
                     Button("Salvar o Meu") { FT.send("save", state.id) }.controlSize(.small)
                 }
