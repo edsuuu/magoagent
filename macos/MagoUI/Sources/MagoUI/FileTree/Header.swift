@@ -11,7 +11,8 @@ struct FTHeader: View {
     var body: some View {
         HStack(spacing: 4.875) {
             nav
-            FTMedium(text: state.name, color: Color(pal.fg)).fixedSize().allowsHitTesting(false)
+            // the name gives way, cut with "…" (`fit`): the menu and the branch keep their size
+            FTMedium(text: state.name, color: Color(pal.fg)).allowsHitTesting(false)
             Spacer(minLength: 0).allowsHitTesting(false)
             viewMenu
             if state.git.repo { branch }
