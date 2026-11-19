@@ -48,12 +48,9 @@ pub(crate) struct Mini {
     focus: bool,
     /// The panel is being drawn in its own window (chat/mini_window.rs), filling it.
     pub(crate) window: bool,
-    /// The panel is drawn inside the island (island/paint.rs): the island sizes it, not the system.
-    pub(crate) in_island: bool,
-    /// Inside the island, the island as painted: the chips' menus stay in it (`footer::menu_height`).
+    /// The island as painted while its conversation draws the chat's chips: their menus stay in it
+    /// (`footer::menu_height`).
     pub(crate) island_rect: Option<Rect>,
-    /// Its close or expand was clicked this frame: inside the island, the island folds.
-    pub(crate) left: bool,
     /// Where its window opened: the window is built with it for as long as it is open (a builder that
     /// followed the window would fight the system's move and resize).
     pub(crate) opened_at: Option<[f32; 4]>,
@@ -71,6 +68,7 @@ pub(crate) struct Mini {
 /// Where the pill (`size`) puts its top right for `at`: all of it inside the canvas, 4 in from the edges.
 pub(crate) fn pill_place(area: Rect, at: Pos2, size: Vec2) -> Pos2 {
     let (x, y) = (area.left() + size.x + 4.0, area.bottom() - size.y - 4.0);
+
     Pos2::new(at.x.clamp(x.min(area.right() - 4.0), area.right() - 4.0), at.y.clamp(area.top() + 4.0, y.max(area.top() + 4.0)))
 }
 
@@ -85,7 +83,9 @@ pub(crate) fn mini_place(area: Rect, size: Vec2, at: Option<Vec2>) -> Rect {
         Some(at) => area.min + at,
         None => Pos2::new(area.right() - 12.0 - size.x, area.top() + 56.0),
     };
+
     let most = (area.max - size).max(area.min);
+
     Rect::from_min_size(Pos2::new(min.x.clamp(area.min.x, most.x), min.y.clamp(area.min.y, most.y)), size)
 }
 
@@ -94,6 +94,7 @@ pub(crate) fn fresh(ctx: &Context, last: &mut u64) -> bool {
     // counted from 1: 0 is never shown
     let pass = ctx.cumulative_pass_nr() + 1;
     let new = *last == 0 || *last + 1 < pass;
+
     *last = pass;
     new
 }
@@ -116,10 +117,12 @@ fn pill_body(ui: &mut egui::Ui, row: &AgentRow, color: Color32, look: &Look, tim
     // the pill's own window has no room around it for a tip: it would show cut
     let response = response.on_hover_cursor(cursor);
     let response = if let Some(tip) = tip { response.tip(tip) } else { response };
+
     ui.painter().add(egui::epaint::Shadow { offset: [0, 4], blur: 16, spread: 0, color: Color32::from_black_alpha(70) }.as_shape(rect, 20));
     ui.painter().rect_filled(rect, 20, if response.hovered() { look.surface } else { look.bg });
     ui.painter().rect_stroke(rect, 20, Stroke::new(1.0, if needs { AMBER } else { look.line }), StrokeKind::Inside);
     let icon = Pos2::new(rect.left() + 10.0 + icon_w / 2.0, rect.center().y);
+
     if claude {
         // Claude's mascot: thinking while it works, happy with news, waiting with its sign
         let state = match row.state {
@@ -127,23 +130,29 @@ fn pill_body(ui: &mut egui::Ui, row: &AgentRow, color: Color32, look: &Look, tim
             _ if unread => MagoState::Done,
             _ => MagoState::Idle,
         };
+
         paint_agent_mago(ui.painter(), &format!("{}-pill", row.id), color, icon, 40.0, state, time);
     } else if matches!(row.state, AgentState::Working(_)) {
         crate::app::chat::thinking::spinner(ui.painter(), icon, 18.0, crate::app::chat::thinking::CLAUDE, time);
     } else {
         ui.painter().circle_filled(icon, 11.0, look.raised);
         let initial = row.spec.label().chars().next().unwrap_or('?').to_uppercase().to_string();
+
         ui.painter().text(icon, egui::Align2::CENTER_CENTER, initial, FontId::proportional(13.0), look.text);
     }
+
     if unread || needs {
         ui.painter().circle(icon + Vec2::new(10.0, -10.0), 5.0, AMBER, Stroke::new(2.0, look.bg));
     }
+
     if let Some(note) = note {
         ui.painter().galley(Pos2::new(rect.left() + 10.0 + icon_w + 8.0, rect.center().y - note.size().y / 2.0), note, AMBER);
     }
+
     let close = Rect::from_center_size(Pos2::new(rect.right() - 14.0, rect.center().y), Vec2::splat(16.0));
     let hit = ui.interact(close, ui.scope_id().with("mini_dismiss"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
     let hit = if tip.is_some() { hit.tip("Dispensar") } else { hit };
+
     glyph(ui.painter(), close.center(), 10.0, 2.0, if hit.hovered() { look.text } else { look.muted }, CROSS);
     (response, hit.clicked())
 }
@@ -176,6 +185,7 @@ impl DrawingApp {
     /// The window below the title bar and beside the sidebar: where the mini chat lives.
     fn mini_area(&self, ctx: &Context) -> Rect {
         let r = ctx.content_rect();
+
         Rect::from_min_max(Pos2::new(r.min.x + self.sidebar_width(), r.min.y + TITLE_BAR), r.max)
     }
 
@@ -184,6 +194,7 @@ impl DrawingApp {
         self.mini.open = open;
         self.mini.focus = open;
         self.mini.on |= open;
+
         if open {
             self.mini.seen = self.chat_agent.as_deref().map_or(0, |id| self.talk_len(id));
         }
@@ -193,6 +204,7 @@ impl DrawingApp {
     /// or its box focused.
     pub(crate) fn mini_takes_files(&self, ctx: &Context) -> bool {
         let Some(rect) = self.mini.rect.filter(|_| self.mini.open && !self.chat_open) else { return false };
+
         ctx.input(|i| i.pointer.hover_pos()).is_some_and(|p| rect.contains(p)) || ctx.memory(|m| m.has_focus(egui::Id::unique("chat_draft")))
     }
 
@@ -210,6 +222,7 @@ impl DrawingApp {
     pub(crate) fn send_from_box(&mut self, ctx: &Context, id: &str, text: String) {
         // the pictures above the box go first, as the paths Claude Code reads
         let prompt = self.attached_prompt(&text);
+
         // a session outside the app: to its terminal (maestro/message.rs); refused, the words stay with why
         if id.starts_with(crate::app::maestro::outside::PILL_PREFIX) {
             match self.outside_message(id, &prompt) {
@@ -222,8 +235,10 @@ impl DrawingApp {
                     self.toast(why);
                 }
             }
+
             return;
         }
+
         if self.is_chat(id) {
             if self.chat_submit(ctx, id, &text, &prompt) {
                 self.chat_pics.get_mut().attached.clear();
@@ -247,33 +262,40 @@ impl DrawingApp {
             quote_into(&mut self.chat_draft, &text);
             ctx.memory_mut(|m| m.request_focus(draft_id));
         }
+
         // a run or a step opened or shut: the row clicked stays where it is while it eases (chat/follow.rs)
         if let Some(key) = out.fold {
             if let Some(id) = &self.chat_agent {
                 crate::app::chat::follow::hold_scroll(ctx, id);
             }
+
             if !self.chat_unfolded.remove(&key) {
                 self.chat_unfolded.insert(key);
             }
         }
+
         // one more page of this conversation
         if out.earlier
             && let Some(id) = self.chat_agent.clone()
         {
             let pages = if self.chat_earlier.0 == id { self.chat_earlier.1 + 1 } else { 1 };
+
             self.chat_earlier = (id, pages);
         }
+
         if let Some((id, agent)) = out.provider
             && let Err(e) = self.chat_switch_agent(&id, &agent)
         {
             self.toast(e);
         }
+
         // Editar: what was queued goes back into the box
         if out.unqueue
             && let Some(id) = self.chat_agent.clone()
         {
             self.unqueue(&id);
         }
+
         // Enviar agora: it goes without waiting for the agent (chat/queue.rs)
         if out.send_now
             && let Some(id) = self.chat_agent.clone()
@@ -290,42 +312,58 @@ impl DrawingApp {
         if crate::app::native::enabled("chat") {
             return self.native_chat_frame(ctx);
         }
+
         if !self.mini.open {
             self.mini.opened_at = None;
         }
+
         let left = self.mini.was_chat && !self.chat_open;
+
         self.mini.was_chat = self.chat_open;
+
         if self.chat_open {
             self.mini.open = false;
             self.mini.rect = None;
+
             return;
         }
+
         let Some(id) = self.chat_agent.clone() else { return };
+
         if left && self.talk_len(&id) > 0 {
             self.mini.on = true;
             self.mini.seen = self.talk_len(&id);
         }
+
         let rows = self.agent_rows();
         let row = rows.iter().find(|r| r.id == id);
+
         // with the island on, the conversation left open is in the island: no pill of its own (the panel still opens on demand)
         let Some(row) = row.filter(|_| self.mini.on && !self.floors_ui.fx.engaged && (self.mini.open || !self.prefs.island)) else {
             self.mini.rect = None;
+
             return;
         };
+
         self.refresh_transcript();
+
         // a picture open covers the screen, whatever is under it
         if self.image_viewer(ctx, row.spec.label()) {
             return;
         }
+
         let (c, dark) = (self.colors(), self.dark());
         let look = Look::new(dark, &c);
         let time = ctx.input(|i| i.time);
         let working = matches!(row.state, AgentState::Working(_));
+
         if (working || row.state == AgentState::Waiting) && ctx.input(|i| i.viewport().visible()) != Some(false) {
             ctx.request_repaint_after(crate::app::update::AMBIENT);
         }
+
         let unread = !self.mini.open && !working && self.talk_len(&id) > self.mini.seen;
         let area = self.mini_area(ctx);
+
         if self.mini.open && ctx.embed_viewports() {
             // no windows of its own here (tests, a backend without them): over the canvas
             self.mini_panel(ctx, row, area, &look, &c, time);
@@ -338,6 +376,7 @@ impl DrawingApp {
             self.mini.rect = None;
             self.mini_pill_window(ctx, row, &look, time, unread);
         }
+
         if !(self.mini.on && !self.mini.open) {
             self.mini.pill_opened_at = None;
         }
@@ -348,18 +387,22 @@ impl DrawingApp {
         let pill = self.mini.pill_size.unwrap_or(Vec2::new(220.0, 44.0));
         let size = pill + Vec2::splat(2.0 * PILL_MARGIN);
         let saved = self.prefs.mini_pill_window;
+
         let at = *self.mini.pill_opened_at.get_or_insert_with(|| match saved {
             Some([x, y]) => Pos2::new(x, y),
             None => {
                 // the first time: the app's top right, where the pill sat on the canvas
                 let app = ctx.input(|i| i.viewport().outer_rect).unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)));
+
                 Pos2::new(app.right() - size.x - 4.0, app.top() + 70.0).round()
             }
         });
+
         // made again (the pill back after the panel), the window has the system's glass frame again
         if fresh(ctx, &mut self.mini.pill_pass) {
             self.mini.pill_plain = 0;
         }
+
         let builder = egui::ViewportBuilder::default()
             .with_title("Mini chat · pílula")
             .with_transparent(true)
@@ -372,27 +415,36 @@ impl DrawingApp {
             .with_visible(!cfg!(windows) || self.mini.pill_plain > 0)
             .with_position(at)
             .with_inner_size(size);
+
         let id = egui::ViewportId::from_hash_of("mini_pill_window");
         let color = self.agent_color(&row.id);
+
         let (open, dismiss, pill_size, placed) = ctx.show_viewport_immediate(id, builder, |ui, _| {
             let inner = ui.max_rect().shrink(PILL_MARGIN);
             let (response, dismiss) = ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| pill_body(ui, row, color, look, time, unread, None)).inner;
+
             // the system moves the window: out of the app's, anywhere on the screen
             if response.drag_started() {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
+
             let placed = ui.ctx().input(|i| i.viewport().outer_rect).map(|r| r.min);
+
             (response.clicked() && !dismiss, dismiss, response.rect.size(), placed)
         });
+
         #[cfg(windows)]
         if self.mini.pill_plain < 3 {
             crate::app::voice::popup::plain::reveal("Mini chat · pílula", &mut self.mini.pill_plain);
             ctx.request_repaint();
         }
+
         self.mini.pill_size = Some(pill_size);
+
         if let Some(p) = placed.filter(|p| self.prefs.mini_pill_window != Some([p.x, p.y])) {
             self.prefs.mini_pill_window = Some([p.x, p.y]);
         }
+
         if dismiss {
             self.mini.on = false;
         } else if open {
@@ -401,8 +453,10 @@ impl DrawingApp {
                 let [_, _, w, h] = self.prefs.mini_chat_window.unwrap_or([0.0, 0.0, WIDTH, HEIGHT]);
                 let pill = Rect::from_min_size(p + Vec2::splat(PILL_MARGIN), pill_size);
                 let r = panel_place(pill, Vec2::new(w, h), screen_work(ctx, pill.center()));
+
                 self.mini.opened_at = Some([r.left().round(), r.top().round(), r.width().round(), r.height().round()]);
             }
+
             self.mini_set(true);
         }
     }
@@ -415,6 +469,7 @@ impl DrawingApp {
         let pill = self.mini.pill_size.unwrap_or(Vec2::new(220.0, 44.0));
         let anchor = pill_place(area, saved.unwrap_or(Pos2::new(area.right() - 12.0, area.top() + 56.0) + self.mini.pill_drag), pill);
         let color = self.agent_color(&row.id);
+
         egui::Area::new(egui::Id::unique("mini_pill")).order(egui::Order::Foreground).pivot(egui::Align2::RIGHT_TOP).fixed_pos(anchor).show(ctx, |ui| {
             let (response, hit) = pill_body(
                 ui,
@@ -425,22 +480,29 @@ impl DrawingApp {
                 unread,
                 Some(&format!("{} · {} · abrir o chat em miniatura (arraste para mudar de lugar)", row.spec.label(), status(&row.state, unread))),
             );
+
             pill_size = Some(response.rect.size());
+
             if response.dragged() {
                 moved = response.drag_delta();
             }
+
             stopped = response.drag_stopped();
             dismiss = hit;
             open = response.clicked() && !dismiss;
         });
+
         self.mini.pill_size = pill_size;
         // the drag goes no further than the pill can: back the other way, it turns at once
         self.mini.pill_drag += pill_place(area, anchor + moved, pill) - anchor;
+
         if stopped {
             let at = pill_place(area, anchor + moved, pill) - area.min;
+
             self.prefs.mini_pill_at = Some([at.x, at.y]);
             self.mini.pill_drag = Vec2::ZERO;
         }
+
         if dismiss {
             self.mini.on = false;
         } else if open {
@@ -452,6 +514,7 @@ impl DrawingApp {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn mini_panel(&mut self, ctx: &Context, row: &AgentRow, area: Rect, look: &Look, c: &UiColors, time: f64) {
         let id = row.id.clone();
+
         self.mini.seen = self.talk_len(&id);
         let window = self.mini.window;
         let size = if window { area.size() } else { mini_size(area) };
@@ -459,6 +522,7 @@ impl DrawingApp {
         let rect = if window { area } else { mini_place(area, size, self.mini.drag.or(saved)) };
         // its own window is see-through: the same round corners there
         let radius = 18;
+
         self.mini.rect = Some(rect);
         let draft_id = egui::Id::unique("chat_draft");
         // the box's menu of / commands; with it open, Esc and the arrows are its
@@ -468,22 +532,27 @@ impl DrawingApp {
         let had = ctx.memory(|m| m.had_focus_last_frame(draft_id));
         let menu_keys = slash.is_some() && (focused || had);
         let over = ctx.input(|i| i.pointer.hover_pos()).is_some_and(|p| rect.contains(p));
+
         let esc = !menu_keys
             && !egui::Popup::is_any_open(ctx)
             && !self.dialog_open()
             && (focused || had || over)
             && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
+
         let mut draft = std::mem::take(&mut self.chat_draft);
         let swallow = slash.as_ref().is_some_and(|entries| self.slash_keys(ctx, &mut draft, entries, draft_id));
+
         // with no menu, Tab does nothing in the box (lock_focus would type a tab)
         if slash.is_none() && focused {
             ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab));
         }
+
         // the area is hidden on its first frame: the request is repeated until the box has the focus
         if self.mini.focus {
             self.mini.focus = !focused;
             ctx.memory_mut(|m| m.request_focus(draft_id));
         }
+
         let transcript = self.transcripts.get(&id);
         let talks = transcript.is_some_and(|t| !t.items.is_empty());
         let (waiting, only_chat) = (row.state == AgentState::Waiting, self.is_chat(&id) || row.spec.chat);
@@ -498,10 +567,12 @@ impl DrawingApp {
         let mut footer = self.mini.footer;
         let (mut dictate, mut voice, mut footer_act) = (false, (false, false, false), None);
         let mut switch = None;
+
         egui::Area::new(egui::Id::unique("mini_chat")).order(egui::Order::Foreground).fixed_pos(rect.min).constrain(false).show(ctx, |ui| {
             if !window {
                 ui.painter().add(egui::epaint::Shadow { offset: [0, 10], blur: 32, spread: 0, color: Color32::from_black_alpha(90) }.as_shape(rect, 18));
             }
+
             ui.painter().rect_filled(rect, radius, look.bg);
             ui.painter().rect_stroke(rect, radius, Stroke::new(1.0, look.line), StrokeKind::Inside);
             // the whole panel is the panel's: a click in it never reaches the canvas
@@ -510,141 +581,175 @@ impl DrawingApp {
             let cy = head.center().y;
             // the arrow, like a title bar: Grab is the four-way Move cursor on Windows
             let grip = ui.interact(head, ui.scope_id().with("mini_grip"), Sense::drag());
+
             if window && grip.drag_started() {
                 // its window goes where the system takes it
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             } else if !window && grip.dragged() {
                 moved = Some(mini_place(area, size, Some(rect.min - area.min + grip.drag_delta())).min - area.min);
             }
+
             stopped = grip.drag_stopped();
             // the header's buttons take their press (the grip under them would move the window), and in the island no
-            // tip covers the conversation under them (asked: "tem o tooltip que atrapalha")
-            let in_island = self.mini.in_island;
-            let tip = |hit: egui::Response, text: &str| if in_island { hit } else { hit.tip(text) };
+            // tip covers the conversation under them
+            let tip = |hit: egui::Response, text: &str| hit.tip(text);
             // close, at the left like the reference's panels
             let x = Rect::from_center_size(Pos2::new(rect.left() + 24.0, cy), Vec2::splat(22.0));
             let hit = tip(pressable(ui, x, ui.scope_id().with("mini_close"), "Recolher"), "Recolher (Esc)");
+
             ui.painter().circle_filled(x.center(), 10.0, if hit.hovered() { look.selected } else { look.raised });
             glyph(ui.painter(), x.center(), 13.0, 2.2, look.text, CROSS);
             close |= hit.clicked();
             // expand, at the right
             let big = Rect::from_center_size(Pos2::new(rect.right() - 24.0, cy), Vec2::splat(28.0));
             let hit = tip(pressable(ui, big, ui.scope_id().with("mini_expand"), "Abrir em tela cheia"), "Abrir em tela cheia (⌘1)");
+
             if hit.hovered() {
                 ui.painter().rect_filled(big, 8, look.raised);
             }
+
             crate::app::ui::icons::paint_icon(ui.painter(), crate::app::ui::icons::Icon::Expand, big.center(), look.text);
             expand = hit.clicked();
             // the Maestro's agents, or the way back to it (mini_agents.rs)
             let room;
+
             (switch, room) = self.mini_agents(ui, row, big.left() - 2.0, cy, look, time);
             // who and how; the Maestro's chat with its crown
             let left = rect.left() + 46.0;
             let maestro = self.is_chat(&id) && row.spec.maestro;
             let crown = if maestro { 16.0 } else { 0.0 };
             let name = clipped(ui.painter(), self.chat_short_name(row), FontId::proportional(14.0), look.text, big.left() - left - 8.0 - room - crown);
-            // one line: the name alone, without a state under it (asked)
+            // one line: the name alone, without a state under it
             let top = cy - name.size().y / 2.0;
             let name_w = name.size().x;
+
             ui.painter().galley(Pos2::new(left + 1.0 / ui.painter().pixels_per_point(), top), name.clone(), look.text);
             ui.painter().galley(Pos2::new(left, top), name, look.text);
+
             if maestro {
                 crate::app::ui::maestro_crown(ui.painter(), Pos2::new(left + name_w + 10.0, cy), 0.75, AMBER);
             }
+
             ui.painter().hline(rect.left() + 12.0..=rect.right() - 12.0, head.bottom(), Stroke::new(1.0, look.line));
             // the conversation and the box
             let body = Rect::from_min_max(Pos2::new(rect.left() + 10.0, head.bottom() + 2.0), Pos2::new(rect.right() - 10.0, rect.bottom() - 10.0));
             let width = body.width() - 4.0;
+
             ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {
                 ui.set_max_width(width);
                 let footer_height = if self.mini.footer > 0.0 { self.mini.footer } else { 70.0 };
+
                 ui.spacing_mut().scroll = crate::app::ui::scroll_style();
                 let scroll = egui::ScrollArea::vertical().id_salt("mini_scroll").auto_shrink(false).max_height(ui.available_height() - footer_height);
                 let mark = crate::app::chat::follow::talk_mark(transcript);
+
                 crate::app::chat::follow::follow_scroll(ui, scroll, &row.id, "mini", mark, |ui| {
                     self.conversation(ui, row, transcript, talks, only_chat, waiting, &asked, None, width, look, c, true, time, &mut conv)
                 });
+
                 let top = ui.cursor().top();
+
                 ui.add_space(6.0);
+
                 if working_now(row) {
                     interrupt |= self.work_band(ui, row, transcript, look, true, time);
                     ui.add_space(6.0);
                 }
+
                 if self.person_asked(&row.id) {
                     let id = row.id.clone();
+
                     self.decide_card(ui, &id, look, time);
                     ui.add_space(6.0);
                 }
+
                 // the big chat's card, without the line of keys under it
                 let card = self.composer(ui, &mut draft, draft_id, &hint, width, cap, swallow, look, c, Hints::None, time);
                 let r = card.rect;
+
                 if let Some(entries) = &slash {
                     slash_pick = self.slash_menu_ui(ctx, entries, Pos2::new(r.left(), r.top() - 6.0), r.width(), look);
                 }
+
                 (attach, dictate, voice, footer_act) = (card.attach, card.dictate, card.voice, card.footer);
+
                 if card.send {
                     send = Some(std::mem::take(&mut draft).trim_end().to_string());
                 }
+
                 footer = ui.cursor().top() - top;
             });
-            if window && !self.mini.in_island {
+
+            if window {
                 crate::app::chat::mini_window::resize_edges(ui, rect);
             }
         });
+
         self.chat_draft = draft;
+
         if let Some(at) = moved {
             self.mini.drag = Some(at);
         }
+
         if stopped && let Some(at) = self.mini.drag.take() {
             self.prefs.mini_chat_at = Some([at.x, at.y]);
         }
+
         if (footer - self.mini.footer).abs() > 0.5 {
             ctx.request_repaint();
         }
+
         self.mini.footer = footer;
         self.conv_apply(ctx, conv, draft_id);
+
         if let Some(name) = slash_pick {
             crate::app::chat::commands::complete_into(ctx, &mut self.chat_draft, &name, draft_id);
         }
+
         if crate::app::chat::commands::take_login_ask(ctx) && self.is_chat(&id) {
             self.chat_submit(ctx, &id, "/login", "/login");
         }
+
         if crate::app::chat::commands::take_retry_ask(ctx) && self.is_chat(&id) {
             self.chat_retry(ctx, &id);
         }
+
         if attach {
             self.chat_attach_pick(ctx);
         }
+
         if interrupt {
             self.interrupt_agent();
         }
+
         if dictate {
             self.dictate_toggle();
         }
+
         if voice.0 {
             self.voice_toggle();
         }
+
         if voice.1 {
             self.voice_mute();
         }
+
         if voice.2 {
             self.voice_speakers();
         }
+
         if let Some(act) = footer_act {
             self.chat_footer_act(act);
         }
+
         if let Some(text) = send {
             self.send_from_box(ctx, &id, text);
         }
-        self.mini.left = switch.is_none() && (expand || close);
+
         if let Some(other) = switch {
-            // another chat in the same panel: the Maestro's agent, or back to the Maestro. In the island it is the
-            // island's conversation that changes: no mini chat opens over the screen besides it (asked: "quando ele sai o
-            // chat fica em popover")
+            // another chat in the same panel: the Maestro's agent, or back to the Maestro
             self.chat_agent = Some(other);
-            if !self.mini.in_island {
-                self.mini_set(true);
-            }
+            self.mini_set(true);
         } else if expand {
             self.mini.open = false;
             self.chat_agent = Some(id);
@@ -670,6 +775,7 @@ pub(crate) fn panel_place(pill: Rect, size: Vec2, work: Rect) -> Rect {
     let top = if pill.top() + size.y <= work.bottom() { pill.top() } else { pill.bottom() - size.y };
     let left = left.clamp(work.left(), work.right() - size.x);
     let top = top.clamp(work.top(), work.bottom() - size.y);
+
     Rect::from_min_size(Pos2::new(left, top), size)
 }
 
@@ -678,27 +784,34 @@ pub(crate) fn panel_place(pill: Rect, size: Vec2, work: Rect) -> Rect {
 /// panels on X11 (on the monitor), else the monitor's size from the origin; unknown, anywhere.
 pub(crate) fn screen_work(ctx: &Context, at: Pos2) -> Rect {
     let scale = ctx.input(|i| i.viewport().native_pixels_per_point).unwrap_or(1.0);
+
     #[cfg(windows)]
     if let Some([l, t, r, b]) = crate::app::voice::popup::plain::work_area((at.x * scale) as i32, (at.y * scale) as i32) {
         return Rect::from_min_max(Pos2::new(l as f32, t as f32) / scale, Pos2::new(r as f32, b as f32) / scale);
     }
+
     #[cfg(target_os = "macos")]
     if let Some(work) = crate::app::island::macos::work_at(at) {
         return work;
     }
+
     // X11: the monitor it is on (GNOME's top bar and dock only on theirs), not the first one's from the corner
     #[cfg(target_os = "linux")]
     if crate::app::island::x11::active() {
         let pixels = |value: i32| value as f32 / scale;
+
         let works: Vec<Rect> = crate::app::island::x11::monitor_works()
             .iter()
             .map(|&[l, t, r, b]| Rect::from_min_max(Pos2::new(pixels(l), pixels(t)), Pos2::new(pixels(r), pixels(b))))
             .collect();
+
         if let Some(work) = work_at(&works, at) {
             return work;
         }
     }
+
     let _ = (at, scale);
+
     ctx.input(|i| i.viewport().monitor_size).map_or(Rect::EVERYTHING, |s| Rect::from_min_size(Pos2::ZERO, s))
 }
 

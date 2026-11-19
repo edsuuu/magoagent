@@ -57,9 +57,11 @@ impl Hunk {
 /// The ranges where `new` differs from `old`, in order.
 pub(crate) fn hunks(old: &str, new: &str) -> Vec<Hunk> {
     let ops = TextDiff::from_lines(old, new).ops().to_vec();
+
     ops.iter()
         .filter_map(|op| {
             let (tag, o, n) = op.as_tag_tuple();
+
             (tag != DiffTag::Equal).then_some(Hunk { old: o, new: n })
         })
         .collect()
@@ -70,12 +72,15 @@ pub(crate) fn rollback(text: &str, head: &str, hunk: &Hunk) -> String {
     let diff = TextDiff::from_lines(head, text);
     let (o, n) = (diff.old_slices(), diff.new_slices());
     let mut out: String = n[..hunk.new.start.min(n.len())].concat();
+
     out.push_str(&o[hunk.old.start.min(o.len())..hunk.old.end.min(o.len())].concat());
     let tail = n[hunk.new.end.min(n.len())..].concat();
+
     // the old range ended the file without a line end, and lines follow it
     if !tail.is_empty() && !out.is_empty() && !out.ends_with('\n') {
         out.push('\n');
     }
+
     out + &tail
 }
 
@@ -83,12 +88,14 @@ pub(crate) fn rollback(text: &str, head: &str, hunk: &Hunk) -> String {
 pub(crate) fn head_text(path: &Path) -> Option<String> {
     let (dir, name) = (path.parent()?, path.file_name()?.to_string_lossy());
     let text = crate::editor::run_git(dir, &["show", &format!("HEAD:./{name}")]).ok()?;
+
     Some(text.replace("\r\n", "\n").trim_start_matches('\u{feff}').to_string())
 }
 
 /// The text's ranges, worked out again only when the text (`key`) moved.
 pub(crate) fn refresh(buf: &mut TextBuf, key: u64) {
     let Some(head) = &buf.head else { return };
+
     if buf.hunks.as_ref().is_none_or(|h| h.0 != key) {
         buf.hunks = Some((key, hunks(head, &buf.text)));
     }
@@ -125,42 +132,57 @@ pub(crate) fn marks_ui(ui: &mut egui::Ui, p: &Painter, gutter: Rect, origin_y: f
     let (x0, x1) = (gutter.right() - 11.0 * z, gutter.right() - 7.0 * z);
     let mut rects = Vec::with_capacity(hunks.len());
     let mut pressed = None;
+
     for (i, h) in hunks.iter().enumerate() {
         let (y0, y1) = match h.change() {
             Change::Deleted => (top(h.new.start) - 4.0 * z, top(h.new.start) + 4.0 * z),
             _ => (top(h.new.start) + z, bottom(h.new.end - 1) - z),
         };
+
         let hit = Rect::from_min_max(Pos2::new(x0 - 2.0 * z, y0), Pos2::new(x1 + 2.0 * z, y1));
+
         rects.push(hit);
+
         if y1 < clip.top() || y0 > clip.bottom() {
             continue;
         }
+
         match h.change() {
             Change::Deleted => {
                 let y = top(h.new.start);
+
                 p.add(Shape::convex_polygon(vec![Pos2::new(x0 - z, y - 4.0 * z), Pos2::new(x1 + z, y), Pos2::new(x0 - z, y + 4.0 * z)], DELETED, Stroke::NONE));
             }
             c => {
                 let color = if c == Change::Added { ADDED } else { MODIFIED };
+
                 p.rect_filled(Rect::from_min_max(Pos2::new(x0, y0), Pos2::new(x1, y1)), 1, color);
             }
         }
+
         let r = ui.interact(hit.intersect(clip), id.with(("hunk", i)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
         if r.clicked() {
             pressed = Some(i);
         }
     }
+
     let Some(i) = buf.pop.filter(|i| *i < hunks.len()) else {
         buf.pop = pressed;
+
         return out;
     };
+
     let act = popup_ui(ui.ctx(), id, rects[i].right_bottom().max(Pos2::new(0.0, clip.top())), gutter, buf, &hunks, i, z);
+
     buf.pop = if pressed == Some(i) { None } else { pressed.or(Some(i)) };
+
     // the line the caret and the view go to
     let go = |buf: &mut TextBuf, to: usize| {
         buf.pop = Some(to);
         buf.jump = Some((hunks[to].new.start.min(buf.text.matches('\n').count()), 0));
     };
+
     match act {
         Some(PopAct::Prev) if i > 0 => go(buf, i - 1),
         Some(PopAct::Next) if i + 1 < hunks.len() => go(buf, i + 1),
@@ -172,12 +194,14 @@ pub(crate) fn marks_ui(ui: &mut egui::Ui, p: &Painter, gutter: Rect, origin_y: f
         }
         Some(PopAct::Copy) => {
             let old = buf.head.as_deref().map(|h| old_lines(h, &hunks[i])).unwrap_or_default();
+
             ui.ctx().copy_text(old);
         }
         Some(PopAct::Diff) => (buf.pop, out.diff) = (None, true),
         Some(PopAct::Close) => buf.pop = None,
         _ => {}
     }
+
     out
 }
 
@@ -192,34 +216,45 @@ fn old_lines(head: &str, hunk: &Hunk) -> String {
 fn popup_ui(ctx: &Context, id: egui::Id, at: Pos2, gutter: Rect, buf: &TextBuf, hunks: &[Hunk], i: usize, z: f32) -> Option<PopAct> {
     let (h, head) = (&hunks[i], buf.head.as_deref().unwrap_or_default());
     let mut act = None;
+
     let area = egui::Area::new(id.with("hunk_popup")).order(egui::Order::Foreground).fixed_pos(at + Vec2::new(6.0 * z, 0.0)).constrain(true).show(ctx, |ui| {
         egui::Frame::NONE.fill(t::POPUP).stroke(Stroke::new(1.0, t::POPUP_BORDER)).corner_radius(6).inner_margin(egui::Margin::same(6)).show(ui, |ui| {
             ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
+
             ui.horizontal(|ui| {
                 let button = |ui: &mut egui::Ui, label: &str, on: bool, tip: &str| {
                     let text = egui::RichText::new(label).font(t::ui(t::UI_SIZE * z)).color(if on { t::TEXT } else { t::SECONDARY });
+
                     ui.add_enabled(on, egui::Button::new(text).frame(false)).on_hover_cursor(CursorIcon::PointingHand).tip(tip).clicked()
                 };
+
                 if button(ui, "Anterior", i > 0, "Mudança anterior") {
                     act = Some(PopAct::Prev);
                 }
+
                 if button(ui, "Próxima", i + 1 < hunks.len(), "Próxima mudança") {
                     act = Some(PopAct::Next);
                 }
+
                 if button(ui, "Reverter", true, "Desfaz esta mudança: o trecho volta como está no HEAD") {
                     act = Some(PopAct::Revert);
                 }
+
                 if button(ui, "Copiar", !h.old.is_empty(), "Copia o trecho antigo") {
                     act = Some(PopAct::Copy);
                 }
+
                 if button(ui, "Mostrar Diff", true, "Ctrl+D") {
                     act = Some(PopAct::Diff);
                 }
+
                 ui.label(egui::RichText::new(format!("{} de {}", i + 1, hunks.len())).font(t::ui((t::UI_SIZE - 1.0) * z)).color(t::MUTED));
             });
+
             if h.old.is_empty() {
                 return;
             }
+
             ui.separator();
             let old = old_lines(head, h);
             let new: String = buf.text.split_inclusive('\n').skip(h.new.start).take(h.new.len()).collect();
@@ -228,27 +263,35 @@ fn popup_ui(ctx: &Context, id: egui::Id, at: Pos2, gutter: Rect, buf: &TextBuf, 
             let words = if h.new.is_empty() { vec![] } else { word_marks(&old, &new).0 };
             let mut job = egui::text::LayoutJob::default();
             let mut at = 0;
+
             let mut push = |job: &mut egui::text::LayoutJob, to: usize, word: bool| {
                 if to > at {
                     let bg = if word { OLD_WORD } else { OLD_LINE };
+
                     job.append(&old[at..to], 0.0, egui::TextFormat { font_id: font.clone(), color: t::EDITOR_TEXT, background: bg, ..Default::default() });
                     at = to;
                 }
             };
+
             for w in words {
                 push(&mut job, w.start, false);
                 push(&mut job, w.end, true);
             }
+
             push(&mut job, old.len(), false);
+
             egui::ScrollArea::both().max_height(220.0 * z).max_width(560.0 * z).auto_shrink(true).show(ui, |ui| {
                 ui.add(egui::Label::new(job.clone()).extend());
             });
         });
     });
+
     let outside = ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !area.response.rect.contains(p) && !gutter.contains(p)));
+
     if outside || ctx.input(|i| i.key_pressed(Key::Escape)) {
         act = Some(PopAct::Close);
     }
+
     act
 }
 
@@ -258,6 +301,7 @@ impl Editor {
     pub(crate) fn open_compare(&mut self, file: &Path) -> Result<usize, String> {
         let old = head_text(file).ok_or("Este arquivo não está no último commit do git, então não há com o que comparar.")?;
         let new = self.current_text(file)?;
+
         self.show_compare(file, old, new)
     }
 
@@ -265,6 +309,7 @@ impl Editor {
     pub(crate) fn open_change(&mut self, file: &Path) -> Result<usize, String> {
         let old = head_text(file).unwrap_or_default();
         let new = if file.exists() { self.current_text(file)? } else { String::new() };
+
         self.show_compare(file, old, new)
     }
 
@@ -274,6 +319,7 @@ impl Editor {
             Body::Text(b) if t.path == file => Some(b.text.clone()),
             _ => None,
         });
+
         match open {
             Some(text) => Ok(text),
             None => match load(file, &self.ctx) {
@@ -286,18 +332,23 @@ impl Editor {
     /// The tab that compares `old` (the HEAD's text of `file`, empty for a new file) with `new` (empty for a deleted one).
     pub(crate) fn show_compare(&mut self, file: &Path, old: String, new: String) -> Result<usize, String> {
         let n = hunks(&old, &new).len();
+
         if n == 0 {
             return Err("Não há diferenças com o HEAD.".into());
         }
+
         let name = file.file_name().unwrap_or_default().to_string_lossy();
         let path = file.with_file_name(format!("HEAD ↔ {name}"));
         let mut compare = Compare::new(file, old, new);
         let folder = file.parent().unwrap_or(Path::new("."));
+
         compare.head = crate::editor::run_git(folder, &["rev-parse", "--short", "HEAD"]).map(|hash| hash.trim().to_string()).unwrap_or_default();
+
         match self.tabs.iter_mut().find(|t| t.path == path) {
             Some(tab) => tab.body = Body::Compare(Box::new(compare)),
             None => self.tabs.push(PaneTab { path: path.clone(), body: Body::Compare(Box::new(compare)) }),
         }
+
         self.active = Some(path);
         Ok(n)
     }
@@ -306,8 +357,10 @@ impl Editor {
     pub(crate) fn type_into(&mut self, file: &Path, text: String) {
         if !self.tabs.iter().any(|t| t.path == file) {
             let body = load(file, &self.ctx);
+
             self.tabs.push(PaneTab { path: file.to_path_buf(), body });
         }
+
         if let Some(Body::Text(buf)) = self.tabs.iter_mut().find(|t| t.path == file).map(|t| &mut t.body) {
             buf.text = text;
             buf.dirty = true;
@@ -322,12 +375,14 @@ impl Editor {
             .enumerate()
             .filter_map(|(i, t)| {
                 let Body::Compare(c) = &t.body else { return None };
+
                 self.tabs.iter().find_map(|o| match &o.body {
                     Body::Text(b) if o.path == c.file && b.text != c.new => Some((i, b.text.clone())),
                     _ => None,
                 })
             })
             .collect();
+
         for (i, text) in news {
             if let Body::Compare(c) = &mut self.tabs[i].body {
                 c.set_new(text);
@@ -338,6 +393,7 @@ impl Editor {
     /// The ranges changed in `file` against the last commit: the open tab's text, else the disk's.
     pub(crate) fn file_hunks(&self, file: &Path) -> Result<(String, String, Vec<Hunk>), String> {
         let old = head_text(file).ok_or("Este arquivo não está no último commit do git.")?;
+
         let new = match self.tabs.iter().find(|t| t.path == file).map(|t| &t.body) {
             Some(Body::Text(b)) => b.text.clone(),
             _ => match load(file, &self.ctx) {
@@ -345,7 +401,9 @@ impl Editor {
                 _ => return Err("Este arquivo não é um texto.".into()),
             },
         };
+
         let list = hunks(&old, &new);
+
         Ok((old, new, list))
     }
 }
@@ -361,16 +419,21 @@ impl DrawingApp {
     /// there as the gutter's Reverter; not open, on the disk (`revert_hunk`). The compare tab follows.
     pub(crate) fn ft_revert_change(&mut self, id: &str, file: &Path, k: usize) -> Result<(), String> {
         let ed = self.ft_editor(id);
+
         if let Some(Body::Text(buf)) = ed.tabs.iter_mut().find(|t| t.path == file).map(|t| &mut t.body) {
             let head = buf.head.clone().ok_or("Este arquivo não está no último commit do git.")?;
             let hunk = hunks(&head, &buf.text).get(k).cloned().ok_or("Essa mudança não existe mais.")?;
+
             buf.text = rollback(&buf.text, &head, &hunk);
             ed.sync_compares();
+
             return Ok(());
         }
+
         self.act_tree_diff(id, "revert_hunk", &json!({ "index": k + 1 }), file.to_path_buf())?;
         let ed = self.ft_editor(id);
         let (_, new, _) = ed.file_hunks(file)?;
+
         for tab in &mut ed.tabs {
             if let Body::Compare(c) = &mut tab.body
                 && c.file == file
@@ -378,6 +441,7 @@ impl DrawingApp {
                 c.set_new(new.clone());
             }
         }
+
         Ok(())
     }
 
@@ -387,8 +451,10 @@ impl DrawingApp {
         if !file.is_file() {
             return Err("Diga o arquivo (path).".into());
         }
+
         let name = file.file_name().unwrap_or_default().to_string_lossy().into_owned();
         let (old, new, list) = self.ft_editor(id).file_hunks(&file)?;
+
         let describe = |list: &[Hunk]| -> String {
             let lines: String = list
                 .iter()
@@ -398,16 +464,21 @@ impl DrawingApp {
                         Change::Deleted => format!("depois da linha {}", h.new.start),
                         _ => format!("linhas {} a {}", h.new.start + 1, h.new.end),
                     };
+
                     let was = if h.old.is_empty() { String::new() } else { format!(", antes {} a {}", h.old.start + 1, h.old.end) };
+
                     format!("{}. {} ({at}{was})\n", i + 1, h.word())
                 })
                 .collect();
+
             format!("{name}: {} mudança(s) contra o HEAD\n{lines}", list.len())
         };
+
         match action {
             "hunks" => Ok(describe(&list)),
             "diff" => {
                 self.ft_show_diff(id, &file)?;
+
                 // `collapse`: hide (true, the default) or show the unchanged stretches, as the tab's "Recolher trechos sem mudança"
                 if let Some(on) = args["collapse"].as_bool() {
                     for tab in self.ft_editor(id).tabs.iter_mut() {
@@ -418,24 +489,30 @@ impl DrawingApp {
                         }
                     }
                 }
+
                 Ok(describe(&list))
             }
             _ => {
                 let n = args["index"].as_u64().filter(|n| *n > 0).ok_or("Diga qual mudança reverter (index, a partir de 1, como hunks lista).")? as usize;
                 let hunk = list.get(n - 1).ok_or_else(|| format!("{name} tem só {} mudança(s).", list.len()))?;
+
                 if self.filetrees.editors.get(id).is_some_and(|ed| ed.tabs.iter().any(|t| t.path == file && t.dirty())) {
                     return Err("O arquivo tem mudanças não salvas no editor: salve antes (save).".into());
                 }
+
                 let text = rollback(&new, &old, hunk);
                 // the file's own line ends and BOM stay: only the lines of the range change
                 let raw = fs::read_to_string(&file).map_err(|e| format!("Não foi possível ler {name}: {e}"))?;
                 let text = if raw.contains("\r\n") { text.replace('\n', "\r\n") } else { text };
                 let text = if raw.starts_with('\u{feff}') { format!("\u{feff}{text}") } else { text };
+
                 fs::write(&file, text).map_err(|e| format!("Não foi possível salvar {name}: {e}"))?;
                 let ctx = self.filetrees.ctx.clone().unwrap_or_default();
+
                 if let Some(tab) = self.filetrees.editors.get_mut(id).and_then(|ed| ed.tabs.iter_mut().find(|t| t.path == file)) {
                     tab.body = load(&file, &ctx);
                 }
+
                 Ok(format!("Mudança {n} de {name} revertida para o HEAD."))
             }
         }

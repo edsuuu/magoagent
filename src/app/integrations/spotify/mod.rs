@@ -52,8 +52,7 @@ pub(crate) use read::*;
 const EVERY: std::time::Duration = std::time::Duration::from_secs(2);
 const SETTLE: std::time::Duration = std::time::Duration::from_millis(350);
 /// After a control, and while a new song's cover is still owed, the player is asked this often, for `QUICK_FOR` after a
-/// control (asked: a song picked on the page showed on the player's card some 10 s later: 2 s to see it, then its cover
-/// asked once every 2 s).
+/// control.
 const QUICK: std::time::Duration = std::time::Duration::from_millis(300);
 const QUICK_FOR: std::time::Duration = std::time::Duration::from_secs(5);
 /// The biggest cover read (Spotify's are 640 px JPEGs, about 100 KB), and how many polls a track's cover is asked for.
@@ -61,9 +60,8 @@ pub(crate) const COVER_LIMIT: usize = 3 * 1024 * 1024;
 const COVER_TRIES: u8 = 20;
 /// Spotify's green (the island's music page too).
 pub(crate) const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
-/// How long the cover now takes to replace the one before it on the island's pill (asked: the change between songs was
-/// abrupt), and how long that one is kept while the new cover is still to come (past it, a song without a cover shows
-/// the placeholder, as it always did).
+/// How long the cover now takes to replace the one before it on the island's pill, and how long that one is kept while
+/// the new cover is still to come (past it, a song without a cover shows the placeholder, as it always did).
 const FADE: f64 = 0.3;
 const COVER_WAIT: f64 = 4.0;
 
@@ -82,6 +80,7 @@ impl Track {
     pub(crate) fn new(title: &str, artist: &str, album: &str, cover_url: &str) -> Option<Track> {
         let clean = |text: &str, most: usize| text.chars().filter(|letter| !letter.is_control()).take(most).collect::<String>().trim().to_string();
         let title = clean(title, 200);
+
         (!title.is_empty()).then(|| Track { title, artist: clean(artist, 200), album: clean(album, 200), cover_url: clean(cover_url, 400) })
     }
 }
@@ -169,6 +168,7 @@ impl Command {
     pub(crate) fn parse(text: &str) -> Option<Command> {
         let text = text.trim();
         let (name, value) = text.split_once(' ').map_or((text, ""), |(name, value)| (name, value.trim()));
+
         match (name, value) {
             ("playpause", "") => Some(Command::PlayPause),
             ("next", "") => Some(Command::Next),
@@ -190,8 +190,10 @@ pub(crate) fn download_cover(url: &str) -> Option<Vec<u8>> {
     if !cover_allowed(url) {
         return None;
     }
+
     let request = super::http::Request { method: "GET", url, headers: vec!["User-Agent: MagoAgent".into()], body: None, timeout_seconds: 10 };
     let (status, bytes) = super::http::send_bytes(&request).ok()?;
+
     (status == 200 && !bytes.is_empty() && bytes.len() <= COVER_LIMIT).then_some(bytes)
 }
 
@@ -237,24 +239,30 @@ impl Watch {
 
     fn step(&mut self, now: Option<Now>, cover: impl FnOnce(&Track) -> Option<Vec<u8>>) -> Vec<Message> {
         let mut messages = Vec::new();
+
         if std::mem::take(&mut self.dirty) || playback::differs(self.told.as_ref(), &now) {
             let track = |state: &Option<Now>| state.as_ref().map(|now| now.track.clone());
+
             if self.told.as_ref().is_none_or(|told| track(told) != track(&now)) {
                 (self.covered, self.tries) = (None, 0);
             }
+
             self.told = Some(now.clone());
             messages.push(Message::Now(now.clone()));
         }
+
         if let Some(now) = now
             && self.covered.as_ref() != Some(&now.track)
             && self.tries < COVER_TRIES
         {
             self.tries += 1;
+
             if let Some(bytes) = cover(&now.track) {
                 self.covered = Some(now.track.clone());
                 messages.push(Message::Cover(now.track, bytes));
             }
         }
+
         messages
     }
 }
@@ -263,26 +271,33 @@ impl Watch {
 fn watch(asks: Receiver<Ask>, messages: Sender<Message>, ctx: Context, sources: Sources) {
     let mut watch = Watch::default();
     let mut quick_until = None;
+
     let send = |message: Message| {
         let sent = messages.send(message).is_ok();
+
         ctx.request_repaint();
         sent
     };
+
     loop {
         #[cfg(not(any(windows, target_os = "macos")))]
         let now = system::read(sources);
+
         #[cfg(any(windows, target_os = "macos"))]
         let now = system::read().filter(|_| sources.app);
+
         for message in watch.step(now, system::cover) {
             if !send(message) {
                 return;
             }
         }
+
         match asks.recv_timeout(watch.wait(quick_until)) {
             Ok(Ask::Control(command)) => {
                 if !system::control(&command) && !send(Message::Refused(command)) {
                     return;
                 }
+
                 watch.dirty = true;
                 quick_until = Some(std::time::Instant::now() + QUICK_FOR);
                 std::thread::sleep(SETTLE);
@@ -316,40 +331,52 @@ pub(crate) fn accent(rgba: &[u8]) -> Color32 {
     accents(rgba).0
 }
 
-/// The cover's two colours, left to right for the island's bars (asked: "o degradê traz cores que nem estão na capa"):
-/// the colour most of its coloured pixels have, and the most present one of another hue (at least 40° away), each the
-/// mean of real pixels of it; a lighter tone of the first when the cover has only one colour. Greys, near blacks and
-/// see-through pixels give none: a grey cover gives grey.
+/// The cover's two colours, left to right for the island's bars: the colour most of its coloured pixels have, and the
+/// most present one of another hue (at least 40° away), each the mean of real pixels of it; a lighter tone of the
+/// first when the cover has only one colour. Greys, near blacks and see-through pixels give none: a grey cover gives
+/// grey.
 pub(crate) fn accents(rgba: &[u8]) -> (Color32, Color32) {
     let mut boxes = vec![(0u32, [0.0f32; 3]); LEVELS * LEVELS * LEVELS];
     let mut coloured = 0u32;
     let pixels = rgba.as_chunks::<4>().0;
+
     for pixel in pixels {
         let colour = [pixel[0], pixel[1], pixel[2]].map(f32::from);
         let (most, least) = (colour[0].max(colour[1]).max(colour[2]), colour[0].min(colour[1]).min(colour[2]));
+
         if pixel[3] < 128 || most < BRIGHT || (most - least) / most < VIVID {
             continue;
         }
+
         let level = |channel: u8| usize::from(channel) * LEVELS / 256;
         let (count, sum) = &mut boxes[(level(pixel[0]) * LEVELS + level(pixel[1])) * LEVELS + level(pixel[2])];
+
         *count += 1;
+
         for (total, channel) in sum.iter_mut().zip(colour) {
             *total += channel;
         }
+
         coloured += 1;
     }
+
     // a few coloured pixels in a grey cover (a logo, a letter) do not make it a coloured one
     if coloured == 0 || (coloured as usize) * 50 < pixels.len() {
         return (GREY, lighter(GREY));
     }
+
     let mut ranked: Vec<(u32, [f32; 3])> =
         boxes.into_iter().filter(|(count, _)| *count > 0).map(|(count, sum)| (count, sum.map(|total| total / count as f32))).collect();
+
     ranked.sort_by_key(|(count, _)| std::cmp::Reverse(*count));
     let first = ranked[0].1;
+
     // another hue with some presence: a shade of the first is not a second colour
     let second =
         ranked.iter().skip(1).find(|(count, colour)| *count * 33 >= coloured && hue_apart(hue(*colour), hue(first)) >= 40.0).map(|(_, colour)| *colour);
+
     let first = visible(first);
+
     (first, second.map(visible).unwrap_or_else(|| lighter(first)))
 }
 
@@ -357,9 +384,11 @@ pub(crate) fn accents(rgba: &[u8]) -> (Color32, Color32) {
 fn hue([red, green, blue]: [f32; 3]) -> f32 {
     let (most, least) = (red.max(green).max(blue), red.min(green).min(blue));
     let span = most - least;
+
     if span <= 0.0 {
         return 0.0;
     }
+
     let turn = if most == red {
         ((green - blue) / span).rem_euclid(6.0)
     } else if most == green {
@@ -367,12 +396,14 @@ fn hue([red, green, blue]: [f32; 3]) -> f32 {
     } else {
         (red - green) / span + 4.0
     };
+
     turn * 60.0
 }
 
 /// How far apart two hues are, in degrees, 0 to 180.
 fn hue_apart(one: f32, other: f32) -> f32 {
     let angle = (one - other).abs().rem_euclid(360.0);
+
     angle.min(360.0 - angle)
 }
 
@@ -382,6 +413,7 @@ fn visible(colour: [f32; 3]) -> Color32 {
     let most = colour.iter().copied().fold(1.0, f32::max);
     let lift = (DARKEST / most).max(1.0);
     let [red, green, blue] = colour.map(|channel| (channel * lift).clamp(0.0, 255.0) as u8);
+
     Color32::from_rgb(red, green, blue)
 }
 
@@ -393,18 +425,20 @@ fn lightness(colour: Color32) -> f32 {
 /// The least lightness Luna's body needs on the dark island: about her own blue's.
 const LUNA_LIGHT: f32 = 0.55;
 
-/// `colour` as Luna can wear it (asked: "deixa a Luna trocar de cor, mas com contraste: roxo escuro não tem"): its
-/// brightest channel brought to full, and then toward white until she is as light as `LUNA_LIGHT`, its hue kept.
+/// `colour` as Luna can wear it: its brightest channel brought to full, and then toward white until she is as
+/// light as `LUNA_LIGHT`, its hue kept.
 pub(crate) fn readable(colour: Color32) -> Color32 {
     let most = colour.r().max(colour.g()).max(colour.b()).max(1);
     let lift = |channel: u8| (u16::from(channel) * 255 / u16::from(most)) as u8;
     let full = Color32::from_rgb(lift(colour.r()), lift(colour.g()), lift(colour.b()));
     let mut toward = 0.0;
     let mut readable = full;
+
     while lightness(readable) < LUNA_LIGHT && toward < 1.0 {
         toward += 0.05;
         readable = full.lerp_to_gamma(Color32::WHITE, toward);
     }
+
     readable
 }
 
@@ -416,6 +450,7 @@ fn lighter(colour: Color32) -> Color32 {
 /// Where each system puts the app: Windows (installer or Store), macOS (.app), Linux (PATH, snap, Flatpak).
 pub(crate) fn install_places(env: impl Fn(&str) -> Option<String>) -> Vec<std::path::PathBuf> {
     let at = |name: &str, rest: &str| env(name).map(|base| std::path::Path::new(&base).join(rest));
+
     if cfg!(windows) {
         [at("APPDATA", "Spotify/Spotify.exe"), at("LOCALAPPDATA", "Microsoft/WindowsApps/Spotify.exe")].into_iter().flatten().collect()
     } else if cfg!(target_os = "macos") {
@@ -432,6 +467,7 @@ pub(crate) fn install_places(env: impl Fn(&str) -> Option<String>) -> Vec<std::p
 fn soloist_installed() -> bool {
     #[cfg(not(any(windows, target_os = "macos")))]
     return soloist::program().is_some();
+
     #[cfg(any(windows, target_os = "macos"))]
     false
 }
@@ -439,10 +475,12 @@ fn soloist_installed() -> bool {
 /// The Spotify app, or on Linux Spotifast (on the PATH or in `~/.local/bin`).
 fn installed() -> bool {
     let linux = !cfg!(any(windows, target_os = "macos"));
+
     let spotifast = || {
         crate::editor::lsp::which("spotifast").is_some()
             || std::env::var("HOME").is_ok_and(|home| std::path::Path::new(&home).join(".local/bin/spotifast").is_file())
     };
+
     (linux && (crate::editor::lsp::which("spotify").is_some() || spotifast()))
         || install_places(|name| std::env::var(name).ok()).iter().any(|place| place.exists())
 }
@@ -535,6 +573,7 @@ impl CoverFade {
         let Some(colours) = self.colours else { return self.before };
         let Some(before) = self.before else { return Some(colours) };
         let progress = self.progress(time);
+
         Some((before.0.lerp_to_gamma(colours.0, progress), before.1.lerp_to_gamma(colours.1, progress)))
     }
 }
@@ -544,6 +583,7 @@ impl Spotify {
     /// account stays linked.
     fn stop(&mut self) {
         let account = std::mem::take(&mut self.account);
+
         *self = Spotify { account, ..Default::default() };
     }
 
@@ -554,7 +594,7 @@ impl Spotify {
     }
 
     /// What the island shows of the song at `time` (the context's clock): playing, or paused for less than
-    /// `PAUSED_SHOWN` (asked: "se a música não está tocando por 30 segundos, a capa e a frequência somem").
+    /// `PAUSED_SHOWN`.
     pub(crate) fn shown(&self, time: f64) -> Option<&Now> {
         self.now.as_ref().filter(|now| now.playing || self.paused_since.is_none_or(|since| time - since < PAUSED_SHOWN))
     }
@@ -568,14 +608,15 @@ impl Spotify {
         match message {
             Message::Now(now) => {
                 let changed = now.as_ref().map(|now| &now.track) != self.now.as_ref().map(|now| &now.track);
+
                 if changed {
                     self.dancer.new_song();
                 }
+
                 match &now {
                     // closed: nothing of the cover stays
                     None => self.cover_gone(),
-                    // another song: the cover and the colours before stay, under the new song's once it comes (asked:
-                    // the change between songs was abrupt)
+                    // another song: the cover and the colours before stay, under the new song's once it comes
                     Some(_) if changed => {
                         (self.previous, self.before) = (self.cover.take(), self.colours.take());
                         // the colour before stays too (the bars without the fade fall back to it), until the new cover gives its own
@@ -583,11 +624,14 @@ impl Spotify {
                     }
                     Some(_) => {}
                 }
+
                 let paused = self.now.as_ref().is_some_and(|now| !now.playing) || self.now.is_none();
+
                 self.paused_since = match &now {
                     Some(now) if !now.playing => self.paused_since.filter(|_| paused && !changed).or(Some(ctx.input(|input| input.time))),
                     _ => None,
                 };
+
                 self.now = now;
                 self.enrich();
             }
@@ -599,13 +643,17 @@ impl Spotify {
                     let picture = picture.thumbnail(96, 96).into_rgba8();
                     let size = [picture.width() as usize, picture.height() as usize];
                     let colours = accents(&picture);
+
                     // the cover that was showing goes under the new one, and the fade starts here
                     if let Some(cover) = self.cover.take() {
                         (self.previous, self.before) = (Some(cover), self.colours);
                     }
+
                     (self.tint, self.colours) = (Some(colours.0), Some(colours));
+
                     self.cover =
                         Some(ctx.load_texture("spotify-cover", egui::ColorImage::from_rgba_unmultiplied(size, &picture), egui::TextureOptions::LINEAR));
+
                     (self.replaced_at, self.waiting_since) = (ctx.input(|input| input.time), None);
                 }
             }
@@ -617,13 +665,17 @@ impl Spotify {
     /// over, or once the new one has taken too long to come.
     fn publish(&mut self, ctx: &Context) {
         let time = ctx.input(|input| input.time);
+
         if self.waiting_since.is_some_and(|since| time - since >= COVER_WAIT) {
             self.cover_gone();
         }
+
         if self.colours.is_some() && self.before.is_some() && time - self.replaced_at >= FADE {
             (self.previous, self.before) = (None, None);
         }
+
         let fade = self.fade();
+
         ctx.data_mut(|data| data.insert_temp(CoverFade::slot(), fade));
     }
 
@@ -632,6 +684,7 @@ impl Spotify {
         match &self.now {
             Some(now) => {
                 let by = if now.track.artist.is_empty() { String::new() } else { format!(" — {}", now.track.artist) };
+
                 format!("{}: {}{by}{}", if now.playing { "Tocando" } else { "Pausado" }, now.track.title, now.from())
             }
             None if self.missing => "O Spotify não está instalado neste computador.".into(),
@@ -646,33 +699,41 @@ impl Spotify {
         let playback = &now.playback;
         let clock = |ms: u64| format!("{}:{:02}", ms / 60_000, ms / 1000 % 60);
         let mut parts = Vec::new();
+
         if let Some(context) = &playback.context
             && !context.label().is_empty()
         {
             parts.push(format!("de {}", context.label()));
         }
+
         match (now.position_at(now_ms()), playback.duration_ms) {
             (Some(position), Some(duration)) => parts.push(format!("{} de {}", clock(position), clock(duration))),
             (None, Some(duration)) => parts.push(format!("duração {}", clock(duration))),
             _ => {}
         }
+
         if let Some(shuffle) = playback.shuffle {
             parts.push(format!("embaralhar {}", if shuffle { "ligado" } else { "desligado" }));
         }
+
         if let Some(repeat) = playback.repeat {
             parts.push(repeat.words().into());
         }
+
         if let Some(volume) = playback.volume {
             parts.push(format!("volume {}%", (volume * 100.0).round()));
         }
+
         match playback.liked {
             Some(true) => parts.push("nas Músicas curtidas".into()),
             Some(false) => parts.push("fora das Músicas curtidas".into()),
             None => {}
         }
+
         if !playback.track_uri.is_empty() {
             parts.push(playback.track_uri.clone());
         }
+
         parts.join(" · ")
     }
 
@@ -680,6 +741,7 @@ impl Spotify {
     /// report while one of them is shown, else why not.
     pub(crate) fn report_of(&self, card: Player) -> String {
         let linux = !cfg!(any(windows, target_os = "macos"));
+
         match (&self.now, card) {
             (Some(now), _) if now.on(card) => self.report(),
             (_, Player::Soloist) if self.soloist_missing => "O Soloist não está instalado (em ~/.local/bin, no PATH ou pelo Spotifast).".into(),
@@ -694,10 +756,11 @@ impl Spotify {
 }
 
 impl DrawingApp {
-    /// The players Ajustes turned on: the Spotify app, and Soloist (only on Linux).
+    /// The players Ajustes turned on, by Spotify's one switch: the Spotify app, and Soloist (only on Linux).
     pub(crate) fn spotify_sources(&self) -> Sources {
-        let integrations = &self.prefs.integrations;
-        Sources { app: integrations.spotify, soloist: integrations.soloist && cfg!(not(any(windows, target_os = "macos"))) }
+        let on = self.prefs.integrations.spotify;
+
+        Sources { app: on, soloist: on && cfg!(not(any(windows, target_os = "macos"))) }
     }
 
     /// Each frame: on, the thread that asks the players runs and its news are taken; off, it ends and nothing stays. A
@@ -712,34 +775,43 @@ impl DrawingApp {
     fn spotify_ask(&mut self, ctx: &Context) {
         let sources = self.spotify_sources();
         let spotify = &mut self.integrations.spotify;
+
         if sources == Sources::default() || (spotify.thread.is_some() && spotify.sources != sources) {
             if spotify.thread.is_some() || spotify.now.is_some() {
                 spotify.stop();
             }
+
             if sources == Sources::default() {
                 return;
             }
         }
+
         // a test scene's: made up here, nothing else is asked (and nothing heard)
         if fake::active() {
             if spotify.now.is_none() {
                 spotify.now = Some(fake::now());
                 fake::fill(&mut spotify.library);
             }
+
             return;
         }
+
         // never the real player in a test
         if spotify.thread.is_none() && !cfg!(test) {
             let ((asks, inbox), (outbox, messages)) = (channel(), channel());
             let ctx = ctx.clone();
+
             std::thread::spawn(move || watch(inbox, outbox, ctx, sources));
             spotify.thread = Some((asks, messages));
             (spotify.sources, spotify.missing, spotify.soloist_missing) = (sources, !installed(), !soloist_installed());
         }
+
         while let Some(message) = spotify.thread.as_ref().and_then(|(_, messages)| messages.try_recv().ok()) {
             spotify.take(message, ctx);
         }
+
         let playing = spotify.now.as_ref().is_some_and(|now| now.playing);
+
         // the island's bars listen too, not only Luna's dance
         spotify.dancer.tick(self.prefs.integrations.luna_dances || self.prefs.island, playing);
         self.spotify_account_tick();
@@ -760,11 +832,14 @@ impl DrawingApp {
     fn spotify_report_of(&self, card: Player) -> String {
         let spotify = &self.integrations.spotify;
         let mut lines = vec![spotify.report_of(card)];
+
         // what plays, wherever: the agent asking either card wants to know it
         if spotify.now.is_some() {
             lines.push(spotify.details());
         }
+
         let account = &spotify.account;
+
         lines.push(match &account.link {
             account::Link::Linked if account.name.is_empty() => "Conta do Spotify conectada.".into(),
             account::Link::Linked => format!("Conta do Spotify conectada como {}.", account.name),
@@ -772,6 +847,7 @@ impl DrawingApp {
             account::Link::Failed(why) => format!("Conta do Spotify: {why}"),
             account::Link::Off => String::new(),
         });
+
         lines.retain(|line| !line.is_empty());
         lines.join("\n")
     }
@@ -780,9 +856,11 @@ impl DrawingApp {
     pub(super) fn spotify_item(&self) -> Option<IslandItem> {
         let now = self.integrations.spotify.now.as_ref()?;
         let mut rows = vec![ItemRow { text: now.track.title.clone(), color: INK, action: None }];
+
         if !now.track.artist.is_empty() {
             rows.push(ItemRow { text: now.track.artist.clone(), color: DIM, action: None });
         }
+
         Some(IslandItem {
             id: format!("{}spotify", super::ITEM_PREFIX),
             name: "Spotify",

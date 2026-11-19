@@ -124,6 +124,7 @@ fn stepper(id: &str, label: &str, hint: &str, value: i64, range: (i64, i64), suf
 fn text(id: &str, label: &str, hint: &str, value: &str, placeholder: &str, secret: bool) -> Item {
     // a secret never goes to Swift: the field starts empty and what is typed comes back with the press
     let value = if secret { "" } else { value };
+
     Item { value: json!(value), placeholder: placeholder.into(), secret, ..item(id, "text", label, hint) }
 }
 
@@ -162,21 +163,28 @@ impl DrawingApp {
     pub(crate) fn native_settings(&mut self) {
         if !self.settings_open {
             forget();
+
             return;
         }
+
         let tab = self.settings_tab.min(super::SETTINGS_TABS.len() - 1);
         let cache = CACHE.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
         if let Some((at, shown, value)) = cache.as_ref()
             && *shown == tab
             && at.elapsed() < LIFE
         {
             crate::app::native::publish("settings", value);
+
             return;
         }
+
         let tab_changed = cache.as_ref().is_none_or(|(_, shown, _)| *shown != tab);
+
         drop(cache);
         self.native_settings_prepare(tab, tab_changed);
         let snapshot = serde_json::to_value(self.settings_snapshot(tab)).unwrap_or_default();
+
         crate::app::native::publish("settings", &snapshot);
         *CACHE.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some((Instant::now(), tab, snapshot));
     }
@@ -186,11 +194,13 @@ impl DrawingApp {
     fn native_settings_prepare(&mut self, tab: usize, tab_changed: bool) {
         // ponytail: a throwaway context, the answers do not wake the frame loop; the next snapshot (1 s) shows them
         let ctx = Context::default();
+
         match super::SETTINGS_TABS[tab] {
             "Agentes" => {
                 if tab_changed {
                     crate::app::system::mcp_register::mcp_check(&ctx);
                 }
+
                 for said in crate::app::system::mcp_register::mcp_said() {
                     self.toast(said);
                 }
@@ -198,6 +208,7 @@ impl DrawingApp {
             "Voz" if !self.prefs.voice_codex && !self.prefs.voice_openai => {
                 use crate::voice::studio::{StudioServer, StudioVoices, fetch_voices};
                 let idle = matches!(*self.studio_voices.lock().unwrap(), StudioVoices::Idle);
+
                 if idle {
                     fetch_voices(StudioServer::from_prefs(&self.prefs), self.studio_voices.clone(), ctx);
                 }
@@ -219,12 +230,14 @@ impl DrawingApp {
             "Dados" => self.settings_swift_data(),
             _ => self.settings_swift_about(),
         };
+
         let hooks_preview = self.claude_hooks_preview.as_ref().map(|(path, relay, before, after)| {
             let (title, confirm, state) = super::hooks_preview::preview_words(crate::app::maestro::claude_hooks::state_in(before, relay), before == after);
             let (before_text, after_text) = (serde_json::to_string_pretty(before).unwrap_or_default(), serde_json::to_string_pretty(after).unwrap_or_default());
             let (left, right): (Vec<&str>, Vec<&str>) = (before_text.lines().collect(), after_text.lines().collect());
             let line = |lines: &[&str], index: Option<usize>| index.and_then(|index| lines.get(index)).copied().unwrap_or_default().to_string();
             let mut diff = vec![];
+
             for row in crate::editor::diff_rows(&before_text, &after_text) {
                 match (row.kind == crate::editor::RowKind::Change, row.left, row.right) {
                     (true, left_at, right_at) => {
@@ -237,9 +250,12 @@ impl DrawingApp {
                     _ => {}
                 }
             }
+
             Preview { title: title.into(), confirm: confirm.into(), state: state.into(), path: path.display().to_string(), diff }
         });
+
         let wipe = self.wipe_confirm.then(wipe_lines);
+
         Snapshot { tabs: super::SETTINGS_TABS.to_vec(), tab, title: super::SETTINGS_TABS[tab], subtitle: super::SUBTITLES[tab], groups, hooks_preview, wipe }
     }
 }
@@ -250,6 +266,7 @@ mod tests {
 
     fn app_on(tab: &str) -> DrawingApp {
         let mut app = DrawingApp::default();
+
         app.settings_open = true;
         app.settings_tab = super::super::SETTINGS_TABS.iter().position(|name| *name == tab).unwrap();
         app
@@ -263,10 +280,13 @@ mod tests {
     fn the_pages_are_the_tabs_in_order_and_sobre_has_no_credits() {
         let app = app_on("Geral");
         let snapshot = app.settings_snapshot(0);
+
         assert_eq!(snapshot.tabs, super::super::SETTINGS_TABS.to_vec());
+
         for tab in 0..super::super::SETTINGS_TABS.len() {
             let snapshot = app.settings_snapshot(tab);
             let json = serde_json::to_string(&snapshot).unwrap();
+
             assert!(!json.contains("CRÉDITOS") && !json.contains("Ver os avisos"), "{}", snapshot.title);
             assert!(!snapshot.groups.is_empty(), "{}", snapshot.title);
         }
@@ -276,6 +296,7 @@ mod tests {
     fn a_row_set_comes_back_in_the_snapshot() {
         let mut app = app_on("Geral");
         let tab = |app: &DrawingApp| app.settings_snapshot(app.settings_tab);
+
         // every switch flips, every choice moves to its last option, a stepper and a field take their value
         for (id, kind, last) in
             tab(&app).groups.iter().flat_map(|group| &group.items).map(|item| (item.id.clone(), item.kind, item.options.len())).collect::<Vec<_>>()
@@ -284,6 +305,7 @@ mod tests {
             if id.is_empty() || id == "run_at_login" || id == "island_place" {
                 continue;
             }
+
             let wanted = match kind {
                 "toggle" => json!(!tab(&app).groups.iter().flat_map(|group| &group.items).find(|item| item.id == id).unwrap().value.as_bool().unwrap()),
                 "choice" | "select" => json!(last - 1),
@@ -291,20 +313,25 @@ mod tests {
                 "text" => json!("x"),
                 _ => continue,
             };
+
             app.native_settings_act("set", &json!({ "id": id, "value": wanted })).unwrap();
             let snapshot = tab(&app);
             let now = values(&snapshot).into_iter().find(|(each, _)| *each == id).unwrap().1.clone();
+
             assert_eq!(now, if kind == "text" { json!("x") } else { wanted }, "{id}");
         }
+
         assert!(app.native_settings_act("set", &json!({ "id": "nada", "value": 1 })).is_err());
     }
 
     #[test]
     fn a_secret_never_leaves_for_swift() {
         let mut app = app_on("Voz");
+
         app.prefs.voice_openai = true;
         app.prefs.openai_key = "sk-segredo".into();
         let json = serde_json::to_string(&app.settings_snapshot(app.settings_tab)).unwrap();
+
         assert!(!json.contains("sk-segredo"));
     }
 
@@ -312,15 +339,19 @@ mod tests {
     fn the_recorder_waits_for_salvar_and_refuses_keys_another_shortcut_has() {
         let mut app = app_on("Atalhos");
         let hotkey = |app: &mut DrawingApp, args: Value| app.native_settings_act("hotkey", &args);
+
         let keys_of = |app: &DrawingApp, id: &str| {
             let snapshot = app.settings_snapshot(app.settings_tab);
+
             snapshot.groups.into_iter().flat_map(|group| group.items).find(|item| item.id == id).unwrap().keys.unwrap()
         };
+
         hotkey(&mut app, json!({ "op": "record", "id": "save" })).unwrap();
         assert!(keys_of(&app, "save").editing);
         // Cmd+Z is Desfazer's: shown, refused
         hotkey(&mut app, json!({ "op": "key", "id": "save", "key": "Z", "cmd": true })).unwrap();
         let taken = keys_of(&app, "save");
+
         assert!(taken.pending && taken.problem);
         hotkey(&mut app, json!({ "op": "save", "id": "save" })).unwrap();
         assert!(keys_of(&app, "save").editing, "still waiting");
@@ -329,6 +360,7 @@ mod tests {
         assert!(!keys_of(&app, "save").problem);
         hotkey(&mut app, json!({ "op": "save", "id": "save" })).unwrap();
         let saved = keys_of(&app, "save");
+
         assert!(!saved.editing && saved.changed && saved.text.contains("F5"), "{}", saved.text);
         hotkey(&mut app, json!({ "op": "clear", "id": "save" })).unwrap();
         assert!(!keys_of(&app, "save").can_clear);
@@ -345,6 +377,7 @@ mod tests {
         let mut app = app_on("Terminal");
         let count = app.prefs.presets.len();
         let first = app.prefs.presets[0].name.clone();
+
         app.native_settings_act("press", &json!({ "id": "preset.0.down" })).unwrap();
         assert_eq!(app.prefs.presets[1].name, first);
         app.native_settings_act("press", &json!({ "id": "preset.1.remove" })).unwrap();
@@ -356,6 +389,7 @@ mod tests {
     #[test]
     fn closing_clears_the_questions_and_the_tab_moves() {
         let mut app = app_on("Dados");
+
         app.wipe_confirm = true;
         assert!(app.settings_snapshot(app.settings_tab).wipe.is_some());
         app.native_settings_act("tab", &json!({ "index": 9 })).unwrap();

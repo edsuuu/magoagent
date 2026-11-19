@@ -38,6 +38,7 @@ pub(crate) enum PortalEvent {
 /// at the start: "exemplo.com/?r=http://x" is still a site.
 pub(crate) fn normalize_url(url: &str) -> String {
     let url = url.trim();
+
     if url.is_empty() {
         "about:blank".into()
     } else if has_scheme(url) || url.starts_with("about:") {
@@ -57,6 +58,7 @@ pub(super) fn match_portal_tabs(live: &[String], next: &[String]) -> Vec<Option<
 
     // the longest common run of the two lists (by URL), read from the end: `common[old][new]`
     let mut common = vec![vec![0; next.len() + 1]; live.len() + 1];
+
     for old in (0..live.len()).rev() {
         for new in (0..next.len()).rev() {
             common[old][new] = if live[old] == next[new] { common[old + 1][new + 1] + 1 } else { common[old + 1][new].max(common[old][new + 1]) };
@@ -65,6 +67,7 @@ pub(super) fn match_portal_tabs(live: &[String], next: &[String]) -> Vec<Option<
 
     let mut matched = vec![None; next.len()];
     let (mut old, mut new) = (0, 0);
+
     while old < live.len() && new < next.len() {
         if live[old] == next[new] {
             matched[new] = Some(old);
@@ -76,6 +79,7 @@ pub(super) fn match_portal_tabs(live: &[String], next: &[String]) -> Vec<Option<
             new += 1;
         }
     }
+
     matched
 }
 
@@ -90,6 +94,7 @@ pub(super) fn has_scheme(url: &str) -> bool {
 /// Other schemes (mailto:, ms-settings:, a custom app's) would launch programs.
 pub(crate) fn is_web(url: &str) -> bool {
     let url = url.trim_start().to_ascii_lowercase();
+
     url.starts_with("http://") || url.starts_with("https://")
 }
 
@@ -112,16 +117,20 @@ pub(crate) fn open_external(url: &str) {
         unsafe extern "system" {
             fn ShellExecuteW(hwnd: isize, op: *const u16, file: *const u16, params: *const u16, dir: *const u16, show: i32) -> isize;
         }
+
         let wide = |text: &str| text.encode_utf16().chain([0]).collect::<Vec<u16>>();
         let (operation, file) = (wide("open"), wide(url));
         const SW_SHOWNORMAL: i32 = 1;
+
         // SAFETY: both strings are NUL-terminated and outlive the call
         unsafe { ShellExecuteW(0, operation.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL) };
     }
+
     #[cfg(not(windows))]
     {
         // waited on, off the UI thread, so no zombie stays
         let (program, url) = (if cfg!(target_os = "macos") { "open" } else { "xdg-open" }, url.to_owned());
+
         std::thread::spawn(move || std::process::Command::new(program).arg(url).status());
     }
 }
@@ -183,11 +192,13 @@ pub(super) fn new_tab_view(
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let uid = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let webview = page_builder(web_context, portal, uid, url, events, ctx, extras).build_as_child(window)?;
+
     // wry anchors a child page to the window's bottom edge (ViewMinYMargin), so a window that
     // settles at another height would move the page off its card; its place is set from the
     // canvas instead, so AppKit must leave it alone
     #[cfg(target_os = "macos")]
     wry::WebViewExtMacOS::webview(&webview).setAutoresizingMask(objc2_app_kit::NSAutoresizingMaskOptions::empty());
+
     Ok(TabView { webview, uid, url: url.into(), loading: true, secret: None })
 }
 
@@ -205,6 +216,7 @@ pub(super) fn page_builder<'a>(
     let (loaded, new_window, note) = (events.clone(), events.clone(), events.clone());
     let (portal_loaded, portal_window, portal_note) = (portal.to_string(), portal.to_string(), portal.to_string());
     let (ctx_note, ctx_loaded) = (ctx.clone(), ctx.clone());
+
     crate::app::browser::extras::tune(wry::WebViewBuilder::new_with_web_context(web_context), extras)
         .with_url(url)
         .with_initialization_script(crate::app::browser::console::initialization_script())
@@ -216,21 +228,26 @@ pub(super) fn page_builder<'a>(
         .with_focused(false)
         .with_on_page_load_handler(move |event, url| {
             let portal = portal_loaded.clone();
+
             let _ = loaded.send(match event {
                 wry::PageLoadEvent::Started => PortalEvent::Navigating { portal, tab: uid },
                 wry::PageLoadEvent::Finished => PortalEvent::Loaded { portal, tab: uid, url },
             });
+
             ctx_loaded.request_repaint();
         })
         .with_new_window_req_handler(move |url, _| {
             let _ = new_window.send(PortalEvent::NewTab { portal: portal_window.clone(), url });
+
             wry::NewWindowResponse::Deny
         })
         .with_ipc_handler(move |request| {
             // a page can post any size: past what Design sends, it stops here, before the queue
             let message = request.into_body();
+
             if message.len() <= crate::app::browser::design::MESSAGE_MAX {
                 let _ = note.send(PortalEvent::Design { portal: portal_note.clone(), tab: uid, message });
+
                 ctx_note.request_repaint();
             }
         })
@@ -243,33 +260,42 @@ pub(super) fn page_builder<'a>(
 #[cfg(windows)]
 pub(super) fn cut_page(webview: &wry::WebView, origin: Pos2, holes: &[Rect], pixels_per_point: f32) {
     use wry::WebViewExtWindows;
+
     #[link(name = "gdi32")]
     unsafe extern "system" {
         fn CreateRectRgn(left: i32, top: i32, right: i32, bottom: i32) -> isize;
         fn CombineRgn(target: isize, a: isize, b: isize, mode: i32) -> i32;
         fn DeleteObject(object: isize) -> i32;
     }
+
     #[link(name = "user32")]
     unsafe extern "system" {
         fn SetWindowRgn(hwnd: isize, region: isize, redraw: i32) -> i32;
     }
+
     const RGN_DIFF: i32 = 4;
     // wry's own container window, which holds the page's
     let hwnd = webview.hwnd().0 as isize;
     let pixels = |points: f32| (points * pixels_per_point).round() as i32;
+
     // SAFETY: plain GDI handles; the cut-outs are freed here, the shape goes to the window
     unsafe {
         if holes.is_empty() {
             SetWindowRgn(hwnd, 0, 1);
+
             return;
         }
+
         let shape = CreateRectRgn(0, 0, 1 << 20, 1 << 20);
+
         for hole in holes {
             let (min, max) = (hole.min - origin, hole.max - origin);
             let cut = CreateRectRgn(pixels(min.x), pixels(min.y), pixels(max.x), pixels(max.y));
+
             CombineRgn(shape, shape, cut, RGN_DIFF);
             DeleteObject(cut);
         }
+
         SetWindowRgn(hwnd, shape, 1);
     }
 }
@@ -307,6 +333,7 @@ pub(crate) enum Motion {
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(crate) fn motion(since: Option<f64>) -> Motion {
     const SETTLE: f64 = 0.15;
+
     match since {
         Some(since) if since < SETTLE => Motion::Moving,
         Some(since) if since < 2.0 * SETTLE => Motion::Unseen,

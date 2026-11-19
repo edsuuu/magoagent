@@ -66,18 +66,21 @@ pub(super) const ANSI: [[u8; 3]; 16] = [
 pub(crate) fn grid_size(size: Vec2) -> (usize, usize) {
     let cols = ((size.x - 2.0 * TERMINAL_PAD) / CELL.x).floor().max(2.0) as usize;
     let rows = ((size.y - TERMINAL_HEADER - TERMINAL_FOOTER - TERMINAL_PAD) / CELL.y).floor().max(1.0) as usize;
+
     (cols, rows)
 }
 
 /// Size of a terminal with this many columns and rows.
 pub(crate) fn terminal_size(cols: usize, rows: usize) -> Vec2 {
     let height = rows as f32 * CELL.y + TERMINAL_HEADER + TERMINAL_FOOTER + TERMINAL_PAD;
+
     Vec2::new(cols as f32 * CELL.x + 2.0 * TERMINAL_PAD, height).ceil()
 }
 
 /// Milliseconds since the app started, for stamps shared across threads.
 pub(crate) fn uptime_ms() -> u64 {
     static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
     START.get_or_init(std::time::Instant::now).elapsed().as_millis() as u64
 }
 
@@ -89,6 +92,7 @@ mod tests {
     fn a_hidden_terminal_repaints_the_app_only_when_it_ends() {
         let ctx = Context::default();
         let settle = |ctx: &Context| (0..3).for_each(|_| ctx.run_ui(Default::default(), |_| {}).textures_delta.clear());
+
         let listener = Listener {
             ctx: Some(ctx.clone()),
             pty: Default::default(),
@@ -99,6 +103,7 @@ mod tests {
             focused: Default::default(),
             look: Default::default(),
         };
+
         settle(&ctx);
         listener.send_event(Event::Wakeup);
         assert!(!ctx.has_requested_repaint(), "its output waits for the idle repaint");

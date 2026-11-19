@@ -4,18 +4,22 @@ use super::*;
 fn save_format_round_trips_scene() {
     let scene = Scene { elements: vec![rect_element(5.0, 8.0, 40.0, 30.0, None)], ..Default::default() };
     let decoded: Scene = serde_json::from_str(&serde_json::to_string(&scene).unwrap()).unwrap();
+
     assert_eq!(decoded, scene);
 }
 
 #[test]
 fn image_scene_round_trips_and_history_preference_defaults() {
     let mut element = rect_element(0.0, 0.0, 3.0, 4.0, None);
+
     element.image = Some("data:image/png;base64,AA==".into());
     let scene = Scene { elements: vec![element], ..Default::default() };
     let saved = serde_json::to_string(&scene).unwrap();
+
     assert_eq!(parse_scene(&saved).unwrap(), scene);
     assert_eq!(serde_json::from_str::<Prefs>("{}").unwrap().terminal_history, 10_000);
     let prefs = Prefs { terminal_history: 5_000, ..Default::default() };
+
     assert_eq!(serde_json::from_str::<Prefs>(&serde_json::to_string(&prefs).unwrap()).unwrap().terminal_history, 5_000);
 }
 
@@ -29,6 +33,7 @@ fn terminal_config_uses_requested_history() {
 fn legacy_rea_files_still_load() {
     let old = r#"{"version":1,"elements":[{"id":"a","kind":{"type":"rectangle","x":1,"y":2,"width":3,"height":4},"stroke":[1,2,3,255],"fill":null,"stroke_width":4}]}"#;
     let scene = parse_scene(old).unwrap();
+
     assert_eq!(scene.elements[0].style.stroke_width, 4.0);
     assert_eq!(scene.elements[0].style.roughness, 1);
 }
@@ -36,15 +41,18 @@ fn legacy_rea_files_still_load() {
 #[test]
 fn interop_format_round_trips() {
     let mut app = DrawingApp::default();
+
     app.scene.elements = vec![
         rect_element(10.0, 20.0, 50.0, 40.0, Some([255, 201, 201, 255])),
         app.new_element(ElementKind::Line { points: vec![[0.0, 0.0], [30.0, 40.0]], arrow: true }),
         app.new_element(ElementKind::Text { x: 5.0, y: 6.0, value: "Olá\nmundo".into() }),
     ];
+
     app.scene.elements[0].style.fill_style = FillStyle::Hachure;
     app.scene.elements[0].angle = 0.5;
     app.scene.elements[1].style.stroke_style = StrokeStyle::Dashed;
     let back = round_trip(&app.scene.elements);
+
     assert_eq!(back.len(), 3);
     assert_eq!(back[0].kind, app.scene.elements[0].kind);
     assert_eq!(back[0].style.fill_style, FillStyle::Hachure);
@@ -57,8 +65,10 @@ fn interop_format_round_trips() {
 #[test]
 fn terminal_look_round_trips_and_old_files_default_it() {
     let mut plain = rect_element(0.0, 0.0, 300.0, 200.0, None);
+
     plain.terminal = Some(TerminalSpec { name: "a".into(), command: "claude".into(), ..Default::default() });
     let mut tinted = plain.clone();
+
     tinted.terminal = Some(TerminalSpec {
         icon: "eye".into(),
         color: Some([1, 2, 3]),
@@ -71,18 +81,22 @@ fn terminal_look_round_trips_and_old_files_default_it() {
         resume: false,
         ..plain.terminal.clone().unwrap()
     });
+
     // no tint is null on the wire and None back
     assert_eq!(interop_elements(&[plain.clone()])[0]["color"], Value::Null);
     let back = round_trip(&[plain.clone(), tinted.clone()]);
+
     assert_eq!((&back[0].terminal, &back[1].terminal), (&plain.terminal, &tinted.terminal));
     // scenes and prefs saved before the fields existed: monitoring on, the default quick starts
     let old: TerminalSpec = serde_json::from_str(r#"{"name":"a","cwd":"","command":"claude"}"#).unwrap();
+
     assert_eq!((old.icon.as_str(), old.color, old.quiet), ("", None, false));
     assert!(old.maestro, "scenes saved before Maestro are Maestros");
     assert!(!old.unloaded && !serde_json::to_string(&TerminalSpec::default()).unwrap().contains("unloaded"), "written only when set");
     assert!(!old.chat && !serde_json::to_string(&TerminalSpec::default()).unwrap().contains("chat"), "chat mode off by default, written only when set");
     // the conversation it remembers: in the .mago too, written only when there is one; resuming on by default
     let saved: TerminalSpec = serde_json::from_str(&serde_json::to_string(&tinted.terminal).unwrap()).unwrap();
+
     assert_eq!(Some(saved), tinted.terminal);
     assert!(old.resume && old.claude_session.is_empty() && !serde_json::to_string(&TerminalSpec::default()).unwrap().contains("claude_session"));
     assert!(interop_elements(&[plain.clone()])[0].get("claudeSession").is_none());
@@ -93,19 +107,24 @@ fn terminal_look_round_trips_and_old_files_default_it() {
 fn an_ide_node_from_an_old_scene_or_an_agent_becomes_a_file_tree_on_the_same_folder() {
     // a scene written while the node existed: a plain rectangle that also carries `ide`
     let mut value = serde_json::to_value(Scene { elements: vec![rect_element(10.0, 20.0, 720.0, 460.0, None)], ..Default::default() }).unwrap();
+
     value["elements"][0]["ide"] = json!({ "name": "loja", "root": "/tmp/loja", "tree_width": 300.0 });
     let old = value.to_string();
     let tree = |e: &Element| e.filetree.as_ref().map(|t| (t.root.clone(), t.editor));
     let scene = parse_scene(&old).unwrap();
+
     assert_eq!((tree(&scene.elements[0]), scene.elements[0].legacy_ide.is_none()), (Some(("/tmp/loja".to_string(), true)), true));
     assert!(scene.elements[0].is_node());
     // saved again, it is a tree and nothing of the IDE is left in the file
     let saved = serde_json::to_string(&scene).unwrap();
+
     assert!(!saved.contains("\"ide\"") && saved.contains("\"filetree\""), "{saved}");
     assert_eq!(parse_scene(&saved).unwrap(), scene);
+
     // the exchange format (clipboard, MCP): type "ide" is a tree with its editor open
     let from_agent =
         from_interop_elements(&json!([{ "type": "ide", "id": "j", "x": 0, "y": 0, "width": 300, "height": 300, "root": "/tmp/loja", "name": "loja" }]));
+
     assert_eq!((tree(&from_agent[0]), from_agent[0].legacy_ide.is_none()), (Some(("/tmp/loja".to_string(), true)), true));
     assert_eq!(interop_elements(&from_agent)[0]["type"], "filetree");
 }
@@ -114,6 +133,7 @@ fn an_ide_node_from_an_old_scene_or_an_agent_becomes_a_file_tree_on_the_same_fol
 fn svg_export_contains_drawn_shape() {
     let scene = Scene { elements: vec![rect_element(10.0, 20.0, 50.0, 40.0, Some([240, 240, 250, 255]))], ..Default::default() };
     let svg = scene_svg(&scene, Some(WHITE));
+
     assert!(svg.contains("<polygon") && svg.contains("<polyline"));
     assert!(svg.contains("width=\"70\""));
 }
@@ -122,30 +142,37 @@ fn svg_export_contains_drawn_shape() {
 fn png_export_is_a_valid_image() {
     let png = render_svg_png(&scene_svg(&Scene::default(), Some(WHITE)), 2.0).unwrap();
     let image = image::load_from_memory(&png).unwrap();
+
     assert_eq!(image.width(), 360);
 }
 
 #[test]
 fn write_atomic_leaves_no_temp_file_and_scene_lock_loses_nothing() {
     let dir = std::env::temp_dir().join(format!("mago-lock-{}", std::process::id()));
+
     fs::create_dir_all(&dir).unwrap();
     let path = dir.join("cena.json");
+
     // a failed rename (the target is a directory) cleans its temporary
     fs::create_dir_all(dir.join("alvo")).unwrap();
     assert!(write_atomic(&dir.join("alvo"), "x").is_err());
     assert!(fs::read_dir(&dir).unwrap().flatten().all(|entry| !entry.file_name().to_string_lossy().contains("tmp-")));
+
     let threads: Vec<_> = (0..8)
         .map(|index| {
             let path = path.clone();
+
             std::thread::spawn(move || {
                 let _lock = crate::mcp::calls::scene_lock(&path).unwrap();
                 let mut scene = read_scene_file(&path).map(|(scene, _)| scene).unwrap_or_default();
+
                 scene.elements.push(rect_element(index as f32, 0.0, 1.0, 1.0, None));
                 std::thread::sleep(std::time::Duration::from_millis(20));
                 write_scene_file(&path, &scene).unwrap();
             })
         })
         .collect();
+
     threads.into_iter().for_each(|thread| thread.join().unwrap());
     assert_eq!(read_scene_file(&path).unwrap().0.elements.len(), 8);
     let _ = fs::remove_dir_all(&dir);
@@ -154,10 +181,12 @@ fn write_atomic_leaves_no_temp_file_and_scene_lock_loses_nothing() {
 #[test]
 fn a_scene_lock_held_by_another_agent_is_an_error_and_stays() {
     let dir = std::env::temp_dir().join(format!("mago-lock-busy-{}", std::process::id()));
+
     fs::create_dir_all(&dir).unwrap();
     let path = dir.join("cena.json");
     let theirs = crate::mcp::calls::scene_lock_within(&path, std::time::Duration::from_millis(100)).unwrap();
     let error = crate::mcp::calls::scene_lock_within(&path, std::time::Duration::from_millis(100)).err().expect("busy");
+
     assert!(error.contains("ocupada"), "{error}");
     assert!(path.with_extension("lock").exists(), "the other's lock is still there");
     drop(theirs);

@@ -17,6 +17,7 @@ fn again(app: &DrawingApp, ctx: &Context, time: f64) -> egui::FullOutput {
     let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, ISLAND_SCREEN)), time: Some(time), ..Default::default() };
     let taken = app.island.taken();
     let mut output = ctx.run_ui(raw, |ui| taken.paint(ui, time));
+
     output.textures_delta.clear();
     output
 }
@@ -26,22 +27,25 @@ fn quiet() -> Groove {
     Groove { bands: Some([0.1; BANDS]), dance: Dance::Sway, ..loud() }
 }
 
-/// Asked: "a ilha ainda tem uns problemas, meio travada ou algo assim, em notebook que não tem placa de vídeo dedicada":
-/// each frame of the island at rest painted the whole app. At rest it is taken down with what moves in it (Luna and the
+/// Each frame of the island at rest painted the whole app. At rest it is taken down with what moves in it (Luna and the
 /// bars), and drawn again it shows as the app drew it, the bars following what is heard at that frame.
 #[test]
 fn at_rest_the_island_is_drawn_again_with_its_song_moving() {
     let (mut app, ctx) = playing(None, true);
     let drawn = settle(&mut app, &ctx, 1.0, 1.5, vec![]);
+
     assert!(app.island.at_rest(), "closed, nobody on it");
     assert!(app.island.taken().moving() >= 2, "Luna and the bars move: {}", app.island.taken().moving());
     let (by_app, by_itself) = (shapes(&drawn), shapes(&again(&app, &ctx, 2.6)));
     let body = |all: &[Painted]| all.iter().find(|shape| !shape.mesh && shape.rect.size() == app.island.size()).map(|shape| shape.rect);
+
     assert!(body(&by_app).is_some() && body(&by_app) == body(&by_itself), "the island where the app drew it");
     let loud_bars = bars(&by_itself);
+
     assert_eq!(bars(&by_app), loud_bars, "the bars as the app drew them, the song heard the same");
     app.integrations.spotify.dancer.hear(quiet());
     let quiet_bars = bars(&shapes(&again(&app, &ctx, 2.7)));
+
     assert_eq!(quiet_bars.len(), loud_bars.len(), "every bar");
     assert!(quiet_bars.iter().zip(&loud_bars).all(|(quiet, loud)| quiet.height() < loud.height()), "they follow what is heard now: {quiet_bars:?}");
 }
@@ -50,13 +54,16 @@ fn at_rest_the_island_is_drawn_again_with_its_song_moving() {
 #[test]
 fn the_person_on_the_island_or_it_springing_is_not_rest() {
     let (mut app, ctx) = playing(None, true);
+
     settle(&mut app, &ctx, 1.0, 1.5, vec![]);
     assert!(app.island.at_rest());
     let on_it = Pos2::new(ISLAND_SCREEN.x / 2.0, CLOSED_H / 2.0);
+
     frame(&mut app, &ctx, 2.5, vec![egui::Event::PointerMoved(on_it)]);
     frame(&mut app, &ctx, 2.55, vec![]);
     assert!(!app.island.at_rest(), "the pointer on it");
     let press = |pressed| egui::Event::PointerButton { pos: on_it, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+
     frame(&mut app, &ctx, 2.6, vec![press(true)]);
     frame(&mut app, &ctx, 2.65, vec![press(false)]);
     frame(&mut app, &ctx, 2.7, vec![egui::Event::PointerGone]);

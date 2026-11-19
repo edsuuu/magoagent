@@ -38,11 +38,14 @@ pub(crate) fn parse_scene(data: &str) -> Result<Scene, SceneError> {
     struct Stamp {
         version: u32,
     }
+
     let newer = serde_json::from_str::<Stamp>(data).is_ok_and(|s| s.version > SCENE_VERSION);
     let parsed = serde_json::from_str::<Scene>(data);
+
     if newer {
         return Err(SceneError::Newer(parsed.ok()));
     }
+
     // what this build writes back is its own format
     parsed
         .map(|mut scene| {
@@ -61,16 +64,21 @@ pub(crate) fn install_dir() -> Option<PathBuf> {
         // no migration either: the tests move nothing of the person's
         return Some(test_dir().join("install"));
     }
+
     static DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+
     DIR.get_or_init(|| {
         let own = std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from)).filter(|d| {
             migrate_data(d);
             d.join("data").is_dir()
         });
+
         let dir = own.or_else(recorded_install_dir).or_else(default_install_dir);
+
         if let Some(dir) = &dir {
             migrate_data(dir);
         }
+
         dir
     })
     .clone()
@@ -80,6 +88,7 @@ pub(crate) fn install_dir() -> Option<PathBuf> {
 /// the old one exists.
 pub(crate) fn migrate_data(dir: &std::path::Path) {
     let (old, new) = (dir.join("dados"), dir.join("data"));
+
     if old.is_dir() && !new.exists() {
         let _ = fs::rename(old, new);
     }
@@ -93,10 +102,12 @@ pub(crate) fn recorded_install_dir() -> Option<PathBuf> {
     if !cfg!(windows) {
         return None;
     }
+
     let out = crate::editor::command("reg").args(["query", INSTALL_KEY, "/v", "InstallDir"]).output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     let line = text.lines().find(|l| l.trim_start().starts_with("InstallDir"))?;
     let dir = line.split_once("REG_SZ")?.1.trim();
+
     (!dir.is_empty()).then(|| PathBuf::from(dir))
 }
 
@@ -110,6 +121,7 @@ pub(crate) fn record_install_dir(dir: &std::path::Path) {
 /// macOS, ~/.local/opt elsewhere.
 pub(crate) fn default_install_dir() -> Option<PathBuf> {
     let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+
     if cfg!(windows) {
         Some(var("ProgramFiles").unwrap_or_else(|| PathBuf::from(r"C:\Program Files")).join("MagoAgent"))
     } else if cfg!(target_os = "macos") {
@@ -124,6 +136,7 @@ pub(crate) fn default_install_dir() -> Option<PathBuf> {
 /// installed app without the two writing the same drawing. `MAGOAGENT_DEV=1` or `=0` says so instead.
 pub(crate) fn development() -> bool {
     static DEV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
     *DEV.get_or_init(|| match std::env::var("MAGOAGENT_DEV").as_deref() {
         Ok("1") => true,
         Ok("0") => false,
@@ -146,19 +159,22 @@ pub(crate) fn data_dir() -> Option<PathBuf> {
     if development() || cfg!(test) {
         return legacy_data_dir();
     }
+
     match install_dir().map(|d| d.join("data")) {
         Some(dir) if dir.is_dir() => Some(dir),
         _ => legacy_data_dir(),
     }
 }
 
-/// The chats' folder when none was picked ("Nenhuma pasta"): `~/.magoagent`, outside the install folder (asked). The
-/// chats made in the old `data/projetos` keep it: their sessions live there.
+/// The chats' folder when none was picked ("Nenhuma pasta"): `~/.magoagent`, outside the install folder. The chats
+/// made in the old `data/projetos` keep it: their sessions live there.
 pub(crate) fn projects_dir() -> Option<PathBuf> {
     if cfg!(test) {
         return Some(test_dir().join("home-magoagent"));
     }
+
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).filter(|v| !v.is_empty())?;
+
     Some(PathBuf::from(home).join(".magoagent"))
 }
 
@@ -175,8 +191,10 @@ pub(crate) fn legacy_data_dir() -> Option<PathBuf> {
     if cfg!(test) {
         return Some(test_dir().join("data"));
     }
+
     let var = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from);
     let dev = if development() { "-dev" } else { "" };
+
     if cfg!(target_os = "macos") {
         var("HOME").map(|home| home.join(format!("Library/Application Support/MagoAgent{dev}")))
     } else if cfg!(windows) {
@@ -192,12 +210,15 @@ pub(crate) fn autosave_path() -> Option<PathBuf> {
         // relative to where the app started, not to whatever folder a terminal is in later
         return Some(std::path::absolute(&path).unwrap_or_else(|_| PathBuf::from(path)));
     }
+
     let path = data_dir()?.join("autosave.mago");
     // drawings saved before the .mago extension
     let old = path.with_extension("rea");
+
     if !path.exists() && old.exists() {
         let _ = fs::rename(&old, &path);
     }
+
     Some(path)
 }
 
@@ -231,18 +252,23 @@ fn secrets(prefs: &mut Prefs) -> [(&'static str, &mut String); 2] {
 pub(crate) fn prefs_for_file(prefs: &Prefs, before: &Prefs) -> Prefs {
     static IN_KEYCHAIN: std::sync::Mutex<Vec<(&str, String)>> = std::sync::Mutex::new(Vec::new());
     let known = |id: &str, field: &str| IN_KEYCHAIN.lock().is_ok_and(|kept| kept.iter().any(|(at, key)| *at == id && key == field));
+
     let remember = |id: &'static str, field: Option<&str>| {
         if let Ok(mut kept) = IN_KEYCHAIN.lock() {
             kept.retain(|(at, _)| *at != id);
             kept.extend(field.map(|field| (id, field.to_string())));
         }
     };
+
     let (mut copy, mut old) = (prefs.clone(), before.clone());
+
     for ((id, field), (_, previous)) in secrets(&mut copy).into_iter().zip(secrets(&mut old)) {
         let changed = *field != *previous;
+
         if field.is_empty() {
             if changed {
                 let _ = remove_secret(id);
+
                 remember(id, None);
             }
         } else if (!changed && known(id, field)) || if changed { set_secret(id, field).is_ok() } else { take_secret(id).as_deref() == Some(field.as_str()) } {
@@ -250,6 +276,7 @@ pub(crate) fn prefs_for_file(prefs: &Prefs, before: &Prefs) -> Prefs {
             field.clear();
         }
     }
+
     copy
 }
 
@@ -258,20 +285,27 @@ pub(crate) fn prefs_for_file(prefs: &Prefs, before: &Prefs) -> Prefs {
 /// earlier build's) moves there, once.
 pub(crate) fn read_prefs(path: &std::path::Path) -> (Option<Prefs>, Option<PathBuf>) {
     let Ok(data) = fs::read_to_string(path) else { return (None, None) };
+
     match serde_json::from_str::<Prefs>(&data) {
         Ok(mut prefs) => {
             let in_file = prefs.clone();
+
+            prefs.move_old_defaults();
+
             for (id, field) in secrets(&mut prefs) {
                 if field.is_empty() {
                     *field = take_secret(id).unwrap_or_default();
                 }
             }
+
             let moved = prefs_for_file(&prefs, &Prefs::default());
+
             if moved != in_file
                 && let Ok(json) = serde_json::to_string_pretty(&moved)
             {
                 let _ = write_atomic(path, json);
             }
+
             (Some(prefs), None)
         }
         Err(_) => (None, set_aside(path).ok()),
@@ -282,6 +316,7 @@ pub(crate) fn read_prefs(path: &std::path::Path) -> (Option<Prefs>, Option<PathB
 /// next save doesn't write an empty list over it.
 pub(crate) fn read_chats(path: &std::path::Path) -> (Vec<crate::app::chat::direct::Chat>, Option<PathBuf>) {
     let Ok(data) = fs::read(path) else { return (Vec::new(), None) };
+
     match serde_json::from_slice(&data) {
         Ok(chats) => (chats, None),
         Err(_) => (Vec::new(), set_aside(path).ok()),
@@ -307,12 +342,15 @@ pub(crate) fn modified(path: &std::path::Path) -> Option<SystemTime> {
 
 pub(crate) fn read_scene_file(path: &std::path::Path) -> Result<(Scene, Option<SystemTime>), SceneError> {
     let stamp = modified(path);
+
     let bytes = fs::read(path).map_err(|e| match e.kind() {
         std::io::ErrorKind::NotFound => SceneError::Missing,
         _ => SceneError::Io(e.to_string()),
     })?;
+
     let data = String::from_utf8(bytes).map_err(|e| SceneError::Unreadable(e.to_string()))?;
     let mut scene = parse_scene(&data)?;
+
     adopt_note_files(path, &mut scene, stamp);
     Ok((scene, stamp))
 }
@@ -332,12 +370,14 @@ pub(crate) fn register_moved_note_file(path: &std::path::Path, file: &std::path:
     let registry = moved_registry(path);
     let mut known = fs::read_to_string(&registry).unwrap_or_default();
     let line = file.to_string_lossy();
+
     if !known.lines().any(|known_line| known_line == line) {
         known.push_str(&line);
         known.push('\n');
         fs::create_dir_all(registry.parent().unwrap_or(std::path::Path::new(".")))?;
         write_atomic(&registry, known)?;
     }
+
     Ok(())
 }
 
@@ -351,6 +391,7 @@ pub(crate) fn note_file(path: &std::path::Path, note: &Element) -> PathBuf {
     {
         return moved;
     }
+
     path.with_file_name("notas").join(format!("{}.md", note.id))
 }
 
@@ -368,11 +409,14 @@ fn write_note_files(path: &std::path::Path, scene: &Scene) {
         let file = note_file(path, &scene.elements[note]);
         // the text last written there is remembered: an unchanged note costs no read of its file at every autosave
         let mut written = WRITTEN_NOTES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+
         if written.get(&file) == Some(value) && file.exists() {
             continue;
         }
+
         if fs::read_to_string(&file).unwrap_or_default() == *value || {
             let _ = file.parent().map(fs::create_dir_all);
+
             write_atomic(&file, value).is_ok()
         } {
             written.insert(file, value.clone());
@@ -385,6 +429,7 @@ fn adopt_note_files(path: &std::path::Path, scene: &mut Scene, scene_stamp: Opti
     for (note, label) in note_labels(scene) {
         let file = note_file(path, &scene.elements[note]);
         let (Some(newer), Ok(text)) = (modified(&file).zip(scene_stamp).map(|(m, s)| m > s), fs::read_to_string(&file)) else { continue };
+
         if let (true, ElementKind::Text { value, .. }) = (newer, &mut scene.elements[label].kind) {
             *value = text;
         }
@@ -401,8 +446,10 @@ pub(crate) fn kept_name(kept: &std::path::Path) -> String {
 pub(crate) fn set_aside(path: &std::path::Path) -> std::io::Result<PathBuf> {
     let ms = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_millis();
     let mut kept = path.as_os_str().to_owned();
+
     kept.push(format!(".bad-{ms}"));
     let kept = PathBuf::from(kept);
+
     fs::rename(path, &kept)?;
     Ok(kept)
 }
@@ -410,16 +457,20 @@ pub(crate) fn set_aside(path: &std::path::Path) -> std::io::Result<PathBuf> {
 /// Write-then-rename, so another process (or the next start, after a crash) never reads half a file.
 pub(crate) fn write_atomic(path: &std::path::Path, bytes: impl AsRef<[u8]>) -> std::io::Result<()> {
     let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+
     let written = (|| {
         let mut file = fs::File::create(&tmp)?;
+
         std::io::Write::write_all(&mut file, bytes.as_ref())?;
         // without it a power cut can leave the renamed file empty
         file.sync_all()?;
         fs::rename(&tmp, path)
     })();
+
     if written.is_err() {
         let _ = fs::remove_file(&tmp);
     }
+
     written
 }
 
@@ -427,6 +478,7 @@ pub(crate) fn write_scene_file(path: &std::path::Path, scene: &Scene) -> std::io
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
+
     // the notes' files first: the scene is then never older than them, so a newer one was edited outside
     write_note_files(path, scene);
     write_atomic(path, serde_json::to_string(scene).map_err(std::io::Error::other)?)?;
@@ -440,7 +492,9 @@ pub(crate) fn merge_scenes(base: &Scene, local: &Scene, external: &Scene) -> Sce
     fn index(scene: &Scene) -> std::collections::HashMap<&str, &Element> {
         scene.elements.iter().rev().map(|e| (e.id.as_str(), e)).collect()
     }
+
     let (base_ids, local_ids, external_ids) = (index(base), index(local), index(external));
+
     let mut elements: Vec<Element> = external
         .elements
         .iter()
@@ -450,8 +504,10 @@ pub(crate) fn merge_scenes(base: &Scene, local: &Scene, external: &Scene) -> Sce
             _ => Some(ext.clone()),
         })
         .collect();
+
     elements.extend(local.elements.iter().filter(|e| !base_ids.contains_key(e.id.as_str()) && !external_ids.contains_key(e.id.as_str())).cloned());
     let background = if external.background != base.background { external.background } else { local.background };
+
     // the groups the same way: an untouched outside keeps the local version
     let mut groups: Vec<FrameGroup> = external
         .groups
@@ -461,6 +517,7 @@ pub(crate) fn merge_scenes(base: &Scene, local: &Scene, external: &Scene) -> Sce
             _ => Some(ext.clone()),
         })
         .collect();
+
     groups.extend(local.groups.iter().filter(|g| !base.groups.iter().chain(&external.groups).any(|o| o.id == g.id)).cloned());
     Scene { version: external.version, elements, background, agent: None, agent_terminal: None, groups }
 }

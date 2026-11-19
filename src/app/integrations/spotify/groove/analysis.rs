@@ -35,11 +35,10 @@ const PULL: f64 = 0.3;
 /// The bass: what is under this, against the whole.
 const BASS_UNDER: f32 = 150.0;
 /// The bands the sound is cut in for the island's ten bars (Hz), each about 1.6 times the one before, from the bass to the
-/// treble (asked: "colocar mais barrinhas, pois tem espaço").
+/// treble.
 pub(crate) const BAND_EDGES: [f32; BANDS + 1] = [40.0, 65.0, 105.0, 170.0, 275.0, 445.0, 720.0, 1170.0, 1900.0, 3080.0, 5000.0];
-/// Each band against its own loudest of late, which comes down this many dB a second, over this range (wide, so only the
-/// loud parts reach the top: asked "a sensibilidade está muito alta"); a band rises in about `BAND_ATTACK` and falls in
-/// about `BAND_RELEASE`, smooth as the Dynamic Island's bars.
+/// Each band against its own loudest of late, which comes down this many dB a second, over this range; a band rises in
+/// about `BAND_ATTACK` and falls in about `BAND_RELEASE`, smooth as the Dynamic Island's bars.
 const BAND_FALLS: f32 = 4.0;
 const BAND_RANGE: f32 = 42.0;
 const BAND_ATTACK: f32 = 0.045;
@@ -62,6 +61,7 @@ impl Spectrum {
         let size = WINDOW;
         let bits = size.trailing_zeros();
         let turn = |index: usize| index as f32 / size as f32 * std::f32::consts::TAU;
+
         Spectrum {
             window: (0..size).map(|index| 0.5 - 0.5 * turn(index).cos()).collect(),
             cos: (0..size / 2).map(|index| turn(index).cos()).collect(),
@@ -75,28 +75,36 @@ impl Spectrum {
     /// The magnitudes of `samples` (`WINDOW` of them), from 0 Hz to half the rate, into `out`: a full-scale sine is ~1.
     fn magnitudes(&mut self, samples: impl Iterator<Item = f32>, out: &mut [f32]) {
         let size = WINDOW;
+
         for (index, sample) in samples.take(size).enumerate() {
             self.real[self.reversed[index]] = sample * self.window[index];
             self.imaginary[self.reversed[index]] = 0.0;
         }
+
         let mut span = 2;
+
         while span <= size {
             let (half, stride) = (span / 2, size / span);
+
             for start in (0..size).step_by(span) {
                 for offset in 0..half {
                     let (cos, sin) = (self.cos[offset * stride], self.sin[offset * stride]);
                     let (near, far) = (start + offset, start + offset + half);
                     let (real, imaginary) = (self.real[far], self.imaginary[far]);
                     let (turned_real, turned_imaginary) = (real * cos + imaginary * sin, imaginary * cos - real * sin);
+
                     self.real[far] = self.real[near] - turned_real;
                     self.imaginary[far] = self.imaginary[near] - turned_imaginary;
                     self.real[near] += turned_real;
                     self.imaginary[near] += turned_imaginary;
                 }
             }
+
             span *= 2;
         }
+
         let scale = 4.0 / size as f32;
+
         for (bin, magnitude) in out.iter_mut().enumerate().take(size / 2 + 1) {
             *magnitude = self.real[bin].hypot(self.imaginary[bin]) * scale;
         }
@@ -108,70 +116,95 @@ impl Spectrum {
 /// `current` is kept unless another is clearly stronger. The period is then read finer at its multiples.
 pub(crate) fn tempo(envelope: &[f32], frames_per_second: f64, current: Option<f64>) -> Option<(f64, f32)> {
     let count = envelope.len();
+
     // smoothed over five looks, so a period between two whole looks makes one wide peak, not two halves
     let smoothed: Vec<f32> = (0..count)
         .map(|index| {
             let near = |offset: usize, weight: f32| envelope.get((index + offset).wrapping_sub(2)).map_or(0.0, |value| value * weight);
+
             near(0, 1.0) + near(1, 2.0) + near(2, 3.0) + near(3, 2.0) + near(4, 1.0)
         })
         .collect();
+
     let mean = smoothed.iter().sum::<f32>() / count.max(1) as f32;
     let centered: Vec<f32> = smoothed.iter().map(|value| value - mean).collect();
     let longest = (frames_per_second * 60.0 / SLOWEST).ceil() as usize + 1;
     let shortest = ((frames_per_second * 60.0 / FASTEST).floor() as usize).max(2);
     let reach = (longest * 4).min(count / 2);
+
     if reach < longest + 1 {
         return None;
     }
+
     let mut correlation: Vec<f32> =
         (0..=reach).map(|lag| centered[lag..].iter().zip(&centered).map(|(later, earlier)| later * earlier).sum::<f32>() / (count - lag) as f32).collect();
+
     let energy = correlation[0];
+
     if energy <= 1e-12 || !energy.is_finite() {
         return None;
     }
+
     for value in &mut correlation {
         *value /= energy;
     }
+
     let at = |lag: usize| correlation.get(lag).copied().unwrap_or(0.0);
+
     let prior = |lag: f64| {
         let octaves = (frames_per_second * 60.0 / lag / PRIOR_CENTER).log2() / PRIOR_OCTAVES;
+
         (-0.5 * octaves * octaves).exp() as f32
     };
+
     let score = |lag: usize| (at(lag) + 0.5 * at(2 * lag - 1).max(at(2 * lag)).max(at(2 * lag + 1))) * prior(lag as f64);
     let peak = |lag: usize| at(lag) >= at(lag - 1) && at(lag) >= at(lag + 1);
     let mut best = (shortest..=longest).filter(|&lag| peak(lag)).max_by(|a, b| score(*a).total_cmp(&score(*b)))?;
+
     if let Some(current) = current {
         let lag = frames_per_second * 60.0 / current;
         let near = (lag.round() as usize).saturating_sub(1).max(shortest)..=(lag.round() as usize + 1).min(longest);
+
         if let Some(kept) = near.clone().max_by(|a, b| at(*a).total_cmp(&at(*b)))
             && near.map(score).fold(0.0, f32::max) >= KEEP * score(best)
         {
             best = kept;
         }
     }
+
     let clarity = at(best);
+
     if clarity < CLEAR {
         return None;
     }
+
     // finer: the peak between the lags, here and at its multiples, where an error is spread over k periods (the k-th
     // gives the period as its place / k, weighed by k: its place itself)
     let vertex = |lag: usize| {
         let (before, here, after) = (at(lag - 1), at(lag), at(lag + 1));
         let bend = before - 2.0 * here + after;
+
         lag as f64 + if bend < 0.0 { (0.5 * (before - after) / bend).clamp(-0.5, 0.5) as f64 } else { 0.0 }
     };
+
     let base = vertex(best);
     let (mut sum, mut weights) = (base, 1.0);
+
     for multiple in 2..=4 {
         let center = (base * multiple as f64).round() as usize;
+
         if center + 3 > reach {
             break;
         }
+
         let found = (center - 2..=center + 2).max_by(|a, b| at(*a).total_cmp(&at(*b))).unwrap_or(center);
+
         sum += vertex(found);
         weights += multiple as f64;
     }
+
     let lag = sum / weights;
+
     Some((frames_per_second * 60.0 / lag, clarity))
 }
 
@@ -179,16 +212,21 @@ pub(crate) fn tempo(envelope: &[f32], frames_per_second: f64, current: Option<f6
 /// that far apart (the recent ones counting more) gathers the most onsets.
 pub(crate) fn last_beat(envelope: &[f32], period: f64) -> f64 {
     let count = envelope.len();
+
     if count < 2 || period < 2.0 {
         return 0.0;
     }
+
     let mean = envelope.iter().sum::<f32>() / count as f32;
+
     let onset = |at: f64| {
         let index = at.floor() as usize;
         let part = (at - at.floor()) as f32;
         let value = |index: usize| (envelope[index.min(count - 1)] - mean).max(0.0);
+
         value(index) * (1.0 - part) + value(index + 1) * part
     };
+
     let gather = |offset: f64| {
         (0..16)
             .map(|tooth| (count - 1) as f64 - offset - tooth as f64 * period)
@@ -197,20 +235,24 @@ pub(crate) fn last_beat(envelope: &[f32], period: f64) -> f64 {
             .map(|(tooth, at)| 0.8f32.powi(tooth as i32) * onset(at))
             .sum::<f32>()
     };
+
     let steps = period.ceil() as usize;
     let scores: Vec<f32> = (0..steps).map(|step| gather(step as f64)).collect();
     let Some(best) = (0..steps).max_by(|a, b| scores[*a].total_cmp(&scores[*b])) else { return 0.0 };
     let (before, after) = (scores[(best + steps - 1) % steps], scores[(best + 1) % steps]);
     let bend = before - 2.0 * scores[best] + after;
     let finer = if bend < 0.0 { (0.5 * (before - after) / bend).clamp(-0.5, 0.5) as f64 } else { 0.0 };
+
     (best as f64 + finer + ONSET_DELAY).rem_euclid(period)
 }
 
 /// The FFT bins of each band (`BAND_EDGES`), first and past the last: one at least each, in order.
 pub(crate) fn band_ranges() -> [(usize, usize); BANDS] {
     let bin = |hertz: f32| ((hertz / (RATE as f32 / WINDOW as f32)) as usize).clamp(1, WINDOW / 2);
+
     std::array::from_fn(|index| {
         let from = bin(BAND_EDGES[index]);
+
         (from, bin(BAND_EDGES[index + 1]).max(from + 1))
     })
 }
@@ -221,6 +263,7 @@ pub(crate) fn band_level(level: f32, peak: &mut f32, decibels: f32, silent: bool
     *peak = decibels.max(*peak - BAND_FALLS * step);
     let target = if silent { 0.0 } else { ((decibels - (*peak - BAND_RANGE)) / BAND_RANGE).clamp(0.0, 1.0) };
     let span = if target >= level { BAND_ATTACK } else { BAND_RELEASE };
+
     level + (target - level) * (1.0 - (-step / span).exp())
 }
 
@@ -280,6 +323,7 @@ impl Analyzer {
             self.window.pop_front();
             self.window.push_back(if sample.is_finite() { sample.clamp(-1.0, 1.0) } else { 0.0 });
             self.fresh += 1;
+
             if self.fresh == HOP {
                 self.fresh = 0;
                 self.look();
@@ -296,6 +340,7 @@ impl Analyzer {
     /// What was heard so far, as of the last look.
     pub(crate) fn groove(&self) -> Groove {
         let bpm = self.bpm.map_or(CLOCK_BPM, |bpm| bpm as f32);
+
         Groove {
             bpm,
             phase: self.beat.rem_euclid(1.0) as f32,
@@ -311,44 +356,58 @@ impl Analyzer {
     fn look(&mut self) {
         self.frames += 1;
         let step = (1.0 / FRAMES_PER_SECOND) as f32;
+
         self.spectrum.magnitudes(self.window.iter().copied(), &mut self.magnitudes);
         let mut flux = 0.0;
+
         for (magnitude, before) in self.magnitudes.iter().zip(self.compressed.iter_mut()).skip(1) {
             let now = (1.0 + COMPRESSION * magnitude).ln();
+
             flux += (now - *before).max(0.0);
             *before = now;
         }
+
         if self.envelope.len() == HISTORY {
             self.envelope.pop_front();
         }
+
         self.envelope.push_back(flux);
 
         let newest = self.window.range(WINDOW - HOP..);
         let rms = (newest.map(|sample| sample * sample).sum::<f32>() / HOP as f32).sqrt();
+
         self.loudness.hear(20.0 * rms.max(1e-6).log10(), step);
         let low_bins = (BASS_UNDER / (RATE as f32 / WINDOW as f32)) as usize;
         let power = |range: std::ops::RangeInclusive<usize>| self.magnitudes[range].iter().map(|magnitude| magnitude * magnitude).sum::<f32>();
         let total = power(1..=WINDOW / 2);
+
         if total > 1e-9 {
             self.bass += (power(1..=low_bins) / total - self.bass) * (1.0 - (-step / 0.5).exp());
         }
+
         let silent = self.loudness.silent();
+
         for ((level, peak), (from, to)) in self.bands.iter_mut().zip(self.band_peaks.iter_mut()).zip(band_ranges()) {
             let mean = power(from..=to - 1) / (to - from) as f32;
+
             *level = band_level(*level, peak, 10.0 * mean.max(1e-12).log10(), silent, step);
         }
 
         if self.frames.is_multiple_of(TEMPO_EVERY) && self.envelope.len() >= TEMPO_AFTER {
             self.listen_for_tempo();
         }
+
         let bpm = self.bpm.unwrap_or(f64::from(CLOCK_BPM));
+
         self.beat += bpm / 60.0 / FRAMES_PER_SECOND;
+
         if let Some(bpm) = self.bpm
             && self.frames.is_multiple_of(PHASE_EVERY)
         {
             let period = FRAMES_PER_SECOND * 60.0 / bpm;
             let measured = last_beat(self.envelope.make_contiguous(), period) / period;
             let drift = (measured - self.beat.rem_euclid(1.0) + 0.5).rem_euclid(1.0) - 0.5;
+
             self.beat += if self.locked { drift * PULL } else { drift };
             self.locked = true;
         }
@@ -358,6 +417,7 @@ impl Analyzer {
         let chorus = self.chorus.hear(loudness.short, loudness.long, step) && loudness.heard_for > 8.0;
         let drop = self.drops.hear(loudness.fast, loudness.long, step) && loudness.heard_for > 4.0;
         let cues = Cues { bpm: self.bpm.map(|bpm| bpm as f32), energy: loudness.energy, bass: self.bass, chorus, drop, silent: loudness.silent() };
+
         self.chooser.choose(&cues, self.beat);
     }
 
@@ -365,8 +425,10 @@ impl Analyzer {
         if self.loudness.silent() {
             return;
         }
+
         let Some((found, _)) = tempo(self.envelope.make_contiguous(), FRAMES_PER_SECOND, self.bpm) else { return };
         let near = |one: f64, other: f64| (one - other).abs() / other < 0.04;
+
         self.bpm = match (self.bpm, self.candidate) {
             (None, _) => Some(found),
             (Some(bpm), _) if near(found, bpm) => Some(bpm + (found - bpm) * 0.3),

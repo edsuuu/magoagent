@@ -29,6 +29,7 @@ impl Drop for Capture {
 #[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
 pub(super) fn programs() -> [(&'static str, Vec<String>); 2] {
     let rate = RATE.to_string();
+
     [
         (
             "pw-record",
@@ -53,11 +54,14 @@ pub(super) fn programs() -> [(&'static str, Vec<String>); 2] {
 #[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
 pub(super) fn samples_of(bytes: &[u8], carry: &mut Option<u8>) -> Vec<f32> {
     let mut joined = Vec::with_capacity(bytes.len() + 1);
+
     joined.extend(carry.take());
     joined.extend_from_slice(bytes);
+
     if joined.len() % 2 == 1 {
         *carry = joined.pop();
     }
+
     joined.as_chunks::<2>().0.iter().map(|pair| f32::from(i16::from_le_bytes(*pair)) / 32768.0).collect()
 }
 
@@ -74,10 +78,12 @@ fn open(attempt: usize, sink: Sender<Vec<f32>>) -> Option<(Capture, u32)> {
     // from here, a way out kills it
     let capture = Capture::Program(child);
     let mut output = output?;
+
     std::thread::Builder::new()
         .name("luna-som".into())
         .spawn(move || {
             let (mut bytes, mut carry) = (vec![0u8; 1024], None);
+
             while let Ok(read) = output.read(&mut bytes) {
                 if read == 0 || sink.send(samples_of(&bytes[..read], &mut carry)).is_err() {
                     break;
@@ -85,6 +91,7 @@ fn open(attempt: usize, sink: Sender<Vec<f32>>) -> Option<(Capture, u32)> {
             }
         })
         .ok()?;
+
     Some((capture, RATE))
 }
 
@@ -107,11 +114,14 @@ fn loopback(sink: Sender<Vec<f32>>) -> Option<(Capture, u32)> {
     let config = device.default_output_config().ok()?;
     let (rate, channels) = (config.sample_rate().0, usize::from(config.channels()).max(1));
     let error = |error| eprintln!("batida da Luna: {error}");
+
     // each frame's channels, as one
     fn mono(data: impl Iterator<Item = f32>, channels: usize) -> Vec<f32> {
         let data: Vec<f32> = data.collect();
+
         data.chunks(channels).map(|frame| frame.iter().sum::<f32>() / frame.len() as f32).collect()
     }
+
     let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => device.build_input_stream(
             &config.into(),
@@ -140,6 +150,7 @@ fn loopback(sink: Sender<Vec<f32>>) -> Option<(Capture, u32)> {
         _ => return None,
     }
     .ok()?;
+
     stream.play().ok()?;
     Some((Capture::Stream(stream), rate))
 }
@@ -162,6 +173,7 @@ impl Downsample {
             self.sum += sample;
             self.count += 1;
             self.covered += 1.0;
+
             if self.covered >= self.ratio {
                 out.push(self.sum / self.count as f32);
                 (self.sum, self.count) = (0.0, 0);
@@ -176,19 +188,24 @@ impl Downsample {
 pub(super) fn listen(shared: Arc<Shared>) {
     let mut analyzer = Analyzer::default();
     let mut heard = false;
+
     for attempt in 0.. {
         let (sink, pieces): (Sender<Vec<f32>>, Receiver<Vec<f32>>) = channel();
         let Some((capture, rate)) = open(attempt, sink) else { break };
         let mut downsample = Downsample::new(rate);
         let mut resampled = Vec::new();
+
         loop {
             if !shared.wanted() {
                 drop(capture);
+
                 return shared.end(false);
             }
+
             match pieces.recv_timeout(Duration::from_millis(100)) {
                 Ok(piece) => {
                     heard = true;
+
                     let piece = if rate == RATE {
                         piece
                     } else {
@@ -196,9 +213,11 @@ pub(super) fn listen(shared: Arc<Shared>) {
                         downsample.feed(&piece, &mut resampled);
                         std::mem::take(&mut resampled)
                     };
+
                     if shared.new_song.swap(false, std::sync::atomic::Ordering::Relaxed) {
                         analyzer = Analyzer::default();
                     }
+
                     analyzer.feed(&piece);
                     shared.publish(analyzer.groove());
                 }
@@ -207,10 +226,13 @@ pub(super) fn listen(shared: Arc<Shared>) {
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         }
+
         drop(capture);
+
         if heard {
             return shared.end(false);
         }
     }
+
     shared.end(!heard);
 }

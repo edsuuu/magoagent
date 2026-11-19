@@ -98,7 +98,6 @@ struct Sidebar {
     hidden: bool,
     /// Agents waiting on the person, in every space.
     waiting: usize,
-    clear_hidden: bool,
     agents_closed: bool,
     next_keys: String,
     agents: Vec<AgentModel>,
@@ -320,6 +319,7 @@ struct MenuKey {
 /// The key as a menu item's `keyEquivalent`; None for the keys AppKit has no character for (F5, arrows).
 fn menu_character(key: Key) -> Option<String> {
     let name = key.symbol_or_name();
+
     match name {
         "Enter" => Some("\r".into()),
         "Backspace" => Some("\u{8}".into()),
@@ -341,6 +341,7 @@ fn rows(tools: &[Tool]) -> Vec<ToolRow> {
         .map(|tool| {
             // the terminal's button is the chat's too (its dialog picks one)
             let label = if *tool == Tool::Terminal { "Terminal ou chat" } else { tool.label() };
+
             ToolRow { id: tool_id(*tool), label, badge: tool.badge() }
         })
         .collect()
@@ -352,12 +353,14 @@ impl DrawingApp {
         if !self.selected.is_empty() {
             return self.selected.iter().filter_map(|i| self.scene.elements.get(*i).cloned()).collect();
         }
+
         let probe = match self.tool {
             Tool::Rectangle | Tool::Fill | Tool::Frame => ElementKind::Rectangle { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
             Tool::Diamond => ElementKind::Diamond { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
             Tool::Ellipse => ElementKind::Ellipse { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
             tool => ElementKind::Line { points: vec![], arrow: tool == Tool::Arrow },
         };
+
         vec![self.new_element(probe)]
     }
 
@@ -370,6 +373,7 @@ impl DrawingApp {
         if !self.shows_properties() {
             return None;
         }
+
         let kinds = self.style_kinds();
         let frames_only = if self.selected.is_empty() { self.tool == Tool::Frame } else { kinds.iter().all(|e| e.frame.is_some()) };
         let fill_tool = self.selected.is_empty() && self.tool == Tool::Fill;
@@ -380,23 +384,31 @@ impl DrawingApp {
         let arrows = self.styling_arrows();
         let style = kinds.first().map(|e| e.style).unwrap_or(self.style);
         let heads = kinds.first().filter(|_| arrows).map_or(self.heads, |e| (e.ends.start_head, e.ends.end_head));
+
         let frame_name = match self.selected[..] {
             [i] => self.scene.elements.get(i).and_then(|e| e.frame.clone()),
             _ => None,
         };
+
         let mut actions = vec![];
+
         if !self.selected.is_empty() {
             let keyed = |text: &str| keys_label(text);
+
             actions.push(PropertyAction { id: "duplicate", label: "Duplicar", keys: keyed("Cmd+D") });
             actions.push(PropertyAction { id: "delete", label: "Apagar", keys: "Delete".into() });
+
             if self.selected.len() > 1 {
                 actions.push(PropertyAction { id: "group", label: "Agrupar seleção", keys: keyed("Cmd+G") });
             }
+
             if self.selected_has_group() {
                 actions.push(PropertyAction { id: "ungroup", label: "Desagrupar seleção", keys: keyed("Cmd+Shift+G") });
             }
+
             actions.push(PropertyAction { id: "lock", label: "Bloquear", keys: keyed("Cmd+Shift+L") });
         }
+
         Some(Properties {
             show_stroke: !frames_only && !fill_tool,
             show_fill: fillable,
@@ -426,6 +438,7 @@ impl DrawingApp {
     fn sidebar_model(&self) -> Sidebar {
         let counts = self.space_counts();
         let needing = self.needing_you();
+
         let agents = self
             .space_agents()
             .iter()
@@ -436,6 +449,7 @@ impl DrawingApp {
                     crate::app::ui::agents::AgentState::Idle(_) => ("idle", "Pronto"),
                     crate::app::ui::agents::AgentState::Ended => ("ended", "Encerrado"),
                 };
+
                 AgentModel {
                     id: row.id.clone(),
                     name: row.spec.label().to_string(),
@@ -449,12 +463,14 @@ impl DrawingApp {
                 }
             })
             .collect();
+
         let spaces = self
             .spaces
             .list
             .iter()
             .map(|space| {
                 let (running, needs) = counts.get(&space.id).copied().unwrap_or_default();
+
                 SpaceRow {
                     id: space.id.clone(),
                     name: space.name.clone(),
@@ -469,10 +485,10 @@ impl DrawingApp {
                 }
             })
             .collect();
+
         Sidebar {
             hidden: self.prefs.sidebar_hidden,
             waiting: needing.len(),
-            clear_hidden: self.prefs.sidebar_clear_hidden,
             agents_closed: self.prefs.sidebar_agents_closed,
             next_keys: self.app_keys_text(crate::app::hotkeys::local::AppAction::NextNeedingYou),
             agents,
@@ -485,6 +501,7 @@ impl DrawingApp {
         let Some(space) = self.current_space() else { return vec![] };
         let above = space.floors.iter().rev().map(|f| FloorRow { id: f.id.clone(), name: f.name.clone(), color: f.color, current: space.floor == f.id });
         let ground = FloorRow { id: String::new(), name: crate::app::floors::GROUND.into(), color: space.color, current: space.floor.is_empty() };
+
         above.chain([ground]).collect()
     }
 
@@ -492,6 +509,7 @@ impl DrawingApp {
         let terminal = self.terminal_dialog.as_ref().map(|dialog| {
             let chat_agent = |preset: &Preset| matches!(preset.command.split_whitespace().next(), Some("claude" | "codex"));
             let presets = self.prefs.presets.iter().filter(|preset| preset.on && (!dialog.chat || chat_agent(preset))).take(10);
+
             TerminalDialogModel {
                 editing: dialog.target.is_some(),
                 chat: dialog.chat,
@@ -511,17 +529,20 @@ impl DrawingApp {
                     .collect(),
             }
         });
+
         let palette = self.palette_open.then(|| PaletteModel {
             query: self.palette_query.clone(),
             index: self.palette_index,
             nodes: self.palette_links.is_some(),
             rows: self.palette_rows().into_iter().map(|row| PaletteRow { group: row.group, keys: keys_label(&row.keys), label: row.label }).collect(),
         });
+
         Dialogs {
             terminal,
             export: self.export_open.then_some(ExportModel { svg: self.export_svg, scale: self.export_scale, background: self.export_background }),
             wipe: self.wipe_confirm.then(|| {
                 let plan = crate::app::system::wipe::plan();
+
                 WipeModel { keychain: plan.keychain, folders: plan.folders.iter().map(|f| f.display().to_string()).collect() }
             }),
             palette,
@@ -539,6 +560,7 @@ impl DrawingApp {
     fn toast_model(&self) -> Option<Toast> {
         // -1 until the toast's first frame sets its clock (`status_toast`)
         let live = !self.status.is_empty() && self.status_time >= 0.0 && self.now - self.status_time < super::super::toolbar::toast_seconds(&self.status);
+
         live.then(|| Toast { id: self.status_time, text: self.status.clone(), seconds: super::super::toolbar::toast_seconds(&self.status) })
     }
 
@@ -548,6 +570,7 @@ impl DrawingApp {
             .filter(|def| matches!(def.act, Act::App(_)))
             .filter_map(|def| {
                 let combo = keys_of(def, &self.prefs.shortcuts).into_iter().next()?;
+
                 Some(MenuKey {
                     id: def.id,
                     key: menu_character(combo.key).unwrap_or_default(),
@@ -563,6 +586,7 @@ impl DrawingApp {
     pub(super) fn shell_model(&self) -> Shell {
         let space = self.current_space().map(|s| SpaceRef { id: s.id.clone(), name: s.name.clone(), color: s.color });
         let (running, waiting) = self.chats_counts();
+
         let keys_free = self.terminal_focus.is_none()
             && self.card_focus.is_none()
             && self.editing.is_none()
@@ -571,6 +595,7 @@ impl DrawingApp {
             && !self.dialog_open()
             && !self.palette_open
             && !self.chat_open;
+
         Shell {
             title: crate::window_names().0,
             dev: crate::file::development(),

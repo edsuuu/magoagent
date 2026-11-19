@@ -1,8 +1,6 @@
-//! Text that holds still while the canvas zooms (asked: "o conteúdo de alguns elementos fica tremendo, como notas", and
-//! "dar zoom no Linux dá uma sensação de estar travado, em notebooks que não têm placa de vídeo"): laid out at the zoom
-//! the app holds while the zoom moves (`DrawingApp::text_zoom`) and drawn scaled to the frame's zoom. A note's lines
-//! break where they break at 100%, whatever the zoom, and only the lines on screen are laid out: its plan keeps where
-//! each line is (asked: "deixar só o que está na visual da tela, o restante vai aparecendo").
+//! Text that holds still while the canvas zooms: laid out at the zoom the app holds while the zoom moves
+//! (`DrawingApp::text_zoom`) and drawn scaled to the frame's zoom. A note's lines break where they break at 100%,
+//! whatever the zoom, and only the lines on screen are laid out: its plan keeps where each line is.
 
 use crate::prelude::*;
 use std::sync::Arc;
@@ -13,21 +11,27 @@ pub(crate) fn scaled_galley(galley: &Arc<egui::Galley>, scale: f32) -> Arc<egui:
     if (scale - 1.0).abs() < 1e-4 {
         return galley.clone();
     }
+
     let grow = |rect: Rect| Rect::from_min_max((rect.min.to_vec2() * scale).to_pos2(), (rect.max.to_vec2() * scale).to_pos2());
     let mut scaled = (**galley).clone();
+
     for placed in &mut scaled.rows {
         placed.pos = (placed.pos.to_vec2() * scale).to_pos2();
         let row = Arc::make_mut(&mut placed.row);
+
         row.size *= scale;
         row.visuals.mesh_bounds = grow(row.visuals.mesh_bounds);
+
         for vertex in &mut row.visuals.mesh.vertices {
             vertex.pos = (vertex.pos.to_vec2() * scale).to_pos2();
         }
+
         for glyph in &mut row.glyphs {
             glyph.pos = (glyph.pos.to_vec2() * scale).to_pos2();
             glyph.advance_width *= scale;
         }
     }
+
     scaled.rect = grow(scaled.rect);
     scaled.mesh_bounds = grow(scaled.mesh_bounds);
     Arc::new(scaled)
@@ -37,6 +41,7 @@ pub(crate) fn scaled_galley(galley: &Arc<egui::Galley>, scale: f32) -> Arc<egui:
 /// `text_zoom` is held: at `text_zoom`, scaled to `zoom`.
 pub(crate) fn steady_text(painter: &Painter, text: &str, font: impl Fn(f32) -> FontId, color: Color32, zoom: f32, text_zoom: f32) -> Arc<egui::Galley> {
     let galley = painter.layout_no_wrap(text.to_owned(), font(text_zoom), color);
+
     scaled_galley(&galley, zoom / text_zoom)
 }
 
@@ -62,17 +67,23 @@ pub(crate) fn cached_plan(text: &str, width: f32, size: f32, make: impl FnOnce()
     thread_local! {
         static PLANS: std::cell::RefCell<std::collections::HashMap<(u64, u32, u32), Arc<NotePlan>>> = Default::default();
     }
+
     let key = (fingerprint(text.as_bytes()), width.to_bits(), size.to_bits());
+
     if let Some(plan) = PLANS.with_borrow(|plans| plans.get(&key).cloned()) {
         return plan;
     }
+
     let plan = Arc::new(make());
+
     PLANS.with_borrow_mut(|plans| {
         if plans.len() >= 256 {
             plans.clear();
         }
+
         plans.insert(key, plan.clone());
     });
+
     plan
 }
 
@@ -87,17 +98,21 @@ impl Pen<'_> {
     /// Painting, it breaks at `breaks` (the plan's) instead of wrapping at this zoom.
     pub(crate) fn text(&self, at: Pos2, spans: &[markdown::Span], size: f32, ink: Color32, wrap: f32, breaks: &[usize]) -> (f32, Vec<usize>) {
         let least = size * markdown::NOTE_LINE;
+
         match self {
             Pen::Measure(painter) => {
                 let galley = painter.layout_job(markdown::job(spans, size, ink, wrap, false));
                 let mut at_char = 0;
                 let mut broke = Vec::new();
+
                 for placed in &galley.rows {
                     if at_char > 0 && !broke.contains(&at_char) {
                         broke.push(at_char);
                     }
+
                     at_char += placed.row.glyphs.len() + usize::from(placed.ends_with_newline);
                 }
+
                 (galley.size().y.max(least), broke)
             }
             Pen::Paint { painter, place, angle, zoom, text_zoom } => {
@@ -105,14 +120,18 @@ impl Pen<'_> {
                 let scale = zoom / text_zoom;
                 let pos = place(at);
                 let galley = painter.layout_job(markdown::job(&spans, size * text_zoom, ink, f32::INFINITY, false));
+
                 painter.add(egui::epaint::TextShape::new(pos, scaled_galley(&galley, scale), ink).with_angle(*angle));
+
                 if spans.iter().any(|span| span.bold) {
                     // egui has no bold face: the bold spans are drawn again half a point to the right
                     let bold = scaled_galley(&painter.layout_job(markdown::job(&spans, size * text_zoom, ink, f32::INFINITY, true)), scale);
+
                     for dx in [0.0, 0.5 * zoom] {
                         painter.add(egui::epaint::TextShape::new(pos + Vec2::new(dx, 0.0), bold.clone(), ink).with_angle(*angle));
                     }
                 }
+
                 ((breaks.len() + 1) as f32 * least, Vec::new())
             }
         }
@@ -131,18 +150,23 @@ pub(crate) fn broken(spans: &[markdown::Span], breaks: &[usize]) -> Vec<markdown
     if breaks.is_empty() {
         return spans.to_vec();
     }
+
     let mut at_char = 0;
+
     spans
         .iter()
         .map(|span| {
             let mut text = String::with_capacity(span.text.len() + breaks.len());
+
             for character in span.text.chars() {
                 if at_char > 0 && breaks.contains(&at_char) {
                     text.push('\n');
                 }
+
                 text.push(character);
                 at_char += 1;
             }
+
             markdown::Span { text, ..span.clone() }
         })
         .collect()

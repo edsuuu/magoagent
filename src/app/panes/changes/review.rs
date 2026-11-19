@@ -48,6 +48,7 @@ impl ReviewComment {
     /// "src/main.rs:12-14", the file from its folder.
     pub(crate) fn place(&self) -> String {
         let file = relative(&self.root, &self.path);
+
         if self.from == self.to { format!("{file}:{}", self.from) } else { format!("{file}:{}-{}", self.from, self.to) }
     }
 }
@@ -58,8 +59,10 @@ pub(crate) fn works_in(cwd: &str, root: &Path) -> bool {
     if cwd.trim().is_empty() {
         return false;
     }
+
     let (cwd, root) = (key(Path::new(cwd.trim())), key(root));
     let Some(rest) = cwd.trim_end_matches('/').strip_prefix(root.trim_end_matches('/')) else { return false };
+
     (rest.is_empty() || rest.starts_with('/')) && !rest.starts_with("/.magoagent/")
 }
 
@@ -72,6 +75,7 @@ pub(crate) fn comment_on(root: &Path, path: &Path, lines: &[DiffLine], rows: (us
     let (numbers, removed) = if new.is_empty() { (picked.iter().filter_map(|l| l.old).collect::<Vec<_>>(), true) } else { (new, false) };
     let (from, to) = (*numbers.iter().min()?, *numbers.iter().max()?);
     let excerpt = picked.iter().filter(|l| l.mark != '…').map(|l| format!("{}{}", l.mark, l.text)).collect::<Vec<_>>().join("\n");
+
     Some(ReviewComment { root: root.to_path_buf(), path: path.to_path_buf(), from, to, removed, excerpt, note: note.trim().to_string() })
 }
 
@@ -81,22 +85,27 @@ pub(crate) fn rows_for(lines: &[DiffLine], from: usize, to: usize) -> Option<(us
     let inside = |number: Option<usize>| number.is_some_and(|n| (from..=to).contains(&n));
     let changed_new = |l: &DiffLine| l.mark == '+' && inside(l.new);
     let removed_old = |l: &DiffLine| l.mark == '-' && inside(l.old);
+
     let (mut first, last) = match (lines.iter().position(changed_new), lines.iter().rposition(changed_new)) {
         (Some(first), Some(last)) => (first, last),
         _ => (lines.iter().position(removed_old)?, lines.iter().rposition(removed_old)?),
     };
+
     while first > 0 && lines[first - 1].mark == '-' {
         first -= 1;
     }
+
     Some((first, last))
 }
 
 /// A stretch for the message: `EXCERPT_LINES` lines at most.
 fn clipped(excerpt: &str) -> String {
     let lines: Vec<&str> = excerpt.lines().collect();
+
     if lines.len() <= EXCERPT_LINES {
         return excerpt.to_string();
     }
+
     format!("{}\n… ({} linhas a mais)", lines[..EXCERPT_LINES].join("\n"), lines.len() - EXCERPT_LINES)
 }
 
@@ -106,15 +115,19 @@ pub(crate) fn review_message(scope: &str, comments: &[ReviewComment], general: &
     let mut out = format!(
         "Revisão de código das alterações em {scope}, como numa revisão de pull request. Corrija cada ponto abaixo e, no fim, diga o que mudou em cada um."
     );
+
     for (index, comment) in comments.iter().enumerate() {
         let removed = if comment.removed { " (linhas removidas; números do HEAD)" } else { "" };
         let excerpt = clipped(&comment.excerpt);
         let fence = if excerpt.contains("```") { "````" } else { "```" };
+
         out += &format!("\n\n{}. {}{removed}\n{fence}diff\n{excerpt}\n{fence}\n{}", index + 1, comment.place(), comment.note.trim());
     }
+
     if !general.trim().is_empty() {
         out += &format!("\n\nObservação geral: {}", general.trim());
     }
+
     out
 }
 
@@ -129,21 +142,27 @@ pub(crate) struct PrScope {
 /// "Pedir análise de PR": the agent reviews the uncommitted diff of the folders as a pull request's reviewer would.
 pub(crate) fn pr_message(scopes: &[PrScope]) -> String {
     let places: Vec<String> = scopes.iter().map(|s| s.root.display().to_string()).collect();
+
     let mut out = format!(
         "Faça uma análise de PR das alterações ainda não commitadas em {}, como quem revisa um pull request: leia o `git diff HEAD` e os \
          arquivos novos do `git status` ali. Aponte bugs, casos esquecidos, riscos, testes que faltam e problemas de nome ou de estilo, \
          cada um com arquivo:linha, do mais grave ao menos grave, e diga como corrigir. Não altere nada antes de eu responder.",
         places.join(" e ")
     );
+
     for scope in scopes {
         let branch = if scope.branch.is_empty() { String::new() } else { format!(" (ramo {})", scope.branch) };
         let count = if scope.files.len() == 1 { "1 arquivo alterado".to_string() } else { format!("{} arquivos alterados", scope.files.len()) };
+
         out += &format!("\n\n{}{branch}, {count}:", scope.root.display());
+
         for (file, status, lines) in &scope.files {
             let lines = lines.map_or(String::new(), |(added, removed)| format!(" (+{added} −{removed})"));
+
             out += &format!("\n{} {file}{lines}", crate::app::filetree::ui::badge(*status));
         }
     }
+
     out
 }
 
@@ -155,11 +174,22 @@ impl DrawingApp {
             .into_iter()
             .map(|row| {
                 let inside = roots.iter().any(|root| works_in(&row.spec.cwd, root));
+
                 (row, inside)
             })
             .collect();
+
         rows.sort_by_key(|(_, inside)| !inside);
         rows
+    }
+
+    /// Who an agent of "Para" is: the Maestro's chat as Luna (its title, named by what was talked about, after it),
+    /// the others by their name.
+    pub(crate) fn review_name(&self, row: &AgentRow) -> String {
+        match self.chats.iter().find(|chat| chat.id == row.id) {
+            Some(chat) if !chat.recruit => format!("Luna · {}", row.spec.label()),
+            _ => row.spec.label().to_string(),
+        }
     }
 
     /// The agent a review goes to: `name` (its name or id), else the one picked in the panel, else the first working in
@@ -168,9 +198,11 @@ impl DrawingApp {
         if !name.trim().is_empty() {
             return self.agent_named(name).map(|(id, _)| id);
         }
+
         let roots: Vec<PathBuf> = groups.iter().map(|g| g.root.clone()).collect();
         let agents = self.review_agents(&roots);
         let picked = agents.iter().find(|(row, _)| row.id == self.panes.changes.review.agent).or(agents.first());
+
         picked.map(|(row, _)| row.id.clone()).ok_or_else(|| "Nenhum agente no canvas para receber a revisão: chame um primeiro.".into())
     }
 
@@ -178,6 +210,7 @@ impl DrawingApp {
     /// when the terminal is not running or would take it as the answer to a menu.
     pub(crate) fn send_to_agent(&mut self, id: &str, text: String) -> Result<String, String> {
         let name = self.agent_label(id);
+
         if self.is_chat(id) {
             self.chat_outbox.push((id.to_string(), text));
         } else {
@@ -185,8 +218,10 @@ impl DrawingApp {
                 Some(Ok(session)) => session.handle.ready().map_err(|why| format!("{name} {why}"))?,
                 _ => return Err(format!("{name} não está rodando: abra o terminal e envie de novo.")),
             }
+
             self.send_prompt_after(id, &text, std::time::Duration::ZERO);
         }
+
         Ok(format!("Enviado a {name}."))
     }
 
@@ -197,12 +232,15 @@ impl DrawingApp {
         } else {
             comments.iter().map(|c| c.root.clone()).collect()
         };
+
         let mut roots: Vec<PathBuf> = Vec::new();
+
         for root in candidates {
             if !roots.iter().any(|known| key(known) == key(&root)) {
                 roots.push(root);
             }
         }
+
         let scope: Vec<String> = roots
             .iter()
             .map(|root| match self.branch_of(root) {
@@ -210,6 +248,7 @@ impl DrawingApp {
                 branch => format!("{} (ramo {branch})", root.display()),
             })
             .collect();
+
         review_message(&scope.join(" e "), comments, general)
     }
 
@@ -224,6 +263,7 @@ impl DrawingApp {
                 files: g.files.iter().map(|(path, status)| (relative(&g.root, path), *status, self.change_line_counts(path))).collect(),
             })
             .collect();
+
         pr_message(&scopes)
     }
 }
@@ -236,6 +276,7 @@ mod tests {
     #[test]
     fn an_agent_works_in_a_folder_but_not_in_a_worktree_of_its_own_inside_it() {
         let repo = Path::new("/repo");
+
         assert!(works_in("/repo", repo) && works_in("/repo/src/", repo) && works_in("/REPO/src", repo));
         assert!(!works_in("/repo2", repo), "another folder with the same start");
         assert!(!works_in("/repo/.magoagent/worktrees/x", repo), "a worktree of its own");
@@ -252,13 +293,16 @@ mod tests {
         let row = |mark: char, text: &str| lines.iter().position(|l| l.mark == mark && l.text == text).unwrap();
         // the removed b and the added B
         let comment = comment_on(root, path, &lines, (row('+', "B"), row('-', "b")), " troque o B ").unwrap();
+
         assert_eq!((comment.from, comment.to, comment.removed), (2, 2, false));
         assert_eq!((comment.excerpt.as_str(), comment.note.as_str(), comment.place()), ("-b\n+B", "troque o B", "src/x.rs:2".to_string()));
         // only a removed line: the HEAD's number
         let removed = comment_on(root, path, &lines, (row('-', "b"), row('-', "b")), "x").unwrap();
+
         assert_eq!((removed.from, removed.removed), (2, true));
         // a stretch over context and the new line
         let stretch = comment_on(root, path, &lines, (row(' ', "c"), row('+', "e")), "x").unwrap();
+
         assert_eq!((stretch.from, stretch.to, stretch.place()), (3, 5, "src/x.rs:3-5".to_string()));
         // the MCP's lines back to rows: the new line with the removed one it replaced
         assert_eq!(rows_for(&lines, 2, 2), Some((row('-', "b"), row('+', "B"))));
@@ -277,13 +321,16 @@ mod tests {
             excerpt: "-let x = 1;\n+let x = 2;".into(),
             note: note.into(),
         };
+
         let message = review_message("/repo (ramo main)", &[comment(12, 14, "x não pode mudar"), comment(3, 3, "nome ruim")], " teste junto ");
+
         assert!(message.starts_with("Revisão de código das alterações em /repo (ramo main), como numa revisão de pull request."), "{message}");
         assert!(message.contains("\n\n1. src/main.rs:12-14\n```diff\n-let x = 1;\n+let x = 2;\n```\nx não pode mudar"), "{message}");
         assert!(message.contains("\n\n2. src/main.rs:3\n"), "{message}");
         assert!(message.ends_with("\n\nObservação geral: teste junto"), "{message}");
         // a long stretch is cut
         let long = ReviewComment { excerpt: (0..60).map(|n| format!("+{n}")).collect::<Vec<_>>().join("\n"), ..comment(1, 60, "x") };
+
         assert!(review_message("/repo", &[long], "").contains("… (20 linhas a mais)"));
     }
 
@@ -294,7 +341,9 @@ mod tests {
             branch: "mago/revisor".into(),
             files: vec![("src/a.rs".into(), Status::Modified, Some((3, 1))), ("novo.rs".into(), Status::Untracked, None)],
         };
+
         let message = pr_message(&[scope]);
+
         assert!(message.starts_with("Faça uma análise de PR das alterações ainda não commitadas em /repo/.magoagent/worktrees/revisor"), "{message}");
         assert!(message.contains("Não altere nada antes de eu responder."));
         assert!(message.ends_with("/repo/.magoagent/worktrees/revisor (ramo mago/revisor), 2 arquivos alterados:\nM src/a.rs (+3 −1)\nU novo.rs"), "{message}");

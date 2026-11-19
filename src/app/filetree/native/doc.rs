@@ -99,21 +99,58 @@ fn words(text: &str, marks: Vec<Range<usize>>) -> Vec<[usize; 2]> {
     word_spans(text, marks).into_iter().map(|span| [utf16_len(&text[..span.start]), utf16_len(&text[..span.end])]).collect()
 }
 
+/// The columns as rows Swift draws side by side. Each column holds only its own lines now (`compare/mod.rs`), so they
+/// are laid out again row for row: the unchanged stretches line up, and in a change the two sides face each other, the
+/// longer side's extra lines across from empty rows. In one column each item is a whole row. Also where each change starts.
+fn compare_pairs(compare: &Compare) -> (Vec<(Option<&Item>, Option<&Item>)>, Vec<usize>) {
+    let [left, right] = &compare.items;
+
+    if compare.unified {
+        return (left.iter().map(|item| (Some(item), None)).collect(), compare.blocks.iter().map(|block| block.rows[0].start).collect());
+    }
+
+    let (mut pairs, mut starts, mut at) = (Vec::with_capacity(left.len().max(right.len())), vec![], [0, 0]);
+
+    let lay = |pairs: &mut Vec<_>, at: &mut [usize; 2], ends: [usize; 2]| {
+        while at[0] < ends[0] || at[1] < ends[1] {
+            let (has_left, has_right) = (at[0] < ends[0], at[1] < ends[1]);
+
+            pairs.push((has_left.then(|| &left[at[0]]), has_right.then(|| &right[at[1]])));
+            at[0] += usize::from(has_left);
+            at[1] += usize::from(has_right);
+        }
+    };
+
+    for block in &compare.blocks {
+        lay(&mut pairs, &mut at, [block.rows[0].start, block.rows[1].start]);
+        starts.push(pairs.len());
+        lay(&mut pairs, &mut at, [block.rows[0].end, block.rows[1].end]);
+    }
+
+    lay(&mut pairs, &mut at, [left.len(), right.len()]);
+
+    (pairs, starts)
+}
+
 pub(super) fn compare_out(compare: &Compare) -> CompareOut {
     let old: Vec<&str> = compare.old.lines().collect();
     let new: Vec<&str> = compare.new.lines().collect();
     let line = |lines: &[&str], index: Option<usize>| index.and_then(|i| lines.get(i)).map(|text| text.to_string());
     let number = |index: Option<usize>| index.map(|i| i + 1);
+
     let kind = |row: RowKind| match row {
         RowKind::Same => "same",
         RowKind::Insert => "insert",
         RowKind::Delete => "delete",
         RowKind::Change => "change",
     };
-    let mut rows = Vec::with_capacity(compare.items[0].len());
-    for (at, item) in compare.items[0].iter().enumerate() {
-        let (row, partner) = match item {
-            Item::Fold { key, count, .. } => {
+
+    let (pairs, blocks) = compare_pairs(compare);
+    let mut rows = Vec::with_capacity(pairs.len());
+
+    for pair in pairs {
+        let (left_row, right_row, partner) = match pair {
+            (Some(Item::Fold { key, count, .. }), _) | (None, Some(Item::Fold { key, count, .. })) => {
                 rows.push(CompareRow {
                     kind: "fold",
                     left_number: None,
@@ -125,21 +162,33 @@ pub(super) fn compare_out(compare: &Compare) -> CompareOut {
                     fold_key: Some(*key),
                     fold_count: Some(*count),
                 });
+
                 continue;
             }
-            Item::Line { row, partner } => (*row, *partner),
+            // one column: the row has both sides
+            (Some(Item::Line { row, partner }), None) if compare.unified => (Some(*row), Some(*row), *partner),
+            (left, right) => {
+                let side = |item: Option<&Item>| match item {
+                    Some(Item::Line { row, partner }) => Some((*row, *partner)),
+                    _ => None,
+                };
+
+                let (left, right) = (side(left), side(right));
+
+                (left.map(|(row, _)| row), right.map(|(row, _)| row), left.or(right).and_then(|(_, partner)| partner))
+            }
         };
-        // side by side the second column has the new side of the same row; in one column the row has one side
-        let right_row = match (compare.unified, compare.items[1].get(at)) {
-            (false, Some(Item::Line { row, .. })) => row.right,
-            _ => row.right,
-        };
-        let (left, right) = (line(&old, row.left), line(&new, right_row));
+
+        let row_kind = left_row.or(right_row).map_or(RowKind::Same, |row| row.kind);
+        let (left_at, right_at) = (left_row.and_then(|row| row.left), right_row.and_then(|row| row.right));
+        let (left, right) = (line(&old, left_at), line(&new, right_at));
         let (mut left_words, mut right_words) = (vec![], vec![]);
+
         // a modified line against the line it pairs with: the changed words
-        if row.kind == RowKind::Change {
+        if row_kind == RowKind::Change {
             if let (Some(a), Some(b)) = (&left, &right) {
                 let (o, n) = word_marks(a, b);
+
                 (left_words, right_words) = (words(a, o), words(b, n));
             } else if let (Some(a), Some(p)) = (&left, partner.and_then(|p| new.get(p))) {
                 left_words = words(a, word_marks(a, p).0);
@@ -147,10 +196,11 @@ pub(super) fn compare_out(compare: &Compare) -> CompareOut {
                 right_words = words(b, word_marks(p, b).1);
             }
         }
+
         rows.push(CompareRow {
-            kind: kind(row.kind),
-            left_number: number(row.left),
-            right_number: number(right_row),
+            kind: kind(row_kind),
+            left_number: number(left_at),
+            right_number: number(right_at),
             left,
             right,
             left_words,
@@ -159,14 +209,16 @@ pub(super) fn compare_out(compare: &Compare) -> CompareOut {
             fold_count: None,
         });
     }
+
     let (removed, added) = compare.totals();
+
     CompareOut {
         file: compare.file.to_string_lossy().into_owned(),
         head: compare.head.clone(),
         unified: compare.unified,
         collapse: compare.collapse,
         current: compare.cur,
-        blocks: compare.blocks.iter().map(|block| block.rows[0].start).collect(),
+        blocks,
         removed,
         added,
         rows,
@@ -190,6 +242,7 @@ fn hits_out(root: &Path, hits: &[crate::editor::find::Hit]) -> Vec<HitOut> {
 /// A tab's body as `Doc` (the text of a text tab is added by the caller, which knows its revision).
 pub(super) fn doc_of(body: &Body, path: &Path, root: &Path) -> Doc {
     let mut doc = Doc { path: path.to_string_lossy().into_owned(), ..Default::default() };
+
     match body {
         Body::Text(buf) => {
             doc.kind = "text";
@@ -206,6 +259,7 @@ pub(super) fn doc_of(body: &Body, path: &Path, root: &Path) -> Doc {
         Body::Compare(compare) => (doc.kind, doc.compare) = ("compare", Some(compare_out(compare))),
         Body::Results(results) => {
             doc.kind = "results";
+
             doc.results = Some(ResultsOut {
                 title: results.title(),
                 count_note: count_note(&results.hits),
@@ -214,6 +268,7 @@ pub(super) fn doc_of(body: &Body, path: &Path, root: &Path) -> Doc {
             });
         }
     }
+
     doc
 }
 
@@ -234,34 +289,44 @@ pub(super) fn body_key(body: &Body) -> String {
 /// The byte offset of UTF-16 offset `at` in `text` (None past the end or inside a character).
 pub(super) fn byte_of(text: &str, at: usize) -> Option<usize> {
     let mut units = 0;
+
     for (byte, character) in text.char_indices() {
         if units == at {
             return Some(byte);
         }
+
         if units > at {
             return None;
         }
+
         units += character.len_utf16();
     }
+
     (units == at).then_some(text.len())
 }
 
 /// The lines `from` to `to` (half open) as byte offsets.
 fn line_bytes(text: &str, from: usize, to: usize) -> (usize, usize) {
     let (mut start, mut end, mut line) = (None, text.len(), 0);
+
     if from == 0 {
         start = Some(0);
     }
+
     for (byte, _) in text.match_indices('\n') {
         line += 1;
+
         if line == from {
             start = Some(byte + 1);
         }
+
         if line == to {
             end = byte;
+
             break;
         }
     }
+
     (start.unwrap_or(text.len()), end)
 }
 
@@ -271,20 +336,26 @@ pub(super) fn spans(text: &str, tokens: &[(usize, usize, St)], lines: (usize, us
     let (mut byte, mut units) = (start, utf16_len(&text[..start]));
     let from = units;
     let mut out = Vec::new();
+
     for &(a, b, style) in &tokens[tokens.partition_point(|token| token.1 <= start)..] {
         if a >= end {
             break;
         }
+
         if a < byte || b > text.len() || !text.is_char_boundary(a) || !text.is_char_boundary(b) {
             continue;
         }
+
         units += utf16_len(&text[byte..a]);
         let length = utf16_len(&text[a..b]);
+
         if kind_id(style) != 0 {
             out.extend([units as u32, (units + length) as u32, kind_id(style)]);
         }
+
         (byte, units) = (b, units + length);
     }
+
     (out, [from, from + utf16_len(&text[start..end])])
 }
 
@@ -344,10 +415,12 @@ pub(super) struct Live {
 
 pub(super) fn hunks_out(buf: &crate::app::filetree::editor::TextBuf) -> Vec<HunkOut> {
     let (Some((_, hunks)), Some(head)) = (&buf.hunks, &buf.head) else { return vec![] };
+
     hunks
         .iter()
         .map(|hunk| {
             let old: String = head.split_inclusive('\n').skip(hunk.old.start).take(hunk.old.len()).collect();
+
             HunkOut {
                 start: hunk.new.start,
                 end: hunk.new.end,

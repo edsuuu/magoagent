@@ -36,16 +36,21 @@ pub(crate) fn sound_length(sound: Sound) -> f32 {
 /// The samples of `sound` at `rate`.
 pub(crate) fn sound_samples(sound: Sound, rate: u32) -> Vec<f32> {
     let mut out = vec![0f32; (sound_length(sound) * rate as f32) as usize];
+
     for p in sound {
         let mut phase = 0f32;
+
         for (i, s) in out[(p.at * rate as f32) as usize..].iter_mut().enumerate() {
             let t = i as f32 / rate as f32;
             let hz = p.hz + (p.to - p.hz) * (t / p.glide.max(1e-6)).min(1.0);
+
             phase += hz / rate as f32 * std::f32::consts::TAU;
             let envelope = if t < p.attack { t / p.attack } else { (-(t - p.attack) * p.decay).exp() };
+
             *s += phase.sin() * envelope * p.gain;
         }
     }
+
     out
 }
 
@@ -59,5 +64,6 @@ pub(crate) fn chime_at_volume(sound: Sound, volume: f32) -> Option<cpal::Stream>
     const RATE: u32 = 22_050;
     let gain = volume.clamp(0.0, 0.2) / 0.1;
     let samples = sound_samples(sound, RATE).into_iter().map(|sample| (sample * gain).clamp(-1.0, 1.0)).collect();
+
     play(Arc::new(Mutex::new(samples)), RATE)
 }

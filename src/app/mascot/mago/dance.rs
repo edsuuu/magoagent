@@ -58,6 +58,7 @@ pub(crate) struct Pose {
 impl Pose {
     fn lerp(self, other: Pose, amount: f32) -> Pose {
         let body = self.body.lerp(other.body, amount);
+
         let (arms, arms_alpha) = match (self.arms, other.arms) {
             (Some([left, right]), Some([to_left, to_right])) => {
                 (Some([left.lerp(to_left, amount), right.lerp(to_right, amount)]), self.arms_alpha + (other.arms_alpha - self.arms_alpha) * amount)
@@ -66,6 +67,7 @@ impl Pose {
             (Some(arms), None) => (Some(arms), self.arms_alpha * (1.0 - amount)),
             (None, None) => (None, 0.0),
         };
+
         Pose { body, arms, arms_alpha }
     }
 }
@@ -85,14 +87,17 @@ impl Bezier {
         let Bezier(x1, y1, x2, y2) = self;
         let curve = |first: f32, second: f32, t: f32| 3.0 * (1.0 - t) * (1.0 - t) * t * first + 3.0 * (1.0 - t) * t * t * second + t * t * t;
         let (mut low, mut high) = (0.0f32, 1.0f32);
+
         for _ in 0..24 {
             let middle = (low + high) / 2.0;
+
             if curve(x1, x2, middle) < x {
                 low = middle;
             } else {
                 high = middle;
             }
         }
+
         curve(y1, y2, (low + high) / 2.0)
     }
 }
@@ -112,6 +117,7 @@ impl Move {
         let next = self.frames.iter().position(|(at, _)| *at > progress).unwrap_or(self.frames.len() - 1).max(1);
         let ((from_at, from), (to_at, to)) = (self.frames[next - 1], self.frames[next]);
         let span = (to_at - from_at).max(1e-6);
+
         from.lerp(to, self.ease.at(((progress - from_at) / span).clamp(0.0, 1.0)))
     }
 }
@@ -222,8 +228,10 @@ fn progress(groove: &Groove, seconds: f32) -> f32 {
     if groove.dance == Dance::Spin {
         return ((groove.beat - groove.since) / spin_beats(groove.bpm)).clamp(0.0, 1.0) as f32;
     }
+
     let beats = cycle_beats(seconds, groove.bpm);
     let progress = (groove.beat / beats).rem_euclid(1.0) as f32;
+
     if groove.dance == Dance::Bang { (progress + BANG_NOD).rem_euclid(1.0) } else { progress }
 }
 
@@ -234,12 +242,15 @@ pub(crate) fn pose(groove: &Groove) -> Pose {
     let arms = arms.filter(|_| groove.dance.arms());
     let body = body.at(progress(groove, body.seconds));
     let reach = if groove.dance == Dance::Spin { 1.0 } else { 0.55 + 0.45 * groove.energy.clamp(0.0, 1.0) };
+
     let arms = arms.map(|moves| {
         moves.each_ref().map(|one| {
             let rest = one.frames[0].1;
+
             rest.lerp(one.at(progress(groove, one.seconds)), reach)
         })
     });
+
     Pose { body, arms, arms_alpha: if arms.is_some() { 1.0 } else { 0.0 } }
 }
 
@@ -259,15 +270,20 @@ thread_local! {
 pub(super) fn blended(key: u64, dance: Dance, pose: Pose, time: f64) -> Pose {
     BLENDS.with(|blends| {
         let mut blends = blends.borrow_mut();
+
         if blends.len() > 64 {
             blends.retain(|_, blend| (time - blend.changed).abs() < 60.0);
         }
+
         let blend = blends.entry(key).or_insert(Blend { dance, from: pose, changed: f64::MIN, last: pose });
+
         if blend.dance != dance {
             (blend.dance, blend.from, blend.changed) = (dance, blend.last, time);
         }
+
         let amount = ((time - blend.changed) / BLEND).clamp(0.0, 1.0) as f32;
         let amount = amount * amount * (3.0 - 2.0 * amount);
+
         blend.last = if amount >= 1.0 { pose } else { blend.from.lerp(pose, amount) };
         blend.last
     })
@@ -277,22 +293,27 @@ pub(super) fn blended(key: u64, dance: Dance, pose: Pose, time: f64) -> Pose {
 /// beyond, above and to the sides), all in `color`, with her eyes (closed while she naps) under `id`.
 pub(crate) fn paint_mago_dancing(painter: &Painter, id: &str, center: Pos2, size: f32, color: Color32, groove: &Groove, time: f64) {
     let finite = groove.beat.is_finite() && groove.since.is_finite() && groove.bpm.is_finite() && groove.energy.is_finite();
+
     if size < 1.0 || !size.is_finite() || !finite || !time.is_finite() {
         return;
     }
+
     let key = motion_key(id);
     let pose = blended(key, groove.dance, pose(groove), time);
     let state = if groove.dance == Dance::Nap { MagoState::Sleeping } else { MagoState::Idle };
+
     MOTIONS.with(|motions| {
         let mut motions = motions.borrow_mut();
         let motion = motions.entry(key).or_insert_with(|| MagoMotion::seeded(key));
-        // the song's face on top of the state's, eased there by the motion (asked: "a Luna precisa ter mais
-        // expressões nas músicas")
+
+        // the song's face on top of the state's, eased there by the motion
         motion.dance_face = (groove.dance != Dance::Nap).then(|| draw::dance_expression(groove));
         motion.advance(state, time, None);
         draw::paint_dancer(painter, center, size, color, motion, &pose, time);
     });
+
     // dancing, at the ambient rate: the screen's kept the whole app painting all song long
     let frame = if groove.dance == Dance::Nap { std::time::Duration::from_millis(66) } else { crate::app::update::AMBIENT };
+
     painter.ctx().request_repaint_after(frame);
 }

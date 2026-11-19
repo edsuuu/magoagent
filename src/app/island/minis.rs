@@ -10,13 +10,13 @@ const GRID: f32 = 2.0 * BODY + GAP;
 pub(super) const MOST: usize = 4;
 
 /// The cells of the first `count` agents (four at the most) in the grid `MINIS_SIDE` from the right: one or two on the
-/// middle line, the last at the right edge (asked: "perto da borda"); three or four row by row from the grid's top left,
-/// as a CSS grid fills. On an island as short as a camera notch (32) the cells shrink to the reference's 13, keeping 2
-/// above and below.
+/// middle line, the last at the right edge; three or four row by row from the grid's top left, as a CSS grid fills. On
+/// an island as short as a camera notch (32) the cells shrink to the reference's 13, keeping 2 above and below.
 pub(crate) fn mini_cells(island: Rect, count: usize) -> Vec<Rect> {
     let count = count.min(MOST);
     let body = BODY.min((island.height() - 4.0 - GAP) / 2.0);
     let corner = Pos2::new(island.right() - super::MINIS_SIDE, island.center().y) - Vec2::splat(body + GAP / 2.0);
+
     (0..count)
         .map(|index| {
             let (column, row) = match count {
@@ -24,6 +24,7 @@ pub(crate) fn mini_cells(island: Rect, count: usize) -> Vec<Rect> {
                 2 => (index as f32, 0.5),
                 _ => ((index % 2) as f32, (index / 2) as f32),
             };
+
             Rect::from_min_size(corner + Vec2::new(column, row) * (body + GAP), Vec2::splat(body))
         })
         .collect()
@@ -36,6 +37,7 @@ pub(crate) const UPRIGHT_INSET: f32 = 24.0;
 /// The same cells on the island standing up: row by row, the grid at its bottom, in the middle of its width.
 pub(crate) fn upright_cells(island: Rect, count: usize) -> Vec<Rect> {
     let corner = Pos2::new(island.center().x, island.bottom() - UPRIGHT_INSET) - Vec2::splat(GRID / 2.0);
+
     (0..count.min(MOST))
         .map(|index| Rect::from_min_size(corner + Vec2::new((index % 2) as f32, (index / 2) as f32) * (BODY + GAP), Vec2::splat(BODY)))
         .collect()
@@ -50,10 +52,12 @@ mod tests {
     fn minis_fill_a_two_by_two_grid_mirroring_the_wizard() {
         let island = Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(COMPACT_W, COMPACT_H));
         let cells = mini_cells(island, 4);
+
         assert_eq!(cells.len(), 4);
         assert!(cells.iter().all(|cell| cell.size() == Vec2::splat(BODY)));
         // the grid is centred 40 from the right, as the wizard is 40 from the left, and in the middle of the height
         let grid = cells.iter().fold(cells[0], |grid, cell| grid.union(*cell));
+
         assert_eq!(grid.size(), Vec2::splat(GRID));
         assert!(grid.top() >= 4.0 && grid.bottom() <= COMPACT_H - 4.0, "room above and below: {grid:?}");
         assert_eq!(grid.center(), Pos2::new(COMPACT_W - crate::app::island::MINIS_SIDE, COMPACT_H / 2.0));
@@ -64,14 +68,17 @@ mod tests {
         assert_eq!(mini_cells(island, 0).len(), 0);
         // one or two: on the middle line, the last one by the right edge, 12 from it
         let one = mini_cells(island, 1)[0];
+
         assert_eq!((one.right(), one.center().y), (COMPACT_W - 12.0, COMPACT_H / 2.0));
         let two = mini_cells(island, 2);
+
         assert!(two[1].right() == COMPACT_W - 12.0 && two[0].center().y == two[1].center().y && two[0].right() < two[1].left());
         assert_eq!(mini_cells(island, 6).len(), 4, "four at the most");
         // as short as a camera notch: 13 each, 2 from the top and the bottom
         let notched = Rect::from_min_size(Pos2::ZERO, Vec2::new(COMPACT_W, 32.0));
         let cells = mini_cells(notched, 4);
         let grid = cells.iter().fold(cells[0], |grid, cell| grid.union(*cell));
+
         assert!(cells.iter().all(|cell| cell.size() == Vec2::splat(13.0)));
         assert_eq!((grid.top(), grid.bottom()), (2.0, 30.0));
     }
@@ -80,6 +87,7 @@ mod tests {
     fn standing_up_on_a_side_the_minis_go_under_the_wizard() {
         let upright = Rect::from_min_size(Pos2::ZERO, Vec2::new(COMPACT_H, COMPACT_TALL));
         let grid = upright_cells(upright, 4).iter().fold(Rect::NOTHING, |grid, cell| grid.union(*cell));
+
         assert_eq!(grid.center(), Pos2::new(COMPACT_H / 2.0, COMPACT_TALL - UPRIGHT_INSET));
         assert!(upright.contains_rect(grid.expand(4.0)), "room around it: {grid:?}");
         assert_eq!(upright_cells(upright, 6).len(), 4, "four at the most");

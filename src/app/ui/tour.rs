@@ -86,6 +86,7 @@ impl Tour {
         let Some((Some(from), at)) = self.moved else { return Some(target) };
         let linear = ((time - at) / SLIDE).clamp(0.0, 1.0) as f32;
         let eased = 1.0 - (1.0 - linear).powi(3);
+
         Some(Rect::from_min_max(from.min.lerp(target.min, eased), from.max.lerp(target.max, eased)))
     }
 }
@@ -95,6 +96,7 @@ impl Tour {
 pub(crate) fn spot_rect(ctx: &Context, spot: Spot) -> Option<Rect> {
     let widget = |name: &str| ctx.read_response(egui::Id::unique(name)).map(|response| response.rect);
     let area = |name: &str| ctx.read_response(egui::Id::unique(name).with("move")).map(|response| response.rect);
+
     let found = match spot {
         Spot::Toolbar => area("tools"),
         Spot::Chat => widget("top_chat"),
@@ -105,19 +107,21 @@ pub(crate) fn spot_rect(ctx: &Context, spot: Spot) -> Option<Rect> {
         Spot::Corners => ["footer", "minimap", "floors_pill"].into_iter().filter_map(area).reduce(|one, other| one.union(other)),
         Spot::Settings => widget("sidebar_settings").or_else(|| widget("top_settings")),
     };
+
     let screen = ctx.content_rect();
+
     found.map(|rect| rect.intersect(screen)).filter(|rect| rect.is_positive() && rect.width() >= 4.0 && rect.height() >= 4.0)
 }
 
-/// Where the balloon of `size` goes: in the middle of the screen, only the hole moving from step to step (asked: "o modal
-/// pode ficar centralizado e só muda o foco de onde está, pois preciso ir clicando em cada canto"); when the middle would
-/// cover the hole, under it if it fits, else over it, else beside it.
+/// Where the balloon of `size` goes: in the middle of the screen, only the hole moving from step to step; when the middle
+/// would cover the hole, under it if it fits, else over it, else beside it.
 pub(crate) fn tip_place(hole: Option<Rect>, size: Vec2, screen: Rect) -> Rect {
     let middle = Rect::from_center_size(screen.center(), size);
     let Some(hole) = hole.filter(|hole| hole.intersects(middle.expand(GAP))) else { return middle };
     let inside = screen.shrink(MARGIN);
     let x = (hole.center().x - size.x / 2.0).clamp(inside.left(), (inside.right() - size.x).max(inside.left()));
     let y = (hole.center().y - size.y / 2.0).clamp(inside.top(), (inside.bottom() - size.y).max(inside.top()));
+
     let at = if hole.bottom() + GAP + size.y <= inside.bottom() {
         Pos2::new(x, hole.bottom() + GAP)
     } else if hole.top() - GAP - size.y >= inside.top() {
@@ -127,6 +131,7 @@ pub(crate) fn tip_place(hole: Option<Rect>, size: Vec2, screen: Rect) -> Rect {
     } else {
         Pos2::new((hole.left() - GAP - size.x).max(inside.left()), y)
     };
+
     Rect::from_min_size(at, size)
 }
 
@@ -135,9 +140,12 @@ pub(crate) fn tip_place(hole: Option<Rect>, size: Vec2, screen: Rect) -> Rect {
 fn paint_veil(painter: &Painter, screen: Rect, hole: Option<Rect>, color: Color32) {
     let Some(hole) = hole else {
         painter.rect_filled(screen, 0, color);
+
         return;
     };
+
     let mut mesh = egui::Mesh::default();
+
     for band in [
         Rect::from_min_max(screen.min, Pos2::new(screen.right(), hole.top())),
         Rect::from_min_max(Pos2::new(screen.left(), hole.bottom()), screen.max),
@@ -148,20 +156,27 @@ fn paint_veil(painter: &Painter, screen: Rect, hole: Option<Rect>, color: Color3
             mesh.add_colored_rect(band, color);
         }
     }
+
     let radius = RADIUS.min(hole.width() / 2.0).min(hole.height() / 2.0);
     let corners = [(hole.left_top(), 1.0, 1.0), (hole.right_top(), -1.0, 1.0), (hole.right_bottom(), -1.0, -1.0), (hole.left_bottom(), 1.0, -1.0)];
+
     for (corner, sx, sy) in corners {
         let center = corner + Vec2::new(sx * radius, sy * radius);
         let first = mesh.vertices.len() as u32;
+
         mesh.colored_vertex(corner, color);
+
         for index in 0..=8 {
             let angle = index as f32 / 8.0 * std::f32::consts::FRAC_PI_2;
+
             mesh.colored_vertex(center - Vec2::new(sx * radius * angle.cos(), sy * radius * angle.sin()), color);
+
             if index > 0 {
                 mesh.add_triangle(first, first + index, first + index + 1);
             }
         }
     }
+
     painter.add(Shape::mesh(mesh));
 }
 
@@ -169,6 +184,7 @@ impl DrawingApp {
     /// Opens the tour at `step`, over the canvas (the chat and Ajustes close; the chat comes back at the end).
     pub(crate) fn start_tour_at(&mut self, step: usize) {
         let back_to_chat = self.tour.as_ref().map_or(self.chat_open, |tour| tour.back_to_chat);
+
         self.tour = Some(Tour { step: step.min(STEPS.len() - 1), back_to_chat, ..Default::default() });
         self.chat_open = false;
         self.settings_open = false;
@@ -200,6 +216,7 @@ impl DrawingApp {
         if self.welcome.is_some() {
             return;
         }
+
         let Some(mut tour) = self.tour.take() else { return };
         let k = K::new(self.dark());
         let time = ctx.input(|i| i.time);
@@ -208,78 +225,104 @@ impl DrawingApp {
         let step = &STEPS[tour.step];
         let target = step.spot.and_then(|spot| spot_rect(ctx, spot)).map(|rect| rect.expand(PAD).intersect(screen));
         let hole = tour.hole_at(target, time);
+
         tour.hole = hole;
+
         if tour.moved.is_some_and(|(_, at)| time - at < SLIDE) {
             ctx.request_repaint();
         }
+
         let (mut back, mut next, mut skip) = (false, false, false);
         let id = egui::Id::unique("tour");
+
         egui::Area::new(id).order(egui::Order::Foreground).fixed_pos(screen.min).movable(false).show(ctx, |ui| {
             // it takes every click: nothing under it answers
             let (rect, _) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
             let painter = ui.painter().clone();
+
             paint_veil(&painter, rect, hole, Color32::from_black_alpha(153));
+
             if let Some(hole) = hole {
                 painter.rect_stroke(hole, RADIUS, Stroke::new(2.0, k.primary), StrokeKind::Inside);
             }
+
             let inner = TIP_WIDTH - 32.0;
             let title = painter.layout(step.title.into(), kit::semibold(16.0), k.fg, inner);
             let text = kit::galley(ui, step.text, 14.0, 20.0, k.muted_fg, inner);
             let size = Vec2::new(TIP_WIDTH, 16.0 + title.size().y + 6.0 + text.size().y + 14.0 + 30.0 + 16.0);
             let tip = tip_place(hole, size, rect);
             let shadow = egui::epaint::Shadow { offset: [0, 20], blur: 50, spread: 0, color: Color32::from_black_alpha(100) };
+
             painter.add(shadow.as_shape(tip, 14));
             painter.rect_filled(tip, 14, k.bg);
             painter.rect_stroke(tip, 14, Stroke::new(1.0, k.border), StrokeKind::Inside);
             let mut y = tip.top() + 16.0;
+
             painter.galley(Pos2::new(tip.left() + 16.0, y), title.clone(), k.fg);
             y += title.size().y + 6.0;
             painter.galley(Pos2::new(tip.left() + 16.0, y), text.clone(), k.muted_fg);
             let row = tip.bottom() - 16.0 - 15.0;
             // the dots: the step on view wider, in the accent
             let mut x = tip.left() + 16.0;
+
             for index in 0..STEPS.len() {
                 let width = if index == tour.step { 16.0 } else { 6.0 };
                 let dot = Rect::from_min_size(Pos2::new(x, row - 3.0), Vec2::new(width, 6.0));
+
                 painter.rect_filled(dot, 3, if index == tour.step { k.primary } else { k.soft_fg.gamma_multiply(0.45) });
                 x += width + 4.0;
             }
+
             // right to left: Próximo (Começar, Concluir), Voltar, Pular
             let label = match tour.step {
                 0 => "Começar",
                 step if step == last => "Concluir",
                 _ => "Próximo",
             };
+
             let mut right = tip.right() - 16.0;
+
             let mut button = |ui: &mut egui::Ui, text: &str, fill: Option<Color32>, ink: Color32| {
                 let galley = painter.layout_no_wrap(text.into(), kit::semibold(12.5), ink);
                 let width = galley.size().x + if fill.is_some() { 24.0 } else { 8.0 };
                 let rect = Rect::from_min_max(Pos2::new(right - width, row - 15.0), Pos2::new(right, row + 15.0));
+
                 right = rect.left() - 8.0;
                 let response = ui.interact(rect, id.with(text), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
                 response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, text));
+
                 if let Some(fill) = fill {
                     painter.rect_filled(rect, 8, if response.hovered() { fill.gamma_multiply(0.85) } else { fill });
                 }
+
                 let ink = if fill.is_none() && response.hovered() { k.fg } else { ink };
+
                 painter.galley(rect.center() - galley.size() / 2.0, galley, ink);
                 response.clicked()
             };
+
             next = button(ui, label, Some(k.primary), Color32::WHITE);
+
             if tour.step > 0 {
                 back = button(ui, "Voltar", Some(k.button), k.fg);
             }
+
             if tour.step < last {
                 skip = button(ui, "Pular", None, k.muted_fg);
             }
         });
+
         ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, id));
         super::titlebar::raise_window_buttons(ctx, egui::LayerId::new(egui::Order::Foreground, id));
+
         // the keys: Esc skips, the arrows walk, Enter goes on
         let (escape, left, right, enter) = ctx.input_mut(|i| {
             let mut take = |key| i.consume_key(Modifiers::NONE, key);
+
             (take(Key::Escape), take(Key::ArrowLeft), take(Key::ArrowRight), take(Key::Enter))
         });
+
         next |= right || enter;
         back |= left;
         skip |= escape;
@@ -290,6 +333,7 @@ impl DrawingApp {
     /// What the balloon's buttons (or keys) asked, at `time`.
     pub(crate) fn tour_input(&mut self, back: bool, next: bool, skip: bool, time: f64) {
         let Some(tour) = self.tour.as_mut() else { return };
+
         if skip || (next && tour.step + 1 == STEPS.len()) {
             self.end_tour();
         } else if next {

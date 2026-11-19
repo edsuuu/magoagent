@@ -23,6 +23,7 @@ impl DrawingApp {
         let top = TITLE_BAR.max(TOOLBAR_BOTTOM) + DOCK_MARGIN;
         let width = width.min(canvas.width() - 2.0 * DOCK_MARGIN).max(1.0);
         let left = if right { canvas.right() - DOCK_MARGIN - width } else { canvas.left() + DOCK_MARGIN };
+
         Rect::from_min_max(Pos2::new(left, top), Pos2::new(left + width, canvas.bottom() - DOCK_MARGIN))
     }
 
@@ -30,9 +31,11 @@ impl DrawingApp {
     pub(crate) fn corner_inset(&self) -> (f32, f32) {
         // the panel on the right (panes/) takes its width from the canvas's corner
         let pane = self.pane_width();
+
         match self.dock.filter(|_| self.terminal_elevated.is_some()) {
             Some((right, _)) => {
                 let width = self.elevated_rect().width() + DOCK_MARGIN;
+
                 if right { (0.0, width + pane) } else { (width, pane) }
             }
             None => (0.0, pane),
@@ -45,10 +48,12 @@ impl DrawingApp {
     pub(crate) fn dock_side(&self, x: f32, element: &Element) -> Option<(bool, f32)> {
         let canvas = self.canvas_rect;
         let width = self.dock_width(element);
+
         let zone = |right: bool| match self.dock {
             Some((side, _)) if side == right => DOCKED_ZONE,
             _ => (width + 12.0).max(DOCKED_ZONE).min(canvas.width() / 3.0),
         };
+
         let right = if x < canvas.left() + zone(false) {
             false
         } else if x > canvas.right() - zone(true) {
@@ -56,7 +61,9 @@ impl DrawingApp {
         } else {
             return None;
         };
+
         let kept = self.dock.filter(|(side, _)| *side == right).map(|(_, kept_width)| kept_width);
+
         Some((right, kept.unwrap_or(width)))
     }
 
@@ -64,6 +71,7 @@ impl DrawingApp {
     pub(crate) fn dock_resized(&self, width: f32, element: &Element) -> f32 {
         let default = self.dock_width(element);
         let width = if (width - default).abs() < DOCK_SNAP { default } else { (width / GRID).round() * GRID };
+
         width.clamp(DOCK_MIN, (self.canvas_rect.width() * 0.7).max(DOCK_MIN))
     }
 
@@ -73,13 +81,17 @@ impl DrawingApp {
         let Some(index) = self.elevated_index() else {
             self.dock = None;
             self.dock_drag = None;
+
             return;
         };
+
         if self.elevate_animating() {
             return;
         }
+
         let element = self.scene.elements[index].clone();
         let (frame, zoom) = self.terminal_frame(&element);
+
         // (height, left, right) of the strip
         let (head, left, right) = if let Some(portal) = &element.portal {
             (if portal.chrome_hidden { 0.0 } else { PORTAL_HEADER * zoom }, 0.0, 48.0)
@@ -88,55 +100,70 @@ impl DrawingApp {
         } else {
             (TERMINAL_HEADER * zoom, 0.0, 48.0)
         };
+
         let grip = match self.tree_grip(ctx, &element, frame, zoom) {
             // a tree's header has its own buttons: only the bare stretch drags it
             Some(grip) => grip,
             None => Rect::from_min_max(frame.min + Vec2::new(left, 0.0), Pos2::new(frame.right() - right, frame.top() + head)),
         };
+
         let at = ctx.input(|input| input.pointer.interact_pos());
+
         if grip.is_positive() {
             let response = egui::Area::new(egui::Id::unique("dock_grip"))
                 .order(egui::Order::Foreground)
                 .fixed_pos(grip.min)
                 .show(ctx, |ui| ui.allocate_exact_size(grip.size(), Sense::click_and_drag()).1)
                 .inner;
+
             let response = response.on_hover_cursor(if self.dock_drag.is_some() { CursorIcon::Grabbing } else { CursorIcon::Grab });
+
             if response.double_clicked() {
                 self.set_elevated(None);
+
                 return;
             }
+
             if let (true, Some(pointer)) = (response.drag_started(), at) {
                 self.dock_drag = Some((pointer - frame.min, pointer));
             } else if let (Some((grab, _)), Some(pointer)) = (self.dock_drag, at.filter(|_| response.dragged())) {
                 self.dock_drag = Some((grab, pointer));
             }
+
             if response.drag_stopped()
                 && let Some((_, pointer)) = self.dock_drag.take()
             {
                 self.dock = self.dock_side(pointer.x, &element);
             }
         }
+
         // where it would dock, while it is dragged
         if let Some((_, pointer)) = self.dock_drag {
             if let Some((side, width)) = self.dock_side(pointer.x, &element) {
                 let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Middle, egui::Id::unique("dock_zone")));
+
                 painter.rect(self.dock_rect(side, width), 12, PRIMARY.gamma_multiply(0.12), Stroke::new(1.5, PRIMARY), egui::StrokeKind::Inside);
             }
+
             ctx.request_repaint();
         }
+
         // docked: the inner edge sets the width
         let Some((side, _)) = self.dock.filter(|_| self.dock_drag.is_none()) else { return };
         let edge = if side { frame.left() } else { frame.right() };
         let handle = Rect::from_center_size(Pos2::new(edge, frame.center().y), Vec2::new(8.0, frame.height()));
+
         let response = egui::Area::new(egui::Id::unique("dock_edge"))
             .order(egui::Order::Foreground)
             .fixed_pos(handle.min)
             .show(ctx, |ui| ui.allocate_exact_size(handle.size(), Sense::drag()).1)
             .inner
             .on_hover_cursor(CursorIcon::ResizeHorizontal);
+
         if let (true, Some(pointer)) = (response.dragged(), at) {
             let canvas = self.canvas_rect;
             let width = if side { canvas.right() - DOCK_MARGIN - pointer.x } else { pointer.x - canvas.left() - DOCK_MARGIN };
+
             self.dock = Some((side, self.dock_resized(width, &element)));
         }
     }

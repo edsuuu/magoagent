@@ -10,11 +10,11 @@ use std::sync::mpsc::{Receiver, channel};
 const LATEST: &str = "https://api.github.com/repos/edsuuu/magoagent/releases/latest";
 pub(crate) const RELEASES_PAGE: &str = "https://github.com/edsuuu/magoagent/releases";
 const HOUR_MS: i64 = 3_600_000;
-/// With "Sempre" (`Prefs.update_check` 0) the app looks again every hour it stays open (asked: "a cada 1 hora faz um
-/// check no GitHub"); a check that failed (no network) is tried again sooner.
+/// With "Sempre" (`Prefs.update_check` 0) the app looks again every hour it stays open; a check that failed (no
+/// network) is tried again sooner.
 pub(crate) const CHECK_EVERY_MS: i64 = HOUR_MS;
 pub(crate) const RETRY_MS: i64 = 30 * 60_000;
-/// "Atualizar depois" lasts this long (asked: "6 horas"), or until the computer restarts.
+/// "Atualizar depois" lasts this long, or until the computer restarts.
 pub(crate) const LATER_MS: i64 = 6 * HOUR_MS;
 /// What the person is told before an update that closes and reopens the app.
 pub(crate) const CLOSES_AND_REOPENS: &str =
@@ -92,6 +92,7 @@ pub(crate) fn parse_release_in(json: &str, local: bool) -> Result<Option<Release
 /// The same, the installer being the .deb (`deb`) or the MSI.
 fn parse_release_for(json: &str, local: bool, deb: bool) -> Result<Option<Release>, String> {
     let parsed: Value = serde_json::from_str(json).map_err(|_| "a resposta do GitHub não foi entendida".to_string())?;
+
     let Some(tag) = parsed["tag_name"].as_str() else {
         return match parsed["message"].as_str() {
             Some("Not Found") => Ok(None),
@@ -99,14 +100,17 @@ fn parse_release_for(json: &str, local: bool, deb: bool) -> Result<Option<Releas
             None => Err("a resposta do GitHub não tem versão".into()),
         };
     };
+
     let version = tag.trim().trim_start_matches('v').to_string();
     let wanted = installer_name_on(&version, deb);
     let asset = parsed["assets"].as_array().into_iter().flatten().find(|asset| asset["name"] == wanted.as_str());
+
     let installer = asset
         .and_then(|asset| asset["browser_download_url"].as_str())
         // msiexec asks for administrator: only this repository's releases are installed
         .filter(|url| url.starts_with("https://github.com/edsuuu/magoagent/releases/download/") && super::download::allowed_url(url) || local)
         .map(String::from);
+
     Ok(Some(Release {
         notes: parsed["body"].as_str().unwrap_or_default().replace('\r', "").trim().to_string(),
         page: parsed["html_url"].as_str().unwrap_or(RELEASES_PAGE).to_string(),
@@ -153,6 +157,7 @@ pub(crate) fn is_newer(remote: &str, local: &str) -> bool {
 /// The release notes as plain lines: no markdown headings or bold marks.
 pub(crate) fn plain_notes(notes: &str) -> String {
     let lines: Vec<String> = notes.lines().map(|line| line.trim_start_matches('#').trim().replace("**", "")).collect();
+
     lines.join("\n").chars().take(4000).collect()
 }
 
@@ -166,28 +171,33 @@ pub(crate) fn later_holds(later: Option<i64>, now: i64, boot: Option<i64>) -> bo
 /// clock: the check's `now` may be a time asked for (the tests'), and the uptime is always today's.
 pub(crate) fn boot_ms() -> Option<i64> {
     let now = now_ms();
+
     #[cfg(windows)]
     {
         // SAFETY: a plain call with no arguments
         let up = unsafe { windows::Win32::System::SystemInformation::GetTickCount64() };
+
         Some(now - up as i64)
     }
+
     #[cfg(target_os = "linux")]
     {
         let uptime = fs::read_to_string("/proc/uptime").ok()?;
         let seconds: f64 = uptime.split_whitespace().next()?.parse().ok()?;
+
         Some(now - (seconds * 1000.0) as i64)
     }
+
     #[cfg(not(any(windows, target_os = "linux")))]
     {
         let _ = now;
+
         None
     }
 }
 
-/// On Windows, asks to be opened again when Windows Update restarts the computer with the app open (asked: "ao
-/// atualizar com o windows, salva o estado e reinicia o app"): the app comes back with the work it saved, and its first
-/// check finds the version waiting ("Atualizar depois" ends with the restart).
+/// On Windows, asks to be opened again when Windows Update restarts the computer with the app open: the app comes back
+/// with the work it saved, and its first check finds the version waiting ("Atualizar depois" ends with the restart).
 pub(crate) fn reopen_after_windows_restarts() {
     #[cfg(windows)]
     {
@@ -208,6 +218,7 @@ fn changelog_allowed(scripted: bool) -> bool {
 /// file on this computer. Only when `MAGOAGENT_SCENE` is also set (a test instance with a scene of its own).
 fn local_feed() -> Option<PathBuf> {
     let set = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty());
+
     set("MAGOAGENT_SCENE").and(set("MAGOAGENT_UPDATE_FEED")).map(PathBuf::from)
 }
 
@@ -215,13 +226,16 @@ fn fetch_latest() -> Result<Option<Release>, String> {
     if let Some(feed) = local_feed() {
         return parse_release_in(&fs::read_to_string(&feed).map_err(|error| format!("{}: {error}", feed.display()))?, true);
     }
+
     let out = crate::editor::command("curl")
         .args(["-sS", "-L", "--max-time", "15", "--connect-timeout", "10", "-H", "Accept: application/vnd.github+json", "-H", "User-Agent: MagoAgent", LATEST])
         .output()
         .map_err(|error| format!("curl: {error}"))?;
+
     if !out.status.success() {
         return Err("sem conexão com o GitHub; confira a internet".into());
     }
+
     parse_release(&String::from_utf8_lossy(&out.stdout))
 }
 
@@ -229,19 +243,25 @@ fn fetch_latest() -> Result<Option<Release>, String> {
 fn download_installer(release: &Release) -> Result<PathBuf, String> {
     let url = release.installer.as_deref().ok_or("essa release não traz o instalador")?;
     let directory = super::updater::work_dir();
+
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let file = directory.join(installer_name(&release.version));
     let part = file.with_extension("part");
+
     let downloaded = if local_feed().is_some() && !url.starts_with("https://") {
         fs::copy(url, &part).map(|_| ()).map_err(|error| format!("{url}: {error}"))
     } else {
         super::download::fetch(url, &part)
     };
+
     let checked = downloaded.and_then(|()| super::download::verify_file(&part, release.digest.as_deref()));
+
     if let Err(why) = checked {
         let _ = fs::remove_file(&part);
+
         return Err(why);
     }
+
     fs::rename(&part, &file).map_err(|error| error.to_string())?;
     Ok(file)
 }
@@ -252,7 +272,9 @@ impl DrawingApp {
         if matches!(self.updates.state, UpdateState::Checking | UpdateState::Downloading(_)) {
             return;
         }
+
         let (sender, receiver) = channel();
+
         self.updates.receiver = Some(receiver);
         self.updates.automatic = automatic;
         self.updates.state = UpdateState::Checking;
@@ -263,17 +285,22 @@ impl DrawingApp {
     pub(crate) fn update_install(&mut self) -> Result<(), String> {
         let UpdateState::Available(release) = self.updates.state.clone() else { return Err("não há atualização à espera; verifique primeiro".into()) };
         let deb = packaged_here();
+
         if deb && !installs_in_place(&release) {
             return Err(APT_UPDATE.into());
         }
+
         if !(cfg!(windows) || deb) || release.installer.is_none() {
             crate::app::browser::open_external(&release.page);
+
             return Ok(());
         }
+
         self.updates.confirming = false;
         // saved with the work before the app closes: the new version shows them once (`show_whats_new`)
         self.prefs.whats_new = Some((release.version.clone(), release.notes.clone()));
         let (sender, receiver) = channel();
+
         self.updates.receiver = Some(receiver);
         self.updates.state = UpdateState::Downloading(release.clone());
         std::thread::spawn(move || _ = sender.send(Msg::Downloaded(download_installer(&release), release)));
@@ -286,6 +313,7 @@ impl DrawingApp {
         if !cfg!(test) {
             self.schedule_checks(now_ms());
         }
+
         self.poll_updates_at(now_ms());
     }
 
@@ -293,11 +321,14 @@ impl DrawingApp {
     pub(crate) fn schedule_checks(&mut self, now: i64) {
         if !self.updates.started {
             self.updates.started = true;
+
             if self.prefs.update_check < 2 {
                 self.update_check(true);
             }
         }
+
         let due = self.updates.next_check.is_some_and(|at| now >= at);
+
         if due && self.prefs.update_check == 0 && self.updates.receiver.is_none() && !matches!(self.updates.state, UpdateState::Started(_)) {
             self.update_check(true);
         }
@@ -307,14 +338,18 @@ impl DrawingApp {
     /// moment to open the changelog's card (ui/changelog.rs), unless it was skipped or put off ("Atualizar depois").
     pub(crate) fn poll_updates_at(&mut self, now: i64) {
         let Some(message) = self.updates.receiver.as_ref().and_then(|receiver| receiver.try_recv().ok()) else { return };
+
         self.updates.receiver = None;
+
         if let Msg::Checked(answer) = &message {
             self.updates.next_check = Some(now + if answer.is_err() { RETRY_MS } else { CHECK_EVERY_MS });
         }
+
         match message {
             Msg::Checked(Ok(Some(release))) => {
                 if is_newer(&release.version, env!("CARGO_PKG_VERSION")) {
                     let wanted = release.version != self.prefs.update_skipped && !later_holds(self.prefs.update_later, now, boot_ms());
+
                     if self.updates.automatic && wanted && self.changelog.is_none() {
                         if changelog_allowed(self.script.is_some()) {
                             self.updates.offer = Some(release.clone());
@@ -322,6 +357,7 @@ impl DrawingApp {
                             self.toast(format!("Versão {} do MagoAgent disponível: veja em Ajustes › Sobre.", release.version));
                         }
                     }
+
                     self.updates.state = UpdateState::Available(release);
                 } else {
                     self.updates.state = UpdateState::UpToDate(release);
@@ -334,6 +370,7 @@ impl DrawingApp {
             Msg::Downloaded(Ok(installer), release) if packaged_here() => {
                 self.toast(format!("Confirme com a sua senha na janela do sistema para instalar a versão {}.", release.version));
                 let (sender, receiver) = channel();
+
                 self.updates.receiver = Some(receiver);
                 self.updates.state = UpdateState::Started(release.clone());
                 std::thread::spawn(move || _ = sender.send(Msg::Installed(super::deb_update::install(&installer), release)));
@@ -360,10 +397,13 @@ impl DrawingApp {
     /// version wait for it; those of an earlier one go.
     pub(crate) fn show_whats_new(&mut self, current: &str) {
         let Some((version, notes)) = self.prefs.whats_new.clone() else { return };
+
         if is_newer(&version, current) {
             return;
         }
+
         self.prefs.whats_new = None;
+
         if version == current && changelog_allowed(self.script.is_some()) {
             self.changelog = Some(Changelog { version, notes, installed: true });
         }
@@ -376,14 +416,17 @@ impl DrawingApp {
             UpdateState::Available(release) => release.version.clone(),
             _ => return Err("não há versão nova à espera".into()),
         };
+
         if skip {
             self.prefs.update_skipped = version.clone();
         } else {
             self.prefs.update_later = Some(now_ms());
         }
+
         self.changelog = None;
         self.updates.offer = None;
         self.updates.confirming = false;
+
         Ok(if skip {
             format!("A versão {version} foi pulada: o aviso só volta numa versão mais nova (ela continua em Ajustes › Sobre).")
         } else {
@@ -397,15 +440,20 @@ impl DrawingApp {
     pub(crate) fn act_update(&mut self, install: bool, confirmed: bool) -> Result<String, String> {
         if install {
             let asks_to_close = matches!(&self.updates.state, UpdateState::Available(release) if installs_in_place(release));
+
             if asks_to_close && !confirmed {
                 return Ok(format!(
                     "{CLOSES_AND_REOPENS} Nada foi feito ainda: avise a pessoa e, com o aval dela, chame `update` de novo com install e confirmed true."
                 ));
             }
+
             self.update_install()?;
+
             return Ok("Baixando e conferindo o instalador; depois o app salva o trabalho, para os agentes, fecha, atualiza e reabre sozinho.".into());
         }
+
         let said = self.updates.state_line();
+
         self.update_check(false);
         Ok(format!("{said} Uma nova verificação foi pedida; pergunte de novo em instantes."))
     }
@@ -416,6 +464,7 @@ impl Updates {
     #[cfg(test)]
     pub(crate) fn answer_for_test(&mut self, answer: Result<Option<Release>, String>, automatic: bool) {
         let (sender, receiver) = channel();
+
         sender.send(Msg::Checked(answer)).unwrap();
         (self.receiver, self.automatic, self.started) = (Some(receiver), automatic, true);
     }
@@ -423,6 +472,7 @@ impl Updates {
     /// The state as a sentence.
     pub(crate) fn state_line(&self) -> String {
         let now = env!("CARGO_PKG_VERSION");
+
         match &self.state {
             UpdateState::Idle => format!("Versão {now}, ainda sem verificação."),
             UpdateState::Checking => "Verificando…".into(),
@@ -453,9 +503,11 @@ mod tests {
     #[test]
     fn the_release_is_read_from_githubs_answer() {
         let release = parse_msi(ANSWER).unwrap().unwrap();
+
         assert_eq!(release.version, "0.1.0");
         assert_eq!(release.installer.as_deref(), Some("https://github.com/edsuuu/magoagent/releases/download/v0.1.0/MagoAgent-0.1.0.msi"));
         assert_eq!(release.digest.as_deref(), Some("sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
+
         // an installer from anywhere else is no installer, and a test feed's file is one only for a test feed
         assert_eq!(
             parse_release_for(
@@ -468,13 +520,17 @@ mod tests {
             .installer,
             None
         );
+
         let feed = ANSWER.replace("https://github.com/edsuuu/magoagent/releases/download/v0.1.0/MagoAgent-0.1.0.msi", "C:/t/MagoAgent-0.1.0.msi");
+
         assert_eq!(parse_release_for(&feed, true, false).unwrap().unwrap().installer.as_deref(), Some("C:/t/MagoAgent-0.1.0.msi"));
         let foreign = ANSWER.replace("github.com/edsuuu/magoagent", "evil.com/x");
+
         assert_eq!(parse_msi(&foreign).unwrap().unwrap().installer, None);
         assert_eq!(plain_notes(&release.notes), "Novo\n- Ajustes maior");
         // a release without the installer still reads
         let bare = parse_msi(r#"{"tag_name":"0.2.0","assets":[]}"#).unwrap().unwrap();
+
         assert_eq!((bare.version.as_str(), bare.installer, bare.digest), ("0.2.0", None, None));
         assert_eq!(parse_msi(r#"{"message":"Not Found"}"#), Ok(None));
         assert!(parse_msi(r#"{"message":"rate limit"}"#).unwrap_err().contains("rate limit"));
@@ -484,11 +540,14 @@ mod tests {
     #[test]
     fn on_a_linux_pc_the_release_s_deb_is_the_installer() {
         let deb = "https://github.com/edsuuu/magoagent/releases/download/v0.1.0/magoagent_0.1.0_amd64.deb";
+
         let answer = ANSWER.replace(
             r#"{"name":"outro.zip""#,
             &format!(r#"{{"name":"magoagent_0.1.0_amd64.deb","browser_download_url":"{deb}","digest":"sha256:00"}},{{"name":"outro.zip""#),
         );
+
         let release = parse_release_for(&answer, false, true).unwrap().unwrap();
+
         assert_eq!((release.installer.as_deref(), release.digest.as_deref()), (Some(deb), Some("sha256:00")));
         assert!(parse_msi(&answer).unwrap().unwrap().installer.unwrap().ends_with(".msi"), "Windows still takes the MSI");
         assert_eq!(parse_release_for(ANSWER, false, true).unwrap().unwrap().installer, None, "a release with no .deb: none");
@@ -512,13 +571,16 @@ mod tests {
     fn the_newer_release_is_offered_and_an_older_one_is_not() {
         let mut app = DrawingApp::default();
         let (sender, receiver) = channel();
+
         app.updates.receiver = Some(receiver);
         let newer = Release { version: "99.0.0".into(), notes: String::new(), page: String::new(), installer: None, digest: None, size: None };
+
         sender.send(Msg::Checked(Ok(Some(newer.clone())))).unwrap();
         app.poll_updates();
         assert_eq!(app.updates.state, UpdateState::Available(newer));
         assert!(app.updates.next_check.is_some(), "the next check is set");
         let (sender, receiver) = channel();
+
         app.updates.receiver = Some(receiver);
         sender.send(Msg::Checked(Ok(None))).unwrap();
         app.poll_updates();
@@ -528,6 +590,7 @@ mod tests {
     #[test]
     fn installing_on_windows_asks_for_the_go_ahead_first() {
         let mut app = DrawingApp::default();
+
         let release = Release {
             version: "99.0.0".into(),
             notes: String::new(),
@@ -536,12 +599,16 @@ mod tests {
             digest: None,
             size: None,
         };
+
         app.updates.state = UpdateState::Available(release);
+
         if cfg!(windows) {
             let said = app.act_update(true, false).unwrap();
+
             assert!(said.contains("fecha e reabre") && said.contains("Nada foi feito"), "{said}");
             assert!(matches!(app.updates.state, UpdateState::Available(_)), "nothing started");
         }
+
         assert!(DrawingApp::default().act_update(true, true).is_err(), "no update waiting");
     }
 }

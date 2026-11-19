@@ -9,6 +9,7 @@ pub(crate) fn call_bars(state: VoiceState, mic: f32, t: f64) -> [f32; 5] {
     std::array::from_fn(|k| {
         let wave = |speed: f64, step: f64| ((t * speed - k as f64 * step).sin() * 0.5 + 0.5) as f32;
         let base = BARS[k];
+
         match state {
             VoiceState::Speaking => 4.0 + (base + 2.0 - 4.0) * wave(7.0, 0.9),
             VoiceState::Hearing => 4.0 + (base + 3.0 - 4.0) * (0.25 + 0.75 * mic.clamp(0.0, 1.0) * (0.6 + 0.4 * wave(11.0, 1.3))),
@@ -23,6 +24,7 @@ pub(crate) fn call_bars(state: VoiceState, mic: f32, t: f64) -> [f32; 5] {
 pub(crate) fn paint_bars(p: &Painter, c: Pos2, heights: [f32; 5], ink: Color32) {
     for (k, h) in heights.into_iter().enumerate() {
         let x = c.x + (k as f32 - 2.0) * 4.5;
+
         p.rect_filled(Rect::from_center_size(Pos2::new(x, c.y), Vec2::new(3.0, h.max(3.0))), 1.5, ink);
     }
 }
@@ -31,12 +33,15 @@ pub(crate) fn paint_bars(p: &Painter, c: Pos2, heights: [f32; 5], ink: Color32) 
 pub(crate) fn paint_mic(painter: &Painter, center: Pos2, ink: Color32, muted: bool) {
     // on a whole pixel, the capsule an even 6 wide: both halves of the icon land on the same pixels
     let center = center.round();
+
     painter.rect_filled(Rect::from_center_size(center - Vec2::new(0.0, 3.0), Vec2::new(6.0, 10.0)), 3.0, ink);
     // the cup: the lower half of a circle around the capsule's foot, then the stem
     let cup = center - Vec2::new(0.0, 1.0);
     let arc = (0..=12).map(|step| cup + Vec2::angled(std::f32::consts::PI * step as f32 / 12.0) * 5.5).collect();
+
     painter.add(Shape::line(arc, Stroke::new(1.5, ink)));
     painter.line_segment([center + Vec2::new(0.0, 4.5), center + Vec2::new(0.0, 8.0)], Stroke::new(1.5, ink));
+
     if muted {
         painter.line_segment([center + Vec2::new(-7.0, -8.0), center + Vec2::new(7.0, 8.0)], Stroke::new(2.0, ink));
     }
@@ -45,6 +50,7 @@ pub(crate) fn paint_mic(painter: &Painter, center: Pos2, ink: Color32, muted: bo
 /// The speakers: a speaker with its waves, crossed out when silenced.
 pub(crate) fn paint_speaker(p: &Painter, c: Pos2, ink: Color32, off: bool) {
     let s = c - Vec2::new(2.0, 0.0);
+
     p.add(Shape::convex_polygon(
         vec![
             s + Vec2::new(-5.0, -2.5),
@@ -57,12 +63,14 @@ pub(crate) fn paint_speaker(p: &Painter, c: Pos2, ink: Color32, off: bool) {
         ink,
         Stroke::NONE,
     ));
+
     if off {
         p.line_segment([s + Vec2::new(4.5, -3.0), s + Vec2::new(10.5, 3.0)], Stroke::new(1.5, ink));
         p.line_segment([s + Vec2::new(4.5, 3.0), s + Vec2::new(10.5, -3.0)], Stroke::new(1.5, ink));
     } else {
         for r in [5.0f32, 8.5] {
             let arc: Vec<Pos2> = (0..=8).map(|k| s + Vec2::angled(-0.75 + 1.5 * k as f32 / 8.0) * r).collect();
+
             p.add(Shape::line(arc, Stroke::new(1.5, ink)));
         }
     }

@@ -422,11 +422,9 @@ struct IslandHeader: View {
                     .position(x: left + max(end - left, 0) / 2, y: IslandSize.headerMid)
             }
             HStack(spacing: 8) {
-                if snapshot.tab == "chat", snapshot.chat?.full == true, !pinned {
-                    IslandHeaderButton(symbol: "arrow.up.left.and.arrow.down.right", tip: "Aumentar ou voltar ao tamanho", size: 13) { model.act("big") }
-                }
-                IslandHeaderButton(symbol: snapshot.voice ? "waveform" : "mic", tip: snapshot.voice ? "Encerrar o chat por voz" : "Chat por voz", on: snapshot.voice) {
-                    model.app("voice_call", ["state": snapshot.voice ? "off" : "on"])
+                // the call is on hold (voice::CALL_ON): only one still on can be ended
+                if snapshot.voice {
+                    IslandHeaderButton(symbol: "waveform", tip: "Encerrar o chat por voz", on: true) { model.app("voice_call", ["state": "off"]) }
                 }
                 IslandHeaderButton(symbol: snapshot.settings ? "gearshape.fill" : "gearshape", tip: "Ajustes da ilha", on: snapshot.settings) { model.act("settings") }
                 IslandHeaderButton(symbol: snapshot.sound ? "speaker.wave.2" : "speaker.slash", tip: snapshot.sound ? "Silenciar os sons" : "Ligar os sons") {
@@ -442,7 +440,7 @@ struct IslandHeader: View {
 
     /// Right to left, 32 apart from 25 in (`island_header`).
     private func widthOfButtons(_ snapshot: IslandSnapshot, pinned: Bool) -> CGFloat {
-        let count = 3 + (pinned ? 0 : 1) + (snapshot.tab == "chat" && snapshot.chat?.full == true && !pinned ? 1 : 0)
+        let count = 2 + (pinned ? 0 : 1) + (snapshot.voice ? 1 : 0)
         return CGFloat(count) * 24 + CGFloat(count - 1) * 8
     }
 }

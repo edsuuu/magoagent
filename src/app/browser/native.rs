@@ -56,12 +56,14 @@ pub(crate) struct PortalsTopic {
 impl DrawingApp {
     pub(crate) fn portals_topic(&self) -> PortalsTopic {
         let covered = self.portals_covered();
+
         let cards = self
             .scene
             .elements
             .iter()
             .filter_map(|element| {
                 let spec = element.portal.as_ref()?;
+
                 let card = PortalCard {
                     url: spec.url.clone(),
                     address: display_url(&spec.url).to_string(),
@@ -71,10 +73,13 @@ impl DrawingApp {
                     unloaded: spec.unloaded,
                     design: self.design.as_ref().is_some_and(|design| design.portal == element.id),
                 };
+
                 Some((element.id.clone(), card))
             })
             .collect();
+
         let confirm = self.design_confirm.as_ref().map(|ask| DesignAsk { name: ask.name.clone(), prompt: ask.prompt.clone(), chat: self.is_chat(&ask.agent) });
+
         PortalsTopic { cards, confirm }
     }
 
@@ -87,18 +92,25 @@ impl DrawingApp {
     /// (`send`, with `send` true or false), as egui's bar and dialog do them.
     pub(crate) fn native_browser_act(&mut self, verb: &str, args: &Value) -> Result<String, String> {
         let id = args["portal"].as_str().unwrap_or_default().to_string();
+
         if verb == "send" {
             if args["send"].as_bool() != Some(true) {
                 self.design_confirm = None;
+
                 return Ok(String::new());
             }
+
             let ctx = crate::app::native::context().ok_or("a interface não está ligada ao app")?;
+
             self.finish_design_send(&ctx, true);
+
             return Ok(String::new());
         }
+
         if !self.scene.elements.iter().any(|element| element.id == id && element.portal.is_some()) {
             return Err(format!("Navegador não encontrado: {id}"));
         }
+
         let chrome = match verb {
             "back" => Chrome::Back,
             "forward" => Chrome::Forward,
@@ -107,10 +119,12 @@ impl DrawingApp {
             "navigate" => Chrome::Navigate(args["url"].as_str().unwrap_or_default().to_string()),
             "design" => {
                 self.toggle_design(&id);
+
                 return Ok(String::new());
             }
             _ => return Err(format!("Ação do navegador desconhecida: {verb}")),
         };
+
         self.apply_chrome(&id, chrome);
         Ok(String::new())
     }

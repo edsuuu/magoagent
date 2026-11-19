@@ -239,6 +239,7 @@ fn parts(text: &str) -> Vec<Part> {
 
 fn step_snapshot(step: &Step, running: &[(String, String)]) -> StepSnapshot {
     let lines: Vec<&str> = step.log.lines().collect();
+
     StepSnapshot {
         id: step.id.clone(),
         name: short_tool(&step.name).to_string(),
@@ -263,44 +264,62 @@ impl DrawingApp {
     pub(crate) fn native_chat(&mut self) {
         self.installed_agents();
         let shown = self.chat_agent.clone();
+
         self.chats.retain(|chat| !chat.draft || shown.as_deref() == Some(chat.id.as_str()));
+
         // the chat screen with nothing picked: Claude's chat first, else a draft (as `chat_screen`)
         if self.chat_open && self.chat_agent.as_ref().is_none_or(|id| self.row_of(id).is_none()) {
             let chats = self.chat_rows();
+
             self.chat_agent = chats.iter().find(|row| row.spec.command.contains("claude")).or(chats.first()).map(|row| row.id.clone());
+
             if self.chat_agent.is_none() {
                 self.start_draft_chat(true);
             }
         }
+
         self.refresh_transcript();
         let now = self.now;
+
         let (due, poll, watched) = NATIVE.with_borrow_mut(|native| {
             if self.chat_draft != native.draft_seen {
                 native.draft_seen = self.chat_draft.clone();
                 native.draft_seq += 1;
             }
+
             let poll = now - native.polled >= 0.5;
+
             if poll {
                 native.polled = now;
             }
+
             let due = now - native.published >= PUBLISH_EVERY;
+
             if due {
                 native.published = now;
             }
+
             (due, poll, native.watched.clone())
         });
+
         let mut ids: Vec<String> = watched.into_iter().collect();
+
         ids.extend(self.chat_agent.clone().filter(|id| !ids.contains(id)));
+
         if poll {
             let open = self.chat_agent.clone();
+
             for id in ids.iter().filter(|id| open.as_ref() != Some(*id)) {
                 self.refresh_transcript_of(id);
             }
         }
+
         if !due {
             return;
         }
+
         crate::app::native::publish("chats", &self.native_chats_snapshot());
+
         for id in ids {
             if let Some(snapshot) = self.native_chat_snapshot(&id) {
                 crate::app::native::publish(&format!("chat:{id}"), &snapshot);
@@ -318,25 +337,31 @@ impl DrawingApp {
     /// `ui.chat.<verb>`: what has no action of its own in the MCP layer.
     pub(crate) fn native_chat_act(&mut self, verb: &str, args: &Value) -> Result<String, String> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().to_string();
+
         let chat = || {
             let id = text("chat");
+
             if id.is_empty() { self.chat_agent.clone().ok_or_else(|| "Nenhuma conversa aberta.".to_string()) } else { Ok(id) }
         };
+
         match verb {
             "watch" | "unwatch" => {
                 let id = chat()?;
+
                 NATIVE.with_borrow_mut(|native| if verb == "watch" { native.watched.insert(id) } else { native.watched.remove(&id) });
                 Ok(String::new())
             }
             // a row of the list: its conversation on the chat screen
             "select" => {
                 let id = chat()?;
+
                 self.show_chat();
                 self.open_agent(&id);
                 Ok("Conversa aberta.".into())
             }
             "draft" => {
                 let words = text("text");
+
                 NATIVE.with_borrow_mut(|native| native.draft_seen = words.clone());
                 self.chat_draft = words;
                 Ok(String::new())
@@ -348,29 +373,36 @@ impl DrawingApp {
             }
             "send" => {
                 let (id, words) = (chat()?, text("text"));
+
                 if words.trim().is_empty() && !self.has_attached() {
                     return Err("Nada para enviar.".into());
                 }
+
                 self.chat_draft.clear();
+
                 NATIVE.with_borrow_mut(|native| {
                     native.draft_seen.clear();
                     native.sends.push((id, words.trim_end().to_string()));
                 });
+
                 Ok("Enviado.".into())
             }
             // Interromper (Esc)
             "stop" => {
                 let id = chat()?;
+
                 if self.is_chat(&id) {
                     self.chat_stop(&id);
                 } else if let Some(Ok(session)) = self.terminals.get(&id) {
                     session.handle.write(vec![0x1b]);
                 }
+
                 Ok("Interrompido.".into())
             }
             // the queue's Enviar agora and Editar
             "queue" => {
                 let id = chat()?;
+
                 match text("action").as_str() {
                     "send_now" => self.send_queued_now(&id),
                     "edit" => {
@@ -385,10 +417,12 @@ impl DrawingApp {
             "footer" => {
                 let id = chat()?;
                 let Some(current) = self.chats.iter().find(|c| c.id == id).cloned() else { return Err("Não é um chat.".into()) };
+
                 self.chat_agent = Some(id.clone());
                 let (default_model, default_effort) = agent_default(&current.agent);
                 let ran = self.ran_model(&id);
                 let default_model = if ran.is_empty() { default_model } else { ran };
+
                 let act = if let Some(model) = args["model"].as_str() {
                     FooterAct::Model(pick(model, &default_model))
                 } else if let Some(effort) = args["effort"].as_str() {
@@ -400,34 +434,41 @@ impl DrawingApp {
                 } else {
                     return Err("diga model, effort, mode ou folder".into());
                 };
+
                 self.chat_footer_act(act);
                 Ok(String::new())
             }
             "earlier" => {
                 let id = chat()?;
                 let pages = if self.chat_earlier.0 == id { self.chat_earlier.1 + 1 } else { 1 };
+
                 self.chat_earlier = (id, pages);
                 Ok(String::new())
             }
             // Nova conversa: a draft, made a chat by its first message
             "new" => {
                 self.show_chat();
+
                 if !self.start_draft_chat(false) {
                     return Err("Nenhum agente instalado (claude ou codex).".into());
                 }
+
                 Ok("Conversa nova.".into())
             }
             "remove" => {
                 let id = chat()?;
+
                 self.remove_chat(&id);
                 Ok("Conversa removida.".into())
             }
             // Ver no canvas: a chat's card, a terminal's terminal
             "on_canvas" => {
                 let id = chat()?;
+
                 if self.is_chat(&id) {
                     return self.show_chat_on_canvas(&id);
                 }
+
                 self.show_canvas();
                 self.open_agent(&id);
                 Ok("No canvas.".into())
@@ -451,6 +492,7 @@ impl DrawingApp {
         let show = self.chat_listing.show;
         let shown = kept(&entries, show, &self.chat_listing.filter.to_lowercase());
         let order: Vec<String> = self.spaces.list.iter().map(|space| space.id.clone()).collect();
+
         let groups = space_groups(&shown, &order)
             .into_iter()
             .map(|(space, members)| GroupSnapshot {
@@ -459,6 +501,7 @@ impl DrawingApp {
                     .into_iter()
                     .map(|index| {
                         let entry = shown[index];
+
                         EntrySnapshot {
                             id: entry.id.clone(),
                             name: entry.name.clone(),
@@ -472,6 +515,7 @@ impl DrawingApp {
                     .collect(),
             })
             .collect();
+
         ChatsSnapshot {
             open: self.chat_open,
             current: self.chat_agent.clone(),
@@ -491,24 +535,31 @@ impl DrawingApp {
         let asked = if self.chat_agent.as_deref() == Some(id) { self.asked_of() } else { Vec::new() };
         let mut items = Vec::new();
         let mut earlier = 0;
+
         if let Some(t) = transcript {
             // each question marks one message, the latest that says it (as `conversation`)
             let mut from = std::collections::HashMap::new();
+
             for (prompt, who) in asked.iter().rev() {
                 let says = |(index, item): &(usize, &ChatItem)| {
                     !from.contains_key(index) && matches!(item, ChatItem::User(text) if prompt.split_whitespace().eq(text.split_whitespace()))
                 };
+
                 if let Some((index, _)) = t.items.iter().enumerate().rev().find(says) {
                     from.insert(index, who.clone());
                 }
             }
+
             let pages = if self.chat_earlier.0 == id { self.chat_earlier.1 } else { 0 };
+
             earlier = window_start(t.items.len(), pages);
             let mut index = earlier;
+
             while index < t.items.len() {
                 let steps: Vec<&Step> = t.items[index..].iter().map_while(|item| if let ChatItem::Tool(step) = item { Some(step) } else { None }).collect();
                 let next = index + steps.len().max(1);
                 let mut item = ItemSnapshot { id: index.to_string(), ..Default::default() };
+
                 if !steps.is_empty() {
                     item.kind = "tools";
                     item.summary = run_summary(&steps);
@@ -526,10 +577,12 @@ impl DrawingApp {
                         ChatItem::Tool(_) => {}
                     }
                 }
+
                 items.push(item);
                 index = next;
             }
         }
+
         let band = match row.state {
             AgentState::Working(since) => Some(match transcript.and_then(running_step) {
                 Some((step, more)) => Band {
@@ -542,11 +595,13 @@ impl DrawingApp {
                 None => {
                     let name = row.spec.name.split(" · ").next().filter(|name| !name.is_empty()).unwrap_or("O agente");
                     let thinking = crate::app::chat::thinking::line(name, since, self.now - since);
+
                     Band { tool: String::new(), what: String::new(), counter: None, thinking, seconds: (self.now - since).max(0.0) as u64 }
                 }
             }),
             _ => None,
         };
+
         let ask = self.person_asks.borrow().iter().find(|ask| ask.chat == id).map(|ask| AskSnapshot {
             tool: ask.tool.clone(),
             questions: ask
@@ -560,7 +615,9 @@ impl DrawingApp {
                 })
                 .collect(),
         });
+
         let waiting = row.state == AgentState::Waiting && ask.is_none();
+
         let status = match row.state {
             AgentState::Working(since) => format!("Trabalhando · há {}", crate::app::chat::list::elapsed(self.now - since)),
             AgentState::Waiting if ask.is_some() => "Precisa de você · responda acima da caixa".into(),
@@ -568,23 +625,29 @@ impl DrawingApp {
             AgentState::Idle(_) => "Pronto".into(),
             other => other.label().to_string(),
         };
+
         let (agent, folder, model) = match &chat {
             Some(chat) => {
                 let model = tuning_names(chat, &self.ran_model(&chat.id)).0;
+
                 (chat.name.split(" · ").next().unwrap_or(&chat.name).to_string(), chat.cwd.clone(), model)
             }
             None => (row.spec.label().to_string(), row.spec.cwd.clone(), self.usage.agents.get(id).map(|usage| usage.model.clone()).unwrap_or_default()),
         };
+
         let status = [status, model].into_iter().filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" · ");
         let fresh = chat.as_ref().is_some_and(|chat| chat.session.is_none());
+
         let providers = if fresh {
             self.chat_providers().into_iter().map(|(name, program)| Provider { on: program == row.spec.command, name, program }).collect()
         } else {
             Vec::new()
         };
+
         let hint = if waiting { "Escreva uma mensagem (fica na fila até você responder no terminal)" } else { "Escreva uma mensagem…" };
         // the slash menu reads the open chat's box
         let slash = if self.chat_agent.as_deref() == Some(id) { self.slash_entries().unwrap_or_default() } else { Vec::new() };
+
         let chips = chat.as_ref().map(|chat| {
             let (default_model, default_effort) = agent_default(&chat.agent);
             let ran = self.ran_model(&chat.id);
@@ -592,13 +655,16 @@ impl DrawingApp {
             let model_id = if chat.model.is_empty() { default_model } else { chat.model.clone() };
             let effort_id = if chat.effort.is_empty() { default_effort } else { chat.effort.clone() };
             let (mut list, more) = (models(&chat.agent), more_models(&chat.agent));
+
             if !model_id.is_empty() && !list.iter().chain(&more).any(|choice| choice.id == model_id) {
                 list.insert(0, Choice { id: model_id.clone(), name: pretty(&model_id), note: "O que esta conversa está usando".into() });
             }
+
             let all: Vec<Choice> = list.iter().chain(&more).cloned().collect();
             let effort_list = efforts(&chat.agent, &model_id);
             let model = if model_id.is_empty() { "Modelo padrão".to_string() } else { label(&all, &model_id) };
             let effort = effort_list.iter().find(|choice| choice.id == effort_id).map(|choice| choice.name.clone());
+
             Chips {
                 folder: chip_folder(&chat.cwd),
                 folder_path: chat.cwd.clone(),
@@ -615,7 +681,9 @@ impl DrawingApp {
                 efforts: choices(&effort_list),
             }
         });
+
         let (draft, draft_seq) = NATIVE.with_borrow(|native| (self.chat_draft.clone(), native.draft_seq));
+
         Some(ChatSnapshot {
             id: id.to_string(),
             title: self.chat_title(&row),
@@ -648,6 +716,7 @@ mod tests {
 
     fn app_with_chat() -> DrawingApp {
         let mut app = DrawingApp::default();
+
         app.chats.push(Chat {
             id: "c1".into(),
             agent: "claude".into(),
@@ -661,8 +730,10 @@ mod tests {
             named: false,
             draft: false,
         });
+
         let mut transcript = Transcript::new("/nada.jsonl".into());
         let step = |id: &str, name: &str| ChatItem::Tool(Step { id: id.into(), name: name.into(), what: "x".into(), ..Default::default() });
+
         transcript.items = vec![
             ChatItem::User("oi".into()),
             step("a", "Read"),
@@ -670,6 +741,7 @@ mod tests {
             ChatItem::Agent("Feito:\n\n```rust\nfn a() {}\n```".into()),
             step("c", "Bash"),
         ];
+
         transcript.running = vec![("c".into(), "Bash x".into())];
         app.transcripts.insert("c1".into(), transcript);
         app.chat_agent = Some("c1".into());
@@ -681,16 +753,19 @@ mod tests {
         let mut app = app_with_chat();
         let snapshot = app.native_chat_snapshot("c1").expect("the chat");
         let kinds: Vec<&str> = snapshot.items.iter().map(|item| item.kind).collect();
+
         assert_eq!(kinds, ["user", "tools", "agent", "tools"]);
         assert_eq!(snapshot.items.iter().map(|item| item.id.as_str()).collect::<Vec<_>>(), ["0", "1", "3", "4"]);
         // two tools with words after them fold; the last one runs open
         assert!(snapshot.items[1].folded && snapshot.items[1].summary.starts_with("2 ferramentas"));
         assert!(!snapshot.items[3].folded && snapshot.items[3].steps[0].running);
         let parts: Vec<(&str, &str)> = snapshot.items[2].parts.iter().map(|part| (part.kind, part.text.as_str())).collect();
+
         assert_eq!(parts, [("text", "Feito:"), ("code", "fn a() {}")]);
         assert_eq!(snapshot.items[2].parts[1].info, "rust");
         assert!(serde_json::to_value(&snapshot).is_ok_and(|json| json["items"][0]["text"] == "oi"));
         let chips = snapshot.chips.expect("a chat has chips");
+
         assert_eq!((chips.folder.as_str(), chips.folder_locked, chips.modes.len()), ("loja", false, CHAT_MODES.len()));
         assert!(snapshot.fresh && snapshot.is_chat && snapshot.state == "ready");
     }
@@ -698,25 +773,30 @@ mod tests {
     #[test]
     fn the_verbs_change_the_draft_queue_and_chips_as_the_egui_chat_does() {
         let mut app = app_with_chat();
+
         app.native_chat_act("draft", &json!({ "text": "/st" })).expect("draft");
         assert_eq!(app.chat_draft, "/st");
         let snapshot = app.native_chat_snapshot("c1").expect("the chat");
+
         assert!(snapshot.slash.iter().any(|entry| entry.name == "status"));
         // Editar: the queue goes back to the box, and SwiftUI sees a new draft
         app.queue_message("c1", "depois".into());
         app.native_chat_act("queue", &json!({ "chat": "c1", "action": "edit" })).expect("edit");
         let seq = NATIVE.with_borrow(|native| native.draft_seq);
+
         app.native_chat();
         assert!(NATIVE.with_borrow(|native| native.draft_seq) > seq && app.chat_draft.starts_with("depois"));
         app.native_chat_act("footer", &json!({ "chat": "c1", "mode": 1 })).expect("mode");
         app.native_chat_act("footer", &json!({ "chat": "c1", "effort": "medium" })).expect("effort");
         // stored "" when it is the agent's own default (this machine's settings): the chip says what runs
         let chips = app.native_chat_snapshot("c1").and_then(|snapshot| snapshot.chips).expect("chips");
+
         assert_eq!((app.chats[0].mode, chips.effort.as_str()), (1, "medium"));
         app.native_chat_act("send", &json!({ "chat": "c1", "text": "vai\n" })).expect("send");
         assert!(app.chat_draft.is_empty() && NATIVE.with_borrow(|native| native.sends == [("c1".to_string(), "vai".to_string())]));
         assert!(app.native_chat_act("nada", &json!({})).is_err());
         let list = app.native_chats_snapshot();
+
         assert_eq!(list.current.as_deref(), Some("c1"));
         assert!(list.groups.iter().flat_map(|group| &group.entries).any(|entry| entry.id == "c1" && entry.chat));
     }

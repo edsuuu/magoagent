@@ -65,12 +65,14 @@ pub(crate) struct Reach {
 /// The text as one line of keys: a line break would be an Enter, a control character a key of its own.
 fn keys(text: &str) -> String {
     let line = text.split(['\r', '\n']).map(str::trim).filter(|line| !line.is_empty()).collect::<Vec<_>>().join(" ");
+
     line.chars().filter(|character| !character.is_control()).collect()
 }
 
 /// The program in front in a pane (`pane_current_command`) is a shell, not Claude Code.
 fn shell_in_front(command: &str) -> bool {
     let command = command.trim().trim_start_matches('-');
+
     command.is_empty() || SHELLS.contains(&command)
 }
 
@@ -83,7 +85,9 @@ fn run_tmux(args: &[String]) -> Result<String, String> {
         .into_iter()
         .find(|path| cfg!(target_os = "macos") && std::path::Path::new(path).is_file())
         .unwrap_or("tmux");
+
     let output = crate::editor::command(program).args(args).stdin(std::process::Stdio::null()).output().map_err(|error| format!("tmux: {error}"))?;
+
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
@@ -98,13 +102,16 @@ impl super::outside::Outside {
         {
             self.fake_tmux.as_ref().map_or_else(|| Err("tmux de verdade não roda nos testes".to_string()), |fake| fake(args))
         }
+
         #[cfg(all(unix, not(test)))]
         {
             run_tmux(args)
         }
+
         #[cfg(all(not(unix), not(test)))]
         {
             let _ = args;
+
             Err("o tmux é do Linux e do macOS".to_string())
         }
     }
@@ -115,6 +122,7 @@ impl super::outside::Outside {
         {
             let _ = self.tmux(&args);
         }
+
         #[cfg(all(unix, not(test)))]
         {
             std::thread::spawn(move || {
@@ -122,6 +130,7 @@ impl super::outside::Outside {
                 let _ = run_tmux(&args);
             });
         }
+
         #[cfg(all(not(unix), not(test)))]
         {
             let _ = args;
@@ -132,12 +141,15 @@ impl super::outside::Outside {
     /// front there (a shell would run the text) or its screen asks something (the text would answer it).
     fn type_in(&self, pane: &Pane, text: &str) -> Result<(), String> {
         let call = |words: &[&str]| -> Vec<String> { ["-S", pane.socket.as_str()].iter().chain(words).map(|word| word.to_string()).collect() };
+
         if shell_in_front(&self.tmux(&call(&["display-message", "-p", "-t", &pane.id, "#{pane_current_command}"]))?) {
             return Err("o painel está no shell".into());
         }
+
         if crate::terminal::asks_for_you(&self.tmux(&call(&["capture-pane", "-p", "-t", &pane.id]))?) {
             return Err("há uma pergunta na tela".into());
         }
+
         self.tmux(&call(&["send-keys", "-t", &pane.id, "-l", "--", &keys(text)]))?;
         self.tmux_later(call(&["send-keys", "-t", &pane.id, "Enter"]));
         Ok(())
@@ -152,25 +164,33 @@ impl DrawingApp {
         if session.is_empty() {
             return;
         }
+
         if event == "SessionEnd" {
             self.outside.sessions.remove(session);
+
             if let Some(bridge) = &self.bridge {
                 locked(&bridge.shared).outbox.remove(session);
             }
+
             return;
         }
+
         let text = |key: &str| payload[key].as_str().unwrap_or_default();
         let reach = self.outside.sessions.entry(session.to_string()).or_default();
+
         reach.seen = now_ms();
+
         if let Some(socket) = tmux_socket(text("tmux_socket"))
             && tmux_pane(text("tmux_pane"))
         {
             reach.pane = Some(Pane { socket: socket.to_string(), id: text("tmux_pane").to_string() });
         }
+
         let (tool, input) = (text("tool_name"), &payload["tool_input"]);
         // the answers come back in a question's input: for it the tool is enough
         let same = |(held, its_input): &(String, Value)| held == tool && (tool == "AskUserQuestion" || its_input == input);
         let waits = event == "PermissionRequest" || (event == "PreToolUse" && tool == "AskUserQuestion");
+
         if waits && !reach.held.iter().any(same) {
             reach.held.push((tool.to_string(), input.clone()));
         } else if event.starts_with("PostToolUse") {
@@ -189,6 +209,7 @@ impl DrawingApp {
     /// The messages for the session of pill `id` waiting in the outbox for its turn to end.
     pub(crate) fn outside_pending(&self, id: &str) -> usize {
         let Some(pill) = self.outside.pill(id) else { return 0 };
+
         self.bridge.as_ref().map_or(0, |bridge| locked(&bridge.shared).outbox.get(&pill.session).map_or(0, Vec::len))
     }
 
@@ -196,9 +217,11 @@ impl DrawingApp {
     /// person there, else into the outbox for its next Stop. With messages already waiting it goes after them, in order.
     pub(crate) fn outside_message(&mut self, id: &str, text: &str) -> Result<Delivery, String> {
         let text = text.trim();
+
         if text.is_empty() {
             return Err("Escreva a mensagem.".into());
         }
+
         if !self.outside_takes_messages(id) {
             return Err(match self.outside.pill(id) {
                 Some(_) => "Só uma sessão do Claude Code recebe mensagens daqui: responda no terminal dela.",
@@ -206,12 +229,14 @@ impl DrawingApp {
             }
             .into());
         }
+
         let Some(pill) = self.outside.pill(id) else { return Err("Essa sessão não está mais aberta.".into()) };
         let (session, working) = (pill.session.clone(), pill.working);
         let asked = self.person_asks.borrow().iter().any(|ask| ask.source.as_ref().is_some_and(|source| source.pill == pill.key));
         let reach = self.outside.sessions.get(&session);
         let asking = asked || pill.asking || reach.is_some_and(|reach| !reach.held.is_empty());
         let behind = self.outside_pending(id) > 0;
+
         if !asking
             && !behind
             && let Some(pane) = reach.and_then(|reach| reach.pane.as_ref())
@@ -219,7 +244,9 @@ impl DrawingApp {
         {
             return Ok(Delivery::Typed);
         }
+
         let bridge = self.bridge.as_ref().ok_or("O MagoAgent não está recebendo os hooks agora: responda no terminal.")?;
+
         locked(&bridge.shared).outbox.entry(session).or_default().push(text.to_string());
         Ok(Delivery::Queued { idle: !working && !asking })
     }
@@ -228,22 +255,29 @@ impl DrawingApp {
     /// it; empty when there is only one).
     pub(crate) fn act_outside_message(&mut self, name: &str, text: &str) -> Result<String, String> {
         let pills: Vec<PillView> = self.outside_pills().into_iter().filter(|pill| self.outside_takes_messages(&pill.id)).collect();
+
         if pills.is_empty() {
             return Err("Nenhuma sessão do Claude Code fora do app agora (as que os hooks do Claude Code avisam).".into());
         }
+
         let wanted = name.trim().to_lowercase();
+
         // what it is called: "Claude Code · loja", "loja" and its folder's whole name (the pill's is cut, `short_name`)
         let called = |pill: &PillView| {
             let cwd = pill.id.strip_prefix(PILL_PREFIX).and_then(|key| key.split_once(':')).map_or("", |(_, cwd)| cwd);
             let folder = if cwd.is_empty() { pill.name.clone() } else { crate::app::chat::direct::folder_label(cwd) };
+
             [pill.label(), pill.name.clone(), folder].map(|name| name.to_lowercase())
         };
+
         let exact: Vec<&PillView> = pills.iter().filter(|pill| called(pill).contains(&wanted)).collect();
         let found = if exact.is_empty() { pills.iter().filter(|pill| called(pill).iter().any(|name| name.contains(&wanted))).collect() } else { exact };
         let names = pills.iter().map(|pill| format!("\"{}\"", pill.label())).collect::<Vec<_>>().join(", ");
+
         match found.as_slice() {
             [pill] => {
                 let (id, label) = (pill.id.clone(), pill.label());
+
                 Ok(format!("{label}: {}", self.outside_message(&id, text)?.notice()))
             }
             [] => Err(format!("Nenhuma sessão de fora chamada \"{name}\". Há: {names}.")),

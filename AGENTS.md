@@ -62,9 +62,14 @@ build-macos-app.sh  gera MagoAgent.app (bundle com.edsuuu.magoagent)
 - Cada arquivo começa com `use crate::prelude::*;`. Item compartilhado é `pub(crate)` e entra no `prelude` pelo módulo
   dele. Os métodos de `DrawingApp` ficam em blocos `impl DrawingApp` no arquivo do assunto.
 - `src/editor/` é a exceção: código portado, importa egui direto e usa `super::*`.
+- Linhas em branco separam as partes de um bloco (`src/tests/spacing.rs`, o `cargo test` confere): depois de um grupo
+  de `let`, antes e depois de uma instrução de várias linhas e antes de `return`, `break` e `continue`. O corretor:
+  `MAGOAGENT_FIX_SPACING=1 cargo test --release statements_have_their_blank_lines`.
 - Arquivo passando de ~600 linhas: divida por assunto.
 - Nomes por extenso (`index`, `response`, `colors`), nada de variáveis de uma letra fora de fechamentos curtos.
 - Atalho deliberado com limite conhecido leva `// ponytail: <limite>, <como evoluir>`.
+- Comentário explica o código, não conta a história do pedido: nada de citar o dono (`Asked: "…"`, `(asked: "…")`). O
+  pedido vai na descrição do PR.
 - Toda ação que a pessoa faz no app tem a sua ferramenta no MCP (o Maestro faz tudo pela voz): a ferramenta em
   `mcp/calls/tools.rs`, o despacho em `mcp/calls/mod.rs`, e a ação do app em `mcp/actions/` (um caso a mais) com a
   entrada em `mcp/app_tools.rs`.
@@ -99,7 +104,7 @@ versionar, porque ela roda com as permissões do agente.
    Os outros sistemas também compilam: `cargo check --release --target x86_64-unknown-linux-gnu` (e o do Windows/macOS).
 4. **Ver no app** pelo roteiro (abaixo), numa cena de teste, nunca no desenho real do usuário.
 5. **Deixar para o dono:** no fim, `cargo run --release` no target padrão.
-6. **Relatar** em pt-BR: o que mudou, o que foi testado e o que não foi.
+6. **Relatar** em pt-BR: o que mudou, o que foi testado e o que não foi (no PR, pelas seções do modelo, Git abaixo).
 
 Nada de trabalho na `/tmp` (nem na pasta temporária do sistema): no Linux ela é tmpfs e some ao reiniciar (o dono
 perdeu testes num outro PC assim). Worktrees, clones, rascunhos e builds ficam no disco: worktrees ao lado do repo
@@ -170,8 +175,13 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="size 1440 900; wait 2000; clic
 
 A esteira de CI roda a cada push na `main` e em cada pull request (uma vez por commit; um push novo no PR cancela o
 anterior), com jobs paralelos de formatação, clippy, auditoria de dependências, testes nos dois sistemas e um teste de
-ponta a ponta no Linux. Uma tag `v*` roda o mesmo CI e, ao mesmo tempo, compila os pacotes; a release (rascunho) só
-sai se o CI passar.
+ponta a ponta no Linux. PR em rascunho não roda: o CI começa quando ele fica pronto para revisão. Uma tag `v*` roda o
+mesmo CI e, ao mesmo tempo, compila os pacotes; a release (rascunho) só sai se o CI passar, já com as notas ("## Novo",
+um item por PR juntado desde a última release; revise antes de publicar) e o `SHA256SUMS.txt`.
+
+O Rust é o do `rust-toolchain.toml`, o mesmo na CI e nas máquinas. Subir de versão é um commit de propósito: muda o
+arquivo e o `dtolnay/rust-toolchain@<versão>` dos workflows junto, e corrige o que o clippy novo apontar. Os alvos da
+compilação cruzada se instalam uma vez por versão (`rustup target add …`, o comando está no arquivo).
 
 Rodar local antes de commitar:
 
@@ -211,3 +221,7 @@ conflitos resolvidos, e a `dev` vai para a `main` num pull request (o CI roda ne
 
 Commits sem linha de coautor. Não versionar `target/`, `MagoAgent.app` nem desenhos (`.mago`, `.rea`); a exceção é
 `docs/arquitetura.mago`.
+
+O PR segue o modelo `.github/pull_request_template.md` (o que mudou, como foi testado, antes e depois, desempenho,
+riscos). Issues de quem usa o app vêm pelos modelos de `.github/ISSUE_TEMPLATE/` (bug, travamento, recurso); as dos
+agentes e do dono podem ser em branco, no formato Hoje / Proposta / Pronto quando.

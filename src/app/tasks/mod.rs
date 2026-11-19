@@ -69,6 +69,7 @@ impl TaskState {
     /// By its id or its name, any case.
     pub(crate) fn parse(text: &str) -> Result<TaskState, String> {
         let wanted = text.trim().to_lowercase();
+
         STATES
             .iter()
             .find(|s| s.1 == wanted || s.2.to_lowercase() == wanted)
@@ -87,7 +88,7 @@ pub(crate) struct Task {
     /// The agent doing it (a terminal's or a chat's id; empty: nobody yet) and its name then.
     pub(crate) owner: String,
     pub(crate) owner_name: String,
-    /// Who asked: "você" (the panel), the Maestro, an agent's name.
+    /// Who (the panel), the Maestro, an agent's name.
     pub(crate) requester: String,
     /// The task this one is part of; empty: none.
     pub(crate) parent: String,
@@ -125,10 +126,13 @@ pub(crate) fn transition(tasks: &[Task], task: &Task, to: TaskState) -> Result<(
     if task.state.is_final() && to != task.state && to != TaskState::Pending {
         return Err(format!("A tarefa {} está {}: um estado final só reabre para pendente (state pending).", task.id, task.state.label().to_lowercase()));
     }
+
     let waits = unfinished(tasks, &task.deps);
+
     if to == TaskState::InProgress && !waits.is_empty() {
         return Ok((TaskState::Blocked, format!("depende de {}", waits.join(", "))));
     }
+
     Ok((to, String::new()))
 }
 
@@ -142,12 +146,15 @@ fn dep_path(tasks: &[Task], from: &str, to: &str, seen: &mut Vec<String>) -> Opt
     if from == to {
         return Some(vec![to.to_string()]);
     }
+
     if seen.iter().any(|s| s == from) {
         return None;
     }
+
     seen.push(from.to_string());
     let deps = tasks.iter().find(|t| t.id == from)?.deps.clone();
     let mut path = deps.iter().find_map(|d| dep_path(tasks, d, to, seen))?;
+
     path.insert(0, from.to_string());
     Some(path)
 }
@@ -156,38 +163,49 @@ fn dep_path(tasks: &[Task], from: &str, to: &str, seen: &mut Vec<String>) -> Opt
 /// parents or of dependencies may come back to it.
 pub(crate) fn check_links(tasks: &[Task], id: &str, parent: &str, deps: &[String]) -> Result<(), String> {
     let exists = |x: &str| tasks.iter().any(|t| t.id == x);
+
     if !parent.is_empty() {
         if parent == id {
             return Err("Uma tarefa não pode ser a tarefa-mãe de si mesma.".into());
         }
+
         if !exists(parent) {
             return Err(format!("A tarefa-mãe {parent} não existe."));
         }
+
         let mut chain = vec![id.to_string(), parent.to_string()];
         let mut at = parent.to_string();
+
         while let Some(up) = tasks.iter().find(|t| t.id == at).map(|t| t.parent.clone()).filter(|p| !p.is_empty()) {
             chain.push(up.clone());
+
             if up == id {
                 return Err(format!("Ciclo de tarefas-mãe: {}.", chain.join(" → ")));
             }
+
             // a cycle already there that doesn't pass through `id`
             if chain.len() > tasks.len() + 2 {
                 break;
             }
+
             at = up;
         }
     }
+
     for dep in deps {
         if dep == id {
             return Err("Uma tarefa não pode depender de si mesma.".into());
         }
+
         if !exists(dep) {
             return Err(format!("A dependência {dep} não existe."));
         }
+
         if let Some(path) = dep_path(tasks, dep, id, &mut Vec::new()) {
             return Err(format!("Ciclo de dependências: {id} → {}.", path.join(" → ")));
         }
     }
+
     Ok(())
 }
 
@@ -197,9 +215,11 @@ pub(crate) fn check_links(tasks: &[Task], id: &str, parent: &str, deps: &[String
 pub(crate) fn task_points(tasks: &[Task], task: &Task, now: i64, owner: Option<bool>) -> Vec<String> {
     let mut points = Vec::new();
     let idle = (now - task.updated).max(0) as f64 / 1000.0;
+
     if idle >= STALE {
         points.push(format!("parada {}", ago(idle)));
     }
+
     for dep in &task.deps {
         match tasks.iter().find(|t| t.id == *dep).map(|t| t.state) {
             Some(TaskState::Failed) => points.push(format!("a dependência {dep} falhou")),
@@ -207,41 +227,52 @@ pub(crate) fn task_points(tasks: &[Task], task: &Task, now: i64, owner: Option<b
             _ => {}
         }
     }
+
     if !task.owner.is_empty() {
         let name = &task.owner_name;
+
         match owner {
             None => points.push(format!("o responsável {name} não existe mais")),
             Some(false) => points.push(format!("o responsável {name} está encerrado")),
             Some(true) => {}
         }
+
         let load = tasks.iter().filter(|t| t.owner == task.owner && t.state == TaskState::InProgress).count();
+
         if load >= BUSY {
             points.push(format!("{name} tem {load} tarefas em andamento"));
         }
     }
+
     points
 }
 
 /// What goes to the owner's terminal or chat: the task, its id, and how to say where it stands.
 pub(crate) fn task_message(task: &Task, tasks: &[Task]) -> String {
     let mut text = format!("Tarefa {} para você: {}.", task.id, task.title.trim_end_matches('.'));
+
     if !task.description.trim().is_empty() {
         text += &format!("\n{}", task.description.trim());
     }
+
     let waits = unfinished(tasks, &task.deps);
+
     if !waits.is_empty() {
         text += &format!("\nDepende de: {}.", waits.join(", "));
     }
+
     text += &format!(
         "\nAvise em que pé ela está pela ferramenta tasks do MagoAgent (action update, id {}): state in_progress ao começar; done, failed ou blocked ao terminar ou travar, com note dizendo por quê; artifacts com os arquivos ou o diff.",
         task.id
     );
+
     text
 }
 
 /// The next free id: t1, t2, …
 fn next_id(tasks: &[Task]) -> String {
     let last = tasks.iter().filter_map(|t| t.id.strip_prefix('t')?.parse::<u64>().ok()).max().unwrap_or(0);
+
     format!("t{}", last + 1)
 }
 
@@ -249,6 +280,7 @@ fn next_id(tasks: &[Task]) -> String {
 /// write an empty list over it, and where it went comes back.
 pub(crate) fn read_tasks(path: &Path) -> (Vec<Task>, Option<PathBuf>) {
     let Ok(data) = fs::read(path) else { return (Vec::new(), None) };
+
     match serde_json::from_slice(&data) {
         Ok(tasks) => (tasks, None),
         Err(_) => (Vec::new(), set_aside(path).ok()),
@@ -265,11 +297,13 @@ pub(crate) struct TaskBoard {
 fn strings(value: &Value) -> Option<Vec<String>> {
     let list = value.as_array()?.iter().filter_map(|v| v.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
     let mut out: Vec<String> = Vec::new();
+
     for s in list {
         if !out.contains(&s) {
             out.push(s);
         }
     }
+
     Some(out)
 }
 
@@ -283,13 +317,18 @@ impl DrawingApp {
         if self.tasks.loaded {
             return;
         }
+
         let Some(path) = self.tasks_path() else { return };
+
         self.tasks.loaded = true;
         let (list, kept) = read_tasks(&path);
+
         self.tasks.list = list;
+
         if let Some(kept) = kept {
             let earlier = std::mem::take(&mut self.status);
             let message = format!("A lista de tarefas não pôde ser lida e começou vazia. O arquivo antigo ficou na mesma pasta, como {}.", kept_name(&kept));
+
             self.toast(if earlier.is_empty() { message } else { format!("{earlier}\n{message}") });
         }
     }
@@ -297,6 +336,7 @@ impl DrawingApp {
     fn save_tasks(&mut self) {
         let Some(path) = self.tasks_path() else { return };
         let written = serde_json::to_string_pretty(&self.tasks.list).map_err(std::io::Error::other).and_then(|json| write_atomic(&path, json));
+
         if let Err(e) = written {
             self.toast(format!("Não foi possível gravar tarefas.json: {e}"));
         }
@@ -307,6 +347,7 @@ impl DrawingApp {
         let wanted = name.trim().to_lowercase();
         let rows = self.agent_rows();
         let row = rows.iter().find(|r| r.id == name.trim() || r.spec.label().to_lowercase() == wanted);
+
         row.map(|r| (r.id.clone(), r.spec.label().to_string())).ok_or_else(|| format!("Nenhum agente chamado {name}."))
     }
 
@@ -325,6 +366,7 @@ impl DrawingApp {
         let what = format!("{} \"{}\": {change}", task.id, task.title);
         let (name, what) = if task.owner.is_empty() { ("Tarefa".to_string(), what) } else { (self.task_owner(task), format!("tarefa {what}")) };
         let mut event = AgentEvent::new(&task.owner, &name, EventKind::Task, what);
+
         event.data = json!({ "task": task.id, "state": task.state.code() });
         self.record(event);
     }
@@ -333,22 +375,27 @@ impl DrawingApp {
         if id.is_empty() {
             return Err("Diga o id da tarefa (id), como tasks list mostra.".into());
         }
+
         self.tasks.list.iter().position(|t| t.id.eq_ignore_ascii_case(id)).ok_or_else(|| format!("Nenhuma tarefa {id}."))
     }
 
     /// The task, as text, to its owner's terminal (typed as a prompt) or chat.
     fn deliver_task(&mut self, id: &str) -> Result<String, String> {
         let task = self.tasks.list[self.task_index(id)?].clone();
+
         self.deliver_text(id, task_message(&task, &self.tasks.list))
     }
 
     /// `text` to the task's owner, as `deliver_task` does.
     fn deliver_text(&mut self, id: &str, text: String) -> Result<String, String> {
         let task = self.tasks.list[self.task_index(id)?].clone();
+
         if task.owner.is_empty() {
             return Err("Não entreguei: a tarefa não tem responsável.".into());
         }
+
         let name = self.task_owner(&task);
+
         if self.is_chat(&task.owner) {
             self.chat_outbox.push((task.owner.clone(), text));
         } else if matches!(self.terminals.get(&task.owner), Some(Ok(_))) {
@@ -356,8 +403,10 @@ impl DrawingApp {
             // goes when it can (`flush_chat_queue`), instead of coming back to the composer
             self.queue_message(&task.owner, text);
             self.flush_chat_queue();
+
             if self.chat_queue.iter().any(|(to, _)| to == &task.owner) {
                 self.task_event(&task, &format!("na fila de {name}, vai quando ele puder receber"));
+
                 return Ok(format!(
                     "Na fila de {name}: ele espera uma resposta no terminal (como a pergunta de confiança da pasta); a tarefa vai quando ele puder receber."
                 ));
@@ -365,6 +414,7 @@ impl DrawingApp {
         } else {
             return Err(format!("Não entreguei: {name} não está rodando."));
         }
+
         self.task_event(&task, &format!("entregue a {name}"));
         Ok(format!("Entregue a {name}."))
     }
@@ -373,6 +423,7 @@ impl DrawingApp {
     fn task_list(&self, state: &str, owner: &str) -> Result<String, String> {
         let state = if state.is_empty() { None } else { Some(TaskState::parse(state)?) };
         let owner = owner.to_lowercase();
+
         let mut shown: Vec<&Task> = self
             .tasks
             .list
@@ -380,20 +431,26 @@ impl DrawingApp {
             .filter(|t| state.is_none_or(|s| t.state == s))
             .filter(|t| owner.is_empty() || t.owner.to_lowercase() == owner || self.task_owner(t).to_lowercase() == owner)
             .collect();
+
         if shown.is_empty() {
             return Ok(if self.tasks.list.is_empty() { "Nenhuma tarefa.".into() } else { "Nenhuma tarefa com esse filtro.".into() });
         }
+
         shown.sort_by_key(|t| (t.state.rank(), -t.updated));
         let now = now_ms();
+
         let mut out = match shown.len() {
             1 => "1 tarefa:".to_string(),
             n => format!("{n} tarefas, as travadas primeiro:"),
         };
+
         for t in shown {
             let note = if t.note.is_empty() { String::new() } else { format!(" — {}", t.note) };
             let when = ago((now - t.updated).max(0) as f64 / 1000.0);
+
             out += &format!("\n{} · {} · {} · {}{note} · {when}", t.id, t.state.label(), self.task_owner(t), t.title);
         }
+
         Ok(out)
     }
 
@@ -402,39 +459,52 @@ impl DrawingApp {
         let now = now_ms();
         let secs = |ms: i64| ago((now - ms).max(0) as f64 / 1000.0);
         let mut out = format!("{}: {}\nEstado: {}", t.id, t.title, t.state.label());
+
         if !t.note.is_empty() {
             out += &format!(" ({})", t.note);
         }
+
         out += &format!("\nResponsável: {} · pediu: {}", self.task_owner(t), t.requester);
+
         if !t.description.is_empty() {
             out += &format!("\nDescrição: {}", t.description);
         }
+
         if !t.parent.is_empty() {
             out += &format!("\nTarefa-mãe: {}", t.parent);
         }
+
         if !t.deps.is_empty() {
             let deps: Vec<String> =
                 t.deps.iter().map(|d| unfinished(&self.tasks.list, std::slice::from_ref(d)).pop().unwrap_or(format!("{d} (concluída)"))).collect();
+
             out += &format!("\nDepende de: {}", deps.join(", "));
         }
+
         let children: Vec<String> =
             self.tasks.list.iter().filter(|c| c.parent == t.id).map(|c| format!("{} ({})", c.id, c.state.label().to_lowercase())).collect();
+
         if !children.is_empty() {
             out += &format!("\nSubtarefas: {}", children.join(", "));
         }
+
         if !t.artifacts.is_empty() {
             out += &format!("\nArtefatos: {}", t.artifacts.join(", "));
         }
+
         out += &format!("\nCriada {} · atualizada {}", secs(t.created), secs(t.updated));
         let points = self.task_points_now(t);
+
         if !points.is_empty() {
             out += &format!("\nAtenção: {}", points.join("; "));
         }
+
         Ok(out)
     }
 
     fn task_points_now(&self, task: &Task) -> Vec<String> {
         let owner = self.agent_rows().into_iter().find(|r| r.id == task.owner).map(|r| r.state != AgentState::Ended);
+
         task_points(&self.tasks.list, task, now_ms(), owner)
     }
 
@@ -442,11 +512,14 @@ impl DrawingApp {
     pub(crate) fn task_demands(&self) -> Vec<Demand> {
         let now = now_ms();
         let mut stuck: Vec<&Task> = self.tasks.list.iter().filter(|t| t.state.needs_you()).collect();
+
         stuck.sort_by_key(|t| (t.state.rank(), t.updated));
+
         stuck
             .into_iter()
             .map(|t| {
                 let note = if t.note.is_empty() { String::new() } else { format!(": {}", t.note) };
+
                 Demand {
                     id: t.owner.clone(),
                     name: if t.owner.is_empty() { "Tarefa sem responsável".into() } else { self.task_owner(t) },

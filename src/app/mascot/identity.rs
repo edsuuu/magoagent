@@ -1,6 +1,5 @@
-//! Who is who among the agents (asked: "os mascotes ... precisam mudar a cor para não ficar igual, ou ele ter nome, cada um
-//! precisa ter um nome diferente"): each one's mascot in a colour of its own, the same in every place it shows, and a
-//! name no other agent on the same list shows.
+//! Who is who among the agents: each one's mascot in a colour of its own, the same in every place it shows, and a name no
+//! other agent on the same list shows.
 
 use crate::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -28,11 +27,13 @@ fn lab(color: Color32) -> [f32; 3] {
     let z = (0.0193 * red + 0.1192 * green + 0.9505 * blue) / 1.088_83;
     let curve = |value: f32| if value > 0.008_856 { value.cbrt() } else { 7.787 * value + 16.0 / 116.0 };
     let (x, y, z) = (curve(x), curve(y), curve(z));
+
     [116.0 * y - 16.0, 500.0 * (x - y), 200.0 * (y - z)]
 }
 
 fn distance(one: Color32, other: Color32) -> f32 {
     let (one, other) = (lab(one), lab(other));
+
     (0..3).map(|axis| (one[axis] - other[axis]).powi(2)).sum::<f32>().sqrt()
 }
 
@@ -47,6 +48,7 @@ fn blocks(taken: Color32, color: Color32) -> bool {
 /// `own`, or the palette's next colour after it that none of `taken` keeps (`blocks`); all taken, `own`.
 pub(crate) fn free_color(own: Color32, taken: &[Color32]) -> Color32 {
     let start = AGENT_PALETTE.iter().position(|value| rgb_hex(*value) == own).unwrap_or(0);
+
     (0..AGENT_PALETTE.len())
         .map(|step| rgb_hex(AGENT_PALETTE[(start + step) % AGENT_PALETTE.len()]))
         .find(|color| !taken.iter().any(|other| blocks(*other, *color)))
@@ -60,12 +62,16 @@ pub(crate) fn agent_colors(ids: &[String], kept: &HashMap<String, Color32>, take
     let free = |color: &Color32| !taken.iter().any(|other| blocks(*other, *color));
     let mut colors: HashMap<String, Color32> = ids.iter().filter_map(|id| Some((id.clone(), *kept.get(id).filter(|color| free(color))?))).collect();
     let mut newcomers: Vec<&String> = ids.iter().filter(|id| !colors.contains_key(*id)).collect();
+
     newcomers.sort();
     newcomers.dedup();
+
     for id in newcomers {
         let used: Vec<Color32> = taken.iter().copied().chain(colors.values().copied()).collect();
+
         colors.insert(id.clone(), free_color(own_color(id), &used));
     }
+
     colors
 }
 
@@ -74,14 +80,17 @@ pub(crate) fn agent_colors(ids: &[String], kept: &HashMap<String, Color32>, take
 pub(crate) fn distinct_names(names: &[String]) -> Vec<String> {
     let all: HashSet<String> = names.iter().map(|name| name.to_lowercase()).collect();
     let mut given: HashSet<String> = HashSet::new();
+
     names
         .iter()
         .map(|name| {
             if given.insert(name.to_lowercase()) {
                 return name.clone();
             }
+
             let free = |candidate: &String| !all.contains(&candidate.to_lowercase()) && !given.contains(&candidate.to_lowercase());
             let distinct = (2..).map(|count| format!("{name} {count}")).find(free).unwrap_or_default();
+
             given.insert(distinct.to_lowercase());
             distinct
         })
@@ -91,6 +100,7 @@ pub(crate) fn distinct_names(names: &[String]) -> Vec<String> {
 /// The names of a list's `items` (its `name`), by the list's order, made `distinct_names`.
 pub(crate) fn make_distinct<T>(items: &mut [T], name: impl Fn(&mut T) -> &mut String) {
     let names: Vec<String> = items.iter_mut().map(|item| name(item).clone()).collect();
+
     for (item, distinct) in items.iter_mut().zip(distinct_names(&names)) {
         *name(item) = distinct;
     }
@@ -101,10 +111,12 @@ pub(crate) fn make_distinct<T>(items: &mut [T], name: impl Fn(&mut T) -> &mut St
 pub(crate) fn short_name(name: &str) -> String {
     let mut short = String::new();
     let mut run = String::new();
+
     let flush = |short: &mut String, run: &mut String| {
         short.push_str(if run.len() >= 12 { &run[..7] } else { run });
         run.clear();
     };
+
     for character in name.chars() {
         if character.is_ascii_hexdigit() {
             run.push(character);
@@ -113,6 +125,7 @@ pub(crate) fn short_name(name: &str) -> String {
             short.push(character);
         }
     }
+
     flush(&mut short, &mut run);
     short
 }
@@ -132,14 +145,18 @@ impl DrawingApp {
     pub(crate) fn agent_color(&self, id: &str) -> Color32 {
         let taken = self.outside_brands();
         let cached = self.agent_colors.borrow().colors.get(id).copied().filter(|_| self.agent_colors.borrow().taken == taken);
+
         if let Some(color) = cached {
             return color;
         }
+
         let mut ids = self.outside_agent_ids();
+
         ids.extend(self.agent_rows().into_iter().chain(self.draft_rows()).map(|row| row.id));
         let mut colors = agent_colors(&ids, &self.agent_colors.borrow().colors, &taken);
         // one that is no agent alive (a test's, one just removed): its own, until the next newcomer
         let color = *colors.entry(id.to_string()).or_insert_with(|| own_color(id));
+
         *self.agent_colors.borrow_mut() = AgentColors { taken, colors };
         color
     }
@@ -149,6 +166,7 @@ impl DrawingApp {
     pub(crate) fn chat_card_name(&self, id: &str) -> Option<String> {
         let chats: Vec<&crate::app::chat::direct::Chat> = self.chats.iter().filter(|chat| !chat.draft).collect();
         let index = chats.iter().position(|chat| chat.id == id)?;
+
         distinct_names(&chats.iter().map(|chat| chat.name.clone()).collect::<Vec<_>>()).into_iter().nth(index)
     }
 }
@@ -164,11 +182,13 @@ mod tests {
         // the order of the list changes nothing
         let ids: Vec<String> = ["a", "b", "c"].map(String::from).to_vec();
         let reversed: Vec<String> = ids.iter().rev().cloned().collect();
+
         assert_eq!(agent_colors(&ids, &HashMap::new(), &[]), agent_colors(&reversed, &HashMap::new(), &[]));
         // one already coloured keeps its colour when a newcomer wants the same
         let first = agent_colors(&["x".to_string()], &HashMap::new(), &[]);
         let clash = (0..200).map(|index| format!("novo-{index}")).find(|id| own_color(id) == first["x"]).unwrap();
         let both = agent_colors(&["x".to_string(), clash.clone()], &first, &[]);
+
         assert_eq!(both["x"], first["x"]);
         assert_ne!(both[&clash], first["x"]);
     }
@@ -178,15 +198,18 @@ mod tests {
         let ids: Vec<String> = (0..AGENT_PALETTE.len()).map(|index| format!("agente-{index}")).collect();
         let colors = agent_colors(&ids, &HashMap::new(), &[]);
         let distinct: HashSet<[u8; 4]> = colors.values().map(|color| color.to_array()).collect();
+
         assert_eq!(distinct.len(), AGENT_PALETTE.len(), "{colors:?}");
         // a session outside the app in Claude Desktop's orange: no agent takes the red nor the orange by it
         let (desktop, red, orange) = (rgb_hex(0xd97757), rgb_hex(0xef4444), rgb_hex(0xf97316));
         let colors = agent_colors(&ids[..4], &HashMap::new(), &[desktop]);
+
         assert!(colors.values().all(|color| *color != red && *color != orange), "{colors:?}");
         assert_eq!(free_color(red, &[desktop]), rgb_hex(0xeab308), "past the red and the orange");
         assert_eq!(free_color(red, &[orange]), red, "the palette's own only keep themselves");
         // all taken: its own
         let all: Vec<Color32> = AGENT_PALETTE.iter().map(|value| rgb_hex(*value)).collect();
+
         assert_eq!(free_color(own_color("z"), &all), own_color("z"));
     }
 
@@ -194,18 +217,22 @@ mod tests {
     fn the_palette_is_far_apart_and_none_is_lunas_blue() {
         for (index, one) in AGENT_PALETTE.iter().enumerate() {
             assert!(distance(rgb_hex(*one), crate::app::mascot::mago::LUME) > ALIKE, "{one:06x}");
+
             for other in &AGENT_PALETTE[index + 1..] {
                 assert!(distance(rgb_hex(*one), rgb_hex(*other)) > 30.0, "{one:06x} {other:06x}");
             }
         }
+
         // the programs' own: Claude Desktop's keeps two, Cursor's grey none
         let kept = |brand: u32| AGENT_PALETTE.iter().filter(|value| blocks(rgb_hex(brand), rgb_hex(**value))).count();
+
         assert_eq!((kept(0xd97757), kept(0xc084fc), kept(0xc0c4cc)), (2, 2, 0));
     }
 
     #[test]
     fn two_agents_never_show_the_same_name() {
         let names = ["Luna", "luna", "Luna 2", "Faísca", "Luna"].map(String::from);
+
         assert_eq!(distinct_names(&names), ["Luna", "luna 3", "Luna 2", "Faísca", "Luna 4"]);
         assert_eq!(distinct_names(&["a".into(), "b".into()]), ["a", "b"]);
         assert_eq!(short_name("agent-a47cc47699b17a639"), "agent-a47cc47");

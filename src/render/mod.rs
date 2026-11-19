@@ -32,15 +32,19 @@ pub(crate) fn themed(color: Color32, dark: bool) -> Color32 {
     if !dark {
         return color;
     }
+
     let [r, g, b, a] = color.to_srgba_unmultiplied();
     let [r, g, b] = [r, g, b].map(|v| (v as f32 * 0.07 + (255.0 - v as f32) * 0.93).round() / 255.0);
+
     let out = [-0.574 * r + 1.43 * g + 0.144 * b, 0.426 * r + 0.43 * g + 0.144 * b, 0.426 * r + 1.43 * g - 0.856 * b]
         .map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
+
     Color32::from_rgba_unmultiplied(out[0], out[1], out[2], a)
 }
 
 pub(crate) fn with_opacity(color: [u8; 4], opacity: u8) -> Color32 {
     let a = (color[3] as f32 * opacity as f32 / 100.0).round() as u8;
+
     Color32::from_rgba_unmultiplied(color[0], color[1], color[2], a)
 }
 
@@ -52,20 +56,26 @@ pub(crate) fn paint_element(painter: &Painter, element: &Element, view: &View, f
     let opacity = if faded { element.style.opacity / 3 } else { element.style.opacity };
     let stroke_color = themed(with_opacity(element.style.stroke, opacity), view.dark);
     let (center, angle) = (element.center(), element.angle);
+
     let to = |p: &[f32; 2]| {
         let p = if angle == 0.0 { Pos2::new(p[0], p[1]) } else { center + rot(Pos2::new(p[0], p[1]) - center, angle) };
+
         Pos2::new(view.origin.x + p.x * view.zoom, view.origin.y + p.y * view.zoom)
     };
+
     if let Some(url) = &element.image {
         let b = local_bounds(element);
         let corners = [b.left_top(), b.right_top(), b.right_bottom(), b.left_bottom()].map(|c| to(&[c.x, c.y]));
+
         match image_texture(painter.ctx(), url) {
             Some(texture) => {
                 let mut mesh = egui::Mesh::with_texture(texture.id());
                 let tint = Color32::WHITE.gamma_multiply(opacity as f32 / 100.0);
+
                 for (pos, uv) in corners.into_iter().zip([Pos2::new(0.0, 0.0), Pos2::new(1.0, 0.0), Pos2::new(1.0, 1.0), Pos2::new(0.0, 1.0)]) {
                     mesh.vertices.push(egui::epaint::Vertex { pos, uv, color: tint });
                 }
+
                 mesh.indices.extend([0, 1, 2, 0, 2, 3]);
                 painter.add(mesh);
             }
@@ -73,32 +83,42 @@ pub(crate) fn paint_element(painter: &Painter, element: &Element, view: &View, f
                 painter.add(Shape::closed_line(corners.to_vec(), Stroke::new(1.0, stroke_color)));
             }
         }
+
         return;
     }
+
     if element.created.is_some() {
         // a sticky note without its text (replays): the card alone
         paint_note(painter, element, "", false, view, faded, 0.0);
+
         return;
     }
+
     if let (Some(fill), Some(poly)) = (element.style.fill, shape_polygon(element)) {
         let fill = themed(with_opacity(fill, opacity), view.dark);
+
         if element.style.fill_style == FillStyle::Solid {
             painter.add(Shape::convex_polygon(poly.iter().map(to).collect(), fill, Stroke::NONE));
         } else {
             let s = Stroke::new((element.style.stroke_width / 2.0).max(0.5) * view.zoom, fill);
+
             for line in fill_strokes(element) {
                 painter.add(Shape::line(line.iter().map(to).collect(), s));
             }
         }
     }
+
     let width = if matches!(element.kind, ElementKind::FreeDraw { .. }) { element.style.stroke_width * 1.5 } else { element.style.stroke_width };
     let stroke = Stroke::new(width * view.zoom, stroke_color);
+
     for outline in rough_outlines(element) {
         if outline.len() < 2 {
             continue;
         }
+
         let pts: Vec<Pos2> = outline.iter().map(to).collect();
         let sw = element.style.stroke_width;
+
         match element.style.stroke_style {
             StrokeStyle::Solid => {
                 painter.add(Shape::line(pts, stroke));
@@ -107,11 +127,14 @@ pub(crate) fn paint_element(painter: &Painter, element: &Element, view: &View, f
             StrokeStyle::Dotted => painter.extend(Shape::dashed_line(&pts, stroke, 1.5 * view.zoom, (6.0 + sw) * view.zoom)),
         }
     }
+
     for (shape, head) in arrowheads(element) {
         let pts: Vec<Pos2> = shape.iter().map(to).collect();
+
         match head.fill() {
             Some(solid) => {
                 let fill = if solid { stroke_color } else { view.background };
+
                 painter.add(Shape::convex_polygon(pts, fill, stroke));
             }
             None => {
@@ -119,30 +142,38 @@ pub(crate) fn paint_element(painter: &Painter, element: &Element, view: &View, f
             }
         }
     }
+
     if let (Some(name), ElementKind::Rectangle { x, y, .. }) = (&element.frame, &element.kind)
         && !name.is_empty()
     {
         let color = themed(Color32::from_rgb(0x99, 0x99, 0x99), view.dark);
+
         painter.text(to(&[*x, y - 4.0]), egui::Align2::LEFT_BOTTOM, name, FontId::proportional(13.0 * view.zoom.max(0.5)), color);
     }
+
     if let (ElementKind::Text { x, y, value }, false) = (&element.kind, hide_text) {
         let size = element.style.font_size;
         let font = |zoom: f32| FontId::new(size * zoom, egui::FontFamily::Name(HAND_FONT.into()));
         let width = local_bounds(element).width();
+
         for (i, line) in text_lines(value).into_iter().enumerate() {
             let galley = zoom::steady_text(painter, line, font, stroke_color, view.zoom, view.text_zoom);
             // labels are centered like the reference app's container text
             let indent = if is_label(element) { (width - galley.size().x / view.zoom).max(0.0) / 2.0 } else { 0.0 };
             let pos = to(&[*x + indent, y + i as f32 * size * LINE_HEIGHT]);
+
             if halo {
                 // background-colored outline keeps text readable over lines
                 let ring = (size * view.zoom * 0.08).clamp(1.0, 3.0);
                 let shadow = zoom::steady_text(painter, line, font, view.background, view.zoom, view.text_zoom);
+
                 for k in 0..12 {
                     let offset = Vec2::angled(k as f32 / 12.0 * std::f32::consts::TAU) * ring;
+
                     painter.add(egui::epaint::TextShape::new(pos + offset, shadow.clone(), view.background).with_angle(angle));
                 }
             }
+
             painter.add(egui::epaint::TextShape::new(pos, galley, stroke_color).with_angle(angle));
         }
     }
@@ -153,12 +184,16 @@ pub(crate) const IMAGE_EXTENSIONS: [&str; 8] = ["png", "jpg", "jpeg", "jfif", "g
 /// Decoded image textures, keyed by a hash of the data URL so the same picture uploads once.
 pub(crate) fn image_texture(ctx: &Context, url: &str) -> Option<egui::TextureHandle> {
     use std::hash::{Hash, Hasher};
+
     thread_local! {
         static CACHE: std::cell::RefCell<std::collections::HashMap<u64, Option<egui::TextureHandle>>> = Default::default();
     }
+
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
+
     url.hash(&mut hasher);
     let key = hasher.finish();
+
     CACHE.with_borrow_mut(|cache| {
         cache
             .entry(key)
@@ -170,6 +205,7 @@ pub(crate) fn image_texture(ctx: &Context, url: &str) -> Option<egui::TextureHan
                 let image = if image.width().max(image.height()) > side { image.resize(side, side, image::imageops::FilterType::Triangle) } else { image };
                 let rgba = image.to_rgba8();
                 let image = egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], &rgba);
+
                 Some(ctx.load_texture(format!("image-{key}"), image, egui::TextureOptions::LINEAR))
             })
             .clone()
@@ -179,12 +215,15 @@ pub(crate) fn image_texture(ctx: &Context, url: &str) -> Option<egui::TextureHan
 pub(crate) fn base64(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+
     for chunk in bytes.chunks(3) {
         let n = chunk.iter().enumerate().fold(0u32, |n, (i, b)| n | (*b as u32) << (16 - 8 * i));
+
         for i in 0..4 {
             out.push(if i <= chunk.len() { ALPHABET[(n >> (18 - 6 * i) & 63) as usize] as char } else { '=' });
         }
     }
+
     out
 }
 
@@ -197,12 +236,16 @@ pub(crate) fn base64_decode(text: &str) -> Option<Vec<u8>> {
         b'/' | b'_' => Some(63),
         _ => None,
     };
+
     let digits: Vec<u8> = text.bytes().filter(|c| !c.is_ascii_whitespace() && *c != b'=').map(value).collect::<Option<_>>()?;
     let mut out = Vec::with_capacity(digits.len() * 3 / 4);
+
     for chunk in digits.chunks(4) {
         let n = chunk.iter().enumerate().fold(0u32, |n, (i, d)| n | (*d as u32) << (18 - 6 * i));
+
         out.extend(n.to_be_bytes()[1..chunk.len()].iter());
     }
+
     Some(out)
 }
 
@@ -237,6 +280,7 @@ pub(crate) const STICKY_PAPER: [u8; 4] = NOTE_PAPERS[0].0;
 /// The palette's paper closest to `color` (an old note's color turns into one of the ten).
 pub(crate) fn nearest_paper(color: [u8; 4]) -> [u8; 4] {
     let far = |p: &[u8; 4]| (0..3).map(|k| (p[k] as i32 - color[k] as i32).pow(2)).sum::<i32>();
+
     NOTE_PAPERS.iter().map(|(p, _)| *p).min_by_key(far).unwrap_or(STICKY_PAPER)
 }
 /// The header strip above a note's text, and the padding around the text, in points.
@@ -250,6 +294,7 @@ pub(crate) fn sticky_style(style: Style) -> Style {
 /// Rounded-rectangle outline of a sticky note: 8-point corners (rounded-lg), square when not round.
 pub(crate) fn sticky_outline(b: Rect, round: bool, shift: f32) -> Vec<[f32; 2]> {
     let r = if round { 8.0 } else { 0.0 };
+
     corner_outline(b.translate(Vec2::splat(shift)), [r; 4]).into_iter().map(|p| [p.x, p.y]).collect()
 }
 
@@ -257,19 +302,23 @@ pub(crate) fn sticky_outline(b: Rect, round: bool, shift: f32) -> Vec<[f32; 2]> 
 /// (nw, ne, se, sw). A zero radius is a sharp corner.
 pub(crate) fn corner_outline(b: Rect, radii: [f32; 4]) -> Vec<Pos2> {
     use std::f32::consts::{FRAC_PI_2, PI};
+
     let corners = [
         (Pos2::new(b.min.x + radii[0], b.min.y + radii[0]), PI),
         (Pos2::new(b.max.x - radii[1], b.min.y + radii[1]), 3.0 * FRAC_PI_2),
         (Pos2::new(b.max.x - radii[2], b.max.y - radii[2]), 0.0),
         (Pos2::new(b.min.x + radii[3], b.max.y - radii[3]), FRAC_PI_2),
     ];
+
     corners
         .into_iter()
         .zip(radii)
         .flat_map(|((c, start), r)| {
             let steps = if r > 0.0 { 6 } else { 0 };
+
             (0..=steps).map(move |k| {
                 let a = start + k as f32 / 6.0 * FRAC_PI_2;
+
                 c + Vec2::new(r * a.cos(), r * a.sin())
             })
         })
@@ -281,6 +330,7 @@ pub(crate) fn note_text_box(note: &Element) -> Rect {
     let b = local_bounds(note);
     // the action buttons take the foot of the card
     let feet = crate::app::notes::buttons::height(&note.note.buttons, b.width());
+
     Rect::from_min_max(b.min + Vec2::new(NOTE_PAD, NOTE_HEADER + NOTE_PAD), b.max - Vec2::new(NOTE_PAD, NOTE_PAD + feet))
 }
 
@@ -289,28 +339,37 @@ pub(crate) fn note_text_box(note: &Element) -> Rect {
 pub(crate) fn note_colors(note: &Element, opacity: u8) -> (Color32, Color32) {
     let fill = note.style.fill.unwrap_or(STICKY_PAPER);
     let paper = with_opacity(fill, opacity);
+
     if let Some(k) = NOTE_PAPERS.iter().position(|(p, _)| *p == fill) {
         let [r, g, b] = NOTE_INK[k];
+
         return (paper, Color32::from_rgb(r, g, b));
     }
+
     let [r, g, b, _] = paper.to_srgba_unmultiplied();
+
     let linear = |c: u8| {
         let c = c as f32 / 255.0;
+
         if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
     };
+
     let light = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b) > 0.4;
+
     (paper, if light { Color32::from_rgb(0x33, 0x33, 0x33) } else { Color32::WHITE })
 }
 
-/// The strip of tape holding a note to the board (asked: "a nota ter esse efeito de adesivo"): a translucent band across
-/// the top edge, a little turned, its size by the note's (`bounds` in the note's own points, `place` to the screen).
+/// The strip of tape holding a note to the board: a translucent band across the top edge, a little turned, its size by
+/// the note's (`bounds` in the note's own points, `place` to the screen).
 pub(crate) fn tape(bounds: Rect) -> [Pos2; 4] {
     let width = (bounds.width() * 0.32).clamp(20.0, 76.0);
     let height = (width * 0.26).clamp(8.0, 18.0);
     let center = Pos2::new(bounds.center().x + bounds.width() * 0.08, bounds.min.y);
     let (sin, cos) = (-3.0_f32).to_radians().sin_cos();
+
     [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].map(|(x, y): (f32, f32)| {
         let (x, y) = (x * width / 2.0, y * height / 2.0);
+
         center + Vec2::new(x * cos - y * sin, x * sin + y * cos)
     })
 }
@@ -318,6 +377,7 @@ pub(crate) fn tape(bounds: Rect) -> [Pos2; 4] {
 fn paint_tape(painter: &Painter, bounds: Rect, place: &dyn Fn(Pos2) -> Pos2, alpha: f32) {
     let points: Vec<Pos2> = tape(bounds).into_iter().map(place).collect();
     let fill = Color32::from_rgba_unmultiplied(0xe9, 0xe4, 0xd4, 205).gamma_multiply(alpha);
+
     painter.add(Shape::convex_polygon(points, fill, Stroke::new(0.8, Color32::from_black_alpha(34).gamma_multiply(alpha))));
 }
 
@@ -330,10 +390,13 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
     let opacity = if faded { note.style.opacity / 3 } else { note.style.opacity };
     let alpha = opacity as f32 / 100.0;
     let (center, angle, zoom) = (note.center(), note.angle, view.zoom);
+
     let place = |p: Pos2| {
         let p = if angle == 0.0 { p } else { center + rot(p - center, angle) };
+
         Pos2::new(view.origin.x + p.x * zoom, view.origin.y + p.y * zoom)
     };
+
     let outline = |rect: Rect, radii: [f32; 4]| -> Vec<Pos2> { corner_outline(rect, radii).into_iter().map(&place).collect() };
     let b = local_bounds(note);
     // a corner and a header no bigger than the note: a small one stays a card, never a tangle of edges
@@ -342,6 +405,7 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
     let header = Rect::from_min_size(b.min, Vec2::new(b.width(), NOTE_HEADER.min(b.height())));
     let strip = if ink == Color32::WHITE { Color32::from_white_alpha(26) } else { Color32::from_black_alpha(15) };
     let card = Rect::from_two_pos(place(b.min), place(b.max));
+
     painter.add(Shape::convex_polygon(outline(b, [radius; 4]), paper, Stroke::new(0.5 * zoom, Color32::from_black_alpha(20).gamma_multiply(alpha))));
     painter.add(Shape::convex_polygon(outline(header, [radius, radius, 0.0, 0.0]), strip.gamma_multiply(alpha), Stroke::NONE));
     paint_tape(painter, b, &place, alpha);
@@ -349,18 +413,24 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
     let muted = ink.gamma_multiply(0.6);
     let header_clip = painter.with_clip_rect(Rect::from_two_pos(place(header.min), place(header.max)));
     let at = |x: f32| place(Pos2::new(x, b.min.y + NOTE_HEADER / 2.0));
+
     // its name (the first line), or that it has none yet
     if !note.note.blurred {
         let (name, color) = if text.trim().is_empty() { ("Sem título".to_string(), muted.gamma_multiply(0.7)) } else { (note_name(text), muted) };
+
         header_clip.text(at(b.min.x + NOTE_PAD), egui::Align2::LEFT_CENTER, name, FontId::proportional(10.0 * zoom), color);
     }
+
     let text_box = note_text_box(note);
+
     if !body {
         return text_box.min.y;
     }
+
     if note.note.blurred {
         // Desfocar: the text stays behind the paper, with an eye where it was
         let body = Rect::from_two_pos(place(Pos2::new(b.min.x, b.min.y + NOTE_HEADER)), place(b.max));
+
         crate::app::ui::menu_look::paint_menu_icon_sized(
             painter,
             crate::app::ui::menu_look::MenuIcon::EyeOff,
@@ -368,57 +438,79 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
             ink.gamma_multiply(0.25),
             22.0 * zoom,
         );
+
         return text_box.min.y;
     }
+
     if text.trim().is_empty() {
         // the reference app's placeholder: an empty note says where to type
         let format =
             egui::TextFormat { font_id: FontId::monospace(note.note.font_size * zoom), color: ink.gamma_multiply(0.4), italics: true, ..Default::default() };
+
         let job = egui::text::LayoutJob::single_section("Clique para editar…".into(), format);
+
         painter.with_clip_rect(card).galley(place(text_box.min), painter.layout_job(job), ink);
+
         return text_box.min.y;
     }
+
     // the text under the header and above the buttons, scrolled by the wheel (app/notes/scroll.rs)
     let text_area = Rect::from_two_pos(place(Pos2::new(b.min.x, b.min.y + NOTE_HEADER)), place(Pos2::new(b.max.x, text_box.max.y + NOTE_PAD)));
     let clip = painter.with_clip_rect(card.intersect(text_area));
     let fs = note.note.font_size;
     let text_zoom = view.text_zoom;
+
     if note.note.raw {
         // the markdown source as it is typed, in the editor's monospace, wrapped at the held zoom (render/zoom.rs)
         let galley = painter.layout_job(markdown::edit_job(text, fs * text_zoom, ink, text_box.width() * text_zoom));
         let bottom = text_box.min.y + galley.size().y / text_zoom;
+
         clip.galley(place(text_box.min - Vec2::new(0.0, scroll)), zoom::scaled_galley(&galley, zoom / text_zoom), ink);
         note_scroll_bar(painter, &place, text_box, bottom, scroll, ink, zoom);
+
         return bottom;
     }
+
     let (left, width) = (text_box.min.x, text_box.width());
+
     // where each line goes, measured at 100% once for this text, width and size; then only the lines in sight are laid
     // out and painted (the card's text box, and of it what the canvas shows)
     let plan = zoom::cached_plan(text, width, fs, || {
         let pen = zoom::Pen::Measure(painter);
         let mut lines = Vec::new();
         let mut top = 0.0;
+
         for line in markdown::lines(text) {
             let (height, breaks) = note_text_line(&pen, &line, left, top, width, fs, ink, &[]);
+
             lines.push(zoom::PlannedLine { top, height, breaks });
             top += height;
         }
+
         zoom::NotePlan { lines, height: top }
     });
+
     let mut seen = scroll..scroll + text_box.height() + NOTE_PAD;
+
     if angle == 0.0 {
         let shown = clip.clip_rect();
         let to_note = |y: f32| (y - view.origin.y) / zoom - text_box.min.y + scroll;
+
         seen = seen.start.max(to_note(shown.top()))..seen.end.min(to_note(shown.bottom()));
     }
+
     let pen = zoom::Pen::Paint { painter: &clip, place: &place, angle, zoom, text_zoom };
+
     for (line, planned) in markdown::lines(text).iter().zip(&plan.lines) {
         if planned.top + planned.height < seen.start || planned.top > seen.end {
             continue;
         }
+
         note_text_line(&pen, line, left, text_box.min.y - scroll + planned.top, width, fs, ink, &planned.breaks);
     }
+
     let end = text_box.min.y + plan.height;
+
     note_scroll_bar(painter, &place, text_box, end, scroll, ink, zoom);
     end
 }
@@ -427,29 +519,37 @@ pub(crate) fn paint_note(painter: &Painter, note: &Element, text: &str, body: bo
 /// broke into rows (`breaks`, the plan's, when painting).
 fn note_text_line(pen: &zoom::Pen, line: &markdown::Line, left: f32, y: f32, width: f32, fs: f32, ink: Color32, breaks: &[usize]) -> (f32, Vec<usize>) {
     let lh = fs * markdown::NOTE_LINE;
+
     match line {
         markdown::Line::Blank => (lh, Vec::new()),
         markdown::Line::Rule => {
             let at = y + 6.0;
+
             pen.shape(|painter, place, zoom| {
                 painter.line_segment([place(Pos2::new(left, at)), place(Pos2::new(left + width, at))], Stroke::new(zoom, ink.gamma_multiply(0.2)));
             });
+
             (12.0, Vec::new())
         }
         markdown::Line::Heading(level, t) => pen.text(Pos2::new(left, y), &markdown::inline(t, true), markdown::size_of(*level, fs), ink, width, breaks),
         markdown::Line::Quote(t) => {
             let bar = Rect::from_min_size(Pos2::new(left, y), Vec2::new(2.5, lh));
+
             pen.shape(|painter, place, _| {
                 painter.rect_filled(Rect::from_two_pos(place(bar.min), place(bar.max)), 0.0, ink.gamma_multiply(0.2));
             });
+
             pen.text(Pos2::new(left + 12.5, y), &markdown::inline(t, false), fs, ink.gamma_multiply(0.7), width - 12.5, breaks)
         }
         markdown::Line::Code(t) => {
             let row = Rect::from_min_size(Pos2::new(left, y), Vec2::new(width, lh));
+
             pen.shape(|painter, place, _| {
                 painter.rect_filled(Rect::from_two_pos(place(row.min), place(row.max)), 0.0, ink.gamma_multiply(0.05));
             });
+
             let plain = [markdown::Span { text: (*t).into(), ..Default::default() }];
+
             pen.text(Pos2::new(left, y), &plain, fs, ink, width, breaks)
         }
         markdown::Line::Para(t) => pen.text(Pos2::new(left, y), &markdown::inline(t, false), fs, ink, width, breaks),
@@ -459,6 +559,7 @@ fn note_text_line(pen: &zoom::Pen, line: &markdown::Line, left: f32, y: f32, wid
             let gap = if matches!(mark, markdown::Mark::Number(_)) { 24.0 } else { 18.0 };
             let mut line_ink = ink;
             let mut done = false;
+
             match mark {
                 markdown::Mark::Bullet => {
                     pen.shape(|painter, place, zoom| {
@@ -467,26 +568,32 @@ fn note_text_line(pen: &zoom::Pen, line: &markdown::Line, left: f32, y: f32, wid
                 }
                 markdown::Mark::Number(n) => {
                     let marker = [markdown::Span { text: n.clone(), ..Default::default() }];
+
                     if matches!(pen, zoom::Pen::Paint { .. }) {
                         pen.text(Pos2::new(x, y), &marker, fs, ink.gamma_multiply(0.4), f32::INFINITY, &[]);
                     }
                 }
                 markdown::Mark::Task(checked) => {
                     let box_world = Rect::from_min_size(Pos2::new(x, y + (lh - 12.0) / 2.0), Vec2::splat(12.0));
+
                     pen.shape(|painter, place, zoom| {
                         let r = Rect::from_two_pos(place(box_world.min), place(box_world.max));
+
                         if *checked {
                             painter.rect_filled(r, 2.0 * zoom, ink.gamma_multiply(0.5));
                         } else {
                             painter.rect_stroke(r, 2.0 * zoom, Stroke::new(zoom, ink.gamma_multiply(0.5)), StrokeKind::Inside);
                         }
                     });
+
                     done = *checked;
                     line_ink = if *checked { ink.gamma_multiply(0.5) } else { ink };
                 }
             }
+
             // a done task is struck through and faded
             let spans: Vec<markdown::Span> = markdown::inline(t, false).into_iter().map(|s| markdown::Span { strike: done || s.strike, ..s }).collect();
+
             pen.text(Pos2::new(x + gap, y), &spans, fs, line_ink, (width - (x + gap - left)).max(1.0), breaks)
         }
     }
@@ -496,13 +603,16 @@ fn note_text_line(pen: &zoom::Pen, line: &markdown::Line, left: f32, y: f32, wid
 /// long as the share shown and as far down as the text is scrolled.
 fn note_scroll_bar(painter: &Painter, place: &dyn Fn(Pos2) -> Pos2, text_box: Rect, end: f32, scroll: f32, ink: Color32, zoom: f32) {
     let (shown, whole) = (text_box.height(), end - text_box.min.y);
+
     if whole <= shown + 0.5 || shown <= 0.0 {
         return;
     }
+
     let length = (shown * shown / whole).max(16.0).min(shown);
     let top = text_box.min.y + (shown - length) * (scroll / (whole - shown)).clamp(0.0, 1.0);
     let x = text_box.max.x + NOTE_PAD / 2.0;
     let bar = Rect::from_two_pos(place(Pos2::new(x - 1.5, top)), place(Pos2::new(x + 1.5, top + length)));
+
     painter.rect_filled(bar, 1.5 * zoom, ink.gamma_multiply(0.3));
 }
 
@@ -511,9 +621,11 @@ mod tests {
     #[test]
     fn an_image_past_the_texture_limit_is_shrunk_to_it() {
         let mut png = Vec::new();
+
         image::RgbaImage::new(100, 9000).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
         let ctx = eframe::egui::Context::default();
         let texture = super::image_texture(&ctx, &format!("data:image/png;base64,{}", super::base64(&png))).unwrap();
+
         assert_eq!(texture.size()[1], ctx.input(|i| i.max_texture_side));
     }
 }

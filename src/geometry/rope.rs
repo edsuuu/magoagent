@@ -30,6 +30,7 @@ impl RopeSim {
     /// Already at rest under its own weight.
     pub(crate) fn hanging(a: Pos2, b: Pos2) -> Self {
         let points: Vec<Pos2> = resample(&rope_curve([a.x, a.y], [b.x, b.y]), ROPE_SEGMENTS + 1).into_iter().map(Pos2::from).collect();
+
         Self { previous: points.clone(), points, ends: (a, b), pending: 0.0, still: true, awake: 0.0, around: Vec::new() }
     }
 
@@ -43,47 +44,62 @@ impl RopeSim {
             self.still = false;
             self.awake = 0.0;
         }
+
         if self.still {
             return false;
         }
+
         self.pending = (self.pending + dt).min(4.0 * ROPE_STEP);
+
         while self.pending >= ROPE_STEP {
             self.pending -= ROPE_STEP;
             self.awake += ROPE_STEP;
             self.still = self.step(a, b, obstacles) < 0.5 || self.awake >= ROPE_MAX_AWAKE;
         }
+
         !self.still
     }
 
     fn step(&mut self, a: Pos2, b: Pos2, obstacles: &[Rect]) -> f32 {
         let last = self.points.len() - 1;
         let fall = Vec2::new(0.0, ROPE_GRAVITY * ROPE_STEP * ROPE_STEP);
+
         for i in 1..last {
             let velocity = (self.points[i] - self.previous[i]) * ROPE_DAMPING;
+
             self.previous[i] = self.points[i];
             self.points[i] += velocity + fall;
         }
+
         let link = (a.distance(b) * ROPE_SLACK).max(40.0) / last as f32;
+
         for _ in 0..ROPE_ITERATIONS {
             self.points[0] = a;
             self.points[last] = b;
+
             for i in 0..last {
                 let delta = self.points[i + 1] - self.points[i];
                 let length = delta.length();
+
                 if length < 1e-3 {
                     continue;
                 }
+
                 let fix = delta * ((length - link) / length * 0.5);
+
                 if i != 0 {
                     self.points[i] += fix;
                 }
+
                 if i + 1 != last {
                     self.points[i + 1] -= fix;
                 }
             }
+
             for point in &mut self.points[1..last] {
                 for rect in obstacles {
                     let around = rect.expand(ROPE_CLEARANCE);
+
                     if around.contains(*point) {
                         // out through the nearest side, eased so it slides instead of jumping
                         let exits = [
@@ -92,12 +108,15 @@ impl RopeSim {
                             (point.y - around.top(), Vec2::new(0.0, around.top() - point.y)),
                             (around.bottom() - point.y, Vec2::new(0.0, around.bottom() - point.y)),
                         ];
+
                         let (_, push) = exits.into_iter().min_by(|x, y| x.0.total_cmp(&y.0)).unwrap();
+
                         *point += push * 0.4;
                     }
                 }
             }
         }
+
         self.points[0] = a;
         self.points[last] = b;
         (1..last).map(|i| (self.points[i] - self.previous[i]).length()).sum()
@@ -114,16 +133,21 @@ pub(crate) fn pulse_at(path: &[Pos2], elapsed: f64, backwards: bool) -> Option<P
     if !(0.0..ROPE_PULSE).contains(&elapsed) {
         return None;
     }
+
     let t = (elapsed / ROPE_PULSE) as f32;
     let total: f32 = path.windows(2).map(|w| w[0].distance(w[1])).sum();
     let mut left = total * if backwards { 1.0 - t } else { t };
+
     for w in path.windows(2) {
         let d = w[0].distance(w[1]);
+
         if d > 0.0 && left <= d {
             return Some(w[0].lerp(w[1], left / d));
         }
+
         left -= d;
     }
+
     path.last().copied()
 }
 
@@ -135,6 +159,7 @@ mod tests {
     fn a_signal_runs_from_the_sender_to_the_receiver_and_stops() {
         let path = [Pos2::new(0.0, 0.0), Pos2::new(100.0, 0.0), Pos2::new(100.0, 0.0), Pos2::new(100.0, 100.0)];
         let at = |elapsed: f64, backwards: bool| pulse_at(&path, elapsed, backwards);
+
         assert_eq!(at(0.0, false), Some(Pos2::new(0.0, 0.0)), "leaves the sender's end");
         assert_eq!(at(ROPE_PULSE / 4.0, false), Some(Pos2::new(50.0, 0.0)), "by length, not by point");
         assert_eq!(at(ROPE_PULSE / 2.0, false), Some(Pos2::new(100.0, 0.0)));
@@ -150,6 +175,7 @@ mod tests {
     fn a_rope_sleeps_after_ten_seconds_awake_until_an_end_moves() {
         let (a, b) = (Pos2::new(0.0, 0.0), Pos2::new(300.0, 200.0));
         let mut rope = RopeSim::hanging(a, Pos2::new(300.0, 0.0));
+
         // a jolt wakes it with its clock at zero
         assert!(rope.advance(a, b, ROPE_STEP, &[]));
         assert_eq!(rope.awake, ROPE_STEP);

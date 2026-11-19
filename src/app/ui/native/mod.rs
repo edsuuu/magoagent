@@ -23,6 +23,7 @@ impl DrawingApp {
         if !ASIDE.load(Ordering::Relaxed) {
             ASIDE.store(crate::step_aside_window(true), Ordering::Relaxed);
         }
+
         crate::app::native::publish("shell", &self.shell_model());
     }
 

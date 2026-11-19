@@ -1,4 +1,4 @@
-//! Ajustes › Integrações › Soloist › Configurar (Linux): Soloist set up from the app, step by step, with no other
+//! Ajustes › Integrações › Spotify › Configurar o Soloist (Linux): Soloist set up from the app, step by step, with no other
 //! program: (1) its download from Spotify into `~/.local/bin`, (2) the developer key pasted, (3) the device's name,
 //! (4) both saved in `~/.config/soloist/soloist.env` and the user's `soloist.service` turned on, (5) Soloist chosen on
 //! the phone. Each step shows done, now or later by what is found (`detect`, only looked at); what is done is never
@@ -78,6 +78,7 @@ pub(crate) struct System;
 impl Runner for System {
     fn run(&self, program: &Path, args: &[&str]) -> Result<Ran, String> {
         let name = program.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
+
         let mut child = crate::editor::command(program)
             .args(args)
             .env("LC_ALL", "C")
@@ -86,7 +87,9 @@ impl Runner for System {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|error| format!("{name} não pôde ser iniciado: {error}"))?;
+
         let deadline = Instant::now() + COMMAND_TIME;
+
         // ponytail: waits by polling and reads the output after the end (the setup's commands print a few lines; one
         // printing past the pipe's 64 KB would wait until the deadline); read on threads if one ever does
         loop {
@@ -96,13 +99,16 @@ impl Runner for System {
                 Ok(None) => {
                     let _ = child.kill();
                     let _ = child.wait();
+
                     return Err(format!("{name} demorou demais"));
                 }
                 Err(error) => return Err(format!("{name}: {error}")),
             }
         }
+
         let output = child.wait_with_output().map_err(|error| format!("{name}: {error}"))?;
         let text = String::from_utf8_lossy(&output.stdout).to_string() + &String::from_utf8_lossy(&output.stderr);
+
         Ok(Ran { code: output.status.code(), output: text })
     }
 }
@@ -129,6 +135,7 @@ impl Mark {
 /// in); the first not done is the one to do now.
 pub(crate) fn marks(status: &Status, typed: bool) -> [Mark; 5] {
     let saved = status.key != KeyFile::Missing;
+
     let done = [
         matches!(status.program, Program::Ready(_)),
         saved || typed,
@@ -136,7 +143,9 @@ pub(crate) fn marks(status: &Status, typed: bool) -> [Mark; 5] {
         saved && status.unit && status.enabled && status.running(),
         status.login == Login::In,
     ];
+
     let first = done.iter().position(|done| !done);
+
     std::array::from_fn(|index| match (done[index], Some(index) == first) {
         (true, _) => Mark::Done,
         (false, true) => Mark::Now,
@@ -157,16 +166,19 @@ pub(crate) fn hints(status: &Status, typed: bool, name: &str) -> [String; 5] {
         (None, Program::Broken(why)) => format!("O ~/.local/bin/soloist não rodou ({why}): baixe de novo."),
         (None, Program::Missing) => "O programa oficial do Spotify vai para ~/.local/bin/soloist, sem sudo.".into(),
     };
+
     let key = match (status.key, typed) {
         (_, true) => "Chave colada: ela é salva no passo 4.".to_string(),
         (KeyFile::Private, false) => "Já está salva no ~/.config/soloist/soloist.env, que só o seu usuário lê. Para trocar, cole outra.".into(),
         (KeyFile::Open(mode), false) => format!("Já está salva, mas o soloist.env tem a permissão {mode:o}: outros usuários podem ler (o certo é 600)."),
         (KeyFile::Missing, false) => "Abra o painel (precisa do Spotify Premium), gere a chave do Soloist e cole abaixo. Ela não aparece na tela.".into(),
     };
+
     let device = match (status.key, typed) {
         (KeyFile::Missing, _) | (_, true) => "O nome que aparece no Spotify do celular.".to_string(),
         _ => "Já está salvo no soloist.env. Para trocar, cole a chave de novo e salve.".into(),
     };
+
     let service = match (status.unit, status.enabled, status.running()) {
         (true, true, true) => "O soloist.service do seu usuário está habilitado e rodando: ele abre sozinho quando você entra.".to_string(),
         (true, _, false) if status.active == "failed" => "O soloist.service falhou. Veja o Status, ou ligue de novo.".into(),
@@ -174,12 +186,15 @@ pub(crate) fn hints(status: &Status, typed: bool, name: &str) -> [String; 5] {
         (true, true, false) => "O soloist.service está parado.".into(),
         (false, ..) => "Grava a chave e o nome (só o seu usuário lê) e o serviço soloist.service do seu usuário, e liga. Sem sudo.".into(),
     };
+
     let shown =
         if name.trim().is_empty() || (status.key != KeyFile::Missing && !typed) { "o nome que você deu".to_string() } else { format!("\"{}\"", name.trim()) };
+
     let phone = match status.login {
         Login::In => "O Soloist entrou na sua conta pelo Spotify Connect.".to_string(),
         _ => format!("No Spotify do celular, na mesma rede Wi-Fi, toque no ícone de dispositivos e escolha {shown}."),
     };
+
     [program, key, device, service, phone]
 }
 
@@ -226,15 +241,19 @@ impl Job {
     /// The job done, by `runner` on the files of `paths`.
     pub(crate) fn run(self, paths: &Paths, runner: &dyn Runner) -> Result<String, String> {
         let default_name = detect::default_name(&detect::this_host());
+
         match self {
             Job::Download => {
                 let version = install::install_program(paths, runner, std::env::consts::ARCH, &std::env::temp_dir(), install::fetch)?;
                 // a service that runs (or stopped when its version expired) goes on with the new one
                 let enabled = runner.run(Path::new("systemctl"), &["--user", "is-enabled", SERVICE]).is_ok_and(|ran| ran.output.trim().starts_with("enabled"));
+
                 if paths.unit.is_file() && enabled {
                     install::systemctl(runner, &["restart", SERVICE])?;
+
                     return Ok(format!("Soloist atualizado e religado: {version}."));
                 }
+
                 Ok(format!("Soloist baixado: {version}."))
             }
             Job::TurnOn { key, name } => install::turn_on(paths, runner, key.as_ref(), &name, &default_name),
@@ -283,6 +302,7 @@ impl Setup {
     /// The steps opened: the name's field starts with the default.
     pub(crate) fn open(&mut self) {
         self.open = true;
+
         if self.name_field.trim().is_empty() {
             self.name_field = detect::default_name(&detect::this_host());
         }
@@ -302,17 +322,21 @@ impl Setup {
         let marks = marks(status, typed);
         let hints = hints(status, typed, &self.name_field);
         let mut lines = vec!["Configurar o Soloist (Ajustes › Integrações › Soloist):".to_string()];
+
         for index in 0..5 {
             lines.push(format!("{}. {} — {}. {}", index + 1, TITLES[index], marks[index].words(), hints[index]));
         }
+
         if !status.vpn.is_empty() {
             lines.push(vpn_warning(&status.vpn));
         }
+
         if let Some(busy) = self.busy {
             lines.push(format!("Agora: {busy}"));
         } else if let Some(said) = &self.said {
             lines.push(format!("Último pedido: {}", said.as_ref().unwrap_or_else(|why| why)));
         }
+
         lines.join("\n")
     }
 }
@@ -327,6 +351,7 @@ impl DrawingApp {
     pub(crate) fn soloist_setup_tick(&mut self, ctx: &Context) {
         let setup = &mut self.integrations.soloist_setup;
         let mut said = None;
+
         while let Some(message) = setup.channel.as_ref().and_then(|(_, inbox)| inbox.try_recv().ok()) {
             match message {
                 Message::Checked(status) => {
@@ -339,9 +364,11 @@ impl DrawingApp {
                 }
             }
         }
+
         if setup.busy.is_some() || setup.checking {
             ctx.request_repaint_after(Duration::from_millis(250));
         }
+
         if let Some(said) = said {
             self.toast(said);
         }
@@ -350,21 +377,27 @@ impl DrawingApp {
     /// While the steps show: a look every few seconds (step 5 waits for the phone). Only on Linux, never in a test.
     pub(crate) fn soloist_setup_watch(&mut self, ctx: &Context) {
         let setup = &self.integrations.soloist_setup;
+
         if setup.checked.is_none_or(|checked| checked.elapsed() >= EVERY) {
             self.soloist_setup_check();
         }
+
         ctx.request_repaint_after(EVERY);
     }
 
     /// A look at the setup, on a thread (only one at a time).
     pub(crate) fn soloist_setup_check(&mut self) {
         let setup = &mut self.integrations.soloist_setup;
+
         if setup.checking || cfg!(any(windows, target_os = "macos", test)) {
             return;
         }
+
         let Ok(paths) = Paths::of_this_user() else { return };
+
         setup.checking = true;
         let outbox = setup.sender();
+
         std::thread::spawn(move || {
             let status = detect::detect(&paths, &System, std::env::consts::ARCH, Path::new("/sys/class/net"));
             let _ = outbox.send(Message::Checked(status));
@@ -377,37 +410,49 @@ impl DrawingApp {
         if cfg!(any(windows, target_os = "macos")) {
             return Err("o Soloist do Spotify só existe no Linux".into());
         }
+
         let setup = &mut self.integrations.soloist_setup;
+
         if let Some(busy) = setup.busy {
             return Err(format!("o Soloist já está ocupado ({busy}): espere terminar"));
         }
+
         let doing = job.doing();
         let started = format!("{doing} A resposta vem num aviso e no `setup`.");
+
         (setup.busy, setup.said) = (Some(doing), None);
+
         #[cfg(test)]
         setup.asked.push(job.name());
+
         // never the real commands in a test
         if cfg!(test) {
             return Ok(started);
         }
+
         let paths = Paths::of_this_user()?;
         let outbox = setup.sender();
+
         std::thread::spawn(move || {
             let message = match job {
                 Job::Details => Message::Details(Job::Details.run(&paths, &System).unwrap_or_default()),
                 job => Message::Finished(job.run(&paths, &System)),
             };
+
             let _ = outbox.send(message);
         });
+
         Ok(started)
     }
 
     /// The MCP's `integrations soloist setup`: the steps as last seen (and a new look, when that one is old).
     pub(crate) fn soloist_setup_report(&mut self) -> String {
         let setup = &self.integrations.soloist_setup;
+
         if setup.checked.is_none_or(|checked| checked.elapsed() >= EVERY) {
             self.soloist_setup_check();
         }
+
         self.integrations.soloist_setup.report()
     }
 }

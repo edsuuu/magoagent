@@ -28,12 +28,15 @@ pub(super) struct IconRef {
 
 pub(super) fn icon_of(path: &Path, dir: bool) -> IconRef {
     let svg = |key| IconRef { key: Some(key), label: None, color: None };
+
     if dir {
         return svg(icons::FOLDER.0);
     }
+
     if let Some((key, _)) = icons::file_icon(path) {
         return svg(key);
     }
+
     match icons::badge(path) {
         Some((rgb, label)) => IconRef { key: None, label: Some(label), color: Some(format!("#{rgb:06X}")) },
         None => svg(icons::FT_UNKNOWN.0),
@@ -130,6 +133,7 @@ pub(super) struct Theme {
 pub(super) fn theme() -> Theme {
     use crate::app::filetree::compare as cmp;
     use crate::app::filetree::diff as dif;
+
     Theme {
         kinds: STYLES.iter().map(|style| Kind { color: hex(highlight::color(*style)), italic: matches!(style, St::Doc | St::Constant) }).collect(),
         background: hex(t::ISLAND),
@@ -247,13 +251,16 @@ impl ProblemsOut {
             .into_iter()
             .map(|file| {
                 let diags = ed.problems.for_file(&file);
+
                 (file, diags)
             })
             .filter(|(_, diags)| !diags.is_empty())
             .collect();
+
         files.sort_by(|a, b| a.0.cmp(&b.0));
         let count = |severity: u8| files.iter().flat_map(|(_, diags)| diags).filter(|d| d.severity == severity).count();
         let (errors, warnings) = (count(ERROR), count(WARNING));
+
         let files = files
             .into_iter()
             .take(200)
@@ -263,6 +270,7 @@ impl ProblemsOut {
                 problems: diags.into_iter().take(100).map(|d| ProblemOut { line: d.line, col: d.col, severity: d.severity, message: d.message }).collect(),
             })
             .collect();
+
         ProblemsOut { files, errors, warnings }
     }
 }
@@ -311,6 +319,7 @@ pub(super) struct TreeOut {
 
 pub(super) fn tab_kind(body: &crate::app::filetree::editor::Body) -> &'static str {
     use crate::app::filetree::editor::Body;
+
     match body {
         Body::Text(_) => "text",
         Body::Media(_) => "media",
@@ -337,6 +346,7 @@ impl DrawingApp {
         let view = self.filetrees.views.get(id)?;
         let dark = self.dark();
         let root = spec.root_path();
+
         let rows = view
             .rows
             .iter()
@@ -347,6 +357,7 @@ impl DrawingApp {
                 let color = if problem { Some(crate::app::filetree::problems_ui::error_color(dark)) } else { name_color(mark, ignored, dark) };
                 // the letter only on a file: a folder's state is its name's color
                 let letter = mark.filter(|(_, rolled)| !rolled && !row.dir);
+
                 RowOut {
                     path: row.path.to_string_lossy().into_owned(),
                     name: row.name.clone(),
@@ -363,6 +374,7 @@ impl DrawingApp {
                 }
             })
             .collect();
+
         let changes = if spec.changes {
             sorted(&root, &view.git.files)
                 .into_iter()
@@ -378,7 +390,9 @@ impl DrawingApp {
         } else {
             vec![]
         };
+
         let editor = self.filetrees.editors.get(id).filter(|_| spec.editor);
+
         let tabs = editor
             .map(|ed| {
                 ed.tabs
@@ -397,6 +411,7 @@ impl DrawingApp {
                     .collect()
             })
             .unwrap_or_default();
+
         Some(TreeOut {
             id: id.to_string(),
             name: spec.name(),

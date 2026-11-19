@@ -25,9 +25,12 @@ pub(super) fn ask(target: &Node, from: &str, asker: &str, text: &str, timeout: D
     if text.trim().is_empty() {
         return Err("diga a pergunta".into());
     }
+
     let (reply, answer) = mpsc::channel();
     let command = UiCommand::AskChat { id: target.id.clone(), from: from.into(), asker: asker.into(), text: text.trim().into(), reply };
+
     sender.send(command).map_err(|_| "o app fechou".to_string())?;
+
     match answer.recv_timeout(timeout) {
         Ok(Ok(text)) => Ok((Asked::Answered, text)),
         Ok(Err(why)) => Err(format!("\"{}\" {why}", target.name)),
@@ -68,21 +71,26 @@ mod tests {
     fn a_rope_between_a_chat_and_a_terminal_shows_in_list_both_ways() {
         let nodes = vec![node("Dev", NodeKind::Terminal, &["Papo"]), node("Papo", NodeKind::Chat, &["Dev"]), node("Solto", NodeKind::Terminal, &[])];
         let shared = Mutex::new(Shared { nodes, chats: [("Papo".to_string(), "Papo".to_string())].into(), ..Default::default() });
+
         shared.lock().unwrap().states.insert("Papo".into(), AgentState::Working(0.0));
         let (sender, _commands) = mpsc::channel();
         let list = |from: &str| handle(&json!({ "cmd": "list", "from": from }), &shared, &sender).unwrap();
+
         assert_eq!(list("Dev"), "Você: \"Dev\"\nAgentes conectados:\n  - \"Papo\" (chat, respondendo)");
         // the chat reaches what its card is roped to, like a terminal
         let chat = list("Papo");
+
         assert!(chat.starts_with("Você: \"Papo\"\nAgentes conectados:\n  - \"Dev\"") && !chat.contains("Solto"), "{chat}");
         assert!(list("Solto").contains("Nada conectado"));
         // no rope yet: the whole canvas, as before the chat had a card (and never itself)
         shared.lock().unwrap().nodes[1].links.clear();
         let alone = list("Papo");
+
         assert!(alone.contains("Agentes:\n  - \"Dev\"") && alone.contains("\"Solto\"") && !alone.contains("- \"Papo\""), "{alone}");
         // no card on this canvas: outside it, though it speaks by its own token
         shared.lock().unwrap().nodes.remove(1);
         let gone = list("Papo");
+
         assert!(!gone.contains("Você") && gone.contains("\"Dev\"") && gone.contains("\"Solto\""), "{gone}");
         // a terminal the canvas lost still reaches nothing
         assert!(list("sumiu").contains("Nada conectado"));
@@ -93,8 +101,10 @@ mod tests {
         let nodes = vec![node("Dev", NodeKind::Terminal, &[])];
         let shared = Mutex::new(Shared { nodes, chats: [("Papo".to_string(), "Luna".to_string())].into(), ..Default::default() });
         let (sender, commands) = mpsc::channel();
+
         let ui = std::thread::spawn(move || {
             let mut built = Vec::new();
+
             while let Ok(command) = commands.recv() {
                 let (what, reply) = match command {
                     UiCommand::Recruit { from, command, reply, .. } => (format!("recruit {from} {command}"), reply),
@@ -102,16 +112,21 @@ mod tests {
                     UiCommand::Connect { a, b, reply } => (format!("connect {a} {b}"), reply),
                     other => panic!("{other:?}"),
                 };
+
                 built.push(what);
                 let _ = reply.send(Ok("feito".into()));
             }
+
             built
         });
+
         let ask = |from: &str, request: Value| {
             let mut request = request;
+
             request["from"] = from.into();
             handle(&request, &shared, &sender)
         };
+
         // the chat's agent is the Maestro: the app is told which chat builds, and puts its card there
         assert_eq!(ask("Papo", json!({ "cmd": "recruit", "text": "codex" })), Ok("feito".into()));
         // the model and effort recruit_agent picked go in as the agent's own flags (maestro/tuning.rs)
@@ -122,6 +137,7 @@ mod tests {
         assert!(ask("", json!({ "cmd": "recruit" })).unwrap_err().contains("de dentro de um terminal"));
         assert!(ask("", json!({ "cmd": "connect", "name": "Dev" })).unwrap_err().contains("as duas pontas"));
         drop(sender);
+
         assert_eq!(
             ui.join().unwrap(),
             ["recruit Papo codex", "recruit Papo claude --model sonnet --effort high \"x\"", "portal Papo exemplo.com", "connect Papo Dev"]
@@ -132,11 +148,13 @@ mod tests {
     fn asking_a_chat_carries_the_askers_name_and_brings_its_answer_back_over_tcp() {
         let Bridge { address, token, shared, commands } = Bridge::start(None).unwrap();
         let nodes = vec![node("Dev", NodeKind::Terminal, &["Papo"]), node("Papo", NodeKind::Chat, &["Dev"])];
+
         *shared.lock().unwrap() = Shared { nodes, chats: [("Papo".to_string(), "Papo".to_string())].into(), ..Default::default() };
         // the app here is a thread that answers with what it was asked, and by whom
         let _ui = app(commands, |asker, text| Ok(format!("{asker} perguntou: {text}")));
         let request = |cmd: Value| request_to(&address, &token, "Dev", cmd, Duration::from_secs(20));
         let answer = request(json!({ "cmd": "ask", "name": "Papo", "text": " quanto é 40+2? ", "timeout": 20 })).unwrap();
+
         assert_eq!(answer, "Dev perguntou: quanto é 40+2?");
         // the rope between them was lit only while the ask ran; the event says who answered whom
         assert!(shared.lock().unwrap().asking.is_empty());
@@ -144,23 +162,27 @@ mod tests {
         assert_eq!(request(json!({ "cmd": "check", "name": "Papo" })).unwrap(), "Chat \"Papo\" (parado)");
         // keys are a terminal's
         let raw = request(json!({ "cmd": "ask", "name": "Papo", "text": "\\e", "raw": true })).unwrap_err();
+
         assert!(raw.contains("é um chat"), "{raw}");
     }
 
     #[test]
     fn a_busy_chat_takes_the_question_and_a_second_asker_waits_for_the_first() {
         let nodes = vec![node("Dev", NodeKind::Terminal, &["Papo"]), node("Outro", NodeKind::Chat, &["Papo"]), node("Papo", NodeKind::Chat, &["Dev", "Outro"])];
+
         let shared = Mutex::new(Shared {
             nodes,
             chats: [("Papo".to_string(), "Papo".to_string()), ("Outro".to_string(), "Outro".to_string())].into(),
             ..Default::default()
         });
+
         // working: a terminal would refuse the question, a chat lines it up
         shared.lock().unwrap().states.insert("Papo".into(), AgentState::Working(0.0));
         let (sender, commands) = mpsc::channel();
         let ui = app(commands, |asker, _| if asker == "Outro" { Ok("da fila".into()) } else { Err("não pôde receber a pergunta: sem agente".into()) });
         // a chat asks a chat, by its own name
         let ask = |from: &str| handle(&json!({ "cmd": "ask", "name": "Papo", "text": "oi", "from": from, "timeout": 5 }), &shared, &sender);
+
         assert_eq!(ask("Outro"), Ok("da fila".into()));
         assert_eq!(ask("Dev"), Err("\"Papo\" não pôde receber a pergunta: sem agente".into()));
         assert_eq!(shared.lock().unwrap().events.last().unwrap().2, "não recebeu a pergunta");

@@ -22,8 +22,10 @@ pub(crate) fn edge_at(rect: Rect, at: Pos2) -> Option<ResizeDirection> {
     if !rect.contains(at) {
         return None;
     }
+
     let (left, right) = (at.x - rect.left() < EDGE, rect.right() - at.x < EDGE);
     let (top, bottom) = (at.y - rect.top() < EDGE, rect.bottom() - at.y < EDGE);
+
     Some(match (left, right, top, bottom) {
         (true, _, true, _) => ResizeDirection::NorthWest,
         (_, true, true, _) => ResizeDirection::NorthEast,
@@ -41,14 +43,17 @@ pub(crate) fn edge_at(rect: Rect, at: Pos2) -> Option<ResizeDirection> {
 pub(crate) fn resize_edges(ui: &mut egui::Ui, rect: Rect) {
     let Some(at) = ui.ctx().pointer_hover_pos() else { return };
     let Some(edge) = edge_at(rect, at) else { return };
+
     let cursor = match edge {
         ResizeDirection::North | ResizeDirection::South => CursorIcon::ResizeVertical,
         ResizeDirection::East | ResizeDirection::West => CursorIcon::ResizeHorizontal,
         ResizeDirection::NorthWest | ResizeDirection::SouthEast => CursorIcon::ResizeNwSe,
         ResizeDirection::NorthEast | ResizeDirection::SouthWest => CursorIcon::ResizeNeSw,
     };
+
     let band = Rect::from_center_size(at, Vec2::splat(2.0 * EDGE));
     let r = ui.interact(band, ui.scope_id().with("mini_edge"), Sense::drag()).on_hover_cursor(cursor);
+
     if r.hovered() && ui.input(|i| i.pointer.primary_pressed()) {
         ui.ctx().send_viewport_cmd(egui::ViewportCommand::BeginResize(edge));
     }
@@ -58,16 +63,20 @@ impl DrawingApp {
     /// Every frame the panel is open (and the backend has windows): its window.
     pub(crate) fn mini_window(&mut self, ctx: &Context, row: &AgentRow, look: &Look, c: &UiColors, time: f64) {
         let saved = self.prefs.mini_chat_window;
+
         let [x, y, w, h] = *self.mini.opened_at.get_or_insert_with(|| {
             saved.unwrap_or_else(|| {
                 let app = ctx.input(|i| i.viewport().outer_rect).unwrap_or(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0)));
+
                 first_place(app, Vec2::new(WIDTH, HEIGHT))
             })
         });
+
         // made again (opened after the pill), the window has the system's glass frame again
         if crate::app::chat::mini::fresh(ctx, &mut self.mini.panel_pass) {
             self.mini.plain = 0;
         }
+
         let builder = egui::ViewportBuilder::default()
             .with_title("Mini chat")
             .with_transparent(true)
@@ -80,32 +89,42 @@ impl DrawingApp {
             .with_position([x, y])
             .with_inner_size([w, h])
             .with_min_inner_size(MIN_SIZE);
+
         let id = egui::ViewportId::from_hash_of("mini_chat_window");
+
         let (placed, close) = ctx.show_viewport_immediate(id, builder, |ui, _| {
             let inner = ui.ctx().clone();
+
             self.mini.window = true;
             // its top row is cut off (plain::strip): the panel starts under it
             let area = ui.max_rect();
             let area = if cfg!(windows) { area.with_min_y(area.top() + 1.0) } else { area };
+
             self.mini_panel(&inner, row, area, look, c, time);
             self.mini.window = false;
+
             inner.input(|i| {
                 let v = i.viewport();
                 let placed = v.outer_rect.zip(v.inner_rect).map(|(o, n)| [o.left().round(), o.top().round(), n.width().round(), n.height().round()]);
+
                 (placed, v.close_requested())
             })
         });
+
         // its corners are the panel's own, round (mini.rs): none of the system's square border
         #[cfg(windows)]
         if self.mini.plain < 3 {
             crate::app::voice::popup::plain::reveal("Mini chat", &mut self.mini.plain);
             ctx.request_repaint();
         }
+
         // nothing of it lies over the canvas
         self.mini.rect = None;
+
         if close {
             self.mini.open = false;
         }
+
         if let Some(placed) = placed.filter(|p| p[2] >= MIN_SIZE[0] && p[3] >= MIN_SIZE[1]) {
             self.prefs.mini_chat_window = Some(placed);
         }
@@ -119,6 +138,7 @@ mod tests {
     #[test]
     fn an_edge_or_corner_is_pulled_within_a_few_points_of_the_border() {
         let r = Rect::from_min_size(Pos2::ZERO, Vec2::new(340.0, 600.0));
+
         assert!(matches!(edge_at(r, Pos2::new(2.0, 300.0)), Some(ResizeDirection::West)));
         assert!(matches!(edge_at(r, Pos2::new(338.0, 598.0)), Some(ResizeDirection::SouthEast)));
         assert!(matches!(edge_at(r, Pos2::new(170.0, 1.0)), Some(ResizeDirection::North)));
@@ -134,6 +154,7 @@ mod tests {
         let work = Rect::from_min_max(Pos2::new(1920.0, 0.0), Pos2::new(3840.0, 1040.0));
         let size = Vec2::new(340.0, 600.0);
         let pill = |x: f32, y: f32| Rect::from_min_size(Pos2::new(x, y), Vec2::new(220.0, 44.0));
+
         // room everywhere: its top right on the pill's, going down
         assert_eq!(panel_place(pill(3000.0, 100.0), size, work), Rect::from_min_size(Pos2::new(2880.0, 100.0), size));
         // near the bottom: upward, its bottom on the pill's
@@ -142,9 +163,11 @@ mod tests {
         assert_eq!(panel_place(pill(1930.0, 100.0), size, work).left(), 1930.0);
         // half off the screen: pulled in whole
         let r = panel_place(pill(3700.0, -30.0), size, work);
+
         assert!(work.contains_rect(r), "{r:?}");
         // a screen smaller than the panel: as big as the screen
         let small = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 500.0));
+
         assert_eq!(panel_place(pill(100.0, 100.0), size, small).size(), Vec2::new(340.0, 500.0));
     }
 
@@ -153,11 +176,14 @@ mod tests {
         use crate::app::chat::mini::fresh;
         let ctx = Context::default();
         let mut last = 0;
+
         let pass = |shown: bool, last: &mut u64| {
             let mut new = false;
             let _ = ctx.run_ui(egui::RawInput::default(), |ui| new = shown && fresh(ui.ctx(), last));
+
             new
         };
+
         assert!(pass(true, &mut last), "the first time");
         assert!(!pass(true, &mut last), "shown again the next pass: the same window, not stripped again");
         assert!(!pass(false, &mut last));

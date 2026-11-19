@@ -128,21 +128,12 @@ private struct AttentionCard: View {
                 .buttonStyle(.plain)
             }
             .padding(10).background(RoundedRectangle(cornerRadius: 10).fill(Color.amber.opacity(0.16)))
-        } else if !state.sidebar.clearHidden {
-            HStack {
-                Label(waitingText(0), systemImage: "checkmark").font(.system(size: 13)).foregroundStyle(.green)
-                Spacer()
-                Button { appAction("sidebar", ["action": "notice_hide"]) } label: { Image(systemName: "xmark").font(.system(size: 10)) }
-                    .buttonStyle(.plain).foregroundStyle(.green).help("Ocultar este aviso")
-            }
-            .padding(10).background(RoundedRectangle(cornerRadius: 10).fill(Color.green.opacity(0.13)))
         }
     }
 
     private func waitingText(_ count: Int) -> String {
         switch count {
-        case 0: "Nada esperando por você"
-        case 1: "1 agente precisa de você"
+        case ...1: "1 agente precisa de você"
         default: "\(count) agentes precisam de você"
         }
     }

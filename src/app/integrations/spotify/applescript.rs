@@ -18,6 +18,7 @@ end if"#;
 
 fn script(source: &str) -> Option<String> {
     let output = crate::editor::command("osascript").args(["-e", source]).stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
+
     output.status.success().then(|| String::from_utf8_lossy(&output.stdout).trim_end_matches(['\n', '\r']).to_string())
 }
 
@@ -44,6 +45,7 @@ pub(super) fn verb(command: &Command) -> Option<String> {
 
 pub(super) fn control(command: &Command) -> bool {
     let Some(verb) = verb(command) else { return false };
+
     script(&format!("if application \"Spotify\" is running then tell application \"Spotify\" to {verb}")).is_some()
 }
 

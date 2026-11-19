@@ -60,6 +60,7 @@ static CONTEXT: OnceLock<Context> = OnceLock::new();
 /// Whether `area` is drawn by SwiftUI: `MAGOAGENT_SWIFTUI` is `all` or a comma list (`island,chat`); unset, none.
 pub(crate) fn enabled(area: &str) -> bool {
     static ASKED: OnceLock<String> = OnceLock::new();
+
     asks_for(ASKED.get_or_init(|| std::env::var("MAGOAGENT_SWIFTUI").unwrap_or_default()), area)
 }
 
@@ -70,19 +71,24 @@ fn asks_for(asked: &str, area: &str) -> bool {
 /// Starts the Swift side when some area is on, and tells it which (topic `areas`).
 pub(crate) fn start(context: &Context) {
     let areas: Vec<&str> = AREAS.into_iter().chain(["probe"]).filter(|area| enabled(area)).collect();
+
     if areas.is_empty() || CONTEXT.set(context.clone()).is_err() {
         return;
     }
+
     static CALLBACKS: MagoCallbacks = MagoCallbacks { act: take_envelope };
+
     // SAFETY: on the main thread (eframe's creation callback); the struct is static, Swift copies it anyway
     unsafe { mago_ui_start(&CALLBACKS) };
     // the app's own fonts, before any area draws: the interface's, the hand's and the terminal's (egui's Hack)
     let defaults = egui::FontDefinitions::default();
     let hack: Option<&[u8]> = defaults.font_data.get("Hack").map(|data| (*data.font).as_ref());
+
     for font in [crate::geometry::ASSISTANT_FONT, crate::geometry::HAND_FACE].into_iter().chain(hack) {
         // SAFETY: on the main thread; the bytes live through the call and Swift copies them
         unsafe { mago_ui_font(font.as_ptr(), font.len() as std::ffi::c_ulong) };
     }
+
     publish("areas", &areas);
 }
 
@@ -111,12 +117,15 @@ pub(crate) fn publish<T: Serialize>(topic: &str, value: &T) {
     if CONTEXT.get().is_none() {
         return;
     }
+
     let Ok(json) = serde_json::to_string(value) else { return };
     let mut sent = SENT.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let Some(json) = changed(sent.get_or_insert_default(), topic, json) else { return };
+
     drop(sent);
     // a NUL inside a string is escaped by serde (\u0000): only a topic name could hold one
     let (Ok(topic), Ok(json)) = (CString::new(topic), CString::new(json)) else { return };
+
     // SAFETY: on the main thread; both strings live through the call and Swift copies them
     unsafe { mago_ui_publish(topic.as_ptr(), json.as_ptr()) };
 }
@@ -126,6 +135,7 @@ fn changed(sent: &mut std::collections::HashMap<String, String>, topic: &str, js
     if sent.get(topic) == Some(&json) {
         return None;
     }
+
     sent.insert(topic.to_string(), json.clone());
     Some(json)
 }
@@ -135,9 +145,12 @@ extern "C" fn take_envelope(json: *const c_char) {
     if json.is_null() {
         return;
     }
+
     // SAFETY: Swift passes a NUL-terminated UTF-8 string alive through this call
     let json = unsafe { CStr::from_ptr(json) }.to_string_lossy().into_owned();
+
     INBOX.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(json);
+
     if let Some(context) = CONTEXT.get() {
         context.request_repaint();
     }
@@ -149,36 +162,46 @@ impl DrawingApp {
         if CONTEXT.get().is_none() {
             return;
         }
+
         let envelopes = std::mem::take(&mut *INBOX.lock().unwrap_or_else(|poisoned| poisoned.into_inner()));
+
         for json in envelopes {
             if let Some(reply) = self.native_act(&json) {
                 publish("reply", &reply);
             }
         }
+
         for reply in std::mem::take(&mut *LATER.lock().unwrap_or_else(|poisoned| poisoned.into_inner())) {
             publish("reply", &reply);
         }
+
         if enabled("probe") {
             publish("app", &AppTopic { version: env!("CARGO_PKG_VERSION"), agents: self.terminals.len() });
         }
+
         // AREAS: one line per area, each publishing its topics (`native_<area>` in the area's folder), e.g.
         // if enabled("island") { self.native_island(); }
         if enabled("chat") {
             self.native_chat();
         }
+
         if enabled("canvas") {
             self.native_canvas();
             self.native_browser();
         }
+
         if enabled("island") {
             self.native_island();
         }
+
         if enabled("terminal") {
             self.native_terminal();
         }
+
         if enabled("settings") {
             self.native_settings();
         }
+
         if enabled("shell") {
             self.native_shell();
         }
@@ -190,29 +213,36 @@ impl DrawingApp {
             Ok(envelope) => envelope,
             Err(error) => return Some(Reply { id: 0, ok: false, text: format!("envelope inválido: {error}") }),
         };
+
         let result = if let Some(name) = envelope.action.strip_prefix("ui.") {
             self.ui_action(name, &envelope.args)
         } else if let Some(job) = self.act_later(&envelope.action, &envelope.args) {
             // what waits for the network or a CLI answers from a thread, as the MCP's own `act` does
             let id = envelope.id;
+
             std::thread::spawn(move || {
                 let (ok, text) = match job() {
                     Ok(text) => (true, text),
                     Err(text) => (false, text),
                 };
+
                 LATER.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(Reply { id, ok, text });
+
                 if let Some(context) = CONTEXT.get() {
                     context.request_repaint();
                 }
             });
+
             return None;
         } else {
             self.act(&envelope.action, &envelope.args)
         };
+
         let (ok, text) = match result {
             Ok(text) => (true, text),
             Err(text) => (false, text),
         };
+
         Some(Reply { id: envelope.id, ok, text })
     }
 
@@ -243,6 +273,7 @@ mod tests {
     #[test]
     fn a_topic_goes_only_when_its_json_changed() {
         let mut sent = std::collections::HashMap::new();
+
         assert_eq!(changed(&mut sent, "app", "{\"agents\":1}".into()).as_deref(), Some("{\"agents\":1}"), "the first one goes");
         assert_eq!(changed(&mut sent, "app", "{\"agents\":1}".into()), None, "the same again stays");
         assert!(changed(&mut sent, "island", "{\"agents\":1}".into()).is_some(), "each topic has its own last");
@@ -261,13 +292,17 @@ mod tests {
     fn envelopes_run_the_apps_actions_and_the_interfaces_own() {
         let mut app = DrawingApp::default();
         let reply = app.native_act(r#"{"id": 3, "action": "ui.ping"}"#).unwrap();
+
         assert_eq!((reply.id, reply.ok, reply.text.as_str()), (3, true, "pong"));
         let reply = app.native_act(r#"{"id": 4, "action": "ui.nada.abrir", "args": {}}"#).unwrap();
+
         assert!(!reply.ok && reply.text.contains("ui.nada.abrir"), "an area that is not there says so");
         // one of the MCP's, through `DrawingApp::act`
         let reply = app.native_act(r#"{"id": 5, "action": "tasks", "args": {"action": "create", "title": "da interface"}}"#).unwrap();
+
         assert!(reply.ok, "{}", reply.text);
         let reply = app.native_act("não é json").unwrap();
+
         assert!(!reply.ok && reply.id == 0);
     }
 }

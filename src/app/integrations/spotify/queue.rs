@@ -22,6 +22,7 @@ impl QueueItem {
     pub(crate) fn new(uri: &str, title: &str, artist: &str, cover_url: &str, duration_ms: Option<u64>) -> Option<QueueItem> {
         let track = Track::new(title, artist, "", cover_url)?;
         let uri = if uri_allowed(uri.trim()) { uri.trim().to_string() } else { String::new() };
+
         Some(QueueItem { uri, title: track.title, artist: track.artist, cover_url: track.cover_url, duration_ms })
     }
 }
@@ -31,6 +32,7 @@ impl QueueItem {
 pub(crate) fn soloist_cover(covers: &Value, size: &str) -> String {
     let covers = covers.as_array();
     let cover = covers.and_then(|covers| covers.iter().find(|cover| cover["size"] == size).or(covers.first()));
+
     cover.and_then(|cover| cover["url"].as_str()).unwrap_or_default().to_string()
 }
 
@@ -39,9 +41,12 @@ pub(crate) fn soloist_cover(covers: &Value, size: &str) -> String {
 pub(crate) fn soloist_entity(entity: &Value) -> Option<QueueItem> {
     let decorations = &entity["decorations"];
     let name = |entity: &Value| entity["decorations"]["identity"]["name"].as_str().unwrap_or_default().to_string();
+
     let artists: Vec<String> =
         decorations["creators"].as_array().into_iter().flatten().map(|creator| name(&creator["entity"])).filter(|name| !name.is_empty()).collect();
+
     let duration = decorations["playback"]["duration_ms"].as_f64().filter(|duration| duration.is_finite() && *duration > 0.0).map(|duration| duration as u64);
+
     QueueItem::new(
         entity["uri"].as_str().unwrap_or_default(),
         decorations["identity"]["name"].as_str()?,
@@ -55,6 +60,7 @@ pub(crate) fn soloist_entity(entity: &Value) -> Option<QueueItem> {
 #[cfg(any(not(any(windows, target_os = "macos")), test))]
 pub(crate) fn from_soloist_queue(root: &Value, most: usize) -> Option<Vec<QueueItem>> {
     let upcoming = root.get("upcoming")?.as_array()?;
+
     Some(upcoming.iter().filter_map(|entry| soloist_entity(entry.get("item").unwrap_or(entry))).take(most).collect())
 }
 
@@ -65,30 +71,40 @@ pub(crate) fn from_soloist_queue(root: &Value, most: usize) -> Option<Vec<QueueI
 // what an older Soloist prints. Fix it against a real `ctl queue` when one is logged in.
 pub(crate) fn from_soloist_queue_text(text: &str, most: usize) -> Vec<QueueItem> {
     let mut found = Vec::new();
+
     for line in text.lines() {
         let mut line = line.trim().to_string();
+
         if line.is_empty() || line.ends_with(':') || line.to_ascii_lowercase().contains("queue is empty") || line.to_ascii_lowercase().starts_with("error") {
             continue;
         }
+
         // the uri, wherever it is
         let uri = line.split(|letter: char| letter.is_whitespace() || matches!(letter, '(' | ')' | '[' | ']' | '<' | '>')).find(|word| uri_allowed(word));
         let uri = uri.map(str::to_string).unwrap_or_default();
+
         if !uri.is_empty() {
             line = line.replace(&uri, "").replace("()", "").replace("[]", "").replace("<>", "");
         }
+
         // a number first: "1.", "1)", "1 "
         let digits = line.chars().take_while(char::is_ascii_digit).count();
+
         if digits > 0 {
             line = line[digits..].trim_start_matches(['.', ')', ':']).to_string();
         }
+
         let line = line.trim().trim_start_matches(['-', '•', '*']).trim();
         let (title, artist) = [" — ", " – ", " - "].iter().find_map(|split| line.split_once(split)).unwrap_or((line, ""));
+
         if let Some(item) = QueueItem::new(&uri, title.trim(), artist.trim(), "", None) {
             found.push(item);
         }
+
         if found.len() == most {
             break;
         }
     }
+
     found
 }

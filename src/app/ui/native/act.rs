@@ -9,6 +9,7 @@ use crate::prelude::*;
 
 fn color(value: &Value) -> Option<[u8; 4]> {
     let parts: Vec<u8> = value.as_array()?.iter().filter_map(|v| v.as_u64().map(|n| n.min(255) as u8)).collect();
+
     <[u8; 4]>::try_from(parts).ok()
 }
 
@@ -60,18 +61,22 @@ pub(super) const SCREEN_COMMANDS: [&str; 11] =
 impl DrawingApp {
     pub(super) fn shell_act(&mut self, verb: &str, args: &Value) -> Result<String, String> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().to_string();
+
         match verb {
             "tool" => {
                 let tool = tool_from_id(&text("id")).ok_or_else(|| format!("ferramenta desconhecida: {}", text("id")))?;
+
                 self.select_tool(tool);
                 Ok(format!("{} em mãos.", tool.label()))
             }
             // the drawing row's button: closing the row puts a drawing tool down
             "draw_toggle" => {
                 let drawing = self.drawing();
+
                 if drawing && !Tool::TOOLBAR.contains(&self.tool) {
                     self.select_tool(Tool::Select);
                 }
+
                 self.draw_open = !drawing;
                 self.extra_open = false;
                 Ok(String::new())
@@ -85,6 +90,7 @@ impl DrawingApp {
             }
             "head" => {
                 let head = if text("head") == "none" { None } else { from_word::<Head>(&args["head"]) };
+
                 self.shell_head(args["end"].as_bool().unwrap_or(true), head);
                 Ok(String::new())
             }
@@ -95,6 +101,7 @@ impl DrawingApp {
                     *name = text("name");
                     self.dirty = true;
                 }
+
                 Ok(String::new())
             }
             "zoom" => self.shell_zoom(&text("op"), args["value"].as_f64()),
@@ -104,6 +111,7 @@ impl DrawingApp {
                     "hide" => true,
                     _ => !self.prefs.sidebar_hidden,
                 };
+
                 Ok(String::new())
             }
             "screen" => {
@@ -113,6 +121,7 @@ impl DrawingApp {
                     _ if self.chat_open => self.show_canvas(),
                     _ => self.show_chat(),
                 }
+
                 Ok(String::new())
             }
             "settings" => {
@@ -129,10 +138,13 @@ impl DrawingApp {
                 if text("action") == "quit" {
                     self.quitting = true;
                 }
+
                 if crate::app::system::tray::hides_on_close(self.prefs.close_to_background, self.quitting, self.script.is_some()) {
                     self.save_on_exit();
+
                     return Ok("hidden".into());
                 }
+
                 self.viewport_commands.push(egui::ViewportCommand::Close);
                 Ok("closing".into())
             }
@@ -145,6 +157,7 @@ impl DrawingApp {
                     ("back", Some(tour)) => tour.step = tour.step.saturating_sub(1),
                     _ => self.end_tour(),
                 }
+
                 Ok(String::new())
             }
             "changelog" => {
@@ -156,6 +169,7 @@ impl DrawingApp {
                     "now" => ChangelogChoice::Now,
                     other => return Err(format!("escolha desconhecida: {other}")),
                 };
+
                 self.changelog_choose(choice);
                 Ok(String::new())
             }
@@ -166,24 +180,32 @@ impl DrawingApp {
     fn shell_tool_key(&mut self, key: &str, shift: bool) -> Result<String, String> {
         let free = self.terminal_focus.is_none() && self.card_focus.is_none() && self.editing.is_none() && !self.dialog_open() && !self.palette_open;
         let Some(key) = Key::from_name(&key.to_uppercase()).filter(|_| free && !self.chat_open) else { return Ok(String::new()) };
+
         if self.tool == Tool::Fill && key == Key::B && !shift {
             // B again cycles the fill color (red, green, blue, yellow)
             let picks = &BACKGROUND_PICKS[1..];
             let at = picks.iter().position(|pick| Some(*pick) == self.style.fill).map_or(1, |index| (index + 1) % picks.len());
+
             self.style.fill = Some(picks[at]);
+
             return Ok(String::new());
         }
+
         if shift {
             if key == Key::X && self.drawing() {
                 self.select_tool(Tool::AutoShape);
             }
+
             return Ok(String::new());
         }
+
         let tools = Tool::TOOLBAR.into_iter().chain(Tool::DRAWING).chain(Tool::EXTRA);
         let picked: Vec<Tool> = tools.filter(|tool| self.tool_keys_live(*tool) && tool.keys().contains(&key)).collect();
+
         for tool in &picked {
             self.select_tool(*tool);
         }
+
         Ok(picked.first().map_or(String::new(), |tool| tool_id(*tool)))
     }
 
@@ -217,6 +239,7 @@ impl DrawingApp {
             "sidebar" => self.prefs.sidebar_hidden = !self.prefs.sidebar_hidden,
             other => return Err(format!("comando desconhecido: {other}")),
         }
+
         Ok(String::new())
     }
 
@@ -224,55 +247,72 @@ impl DrawingApp {
     fn shell_style(&mut self, args: &Value) {
         let before = self.style_kinds().first().map(|e| e.style).unwrap_or(self.style);
         let mut after = before;
+
         if let Some(stroke) = args.get("stroke").and_then(color) {
             after.stroke = stroke;
         }
+
         if let Some(fill) = args.get("fill") {
             after.fill = color(fill).filter(|c| c[3] > 0);
         }
+
         if let Some(value) = args.get("fillStyle").and_then(from_word) {
             after.fill_style = value;
         }
+
         if let Some(value) = args.get("strokeStyle").and_then(from_word) {
             after.stroke_style = value;
         }
+
         if let Some(width) = args["strokeWidth"].as_f64() {
             after.stroke_width = width as f32;
         }
+
         if let Some(roughness) = args["roughness"].as_u64() {
             after.roughness = roughness.min(2) as u8;
         }
+
         if let Some(round) = args["round"].as_bool() {
             after.round = round;
         }
+
         if let Some(opacity) = args["opacity"].as_u64() {
             after.opacity = opacity.min(100) as u8;
         }
+
         if let Some(size) = args["fontSize"].as_f64() {
             after.font_size = size as f32;
         }
+
         let arrows_only = self.styling_arrows();
+
         if after != before {
             if !self.selected.is_empty() {
                 if !self.style_edit_active {
                     self.snapshot();
                     self.style_edit_active = true;
                 }
+
                 for index in self.selected.clone() {
                     if let Some(element) = self.scene.elements.get_mut(index) {
                         apply_changed(&mut element.style, &before, &after);
                     }
                 }
+
                 self.dirty = true;
             }
+
             let current = self.style;
+
             apply_changed(&mut self.style, &current, &after);
+
             if arrows_only {
                 // the arrow's type is kept apart from the boxes' "edges"
                 self.arrow_curved = after.round;
                 self.style.round = current.round;
             }
         }
+
         if args["final"].as_bool().unwrap_or(true) {
             self.style_edit_active = false;
         }
@@ -284,6 +324,7 @@ impl DrawingApp {
 
     fn shell_zoom(&mut self, op: &str, value: Option<f64>) -> Result<String, String> {
         let center = self.canvas_rect.center();
+
         match op {
             "in" => self.zoom_step(0.1),
             "out" => self.zoom_step(-0.1),
@@ -293,6 +334,7 @@ impl DrawingApp {
             "set" => self.zoom_at(((value.ok_or("diga o zoom")? as f32 / 0.05).round() * 0.05).max(0.1), center),
             other => return Err(format!("zoom desconhecido: {other}")),
         }
+
         Ok(String::new())
     }
 
@@ -317,12 +359,14 @@ impl DrawingApp {
             ("wipe", "cancel") => self.wipe_confirm = false,
             ("wipe", "confirm") => {
                 self.wipe_confirm = false;
+
                 if let Err(why) = self.wipe_all_data() {
                     self.toast(format!("Nada foi apagado: {why}."));
                 }
             }
             (dialog, action) => return Err(format!("diálogo desconhecido: {dialog} {action}")),
         }
+
         Ok(String::new())
     }
 
@@ -334,6 +378,7 @@ impl DrawingApp {
         let first_chat_command = self.prefs.presets.iter().find(|preset| chat_agent(preset)).map(|preset| preset.command.clone()).unwrap_or_default();
         let dialog = self.terminal_dialog.as_mut().ok_or("nenhum diálogo de terminal aberto")?;
         let text = value.as_str().unwrap_or_default().to_string();
+
         match field {
             "name" => dialog.spec.name = text,
             "command" => dialog.spec.command = text,
@@ -343,24 +388,29 @@ impl DrawingApp {
             // Chat or Terminal: a chat runs only the agents it speaks with
             "chat" => {
                 let chat = value.as_bool().unwrap_or(false);
+
                 if chat && !dialog.chat && !matches!(dialog.spec.command.split_whitespace().next(), Some("claude" | "codex")) {
                     dialog.spec.command = first_chat_command;
                 }
+
                 dialog.chat = chat;
             }
             "preset" => {
                 let preset = presets.get(value.as_u64().unwrap_or(u64::MAX) as usize).ok_or("esse início rápido não existe")?;
                 // the name follows the quick start, unless one was typed
                 let typed = dialog.spec.name.trim();
+
                 if typed.is_empty() || presets.iter().any(|p| p.name == typed) || typed == "Shell" {
                     dialog.spec.name = preset.name.clone();
                 }
+
                 dialog.spec.command = preset.command.clone();
                 dialog.spec.icon = preset.icon.clone();
                 dialog.spec.color = preset.color;
             }
             other => return Err(format!("campo desconhecido: {other}")),
         }
+
         Ok(String::new())
     }
 
@@ -378,11 +428,13 @@ impl DrawingApp {
             "run" => {
                 let rows = self.palette_rows();
                 let index = args["index"].as_u64().map_or(self.palette_index, |i| i as usize);
+
                 match rows.get(index).map(|row| row.run.clone()) {
                     Some(Run::Command(command)) => self.run_command(command),
                     Some(Run::Node(id)) => self.pick_link_node(&id),
                     None => {}
                 }
+
                 // a connect / disconnect command keeps the palette up for its node search
                 if self.palette_links.is_none() {
                     self.palette_open = false;
@@ -390,6 +442,7 @@ impl DrawingApp {
             }
             other => return Err(format!("ação da paleta desconhecida: {other}")),
         }
+
         Ok(String::new())
     }
 
@@ -397,14 +450,18 @@ impl DrawingApp {
     fn shell_welcome(&mut self, name: &str, folder: &str) -> Result<String, String> {
         if self.spaces.list.is_empty() {
             let created = self.create_space(name, folder).and_then(|id| self.switch_space(&id));
+
             if let Err(error) = created {
                 if let Some(welcome) = self.welcome.as_mut() {
                     welcome.error = error.clone();
                 }
+
                 return Err(error);
             }
+
             self.prefs.folders.remember(folder);
         }
+
         self.welcome = None;
         self.prefs.welcome_seen = true;
         self.chat_open = self.prefs.start_in_chat;

@@ -69,8 +69,8 @@ const CREATE: usize = 5;
 /// The slide with the note on the agents' CLIs under its line.
 const AGENTS: usize = 4;
 const DISCLAIMER: &str = "O MagoAgent usa os CLIs de agentes (Claude Code, Codex) já instalados e com assinatura ativa ou chave de API.";
-/// How long a slide takes to give way to the next (asked: "pode ter uma animação de transição, achei muito seco"): the
-/// leaving one slides off and fades, the coming one slides in from the other side, the gradient and the button follow.
+/// How long a slide takes to give way to the next: the leaving one slides off and fades, the coming one slides in from
+/// the other side, the gradient and the button follow.
 const TRANSITION: f64 = 0.45;
 /// How far a slide travels in it.
 const TRAVEL: f32 = 90.0;
@@ -88,6 +88,7 @@ impl Leaving {
     /// How far the change has gone, eased (fast, then settling): 0 just started, 1 done.
     fn progress(&self, time: f64) -> f32 {
         let linear = ((time - self.at) / TRANSITION).clamp(0.0, 1.0) as f32;
+
         1.0 - (1.0 - linear).powi(3)
     }
 }
@@ -111,7 +112,9 @@ impl Welcome {
         if slide == self.slide {
             return;
         }
+
         let opened = self.opened.filter(|(shown, _)| *shown == self.slide).map_or(time, |(_, at)| at);
+
         self.leaving = Some(Leaving { slide: self.slide, opened, at: time, forward: slide > self.slide });
         self.slide = slide;
     }
@@ -126,6 +129,7 @@ impl DrawingApp {
     /// Opens the welcome: from the start the first time, right on the space's step when only that is missing.
     pub(crate) fn start_welcome(&mut self) {
         let slide = if self.prefs.welcome_seen { CREATE } else { 0 };
+
         self.welcome = Some(Welcome { slide, ..Default::default() });
         self.chat_open = false;
     }
@@ -134,13 +138,17 @@ impl DrawingApp {
     fn finish_welcome(&mut self, mut welcome: Welcome) {
         if self.spaces.list.is_empty() {
             let created = self.create_space(&welcome.name, &welcome.folder).and_then(|id| self.switch_space(&id));
+
             if let Err(error) = created {
                 welcome.error = error;
                 self.welcome = Some(welcome);
+
                 return;
             }
+
             self.prefs.folders.remember(&welcome.folder);
         }
+
         self.prefs.welcome_seen = true;
         self.chat_open = self.prefs.start_in_chat;
         // then the tour, once (ui/tour.rs)
@@ -151,17 +159,21 @@ impl DrawingApp {
         let Some(mut welcome) = self.welcome.take() else { return };
         let no_space = self.spaces.list.is_empty();
         let slides = count(no_space);
+
         welcome.slide = welcome.slide.min(slides - 1);
         let k = K::new(self.dark());
         let c = self.colors();
         let time = ctx.input(|i| i.time);
         let screen = ctx.content_rect();
         let slide = &SLIDES[welcome.slide];
+
         let opened = match welcome.opened {
             Some((shown, at)) if shown == welcome.slide => at,
             _ => welcome.opened.insert((welcome.slide, time)).1,
         };
+
         let elapsed = (time - opened).max(0.0);
+
         // a change of slide under way: how far, and the leaving one (a slide no longer shown just goes)
         welcome.leaving = welcome.leaving.filter(|leaving| leaving.progress(time) < 1.0 && leaving.slide < slides);
         let turn = welcome.leaving.map_or(1.0, |leaving| leaving.progress(time));
@@ -170,57 +182,74 @@ impl DrawingApp {
         let (mut go, mut advance) = (None, false);
         let folders = &mut self.prefs.folders;
         let id = egui::Id::unique("welcome");
+
         egui::Area::new(id).order(egui::Order::Foreground).fixed_pos(screen.min).movable(false).show(ctx, |ui| {
             // it takes every click: nothing under it answers
             let (rect, _) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
             let painter = ui.painter().clone();
+
             painter.rect_filled(rect, 0, k.bg);
+
             // the gradient goes from the leaving slide's tints to this one's
             let tints = match welcome.leaving {
                 Some(leaving) => blend(&SLIDES[leaving.slide].tints, &slide.tints, turn),
                 None => slide.tints,
             };
+
             paint_gradient(&painter, rect, k.bg, &tints, if k.dark { 0.22 } else { 0.3 }, time);
+
             // the leaving slide off to one side, fading quickly; this one in from the other
             let leaving_end = welcome.leaving.map(|leaving| {
                 let gone = (turn * 1.6).min(1.0);
                 let end = paint_slide(ui, rect, leaving.slide, &k, time, (time - leaving.opened).max(0.0), -side * TRAVEL * turn, 1.0 - gone);
+
                 end + if leaving.slide == CREATE { FORM - 2.0 } else { 0.0 }
             });
+
             let shift = side * TRAVEL * (1.0 - turn);
             let mut y = paint_slide(ui, rect, welcome.slide, &k, time, elapsed, shift, turn);
+
             if welcome.slide == CREATE {
                 y += 18.0;
                 let fields = Rect::from_min_size(Pos2::new(rect.center().x - DIALOG_WIDTH / 2.0 + shift, y), Vec2::new(DIALOG_WIDTH, FORM));
+
                 ui.scope_builder(egui::UiBuilder::new().max_rect(fields), |ui| {
                     ui.set_opacity(turn);
                     ui.spacing_mut().item_spacing = Vec2::ZERO;
                     let name = dialog_field(ui, "Nome", &mut welcome.name, "Projeto", DIALOG_WIDTH, &c);
+
                     if welcome.name.is_empty() && !ui.memory(|m| m.focused().is_some()) {
                         name.request_focus();
                     }
+
                     ui.add_space(16.0);
                     dialog_folder(ui, "Pasta raiz", &mut welcome.folder, "~/projetos/loja", "Pasta raiz do espaço", &c, folders);
                 });
+
                 y += FORM - 20.0;
             }
+
             // the button slides from where it was to where this slide has it
             if let Some(from) = leaving_end {
                 y = from + (y - from) * turn;
             }
+
             // the button: Continuar, Começar at the end, or the space's
             let label = match (last, welcome.slide == CREATE) {
                 (_, true) => "Criar meu primeiro espaço",
                 (true, false) => "Começar",
                 _ => "Continuar",
             };
+
             let text = painter.layout_no_wrap(label.into(), kit::semibold(14.0), k.bg);
             let button = Rect::from_center_size(Pos2::new(rect.center().x, y + 36.0 + 20.0), Vec2::new(text.size().x + 64.0, 40.0));
             let response = ui.interact(button, id.with("next"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
             response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label));
             painter.rect_filled(button, 20, k.fg.gamma_multiply(if response.hovered() { 0.85 } else { 0.72 }));
             painter.galley(button.center() - text.size() / 2.0, text, k.bg);
             advance |= response.clicked();
+
             if !welcome.error.is_empty() {
                 painter.text(
                     Pos2::new(rect.center().x, button.bottom() + 10.0),
@@ -230,15 +259,20 @@ impl DrawingApp {
                     c.danger,
                 );
             }
+
             // the dots: one per slide, the one on view darker
             let dots = Pos2::new(rect.center().x - (slides as f32 - 1.0) * 14.0, rect.bottom() - 28.0);
+
             for index in 0..slides {
                 let at = dots + Vec2::new(index as f32 * 28.0, 0.0);
+
                 let dot = ui
                     .interact(Rect::from_center_size(at, Vec2::splat(28.0)), id.with(("dot", index)), Sense::click())
                     .on_hover_cursor(CursorIcon::PointingHand);
+
                 // the one on view lights up as the leaving one dims
                 let rest = if dot.hovered() { 0.3 } else { 0.15 };
+
                 let alpha = if index == welcome.slide {
                     rest + (0.8 - rest) * turn
                 } else if welcome.leaving.is_some_and(|leaving| leaving.slide == index) {
@@ -246,25 +280,32 @@ impl DrawingApp {
                 } else {
                     rest
                 };
+
                 painter.circle_filled(at, 3.5, k.fg.gamma_multiply(alpha));
+
                 if dot.clicked() {
                     go = Some(index);
                 }
             }
         });
+
         ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, id));
         crate::app::ui::titlebar::raise_window_buttons(ctx, egui::LayerId::new(egui::Order::Foreground, id));
         ctx.request_repaint();
         // the arrows walk the slides (not inside a field), Enter goes on
         let typing = ctx.egui_wants_keyboard_input();
         let (left, right, enter) = ctx.input(|i| (i.key_pressed(Key::ArrowLeft), i.key_pressed(Key::ArrowRight), i.key_pressed(Key::Enter)));
+
         if !typing && left {
             go = welcome.slide.checked_sub(1);
         }
+
         if !typing && right {
             go = Some(welcome.slide + 1).filter(|next| *next < slides);
         }
+
         advance |= enter;
+
         if let Some(index) = go {
             welcome.turn(index, time);
             welcome.error.clear();
@@ -273,6 +314,7 @@ impl DrawingApp {
         } else if advance {
             welcome.turn(welcome.slide + 1, time);
         }
+
         self.welcome = Some(welcome);
     }
 }
@@ -286,6 +328,7 @@ const FORM: f32 = 150.0;
 fn paint_slide(ui: &egui::Ui, rect: Rect, index: usize, k: &K, time: f64, elapsed: f64, shift: f32, opacity: f32) -> f32 {
     let slide = &SLIDES[index];
     let mut painter = ui.painter().clone();
+
     painter.set_opacity(opacity);
     let middle = rect.center().x + shift;
     let scale = (rect.height() * 0.4 / DESIGN.y).clamp(0.55, 1.3).min((rect.width() - 48.0) / DESIGN.x);
@@ -295,32 +338,40 @@ fn paint_slide(ui: &egui::Ui, rect: Rect, index: usize, k: &K, time: f64, elapse
     let block = art + 150.0 + form + note;
     let top = rect.center().y - block / 2.0 - 20.0;
     let stage = Rect::from_center_size(Pos2::new(middle, top + art / 2.0), Vec2::new(DESIGN.x, slide.story.height()) * scale);
+
     if opacity > 0.0 {
         paint_story(&painter, slide.story, stage, scale, k, slide.luna, time, elapsed);
     }
+
     let mut y = top + art + 28.0;
-    // the hand font of the site's titles (asked: "a fonte a gente pode usar a fonte que usamos no site")
+    // the hand font of the site's titles
     let title_font = FontId::new(32.0, egui::FontFamily::Name(HAND_FONT.into()));
+
     painter.text(Pos2::new(middle, y), egui::Align2::CENTER_TOP, slide.title, title_font, k.fg);
     y += 44.0;
+
     for line in slide.subtitle.lines() {
         painter.text(Pos2::new(middle, y), egui::Align2::CENTER_TOP, line, FontId::proportional(15.0), k.muted_fg);
         y += 22.0;
     }
+
     if index == AGENTS {
         y += 10.0;
         let note = kit::galley(ui, DISCLAIMER, 11.5, 16.0, k.muted_fg, 400.0);
         let card = Rect::from_center_size(Pos2::new(middle, y + note.size().y / 2.0 + 8.0), note.size() + Vec2::new(24.0, 16.0));
+
         painter.rect_stroke(card, 8, Stroke::new(1.0, k.line(1.0)), StrokeKind::Inside);
         painter.galley(card.min + Vec2::new(12.0, 8.0), note, k.muted_fg);
         y = card.bottom();
     }
+
     y
 }
 
 /// The tints `turn` of the way from `from` to `to`.
 fn blend(from: &[[u8; 3]; 3], to: &[[u8; 3]; 3], turn: f32) -> [[u8; 3]; 3] {
     let mix = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * turn.clamp(0.0, 1.0)).round() as u8;
+
     std::array::from_fn(|tint| std::array::from_fn(|channel| mix(from[tint][channel], to[tint][channel])))
 }
 
@@ -328,6 +379,7 @@ fn blend(from: &[[u8; 3]; 3], to: &[[u8; 3]; 3], turn: f32) -> [[u8; 3]; 3] {
 /// `tints` at `strength` over `ground`, drifting slowly with `time`.
 fn paint_gradient(painter: &Painter, rect: Rect, ground: Color32, tints: &[[u8; 3]; 3], strength: f32, time: f64) {
     let mut mesh = egui::Mesh::default();
+
     for row in 0..3 {
         for column in 0..3 {
             let index = row * 3 + column;
@@ -336,20 +388,26 @@ fn paint_gradient(painter: &Painter, rect: Rect, ground: Color32, tints: &[[u8; 
             let weight = strength * (0.55 + 0.45 * phase) * if index == 4 { 0.5 } else { 1.0 };
             let color = ground.lerp_to_gamma(Color32::from_rgb(r, g, b), weight.max(0.0));
             let at = Pos2::new(rect.left() + rect.width() * column as f32 / 2.0, rect.top() + rect.height() * row as f32 / 2.0);
+
             mesh.colored_vertex(at, color);
         }
     }
+
     for row in 0..2u32 {
         for column in 0..2u32 {
             let corner = row * 3 + column;
+
             mesh.add_triangle(corner, corner + 1, corner + 4);
             mesh.add_triangle(corner, corner + 4, corner + 3);
         }
     }
+
     // the bottom fades back to the ground, under the button and the dots
     let fade = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - rect.height() * 0.35), rect.max);
+
     painter.add(Shape::mesh(mesh));
     let mut veil = egui::Mesh::default();
+
     veil.colored_vertex(fade.left_top(), Color32::TRANSPARENT);
     veil.colored_vertex(fade.right_top(), Color32::TRANSPARENT);
     veil.colored_vertex(fade.right_bottom(), ground.gamma_multiply(0.9));
@@ -377,6 +435,7 @@ mod tests {
         // one scene each, she says hello first, and every line of hers is short enough for her bubble
         assert_eq!(SLIDES[0].story, Story::Hello);
         assert_eq!(SLIDES[0].luna, "Oi! Eu sou a Luna, a assistente do MagoAgent.");
+
         for (index, slide) in SLIDES.iter().enumerate() {
             assert!(SLIDES[..index].iter().all(|other| other.story != slide.story), "{:?} twice", slide.story);
             assert!((20..=100).contains(&slide.luna.chars().count()), "{}", slide.luna);
@@ -386,12 +445,14 @@ mod tests {
     #[test]
     fn the_bubble_types_whole_characters() {
         let line = "Oi! Eu sou a Luna, ação.";
+
         assert_eq!(scenes::typed(line, -1.0), "");
         assert_eq!(scenes::typed(line, 0.0), "");
         // 34 a second: 3 characters at 0.1 s
         assert_eq!(scenes::typed(line, 0.1), "Oi!");
         // never inside a character of more than one byte
         let through = scenes::typed(line, 21.5 / 34.0);
+
         assert_eq!(through, "Oi! Eu sou a Luna, aç");
         assert_eq!(scenes::typed(line, 60.0), line);
         assert_eq!(scenes::typed("", 1.0), "");
@@ -415,14 +476,16 @@ mod tests {
         assert_eq!(scenes::presence(0.99, 0.1, 0.9), 0.0);
     }
 
-    /// Continuar is no cut (asked: "pode ter uma animação de transição, achei muito seco"): for a moment both slides
-    /// show, the leaving one going off to the left and fading, the new one coming from the right; then only the new.
+    /// Continuar is no cut: for a moment both slides show, the leaving one going off to the left and fading, the new
+    /// one coming from the right; then only the new.
     #[test]
     fn a_slide_gives_way_to_the_next() {
         let mut welcome = Welcome::default();
+
         welcome.opened = Some((0, 2.0));
         welcome.turn(1, 10.0);
         let leaving = welcome.leaving.expect("the first slide leaves");
+
         assert_eq!((welcome.slide, leaving.slide, leaving.opened, leaving.forward), (1, 0, 2.0, true));
         assert_eq!(leaving.progress(10.0), 0.0);
         // eased: most of the way in the first half, done at the end
@@ -432,6 +495,7 @@ mod tests {
         welcome.turn(0, 11.0);
         assert!(welcome.leaving.is_some_and(|leaving| !leaving.forward && leaving.slide == 1));
         let before = welcome.leaving;
+
         welcome.turn(0, 12.0);
         assert_eq!(welcome.leaving, before);
         // the gradient goes between the two slides' tints
@@ -443,14 +507,18 @@ mod tests {
     #[test]
     fn both_slides_show_while_they_change() {
         let mut app = DrawingApp::default();
+
         app.welcome = Some(Welcome::default());
         let ctx = Context::default();
+
         crate::app::ui::install_fonts(&ctx, false);
         let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 800.0));
+
         // each text's middle by its layout, not its glyphs: the system's face (on CI another) moves the glyphs' edges
         let frame = |app: &mut DrawingApp, time: f64, events: Vec<egui::Event>| {
             let input = egui::RawInput { time: Some(time), screen_rect: Some(screen), events, ..Default::default() };
             let output = ctx.run_ui(input, |ui| app.welcome_ui(ui.ctx()));
+
             output
                 .shapes
                 .iter()
@@ -459,16 +527,20 @@ mod tests {
                 )
                 .collect::<Vec<_>>()
         };
+
         frame(&mut app, 1.0, vec![]);
         let enter = |pressed| egui::Event::Key { key: Key::Enter, physical_key: None, pressed, repeat: false, modifiers: Modifiers::NONE };
+
         frame(&mut app, 1.1, vec![enter(true)]);
         frame(&mut app, 1.15, vec![enter(false)]);
         assert_eq!(app.welcome.as_ref().map(|w| w.slide), Some(1));
         let texts = frame(&mut app, 1.1 + TRANSITION * 0.15, vec![]);
         let at = |title: &str| texts.iter().find(|(text, _)| text == title).map(|(_, x)| *x);
         let (old, new) = (at(SLIDES[0].title).expect("the old title, leaving"), at(SLIDES[1].title).expect("the new title, coming"));
+
         assert!(old < screen.center().x && new > screen.center().x, "{old} {new}");
         let texts = frame(&mut app, 1.1 + TRANSITION + 0.1, vec![]);
+
         assert!(!texts.iter().any(|(text, _)| text == SLIDES[0].title), "the old one is gone");
         assert!(texts.iter().any(|(text, x)| text == SLIDES[1].title && (x - screen.center().x).abs() < 1.0), "the new one in the middle");
     }
@@ -477,11 +549,14 @@ mod tests {
     fn the_welcome_creates_the_first_space() {
         let folder = std::env::temp_dir().join(format!("magoagent-welcome-{}", std::process::id()));
         let _ = fs::remove_dir_all(&folder);
+
         fs::create_dir_all(&folder).unwrap();
         let scene = folder.join("autosave.mago");
+
         // a first run: no drawing, no spaces
         assert!(crate::app::workspaces::read_spaces(&scene).0.list.is_empty());
         let mut app = DrawingApp::default();
+
         app.autosave = Some(scene.clone());
         app.load_spaces();
         app.start_welcome();
@@ -490,6 +565,7 @@ mod tests {
         app.finish_welcome(app.welcome.clone().unwrap());
         assert!(app.welcome.as_ref().is_some_and(|w| !w.error.is_empty()));
         let welcome = Welcome { name: "Loja".into(), ..app.welcome.take().unwrap() };
+
         app.finish_welcome(welcome);
         assert!(app.welcome.is_none() && app.prefs.welcome_seen);
         assert_eq!(app.spaces.list.iter().map(|w| w.name.as_str()).collect::<Vec<_>>(), ["Loja"]);

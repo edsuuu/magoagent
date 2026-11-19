@@ -82,10 +82,13 @@ pub(crate) fn log_tail(text: &str, max: usize) -> String {
     if text.len() <= max {
         return text.to_string();
     }
+
     let mut cut = text.len() - max;
+
     while !text.is_char_boundary(cut) {
         cut += 1;
     }
+
     format!("… (cortado: só os últimos {} KB)\n{}", max >> 10, &text[cut..])
 }
 
@@ -94,33 +97,41 @@ impl Step {
     /// the answer's text (a failure's reason).
     pub(crate) fn finish(&mut self, result: &Value, failed: bool, said: &str, at: Option<f64>) {
         (self.ended, self.failed) = (at, failed);
+
         // Bash: what it printed, and whether it was stopped
         let printed: Vec<&str> =
             [&result["stdout"], &result["stderr"]].iter().filter_map(|v| v.as_str()).map(str::trim_end).filter(|s| !s.is_empty()).collect();
+
         if !printed.is_empty() {
             self.log = log_tail(&printed.join("\n"), LOG_MAX);
         }
+
         if failed {
             // why, on its row (`note`) and whole in its card; an answer in JSON by what it says, not the braces
             let said = untag(said.trim());
             let readable = json_failure(said).unwrap_or_else(|| said.to_string());
+
             self.error = Some(log_tail(&readable, LOG_MAX)).filter(|e| !e.is_empty());
             // the row names the tool already: a JSON answer's action that is the tool's own name is not said again
             let note = failure_note(said);
             let tool = self.name.rsplit("__").next().unwrap_or_default();
             let note = note.strip_prefix(&format!("{tool}: ")).map_or(note.clone(), str::to_string);
+
             self.note = Some(note).filter(|note| !note.is_empty());
         } else if result["interrupted"] == true {
             self.error = Some("Interrompido".into());
         }
+
         if let Some(n) = result["file"]["numLines"].as_u64() {
             self.note = Some(if n == 1 { "1 linha".into() } else { format!("{n} linhas") });
         }
+
         if result["type"] == "create" {
             self.note = Some("novo".into());
         } else if let Some(hunks) = result["structuredPatch"].as_array() {
             let lines = hunks.iter().flat_map(|h| h["lines"].as_array().map(Vec::as_slice).unwrap_or_default()).filter_map(Value::as_str);
             let count = |mark: char| lines.clone().filter(|l| l.starts_with(mark)).count();
+
             self.diff = Some((count('+'), count('-')));
             self.patch = lines.take(PATCH_MAX).map(|line| one_line(line, 120)).collect();
             self.patch_line = hunks.first().and_then(|hunk| hunk["newStart"].as_u64()).unwrap_or(1) as usize;
@@ -146,6 +157,7 @@ pub(crate) fn unix_seconds(iso: &str) -> Option<f64> {
     let (era, yoe) = (y.div_euclid(400), y.rem_euclid(400));
     let doy = (153 * ((m + 9) % 12) + 2) / 5 + d - 1;
     let days = era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468;
+
     Some((days * 86_400 + num(11..13)? * 3600 + num(14..16)? * 60) as f64 + seconds)
 }
 
@@ -216,28 +228,34 @@ pub(crate) fn sessions(dir: &Path) -> Vec<Session> {
 pub(crate) fn wsl_sessions(dir: &Path, distro: &str) -> Vec<Session> {
     let proc = |pid: u32| pid == 0 || Path::new(&crate::app::system::wsl::windows_path(distro, &format!("/proc/{pid}"))).exists();
     let mut found = read_sessions(&dir.join("sessions"), proc);
+
     for session in &mut found {
         session.file = Some(transcript_path(dir, &project_folder(&session.cwd), &session.id));
         session.cwd = crate::app::system::wsl::windows_path(distro, &session.cwd);
     }
+
     found
 }
 
 /// The sessions here and, on Windows, those of a Claude Code in WSL (`wsl`: its folder and distro).
 pub(crate) fn all_sessions(dir: Option<&Path>, wsl: Option<&(PathBuf, String)>) -> Vec<Session> {
     let mut found = dir.map(|dir| sessions(&dir.join("sessions"))).unwrap_or_default();
+
     if let Some((dir, distro)) = wsl {
         found.extend(wsl_sessions(dir, distro));
     }
+
     found
 }
 
 fn read_sessions(dir: &Path, alive: impl Fn(u32) -> bool) -> Vec<Session> {
     let read = |path: PathBuf| -> Option<Session> {
         let s: Value = crate::file::read_json(&path)?;
+
         if !s["entrypoint"].as_str().is_none_or(|e| e == "cli") {
             return None;
         }
+
         Some(Session {
             id: s["sessionId"].as_str()?.into(),
             cwd: s["cwd"].as_str()?.into(),
@@ -250,6 +268,7 @@ fn read_sessions(dir: &Path, alive: impl Fn(u32) -> bool) -> Vec<Session> {
         })
         .filter(|s| alive(s.pid))
     };
+
     std::fs::read_dir(dir).map(|d| d.flatten().filter_map(|e| read(e.path())).collect()).unwrap_or_default()
 }
 
@@ -258,6 +277,7 @@ fn read_sessions(dir: &Path, alive: impl Fn(u32) -> bool) -> Vec<Session> {
 pub(crate) fn entrypoint(dir: &Path, id: &str) -> Option<String> {
     std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
         let session: Value = crate::file::read_json(&entry.path())?;
+
         (session["sessionId"] == id).then(|| session["entrypoint"].as_str().map(str::to_string))?
     })
 }
@@ -274,20 +294,27 @@ pub(crate) fn entrypoint(dir: &Path, id: &str) -> Option<String> {
 pub(crate) fn assign(terminals: &[(String, String, i64, u32)], sessions: &[Session], parents: impl FnOnce() -> HashMap<u32, u32>) -> Vec<(String, Session)> {
     let real = |p: &str| std::fs::canonicalize(p).unwrap_or_else(|_| p.into());
     let mut order: Vec<&(String, String, i64, u32)> = terminals.iter().collect();
+
     order.sort_by_key(|t| std::cmp::Reverse(t.2));
     let mut taken: Vec<(String, Session)> = Vec::new();
+
     for (id, cwd, since, _) in &order {
         let cwd = real(cwd);
         let free = sessions.iter().filter(|s| real(&s.cwd) == cwd && s.started >= since - 2000 && !taken.iter().any(|(_, t)| t == *s));
+
         if let Some(pick) = free.max_by_key(|s| s.started) {
             taken.push((id.clone(), pick.clone()));
         }
     }
+
     let left: Vec<_> = order.into_iter().filter(|t| t.3 != 0 && !taken.iter().any(|(id, _)| *id == t.0)).collect();
+
     if left.is_empty() {
         return taken;
     }
+
     let parents = parents();
+
     let descends = |mut pid: u32, shell: u32| {
         for _ in 0..32 {
             match parents.get(&pid) {
@@ -296,15 +323,19 @@ pub(crate) fn assign(terminals: &[(String, String, i64, u32)], sessions: &[Sessi
                 _ => return false,
             }
         }
+
         false
     };
+
     for (id, _, _, shell) in left {
         // a WSL session's pid is Linux's, no kin of a Windows shell
         let free = sessions.iter().filter(|s| s.pid != 0 && s.file.is_none() && descends(s.pid, *shell) && !taken.iter().any(|(_, t)| t == *s));
+
         if let Some(pick) = free.max_by_key(|s| s.started) {
             taken.push((id.clone(), pick.clone()));
         }
     }
+
     taken
 }
 
@@ -344,6 +375,7 @@ impl Transcript {
     /// Reads only what is appended from now on (an ask over the bridge waits for its answer).
     pub(crate) fn from_end(path: PathBuf) -> Transcript {
         let offset = std::fs::metadata(&path).map_or(0, |m| m.len());
+
         Transcript { offset, ..Transcript::new(path) }
     }
 
@@ -363,6 +395,7 @@ impl Transcript {
                 _ => None,
             })
             .collect();
+
         (!words.is_empty()).then(|| words.join("\n\n"))
     }
 
@@ -371,23 +404,30 @@ impl Transcript {
         let Ok(mut file) = std::fs::File::open(&self.path) else { return };
         let len = file.metadata().map_or(0, |m| m.len());
         let first = self.offset == u64::MAX;
+
         if first || len < self.offset {
             // first read, or the file was rewritten: start near its end
             self.offset = len.saturating_sub(self.first_read);
             self.rest.clear();
         }
+
         if len == self.offset || file.seek(SeekFrom::Start(self.offset)).is_err() {
             return;
         }
+
         let mut bytes = Vec::new();
+
         if file.take(len - self.offset).read_to_end(&mut bytes).is_err() {
             return;
         }
+
         let skip_partial = first && self.offset > 0;
+
         self.offset = len;
         self.rest.append(&mut bytes);
         // whole lines only; what follows the last newline waits for the rest
         let end = self.rest.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
+
         for line in self.rest[..end].split(|b| *b == b'\n').skip(skip_partial as usize) {
             if let Ok(value) = serde_json::from_slice::<Value>(line) {
                 let title = match value["type"].as_str() {
@@ -395,29 +435,39 @@ impl Transcript {
                     Some("ai-title") if !self.named => value["aiTitle"].as_str(),
                     _ => None,
                 };
+
                 if let Some(title) = title {
                     self.named |= value["type"] == "custom-title";
                     self.title = Some(title.to_string());
                 }
+
                 let api_error = value["subtype"] == "api_error" || value["isApiErrorMessage"] == true;
+
                 if api_error && matches!(self.items.last(), Some(ChatItem::Error(e)) if e.starts_with(API_ERROR)) {
                     self.items.pop();
                 }
+
                 let said = chat_items(&value);
+
                 // the person's new message starts a turn: what the last one left unanswered (claude
                 // killed mid-call) is over
                 if said.iter().any(|item| matches!(item, ChatItem::User(_))) {
                     self.running.clear();
                 }
+
                 for item in said {
                     if matches!(item, ChatItem::User(_)) && self.echoes > 0 {
                         self.echoes -= 1;
+
                         continue;
                     }
+
                     self.items.push(item);
                 }
+
                 let side = value["isSidechain"] == true || value["isMeta"] == true;
                 let at = value["timestamp"].as_str().and_then(unix_seconds);
+
                 // a running command's output so far
                 if let (Some(id), Some(out), false) = (value["parentToolUseID"].as_str(), value["data"]["output"].as_str(), side)
                     && let Some(step) = step_mut(&mut self.items, id)
@@ -425,18 +475,22 @@ impl Transcript {
                     step.output = out.lines().rev().map(str::trim_end).find(|l| !l.trim().is_empty()).map(Into::into);
                     step.log = log_tail(out.trim_end(), LOG_MAX);
                 }
+
                 let blocks = value["message"]["content"].as_array().filter(|_| !side).map(Vec::as_slice).unwrap_or_default();
                 // the line's toolUseResult is its one answer's
                 let answers = blocks.iter().filter(|b| b["type"] == "tool_result").count();
+
                 for block in blocks {
                     match (block["type"].as_str(), block["id"].as_str()) {
                         (Some("tool_use"), Some(id)) => {
                             let what = format!("{} {}", block["name"].as_str().unwrap_or_default(), summary(&block["input"]));
+
                             self.running.push((id.into(), what.trim_end().into()));
                         }
                         (Some("tool_result"), _) => {
                             self.running.retain(|(id, _)| block["tool_use_id"] != id.as_str());
                             let result = if answers == 1 { &value["toolUseResult"] } else { &Value::Null };
+
                             if let Some(step) = step_mut(&mut self.items, block["tool_use_id"].as_str().unwrap_or_default()) {
                                 step.finish(result, block["is_error"] == true, block_text(&block["content"]), at);
                             }
@@ -446,19 +500,24 @@ impl Transcript {
                 }
             }
         }
+
         self.rest.drain(..end);
         let extra = self.items.len().saturating_sub(KEEP);
+
         self.items.drain(..extra);
         // the newest images keep their pixels; older ones a note: base64 is megabytes each
         let mut images = 0;
+
         for item in self.items.iter_mut().rev() {
             if matches!(item, ChatItem::Image { .. }) {
                 images += 1;
+
                 if images > KEEP_IMAGES {
                     *item = ChatItem::System("Imagem antiga, fora da memória.".into());
                 }
             }
         }
+
         // skip_partial: the read started past the file's beginning
         if skip_partial && self.items.len() < FIRST_ITEMS && self.first_read < FIRST_READ_MAX {
             *self = Transcript { first_read: self.first_read * 4, ..Transcript::new(std::mem::take(&mut self.path)) };
@@ -473,63 +532,85 @@ impl Transcript {
 /// skipped.
 pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
     let queued = &line["attachment"];
+
     if line["type"] == "attachment" && queued["type"] == "queued_command" && queued["commandMode"] == "prompt" {
         let words = |text: &str| {
             let text = unpasted(text);
+
             (!text.trim().is_empty()).then(|| ChatItem::User(text.trim().into()))
         };
+
         // typed alone it is the words; with pictures pasted, blocks as a message's: the words and the images
         let prompt = &queued["prompt"];
+
         if let Some(text) = prompt.as_str() {
             return words(text).into_iter().collect();
         }
+
         let at = queued["timestamp"].as_str().or(line["timestamp"].as_str()).and_then(iso_ms).unwrap_or(0);
         let blocks = prompt.as_array().map(Vec::as_slice).unwrap_or_default();
+
         return blocks.iter().filter_map(|block| if block["type"] == "text" { words(block["text"].as_str()?) } else { image(block, true, at) }).collect();
     }
+
     if line["type"] == "system" && line["subtype"] == "api_error" {
         let what = line["error"]["formatted"].as_str().or(line["error"]["message"].as_str()).unwrap_or("sem detalhes");
+
         let attempt = match (line["retryAttempt"].as_u64(), line["maxRetries"].as_u64()) {
             (Some(n), Some(max)) => format!(" (tentativa {n} de {max})"),
             _ => String::new(),
         };
+
         return vec![ChatItem::Error(format!("{API_ERROR}{attempt}: {}", one_line(what, 160)))];
     }
+
     let user = match line["type"].as_str() {
         Some("user") => true,
         Some("assistant") => false,
         _ => return Vec::new(),
     };
+
     if line["isSidechain"] == true || line["isMeta"] == true {
         return Vec::new();
     }
+
     if line["isCompactSummary"] == true {
         return vec![ChatItem::System("A conversa foi resumida para caber no contexto.".into())];
     }
+
     // the API's last word after its retries: written as the agent's ("API Error: 529 …")
     if line["isApiErrorMessage"] == true {
         let content = &line["message"]["content"];
         let text = content.as_str().or_else(|| content.as_array()?.iter().find_map(|b| b["text"].as_str())).unwrap_or("sem detalhes");
+
         return vec![ChatItem::Error(format!("{API_ERROR}: {}", one_line(text.trim().trim_start_matches("API Error:").trim(), 160)))];
     }
+
     let words = |text: &str| {
         let text = if user { unpasted(text) } else { text.into() };
         let text = text.trim();
+
         // slash commands and Claude Code's notes arrive as tags: the command shows, the notes don't
         if whole_tag(text) {
             return slash_command(text).filter(|_| user).map(ChatItem::System);
         }
+
         if user && text.starts_with("[Request interrupted by user") {
             return Some(ChatItem::System("Interrompido pela pessoa.".into()));
         }
+
         (!text.is_empty()).then(|| if user { ChatItem::User(text.into()) } else { ChatItem::Agent(text.into()) })
     };
+
     let at = line["timestamp"].as_str().and_then(iso_ms).unwrap_or(0);
     let content = &line["message"]["content"];
+
     if let Some(text) = content.as_str() {
         return words(text).into_iter().collect();
     }
+
     let blocks = content.as_array().map(Vec::as_slice).unwrap_or_default();
+
     let one = |block: &Value| match block["type"].as_str()? {
         "text" => words(block["text"].as_str()?),
         "tool_use" => Some(ChatItem::Tool(Step {
@@ -543,30 +624,36 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
             ..Default::default()
         })),
         // a tool that failed shows it on its own step (✗, why on its row and whole in its card): a line of its own for
-        // each one made the conversation a column of "Ferramenta falhou" (asked: "tem muito ponto que 'Ferramenta
-        // falhou' no chat"), most of them the agent's own retries. Only a refusal and a denied permission say more.
+        // each one made the conversation a column of "Ferramenta falhou", most of them the agent's own retries. Only a
+        // refusal and a denied permission say more.
         "tool_result" if block["is_error"] == true => {
             let text = block_text(&block["content"]);
+
             if text.starts_with("The user doesn't want to proceed with this tool use") {
                 return Some(ChatItem::System("Você recusou o uso da ferramenta.".into()));
             }
+
             permission_denied(untag(text.trim())).map(ChatItem::Error)
         }
         "image" => image(block, user, at),
         _ => None,
     };
+
     blocks
         .iter()
         .flat_map(|block| {
             if block["type"] != "tool_result" || block["is_error"] == true {
                 return one(block).into_iter().collect();
             }
+
             // the images a tool gave back (a PNG it read, a page's print), in their place: the agent
             // showing them; not the canvas MagoAgent's view prints, it's right behind the chat
             let parts = block["content"].as_array().map(Vec::as_slice).unwrap_or_default();
+
             if parts.iter().any(|b| b["text"].as_str().is_some_and(|t| t.contains(VIEW_MARK))) {
                 return Vec::new();
             }
+
             parts.iter().filter_map(|b| image(b, false, at)).collect()
         })
         .collect()
@@ -574,6 +661,7 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
 
 fn image(block: &Value, user: bool, at: i64) -> Option<ChatItem> {
     (block["type"] == "image").then_some(())?;
+
     Some(ChatItem::Image {
         data: block["source"]["data"].as_str()?.into(),
         media: block["source"]["media_type"].as_str().unwrap_or("image/png").into(),
@@ -592,6 +680,7 @@ pub(crate) fn iso_ms(text: &str) -> Option<i64> {
     let yoe = y - era * 400;
     let doy = (153 * ((m + 9) % 12) + 2) / 5 + d - 1;
     let days = era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468;
+
     Some(((days * 24 + n(11..13)?) * 60 + n(14..16)?) * 60_000 + n(17..19)? * 1000)
 }
 
@@ -599,6 +688,7 @@ pub(crate) fn iso_ms(text: &str) -> Option<i64> {
 fn input_text(input: &Value) -> &str {
     let field = ["command", "file_path", "pattern", "url", "description", "prompt"].iter().find_map(|k| input[*k].as_str());
     let first = || input.as_object().and_then(|o| o.values().find_map(Value::as_str));
+
     field.or_else(first).unwrap_or_default()
 }
 
@@ -612,8 +702,10 @@ fn summary(input: &Value) -> String {
 fn json_failure(text: &str) -> Option<String> {
     let Ok(Value::Object(answer)) = serde_json::from_str::<Value>(text) else { return None };
     let field = |key: &str| answer.get(key).and_then(Value::as_str).map(str::trim).filter(|said| !said.is_empty());
+
     let why =
         field("message").or_else(|| field("error")).or_else(|| answer.get("error")?["message"].as_str().map(str::trim).filter(|said| !said.is_empty()))?;
+
     Some(match field("action") {
         Some(action) => format!("{action}: {why}"),
         None => why.to_string(),
@@ -624,12 +716,15 @@ fn json_failure(text: &str) -> Option<String> {
 /// one beside it failed (no failure of its own), a JSON answer's message, else the first line.
 pub(crate) fn failure_note(text: &str) -> String {
     let first = text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or_default();
+
     if let Some(code) = first.strip_prefix("Exit code ").filter(|code| code.parse::<i64>().is_ok()) {
         return format!("saiu com o código {code}");
     }
+
     if first.starts_with("Cancelled: parallel tool call") {
         return "cancelada: outra ferramenta chamada junto falhou".into();
     }
+
     one_line(&json_failure(text).unwrap_or_else(|| first.to_string()), 120)
 }
 
@@ -639,6 +734,7 @@ fn permission_denied(text: &str) -> Option<String> {
     let first = text.lines().map(str::trim).find(|line| !line.is_empty())?;
     let lower = first.to_lowercase();
     let denied = (lower.starts_with("permission") && lower.contains("denied")) || lower.contains("haven't granted");
+
     denied.then(|| format!("Permissão negada: {}", one_line(first, 200)))
 }
 
@@ -652,6 +748,7 @@ fn block_text(content: &Value) -> &str {
 /// spaces folded, 50 letters at most. None for a message with no words.
 pub(crate) fn prompt_title(prompt: &str) -> Option<String> {
     let line = prompt.lines().map(str::trim).find(|line| !line.is_empty())?;
+
     Some(one_line(&line.split_whitespace().collect::<Vec<_>>().join(" "), 50))
 }
 
@@ -664,15 +761,18 @@ pub(crate) fn resumed_prompt(text: &str) -> Option<(String, String)> {
 /// `resumed_prompt` over Claude Code's `projects` folder.
 pub(crate) fn resumed_in(projects: &Path, text: &str) -> Option<(String, String)> {
     let id = text.split_whitespace().skip_while(|word| !matches!(*word, "--resume" | "-r")).nth(1)?.trim_matches(['"', '\'']);
+
     if id.len() < 8 || !id.chars().all(|letter| letter.is_ascii_hexdigit() || letter == '-') {
         return None;
     }
+
     let file = std::fs::read_dir(projects).ok()?.flatten().find_map(|folder| {
         std::fs::read_dir(folder.path()).ok()?.flatten().map(|entry| entry.path()).find(|path| {
             path.extension().is_some_and(|extension| extension == "jsonl")
                 && path.file_stem().and_then(|stem| stem.to_str()).is_some_and(|stem| stem.starts_with(id))
         })
     })?;
+
     Some((id.to_string(), first_prompt(&file).filter(|first| !pasted_command(first))?))
 }
 
@@ -686,14 +786,17 @@ pub(crate) fn pasted_command(text: &str) -> bool {
 pub(crate) fn first_prompt(path: &Path) -> Option<String> {
     use std::io::BufRead;
     let file = std::io::BufReader::new(std::fs::File::open(path).ok()?);
+
     file.lines().map_while(Result::ok).take(500).find_map(|line| {
         let value = serde_json::from_str::<Value>(&line).ok()?;
+
         chat_items(&value).into_iter().find_map(|item| if let ChatItem::User(text) = item { Some(text) } else { None })
     })
 }
 
 fn one_line(text: &str, max: usize) -> String {
     let line = text.lines().next().unwrap_or_default();
+
     match line.char_indices().nth(max) {
         Some((cut, _)) => format!("{}…", &line[..cut]),
         None => line.to_string(),
@@ -704,15 +807,20 @@ fn one_line(text: &str, max: usize) -> String {
 /// anyone's words.
 fn whole_tag(text: &str) -> bool {
     let mut rest = text.trim();
+
     while !rest.is_empty() {
         let name = rest.strip_prefix('<').and_then(|t| t.split_once('>')).map_or("", |(name, _)| name);
+
         if name.is_empty() || !name.chars().all(|c| c.is_ascii_lowercase() || c == '-' || c == '_') {
             return false;
         }
+
         let close = format!("</{name}>");
         let Some(end) = rest.find(&close) else { return false };
+
         rest = rest[end + close.len()..].trim_start();
     }
+
     !text.trim().is_empty()
 }
 
@@ -720,11 +828,14 @@ fn whole_tag(text: &str) -> bool {
 fn unpasted(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
+
     while let Some(at) = [rest.find("<pasted_content"), rest.find("</pasted_content")].into_iter().flatten().min() {
         let Some(end) = rest[at..].find('>') else { break };
+
         out.push_str(&rest[..at]);
         rest = &rest[at + end + 1..];
     }
+
     out + rest
 }
 
@@ -733,8 +844,10 @@ fn untag(text: &str) -> &str {
     if !whole_tag(text) {
         return text;
     }
+
     let start = text.find('>').map_or(0, |i| i + 1);
     let end = text.rfind("</").filter(|&end| end >= start).unwrap_or(text.len());
+
     text[start..end].trim()
 }
 
@@ -742,5 +855,6 @@ fn untag(text: &str) -> &str {
 fn slash_command(text: &str) -> Option<String> {
     let inner = |tag: &str| Some(text.split_once(&format!("<{tag}>"))?.1.split_once(&format!("</{tag}>"))?.0.trim());
     let command = format!("{} {}", inner("command-name")?, inner("command-args").unwrap_or_default());
+
     Some(command.trim_end().to_string())
 }

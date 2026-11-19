@@ -13,9 +13,11 @@ pub(super) const BODY: &str =
 /// The scene's answer, read once; none outside a test scene.
 fn answer() -> Option<&'static Value> {
     static ANSWER: OnceLock<Option<Value>> = OnceLock::new();
+
     ANSWER
         .get_or_init(|| {
             let path = std::env::var_os("MAGOAGENT_SCENE").and_then(|_| std::env::var_os("MAGOAGENT_FAKE_GITHUB"))?;
+
             read_json(std::path::Path::new(&path))
         })
         .as_ref()
@@ -24,6 +26,7 @@ fn answer() -> Option<&'static Value> {
 /// The scene's pulse.
 pub(super) fn pulse() -> Option<&'static Pulse> {
     static PULSE: OnceLock<Option<Pulse>> = OnceLock::new();
+
     PULSE.get_or_init(|| Pulse::parse(answer()?)).as_ref()
 }
 

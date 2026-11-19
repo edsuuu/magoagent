@@ -35,15 +35,19 @@ fn sessions() -> std::sync::MutexGuard<'static, Vec<(String, u32, String)>> {
 fn ancestors(table: &HashMap<u32, (u32, String)>, start: u32) -> Vec<u32> {
     let mut found = Vec::new();
     let mut current = start;
+
     while found.len() < MAX_DEPTH {
         let Some(&(parent, _)) = table.get(&current) else { break };
         let Some((_, name)) = table.get(&parent) else { break };
+
         if parent == 0 || parent == start || found.contains(&parent) || TREE_TOPS.contains(&name.to_lowercase().as_str()) {
             break;
         }
+
         found.push(parent);
         current = parent;
     }
+
     found
 }
 
@@ -73,14 +77,17 @@ fn app_owner(above: &[u32], table: &HashMap<u32, (u32, String)>) -> u32 {
 fn pick_window<'a, Window>(windows: &'a [(Window, String)], folder: &str) -> Option<&'a Window> {
     let folder = folder.to_lowercase();
     let named = windows.iter().find(|(_, title)| !folder.is_empty() && title.to_lowercase().contains(&folder));
+
     named.or(windows.first()).map(|(window, _)| window)
 }
 
 fn remember(session: &str, owner: u32, folder: &str) {
     let mut sessions = sessions();
+
     sessions.retain(|(known, ..)| known != session);
     sessions.push((session.to_string(), owner, folder.to_string()));
     let excess = sessions.len().saturating_sub(MAX_SESSIONS);
+
     sessions.drain(..excess);
 }
 
@@ -93,23 +100,30 @@ fn lookup(session: &str) -> Option<(u32, String)> {
 /// por sessão, a janela em que ela roda. Uma sessão que acabou é esquecida.
 pub(crate) fn note(payload: &Value) {
     let (Some(session), Some(relay)) = (payload["session_id"].as_str().filter(|session| !session.is_empty()), payload["mago_pid"].as_u64()) else { return };
+
     if hook_name(payload) == "SessionEnd" {
         return sessions().retain(|(known, ..)| known != session);
     }
+
     if sessions().iter().any(|(known, ..)| known == session) {
         return;
     }
+
     let table = crate::transcript::process::table();
     let above = ancestors(&table, relay as u32);
+
     // nenhum ancestral: o relay já tinha saído, e o próximo evento da sessão tenta de novo
     if above.is_empty() {
         return;
     }
+
     let folder = Some(folder_label(payload["cwd"].as_str().unwrap_or_default())).filter(|folder| folder != "~").unwrap_or_default();
+
     let owner = match window_owner(&above, &top_windows()) {
         0 => app_owner(&above, &table),
         owner => owner,
     };
+
     remember(session, owner, &folder);
 }
 
@@ -125,9 +139,12 @@ pub(crate) fn focus_session_window(session: &str) -> bool {
     if cfg!(test) {
         return false;
     }
+
     let Some((owner, folder)) = lookup(session) else { return false };
+
     let windows: Vec<(isize, String)> =
         top_windows().into_iter().filter(|(_, process, _)| *process == owner).map(|(window, _, title)| (window, title)).collect();
+
     match pick_window(&windows, &folder) {
         Some(window) => bring_forward(*window),
         None => activate_terminal(owner),
@@ -145,6 +162,7 @@ fn activate_terminal(owner: u32) -> bool {
     let path = format!("/{}", name.replace('.', "/"));
     let call = ["call", "--session", "--timeout", "3", "--dest", name, "--object-path", &path, "--method", "org.freedesktop.Application.Activate", &platform];
     let done = std::process::Command::new("gdbus").args(call).output().is_ok_and(|output| output.status.success());
+
     // the notification ends when the terminal uses its token; one left unused would hold the busy pointer until mutter gives up
     if let Some(token) = token {
         std::thread::spawn(move || {
@@ -152,6 +170,7 @@ fn activate_terminal(owner: u32) -> bool {
             crate::app::island::x11::startup_done(&token);
         });
     }
+
     done
 }
 
@@ -181,23 +200,30 @@ unsafe extern "system" {
 #[cfg(windows)]
 fn top_windows() -> Vec<(isize, u32, String)> {
     const GW_OWNER: u32 = 4;
+
     unsafe extern "system" fn collect(window: isize, data: isize) -> i32 {
         // SAFETY: `data` é o Vec que `top_windows` passou, vivo durante toda a enumeração; as chamadas só leem a janela
         unsafe {
             let list = &mut *(data as *mut Vec<(isize, u32, String)>);
+
             if IsWindowVisible(window) != 0 && GetWindow(window, GW_OWNER) == 0 {
                 let mut process = 0u32;
+
                 GetWindowThreadProcessId(window, &mut process);
                 let mut text = [0u16; 512];
                 let length = GetWindowTextW(window, text.as_mut_ptr(), text.len() as i32);
+
                 if length > 0 {
                     list.push((window, process, String::from_utf16_lossy(&text[..length as usize])));
                 }
             }
         }
+
         1
     }
+
     let mut list: Vec<(isize, u32, String)> = Vec::new();
+
     // SAFETY: a enumeração é síncrona: `collect` só roda dentro desta chamada, com o Vec emprestado
     unsafe { EnumWindows(collect, &mut list as *mut Vec<(isize, u32, String)> as isize) };
     list
@@ -209,6 +235,7 @@ fn top_windows() -> Vec<(isize, u32, String)> {
     if !crate::app::island::x11::active() {
         return Vec::new();
     }
+
     crate::app::island::x11::client_windows().into_iter().map(|(window, process, title)| (window as isize, process, title)).collect()
 }
 
@@ -222,14 +249,17 @@ fn top_windows() -> Vec<(isize, u32, String)> {
 #[cfg(windows)]
 fn bring_forward(window: isize) -> bool {
     const SW_RESTORE: i32 = 9;
+
     // SAFETY: chamadas simples da user32 sobre uma janela conferida antes; uma que sumiu só faz as chamadas falharem
     unsafe {
         if IsWindow(window) == 0 {
             return false;
         }
+
         if IsIconic(window) != 0 {
             ShowWindow(window, SW_RESTORE);
         }
+
         BringWindowToTop(window);
         AllowSetForegroundWindow(u32::MAX);
         SetForegroundWindow(window) != 0 || GetForegroundWindow() == window
@@ -271,9 +301,12 @@ mod tests {
             (500, 400, "bash.exe"),
             (600, 500, "magoagent-hook.exe"),
         ]);
+
         let above = ancestors(&table, 600);
+
         assert_eq!(above, [500, 400, 300, 200], "o mais próximo primeiro, sem passar do explorer");
         assert_eq!(window_owner(&above, &windows_of(&[100, 200])), 200);
+
         // o VS Code: o processo da janela fica acima do host do terminal
         let code = tree(&[
             (100, 1, "explorer.exe"),
@@ -283,9 +316,11 @@ mod tests {
             (400, 300, "node.exe"),
             (600, 400, "magoagent-hook.exe"),
         ]);
+
         assert_eq!(window_owner(&ancestors(&code, 600), &windows_of(&[210])), 210);
         // um console clássico: a janela é do conhost, que não é ancestral; a subida para no explorer em vez de achar a barra de tarefas
         let classic = tree(&[(100, 1, "Explorer.EXE"), (300, 100, "cmd.exe"), (400, 300, "node.exe"), (600, 400, "magoagent-hook.exe")]);
+
         assert_eq!(window_owner(&ancestors(&classic, 600), &windows_of(&[100])), 0);
     }
 
@@ -302,7 +337,9 @@ mod tests {
             (1040, 1030, "sh"),
             (1050, 1040, "magoagent"),
         ]);
+
         let above = ancestors(&table, 1050);
+
         assert_eq!(window_owner(&above, &[]), 0);
         assert_eq!(app_owner(&above, &table), 1000, "the terminal's own process, not its agent");
         assert_eq!(terminal_app("ptyxis"), Some("org.gnome.Ptyxis"));
@@ -311,6 +348,7 @@ mod tests {
         // an editor's terminal on X11 (VS Code): its window, not a D-Bus name
         let code = tree(&[(1, 0, "systemd"), (2000, 1, "code"), (2010, 2000, "bash"), (2020, 2010, "claude"), (2030, 2020, "magoagent")]);
         let above = ancestors(&code, 2030);
+
         assert_eq!((window_owner(&above, &windows_of(&[2000])), app_owner(&above, &code)), (2000, 0));
     }
 
@@ -318,14 +356,17 @@ mod tests {
     fn a_relay_already_gone_a_loop_or_a_deep_tree_end_the_walk() {
         assert!(ancestors(&tree(&[]), 600).is_empty());
         let looped = tree(&[(1, 2, "a.exe"), (2, 1, "b.exe"), (3, 1, "magoagent-hook.exe")]);
+
         assert_eq!(ancestors(&looped, 3), [1, 2]);
         let deep: Vec<(u32, u32, &str)> = (1..100).map(|process| (process, process + 1, "x.exe")).collect();
+
         assert_eq!(ancestors(&tree(&deep), 1).len(), MAX_DEPTH);
     }
 
     #[test]
     fn the_window_named_after_the_folder_wins() {
         let windows = vec![(1, "notas — Visual Studio Code".to_string()), (2, "app.ts — Loja — Visual Studio Code".to_string())];
+
         assert_eq!(pick_window(&windows, "loja"), Some(&2));
         assert_eq!(pick_window(&windows, "outra"), Some(&1));
         assert_eq!(pick_window(&windows, ""), Some(&1));
@@ -349,10 +390,12 @@ mod tests {
         // um relay de verdade (este processo de teste): a sessão fica decidida, com ou sem janela
         note(&json!({ "hook_event_name": "Stop", "session_id": "teste-janela-4", "mago_pid": std::process::id(), "cwd": "C:/proj/loja" }));
         assert!(sessions().iter().any(|(known, _, folder)| known == "teste-janela-4" && folder == "loja"));
+
         // só as últimas ficam (um teste só: a lista é de todos)
         for count in 0..MAX_SESSIONS + 5 {
             remember(&format!("teste-janela-cheia-{count}"), 1, "");
         }
+
         assert!(!has_window("teste-janela-cheia-0") && has_window(&format!("teste-janela-cheia-{}", MAX_SESSIONS + 4)));
         sessions().retain(|(known, ..)| !known.starts_with("teste-janela"));
     }

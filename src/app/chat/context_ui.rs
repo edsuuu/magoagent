@@ -47,6 +47,7 @@ pub(crate) struct CtxState {
 impl Default for CtxState {
     fn default() -> Self {
         let (tx, rx) = channel();
+
         CtxState { rect: None, info: Default::default(), tx, rx }
     }
 }
@@ -70,17 +71,21 @@ impl DrawingApp {
     /// A ação `chat_context` do MCP: abre, fecha ou relê o painel e diz o que ele mostra.
     pub(crate) fn act_chat_context(&mut self, chat: &str, state: &str) -> Result<String, String> {
         let id = self.chat_named(chat)?;
+
         if !self.context_wanted(&id) {
             return Err("o painel Contexto é dos chats do Claude Code".into());
         }
+
         match state {
             "open" => self.prefs.chat_panel = true,
             "close" => self.prefs.chat_panel = false,
             "refresh" => self.chat_ctx.info.entry(id.clone()).or_default().dirty = true,
             _ => {}
         }
+
         let info = self.chat_ctx.info.get(&id);
         let mut out = format!("Painel {}.", if self.prefs.chat_panel { "aberto" } else { "fechado" });
+
         match info.and_then(|i| i.report.as_ref()) {
             Some(r) => {
                 out += &format!(
@@ -90,6 +95,7 @@ Contexto: {} / {} em uso ({} até o auto-compact).",
                     short(r.window),
                     short(r.until_compact())
                 );
+
                 for c in &r.cats {
                     out += &format!(
                         "
@@ -104,10 +110,13 @@ Contexto: {} / {} em uso ({} até o auto-compact).",
 Contexto ainda não lido: mande uma mensagem ao chat e abra o painel."
             }
         }
+
         let servers: Vec<&Server> = info.map(|i| i.servers().iter().collect()).unwrap_or_default();
+
         for s in servers {
             let n =
                 info.and_then(|i| i.init.as_ref()).map(|init| init.mcp_tools.iter().filter(|t| t.starts_with(&format!("mcp__{}__", norm(&s.name)))).count());
+
             out += &format!(
                 "
 Conector {}: {}{}",
@@ -116,6 +125,7 @@ Conector {}: {}{}",
                 n.map_or(String::new(), |n| format!(", {n} ferramentas"))
             );
         }
+
         Ok(out)
     }
 
@@ -128,9 +138,10 @@ Conector {}: {}{}",
     /// depois, ou o que a linha de status disse; None antes de qualquer leitura.
     pub(crate) fn context_percent(&self, id: &str) -> Option<f64> {
         let info = self.chat_ctx.info.get(id);
+
         match info.and_then(|i| i.report.as_ref().map(|r| (i, r))) {
             Some((info, report)) => Some((report.used + info.since()) as f64 / report.window.max(1) as f64 * 100.0),
-            // asked: "pelo menos a % de contexto precisa aparecer no chat", before the panel is ever opened
+            // before the panel is ever opened
             None => self
                 .usage
                 .agents
@@ -146,15 +157,18 @@ Conector {}: {}{}",
         // colado à direita, da barra até embaixo, com a linha à esquerda
         let _ = (pad, narrow);
         let width = PANEL.min(area.width() * 0.3).max(240.0).min(area.width());
+
         Rect::from_min_max(Pos2::new(area.right() - width, area.top()), area.max)
     }
 
     /// Esc com o ponteiro sobre o painel fecha o painel (antes de o chat tratar o Esc: ele voltaria ao canvas).
     pub(crate) fn context_esc(&mut self, ctx: &Context) -> bool {
         let over = self.chat_ctx.rect.zip(ctx.input(|i| i.pointer.hover_pos())).is_some_and(|(r, p)| r.contains(p));
+
         if !self.prefs.chat_panel || !over || egui::Popup::is_any_open(ctx) || !ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
             return false;
         }
+
         self.prefs.chat_panel = false;
         self.chat_ctx.rect = None;
         true
@@ -166,7 +180,9 @@ Conector {}: {}{}",
             match job {
                 Job::Report(chat, result) => {
                     let info = self.chat_ctx.info.entry(chat).or_default();
+
                     info.loading = false;
+
                     match result {
                         Ok(report) => (info.report, info.live_at_report, info.error) = (Some(report), info.live, None),
                         Err(error) => info.error = Some(error),
@@ -174,19 +190,24 @@ Conector {}: {}{}",
                 }
                 Job::Servers(chat, list) => {
                     let info = self.chat_ctx.info.entry(chat).or_default();
+
                     (info.listing, info.listed) = (false, list);
                 }
             }
         }
+
         let running = self.chat_runs.contains_key(id);
         let info = self.chat_ctx.info.entry(id.to_string()).or_default();
+
         // uma resposta acabou: o que o `/context` disse ficou velho
         info.dirty |= info.was_running && !running;
         info.was_running = running;
         let session = self.chats.iter().any(|c| c.id == id && c.session.is_some());
+
         if !open || running {
             return;
         }
+
         if info.init.is_none() && info.listed.is_empty() && !info.listing {
             info.listing = true;
             self.spawn_servers(ctx, id);
@@ -200,12 +221,15 @@ Conector {}: {}{}",
     /// Os eventos do stream de uma resposta que o painel usa: init, tokens em uso.
     pub(crate) fn context_event(&mut self, id: &str, event: &Value) {
         let info = self.chat_ctx.info.entry(id.to_string()).or_default();
+
         if let Some(init) = parse_init(event) {
             info.init = Some(init);
         }
+
         if let Some(used) = context_used(event) {
             info.live = used;
         }
+
         if let Some(window) = context_window(event) {
             info.window = Some(window);
         }
@@ -216,17 +240,22 @@ Conector {}: {}{}",
         let (Some(session), Some(cli)) = (chat.session.clone(), agent_cli("claude")) else { return };
         let wsl = cli.wsl().is_some();
         let mut command = cli.command();
+
         // sem gravar nada na sessão: o `/context` não vira mensagem na conversa
         command.args(["-p", "--output-format", "json", "--no-session-persistence", "--resume", &session]);
         command.args(crate::app::chat::footer::tuning_args(&chat.agent, &chat.model, &chat.effort));
         command.args(crate::app::chat::tools::maestro_args(&chat.agent, &self.prefs, &chat, wsl));
         command.args(autocompact_args(&self.prefs));
+
         if let Some(dir) = crate::app::chat::direct::folder(&chat.cwd).filter(|d| d.is_dir()) {
             command.current_dir(dir);
         }
+
         let mut command = cli.finish(command);
+
         command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
         let (tx, ctx, id) = (self.chat_ctx.tx.clone(), ctx.clone(), id.to_string());
+
         std::thread::spawn(move || {
             let result = command
                 .spawn()
@@ -235,11 +264,14 @@ Conector {}: {}{}",
                     if let Some(mut stdin) = child.stdin.take() {
                         let _ = std::io::Write::write_all(&mut stdin, b"/context");
                     }
+
                     child.wait_with_output().map_err(|e| e.to_string())
                 })
                 .and_then(|out| print_result(&String::from_utf8_lossy(&out.stdout)))
                 .and_then(|text| parse_context(&text));
+
             let _ = tx.send(Job::Report(id, result));
+
             ctx.request_repaint();
         });
     }
@@ -247,16 +279,22 @@ Conector {}: {}{}",
     pub(crate) fn spawn_servers(&self, ctx: &Context, id: &str) {
         let Some(cli) = agent_cli("claude") else { return };
         let mut command = cli.command();
+
         command.args(["mcp", "list"]).env("NO_COLOR", "1");
+
         if let Some(dir) = self.chats.iter().find(|c| c.id == id).and_then(|c| crate::app::chat::direct::folder(&c.cwd)).filter(|d| d.is_dir()) {
             command.current_dir(dir);
         }
+
         let mut command = cli.finish(command);
+
         command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
         let (tx, ctx, id) = (self.chat_ctx.tx.clone(), ctx.clone(), id.to_string());
+
         std::thread::spawn(move || {
             let list = command.output().map(|o| parse_mcp_list(&String::from_utf8_lossy(&o.stdout))).unwrap_or_default();
             let _ = tx.send(Job::Servers(id, list));
+
             ctx.request_repaint();
         });
     }
@@ -273,6 +311,7 @@ mod tests {
         let input = egui::RawInput { events: vec![egui::Event::PointerMoved(at), key], ..Default::default() };
         let mut closed = false;
         let mut out = ctx.run_ui(input, |ui| closed = app.context_esc(ui.ctx()));
+
         out.textures_delta.clear();
         closed
     }
@@ -281,6 +320,7 @@ mod tests {
     fn the_panel_opens_and_closes_by_the_button_the_x_and_esc() {
         let mut app = DrawingApp::default();
         let installed = [Preset::new("Claude Code", "claude")];
+
         app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: String::new(), mode: 0 }, &installed);
         // começa fechado; o botão do cabeçalho (act.context) e a ação do MCP alternam
         assert!(!app.prefs.chat_panel);
@@ -288,6 +328,7 @@ mod tests {
         assert!(app.prefs.chat_panel);
         let area = Rect::from_min_size(Pos2::ZERO, Vec2::new(1000.0, 700.0));
         let rect = app.context_rect(area, 16.0, false);
+
         // nunca mais que 30% da área do chat
         assert!(rect.width() <= 300.0 && rect.width() <= area.width() * 0.3 + 0.5, "{}", rect.width());
         app.chat_ctx.rect = Some(rect);
@@ -300,13 +341,14 @@ mod tests {
         assert!(!app.prefs.chat_panel);
     }
 
-    /// Asked: "pelo menos a % de contexto precisa aparecer no chat". After a reply, before any `/context`: what the reply
-    /// used over the window its end told.
+    /// After a reply, before any `/context`: what the reply used over the window its end told.
     #[test]
     fn a_reply_alone_gives_the_context_share() {
         let mut app = DrawingApp::default();
+
         assert_eq!(app.context_percent("c1"), None);
         let reply = json!({"type": "assistant", "parent_tool_use_id": null, "message": {"usage": {"input_tokens": 50_000}}});
+
         app.context_event("c1", &reply);
         assert_eq!(app.context_percent("c1"), None, "no window told yet");
         app.context_event("c1", &json!({"type": "result", "modelUsage": {"claude-opus": {"contextWindow": 500_000}}}));

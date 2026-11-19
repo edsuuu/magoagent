@@ -1,0 +1,86 @@
+name: Travamento ou lentidão
+description: O app fechou sozinho, parou de responder ou está gastando CPU/memória demais
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!CAUTION]
+        > **Nunca** cole tokens nem chaves de API, senhas ou conteúdo privado. Confira o crash.log antes de colar.
+
+  - type: dropdown
+    id: tipo
+    attributes:
+      label: O que houve
+      options:
+        - Fechou sozinho
+        - Travou (não responde)
+        - Lento ao usar (canvas, chat, terminal…)
+        - CPU ou memória alta com o app parado
+    validations:
+      required: true
+
+  - type: textarea
+    id: antes
+    attributes:
+      label: O que você estava fazendo
+      description: O que aconteceu logo antes. Quantos terminais, chats, navegadores e árvores estavam abertos ajuda muito.
+    validations:
+      required: true
+
+  - type: textarea
+    id: passos
+    attributes:
+      label: Como reproduzir
+      description: Se acontecer sempre, os passos. Se foi uma vez só, diga isso.
+
+  - type: textarea
+    id: crashlog
+    attributes:
+      label: crash.log
+      description: |
+        Quando o app fecha sozinho, o erro vai para o `crash.log` na pasta de dados:
+        - Windows: `C:\Program Files\MagoAgent\data\crash.log` (antes do instalador: `%APPDATA%\MagoAgent\crash.log`)
+        - Linux: `~/.local/share/magoagent/crash.log`
+        - macOS: `~/Library/Application Support/MagoAgent/crash.log` (ou `data/` na pasta onde o app foi instalado)
+
+        Cole o fim dele (o erro mais recente). Se não houver, no Linux abra o app pelo terminal com
+        `RUST_BACKTRACE=1 magoagent` e cole a saída.
+      render: text
+
+  - type: dropdown
+    id: sistema
+    attributes:
+      label: Sistema
+      options:
+        - Windows
+        - Windows com WSL
+        - Linux (X11)
+        - Linux (Wayland)
+        - macOS
+    validations:
+      required: true
+
+  - type: input
+    id: versao
+    attributes:
+      label: Versão do MagoAgent
+      description: Ajustes › Sobre (ou o commit, num build do repositório).
+    validations:
+      required: true
+
+  - type: textarea
+    id: maquina
+    attributes:
+      label: Máquina
+      description: CPU, placa de vídeo e driver, memória, monitores e escala (por exemplo 4K a 150%), taxa de quadros escolhida em Ajustes.
+
+  - type: checkboxes
+    id: conferencia
+    attributes:
+      label: Antes de enviar
+      options:
+        - label: Procurei nas issues abertas e não achei uma igual.
+          required: true
+        - label: Tirei tokens, chaves e conteúdo privado do crash.log e do texto.
+          required: true

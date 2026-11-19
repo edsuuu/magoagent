@@ -12,7 +12,9 @@ impl DrawingApp {
             Some(path) => recent_events_since(&path, 1000, agent, since),
             None => Vec::new(),
         };
+
         let after = events.last().map_or(i64::MIN, |e| e.at);
+
         events.extend(self.agent_events.iter().filter(|e| e.at > after).cloned());
         filter_timeline(events, agent, kind, since, limit)
     }
@@ -25,29 +27,39 @@ impl DrawingApp {
             name => {
                 let rows = self.agent_rows();
                 let row = rows.iter().find(|r| r.id == name || r.spec.label().to_lowercase() == name.to_lowercase());
+
                 Some(row.map(|r| r.id.clone()).ok_or_else(|| format!("Nenhum agente chamado {name}."))?)
             }
         };
+
         let kind = match kind {
             "" => None,
             code => {
                 let unknown = || format!("Tipo de evento desconhecido: {code}. Use um destes: {}.", KINDS.map(|(_, c)| c).join(", "));
+
                 Some(KINDS.iter().find(|(_, c)| *c == code).map(|(k, _)| *k).ok_or_else(unknown)?)
             }
         };
+
         let events = self.timeline_events(agent.as_deref(), kind, minutes.map(|m| now_ms() - m * 60_000), limit);
+
         if events.is_empty() {
             return Ok("Nada aconteceu nesse período.".into());
         }
+
         let mut lines = Vec::new();
+
         if events.len() > 5 {
             lines.push(timeline_summary(&events));
         }
+
         for e in &events {
             // ponytail: the hour alone, though the window goes up to a day; add the date when yesterday's events confuse
             let clock = crate::app::chat::viewer::local_clock(e.at).unwrap_or_else(|| "??:??".into());
+
             lines.push(format!("{clock} {}", self.event_line(e)));
         }
+
         Ok(lines.join("\n"))
     }
 }
@@ -66,6 +78,7 @@ pub(crate) fn timeline_summary(events: &[AgentEvent]) -> String {
     let count = |kind: EventKind| events.iter().filter(|e| e.kind == kind).count();
     let agents = events.iter().map(|e| e.id.as_str()).collect::<std::collections::HashSet<_>>().len();
     let some = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+
     format!(
         "Resumo: {}, {}, {} e {}.",
         some(count(EventKind::ToolStarted), "ferramenta", "ferramentas"),
@@ -93,7 +106,9 @@ mod tests {
                 AgentEvent { to: "a".into(), ..event(400, "b", EventKind::Message) },
             ]
         };
+
         let ats = |list: Vec<AgentEvent>| list.iter().map(|e| e.at).collect::<Vec<_>>();
+
         assert_eq!(ats(filter_timeline(events(), None, None, None, 20)), [100, 200, 300, 400], "oldest first");
         assert_eq!(ats(filter_timeline(events(), Some("a"), None, None, 20)), [100, 200, 400], "what it did and what it got");
         assert_eq!(ats(filter_timeline(events(), None, Some(EventKind::Error), None, 20)), [300]);
@@ -111,6 +126,7 @@ mod tests {
             event(4, "b", EventKind::Error),
             event(5, "b", EventKind::Finished),
         ];
+
         assert_eq!(timeline_summary(&events), "Resumo: 2 ferramentas, 1 pedido de permissão, 1 erro e 2 agentes.");
         assert_eq!(timeline_summary(&[]), "Resumo: 0 ferramentas, 0 pedidos de permissão, 0 erros e 0 agentes.");
     }
@@ -119,23 +135,30 @@ mod tests {
     fn the_maestro_reads_the_timeline_with_the_time_in_front() {
         let mut app = DrawingApp::default();
         let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+
         e.terminal = Some(TerminalSpec { name: "Revisor".into(), command: "claude".into(), ..Default::default() });
         let id = e.id.clone();
+
         app.scene.elements.push(e);
         assert_eq!(app.act("timeline", &json!({})).unwrap(), "Nada aconteceu nesse período.");
         app.agent_events.push_back(AgentEvent { at: now_ms() - 2 * 3_600_000, ..AgentEvent::new(&id, "Revisor", EventKind::Error, "antigo") });
         app.agent_events.push_back(AgentEvent::new(&id, "Revisor", EventKind::ToolStarted, "Bash: cargo test"));
         let hour = app.act("timeline", &json!({ "agent": "revisor", "minutes": 60 })).unwrap();
+
         assert!(hour.contains("Revisor Bash: cargo test") && hour.as_bytes()[0].is_ascii_digit(), "{hour}");
         assert!(!hour.contains("antigo"), "{hour}");
         let all = app.act("timeline", &json!({})).unwrap();
+
         assert!(all.find("antigo").unwrap() < all.find("cargo test").unwrap(), "oldest first: {all}");
         assert_eq!(app.act("timeline", &json!({ "kind": "error" })).unwrap().lines().count(), 1);
+
         // more than five: the counts come first
         for n in 0..5 {
             app.agent_events.push_back(AgentEvent::new(&id, "Revisor", EventKind::ToolStarted, format!("Read: {n}")));
         }
+
         let many = app.act("timeline", &json!({ "limit": 6 })).unwrap();
+
         assert!(many.starts_with("Resumo: 6 ferramentas, 0 pedidos de permissão, 0 erros e 1 agente.\n"), "{many}");
         assert_eq!(many.lines().count(), 7);
         assert!(app.act("timeline", &json!({ "agent": "ninguém" })).unwrap_err().contains("Nenhum agente"));

@@ -33,21 +33,28 @@ impl Seg {}
 pub(crate) fn segments(text: &str) -> Vec<Seg> {
     let (mut out, mut prose, mut code) = (Vec::new(), Vec::<&str>::new(), Vec::<&str>::new());
     let (mut info, mut inside) = (String::new(), false);
+
     fn words(out: &mut Vec<Seg>, prose: &mut Vec<&str>) {
         let joined = prose.join("\n");
+
         if !joined.trim().is_empty() {
             out.push(Seg::Text(joined.trim().to_string()));
         }
+
         prose.clear();
     }
+
     fn block(out: &mut Vec<Seg>, code: &mut Vec<&str>, info: &str) {
         if code.iter().any(|l| !l.trim().is_empty()) {
             out.push(Seg::Code { info: info.to_string(), code: code.join("\n").trim_end().to_string() });
         }
+
         code.clear();
     }
+
     for line in text.lines() {
         let t = line.trim();
+
         if let Some(rest) = t.strip_prefix("```") {
             if inside {
                 block(&mut out, &mut code, &info);
@@ -55,6 +62,7 @@ pub(crate) fn segments(text: &str) -> Vec<Seg> {
                 words(&mut out, &mut prose);
                 info = rest.trim().to_string();
             }
+
             inside = !inside;
         } else if inside {
             code.push(line);
@@ -76,11 +84,13 @@ pub(crate) fn segments(text: &str) -> Vec<Seg> {
             prose.push(line);
         }
     }
+
     if inside {
         block(&mut out, &mut code, &info);
     } else {
         words(&mut out, &mut prose);
     }
+
     out
 }
 
@@ -92,29 +102,36 @@ enum Piece<'a> {
 /// A line cut at its `![alt](src)` pictures; the text between (when not blank) comes as pieces.
 fn images_in(line: &str) -> Vec<Piece<'_>> {
     let (mut out, mut rest) = (Vec::new(), line);
+
     while let Some(start) = rest.find("![") {
         let after = &rest[start + 2..];
         let Some(mid) = after.find("](") else { break };
         let Some(end) = after[mid + 2..].find(')') else { break };
         let (alt, src) = (&after[..mid], &after[mid + 2..mid + 2 + end]);
+
         if !rest[..start].trim().is_empty() {
             out.push(Piece::Text(&rest[..start]));
         }
+
         out.push(Piece::Image(alt.to_string(), target(src)));
         rest = &after[mid + 2 + end + 1..];
     }
+
     if !rest.trim().is_empty() {
         out.push(Piece::Text(rest));
     }
+
     out
 }
 
 /// A link's target without its title (`path "title"`) or its angle brackets (`<a path>`).
 fn target(raw: &str) -> String {
     let raw = raw.trim();
+
     if let Some(inner) = raw.strip_prefix('<').and_then(|r| r.split_once('>')) {
         return inner.0.to_string();
     }
+
     raw.split_once(" \"").map_or(raw, |(path, _)| path).trim().to_string()
 }
 
@@ -124,12 +141,15 @@ fn file_line(t: &str) -> Option<Seg> {
     if let Some(inner) = t.strip_prefix('[').filter(|_| t.ends_with(')')) {
         let (label, rest) = inner.split_once("](")?;
         let path = target(rest.strip_suffix(')')?);
+
         // one link, not several: `[a](x) e [b](y)` is a sentence
         return (!label.contains(']') && !rest.contains("](") && is_local(&path)).then(|| Seg::File { label: label.to_string(), path, linked: true });
     }
+
     let path = t.strip_prefix('`')?.strip_suffix('`')?;
     let ext = path.rsplit_once('.').map(|(_, e)| e).filter(|e| (1..=8).contains(&e.len()) && e.bytes().all(|b| b.is_ascii_alphanumeric()))?;
     let _ = ext;
+
     (!path.contains(['`', ' ']) && path.contains(['/', '\\']) && is_local(path)).then(|| Seg::File {
         label: path.rsplit(['/', '\\']).next().unwrap_or(path).to_string(),
         path: path.to_string(),
@@ -141,21 +161,26 @@ fn file_line(t: &str) -> Option<Seg> {
 pub(crate) fn is_local(target: &str) -> bool {
     let t = target.trim();
     let is_scheme = t.split_once(':').is_some_and(|(s, _)| s.len() > 1 && s.bytes().all(|b| b.is_ascii_alphabetic()) && s != "file");
+
     !t.is_empty() && !t.starts_with('#') && !is_scheme
 }
 
 /// `file:///C:/a%20b.png`, `~/x.png`, `a/b.png` (from `base`) as a path on disk.
 pub(crate) fn resolve(target: &str, base: Option<&Path>) -> PathBuf {
     let t = target.trim();
+
     let t = t
         .strip_prefix("file:///")
         .map(|r| if cfg!(windows) { r.to_string() } else { format!("/{r}") })
         .or_else(|| t.strip_prefix("file://").map(str::to_string));
+
     let t = percent_decode(t.as_deref().unwrap_or(target.trim()));
+
     let path = match t.strip_prefix("~/").and_then(|rest| std::env::home_dir().map(|h| h.join(rest))) {
         Some(home) => home,
         None => PathBuf::from(&t),
     };
+
     match base {
         Some(base) if path.is_relative() => base.join(path),
         _ => path,
@@ -166,10 +191,13 @@ fn percent_decode(text: &str) -> String {
     if !text.contains('%') {
         return text.to_string();
     }
+
     let bytes = text.as_bytes();
     let (mut out, mut i) = (Vec::with_capacity(bytes.len()), 0);
+
     while i < bytes.len() {
         let hex = bytes.get(i + 1..i + 3).and_then(|h| std::str::from_utf8(h).ok()).and_then(|h| u8::from_str_radix(h, 16).ok());
+
         match (bytes[i], hex) {
             (b'%', Some(byte)) => {
                 out.push(byte);
@@ -181,6 +209,7 @@ fn percent_decode(text: &str) -> String {
             }
         }
     }
+
     String::from_utf8_lossy(&out).into_owned()
 }
 
@@ -192,19 +221,23 @@ pub(crate) fn is_picture(path: &str) -> bool {
 /// The bytes of a `data:image/…;base64,` address, when it is one.
 pub(crate) fn data_uri(src: &str) -> Option<&str> {
     let (head, data) = src.strip_prefix("data:image/")?.split_once(',')?;
+
     head.ends_with(";base64").then_some(data)
 }
 
 /// A file's weight as the file card writes it: decimal units, KB without decimals, MB with one.
 pub(crate) fn file_size(bytes: u64) -> String {
     let (mut value, mut unit) = (bytes as f64, 0);
+
     while value >= 1000.0 && unit < 4 {
         value /= 1000.0;
         unit += 1;
     }
+
     let digits = [0, 0, 1, 2, 2][unit];
     let number = format!("{value:.digits$}").replace('.', ",");
     let number = if digits > 0 { number.trim_end_matches('0').trim_end_matches(',').to_string() } else { number };
+
     match unit {
         0 => format!("{number} {}", if bytes == 1 { "byte" } else { "bytes" }),
         _ => format!("{number} {}", ["", "KB", "MB", "GB", "TB"][unit]),
@@ -217,15 +250,19 @@ pub(crate) fn middle(text: &str, fits: impl Fn(&str) -> bool) -> String {
     if fits(text) {
         return text.to_string();
     }
+
     let chars: Vec<char> = text.chars().collect();
     let tail = 12.min(chars.len().div_ceil(2));
     let tail: String = chars[chars.len() - tail..].iter().collect();
+
     for head in (0..chars.len() - tail.chars().count()).rev() {
         let shown = format!("{}…{tail}", chars[..head].iter().collect::<String>());
+
         if fits(&shown) {
             return shown;
         }
     }
+
     format!("…{tail}")
 }
 
@@ -240,6 +277,7 @@ mod tests {
     #[test]
     fn words_code_pictures_and_files_come_apart_in_order() {
         let md = "Olá **mundo**\n\n```rust\nfn a() {}\n```\n\n![gráfico](out/g.png)\n\n[relatório.md](docs/r.md)\n\nfim";
+
         assert_eq!(
             segments(md),
             vec![
@@ -255,6 +293,7 @@ mod tests {
     #[test]
     fn a_picture_in_a_sentence_keeps_the_words_around_it() {
         let got = segments("Veja ![a](x.png) agora");
+
         assert_eq!(got, vec![text("Veja"), Seg::Image { alt: "a".into(), src: "x.png".into() }, text("agora")]);
     }
 
@@ -289,6 +328,7 @@ mod tests {
     #[test]
     fn paths_resolve_from_the_chats_folder_and_decode_percent() {
         let base = Path::new("/proj");
+
         assert_eq!(resolve("a/b.png", Some(base)), base.join("a/b.png"));
         assert_eq!(resolve("a%20b.png", Some(base)), base.join("a b.png"));
         assert_eq!(resolve("file:///tmp/x%20y.png", None), PathBuf::from(if cfg!(windows) { "tmp/x y.png" } else { "/tmp/x y.png" }));
@@ -308,6 +348,7 @@ mod tests {
     fn a_long_name_loses_its_middle_and_keeps_its_end() {
         let name = "relatorio-final-do-trimestre-v2.pdf";
         let shown = middle(name, |s| s.chars().count() <= 20);
+
         assert!(shown.chars().count() <= 20 && shown.contains('…') && shown.ends_with("trimestre-v2.pdf".get(4..).unwrap()));
         assert_eq!(middle("a.txt", |_| true), "a.txt");
     }
@@ -315,13 +356,16 @@ mod tests {
     #[test]
     fn a_streamed_answer_gives_words_with_a_picture_a_step_and_a_read_image() {
         use crate::transcript::{ChatItem, chat_items};
+
         let lines = [
             serde_json::json!({"type":"assistant","message":{"content":[{"type":"text","text":"Pronto:\n\n![gráfico](out/g.png)\n\n[r.md](docs/r.md)"}]}}),
             serde_json::json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":"w1","name":"Write","input":{"file_path":"out/g.png","content":"x"}}]}}),
             serde_json::json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"r1","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}]}]}}),
         ];
+
         let items: Vec<ChatItem> = lines.iter().flat_map(chat_items).collect();
         let ChatItem::Agent(text) = &items[0] else { panic!("{items:?}") };
+
         assert!(matches!(segments(text).as_slice(), [Seg::Text(_), Seg::Image { .. }, Seg::File { .. }]));
         assert!(matches!(&items[1], ChatItem::Tool(s) if s.name == "Write" && s.files == ["out/g.png"]));
         assert!(items.iter().any(|i| matches!(i, ChatItem::Image { media, .. } if media == "image/png")));

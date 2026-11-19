@@ -32,6 +32,7 @@ const CLOSE_MIN: f32 = 300.0;
 /// between the narrowest the tree and the pane allow.
 pub(crate) fn tree_width(spec: &FileTreeSpec, node_w: f32) -> f32 {
     let raw = spec.tree_width.unwrap_or(node_w - EDITOR_W - SEAM);
+
     raw.min((node_w - EDITOR_MIN - SEAM).max(TREE_MIN)).max(TREE_MIN)
 }
 
@@ -40,8 +41,10 @@ pub(crate) fn parts(spec: &FileTreeSpec, frame: Rect, z: f32) -> (Rect, Option<R
     if !spec.editor {
         return (frame, None);
     }
+
     let tree = Rect::from_min_max(frame.min, Pos2::new(frame.left() + tree_width(spec, frame.width() / z) * z, frame.bottom()));
     let pane = Rect::from_min_max(Pos2::new(tree.right() + SEAM * z, frame.top()), frame.max);
+
     (tree, Some(pane))
 }
 
@@ -111,9 +114,11 @@ impl Editor {
         let name = file.file_name().unwrap_or_default().to_string_lossy();
         // the commit before the name: the tab keeps the file's icon
         let path = file.with_file_name(format!("{} {name}", &hash[..hash.len().min(7)]));
+
         if !self.tabs.iter().any(|t| t.path == path) {
             self.tabs.push(PaneTab { path: path.clone(), body: Body::Diff(text) });
         }
+
         self.active = Some(path);
     }
 
@@ -121,6 +126,7 @@ impl Editor {
     fn list_usages(&mut self, name: &str, path: &Path, line: usize, col: usize, anchor: Pos2, ctx: &Context) {
         let Some(Body::Text(t)) = self.tabs.iter().find(|t| t.path == path).map(|t| &t.body) else { return };
         let decl = t.text.lines().nth(line).unwrap_or_default();
+
         self.popup = Some(ListPopup::usages(&self.code, name, (path, line, col), decl, t.lang.id, anchor, ctx));
     }
 
@@ -128,24 +134,30 @@ impl Editor {
     /// takes the keyboard; a click only shows it, and the next click takes its place.
     pub(crate) fn open(&mut self, path: PathBuf, pinned: bool) {
         let new = !self.tabs.iter().any(|t| t.path == path);
+
         if new
             && !pinned
             && let Some(old) = self.preview.clone()
         {
             let _ = self.close(&old);
         }
+
         if new {
             let body = load(&path, &self.ctx);
+
             self.tabs.push(PaneTab { path: path.clone(), body });
+
             if !pinned {
                 self.preview = Some(path.clone());
             }
         } else if pinned && self.preview.as_ref() == Some(&path) {
             self.preview = None;
         }
+
         if pinned && let Some(Body::Text(t)) = self.tabs.iter_mut().find(|t| t.path == path).map(|t| &mut t.body) {
             t.focus = true;
         }
+
         self.active = Some(path);
     }
 
@@ -157,6 +169,7 @@ impl Editor {
     /// The same, `pinned` or as the preview tab a click shows (the next one replaces it).
     pub(crate) fn goto_as(&mut self, path: PathBuf, line: usize, col: usize, pinned: bool) {
         self.open(path.clone(), pinned);
+
         if let Some(Body::Text(t)) = self.tabs.iter_mut().find(|t| t.path == path).map(|t| &mut t.body) {
             t.jump = Some((line, col));
         }
@@ -166,10 +179,12 @@ impl Editor {
     pub(crate) fn open_results(&mut self, root: &Path, ask: Ask, hits: Vec<crate::editor::find::Hit>) {
         let results = Results { ask, hits, selected: 0 };
         let path = root.join(results.title());
+
         match self.tabs.iter_mut().find(|tab| tab.path == path) {
             Some(tab) => tab.body = Body::Results(Box::new(results)),
             None => self.tabs.push(PaneTab { path: path.clone(), body: Body::Results(Box::new(results)) }),
         }
+
         self.active = Some(path);
     }
 
@@ -181,6 +196,7 @@ impl Editor {
             self.code.saved(path);
             self.problems.saved(path);
         }
+
         Ok(())
     }
 
@@ -188,23 +204,28 @@ impl Editor {
     pub(crate) fn close(&mut self, path: &Path) -> Result<(), String> {
         self.save_tab(path)?;
         self.tabs.retain(|t| t.path != path);
+
         if self.preview.as_deref() == Some(path) {
             self.preview = None;
         }
+
         if self.active.as_deref() == Some(path) {
             self.active = self.tabs.last().map(|t| t.path.clone());
         }
+
         Ok(())
     }
 
     /// Saves the tab forward (Ctrl+S: over a file that changed under it too).
     pub(crate) fn save(&mut self) -> Result<(), String> {
         let Some(active) = self.active.clone() else { return Ok(()) };
+
         // a compare tab saves the file it compares
         let file = self.tabs.iter().find_map(|t| match &t.body {
             Body::Compare(c) if t.path == active => Some(c.file.clone()),
             _ => None,
         });
+
         self.save_tab(file.as_deref().unwrap_or(&active))
     }
 
@@ -222,12 +243,15 @@ impl Editor {
     /// Retargets tabs at `from` and every tab below it after a file or folder rename.
     pub(crate) fn rename_path(&mut self, from: &Path, to: &Path) {
         let retarget = |path: &Path| path.strip_prefix(from).map_or_else(|_| path.to_path_buf(), |suffix| to.join(suffix));
+
         for tab in &mut self.tabs {
             tab.path = retarget(&tab.path);
+
             if let Body::Compare(compare) = &mut tab.body {
                 compare.file = retarget(&compare.file);
             }
         }
+
         self.active = self.active.as_deref().map(&retarget);
         self.preview = self.preview.as_deref().map(&retarget);
     }
@@ -235,9 +259,11 @@ impl Editor {
     /// Drops tabs at `path` and below without saving files that have just been sent to the trash.
     pub(crate) fn discard_path(&mut self, path: &Path) {
         self.tabs.retain(|tab| !tab.path.starts_with(path));
+
         if self.active.as_deref().is_some_and(|active| active.starts_with(path)) {
             self.active = self.tabs.last().map(|tab| tab.path.clone());
         }
+
         if self.preview.as_deref().is_some_and(|preview| preview.starts_with(path)) {
             self.preview = None;
         }
@@ -301,6 +327,7 @@ impl DrawingApp {
     pub(crate) fn ft_show_editor(&mut self, id: &str, show: bool) {
         let Some(element) = self.scene.elements.iter_mut().find(|e| e.id == id) else { return };
         let (Some(spec), ElementKind::Rectangle { width, .. }) = (element.filetree.as_mut(), &mut element.kind) else { return };
+
         if show && !spec.editor {
             spec.tree_width = Some(*width);
             *width += EDITOR_W + SEAM;
@@ -316,23 +343,29 @@ impl DrawingApp {
     /// is the folder selected in the tree (or the selected file's), else the one shown. The pane shows, for the matches.
     pub(crate) fn ft_find_open(&mut self, id: &str, query: String) {
         let Some(spec) = self.ft_spec(id).cloned() else { return };
+
         self.ft_show_editor(id, true);
         let ctx = self.filetrees.ctx.clone().unwrap_or_default();
         let selected = self.filetrees.views.get(id).and_then(|v| v.selected.clone());
+
         let folder = match selected {
             Some(path) if path.is_dir() => path,
             Some(path) => path.parent().map_or_else(|| spec.shown(), Path::to_path_buf),
             None => spec.shown(),
         };
+
         let ed = self.ft_editor(id);
+
         ed.texts.refresh(&spec.root_path(), &ctx);
         ed.popup = None;
+
         // pressed again with the popup open: it keeps what was asked, takes the selected text and the keys
         match ed.find.as_mut() {
             Some(find) => {
                 if !query.is_empty() {
                     find.query = query;
                 }
+
                 find.focus = true;
             }
             None => ed.find = Some(FindFiles::new(query, folder)),
@@ -344,6 +377,7 @@ impl DrawingApp {
         let ctx = self.filetrees.ctx.clone().unwrap_or_default();
         let root = self.ft_spec(id).map(FileTreeSpec::root_path).unwrap_or_default();
         let ed = self.filetrees.editors.entry(id.to_string()).or_insert_with(|| Editor::new(ctx.clone()));
+
         ed.code.open(root, &ctx);
         ed
     }
@@ -375,6 +409,7 @@ impl DrawingApp {
             }
             PaneAct::Comment(req) => {
                 let root = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.filetree.as_ref()).map(|f| f.root.clone()).unwrap_or_default();
+
                 self.open_maestro_note(id, &root, true, req);
             }
             PaneAct::Revert(file, k) => {
@@ -387,6 +422,7 @@ impl DrawingApp {
             PaneAct::OpenDefault(path) => crate::app::browser::open_external(&path.to_string_lossy()),
             PaneAct::Retry(path) => {
                 let ctx = self.filetrees.ctx.clone().unwrap_or_default();
+
                 if let Some(tab) = self.filetrees.editors.get_mut(id).and_then(|ed| ed.tabs.iter_mut().find(|t| t.path == path)) {
                     tab.body = load(&path, &ctx);
                 }
@@ -399,12 +435,14 @@ impl DrawingApp {
             PaneAct::CloseOthers(path) => {
                 let others: Vec<PathBuf> =
                     self.filetrees.editors.get(id).map(|ed| ed.tabs.iter().map(|t| t.path.clone()).filter(|p| *p != path).collect()).unwrap_or_default();
+
                 for other in others {
                     self.ft_pane_apply(id, PaneAct::Close(other));
                 }
             }
             PaneAct::CloseAll => {
                 let all: Vec<PathBuf> = self.filetrees.editors.get(id).map(|ed| ed.tabs.iter().map(|t| t.path.clone()).collect()).unwrap_or_default();
+
                 for path in all {
                     self.ft_pane_apply(id, PaneAct::Close(path));
                 }
@@ -413,6 +451,7 @@ impl DrawingApp {
                 if let Some(ctx) = self.filetrees.ctx.clone() {
                     ctx.copy_text(path.display().to_string());
                 }
+
                 self.toast("Caminho copiado.");
             }
             PaneAct::RevealInTree(path) => self.ft_reveal(id, &path),
@@ -432,6 +471,7 @@ impl DrawingApp {
             PaneAct::Results(ask, hits) => {
                 self.ft_show_editor(id, true);
                 let root = self.ft_spec(id).map(FileTreeSpec::root_path).unwrap_or_default();
+
                 self.ft_editor(id).open_results(&root, ask, hits);
             }
             PaneAct::Missing(word) => self.toast(format!("Declaração de '{word}' não encontrada")),
@@ -465,6 +505,7 @@ impl DrawingApp {
             }
             PaneAct::Reveal(path) => {
                 let dir = path.parent().map(Path::to_path_buf).unwrap_or(path);
+
                 crate::app::browser::open_external(&dir.to_string_lossy());
             }
         }
@@ -481,6 +522,7 @@ mod tests {
         let directory = PathBuf::from("/project/src");
         let old = directory.join("main.rs");
         let moved = directory.join("app.rs");
+
         editor.tabs.push(PaneTab { path: old.clone(), body: Body::Refused(String::new()) });
         editor.active = Some(old.clone());
         editor.preview = Some(old.clone());

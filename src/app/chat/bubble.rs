@@ -10,6 +10,7 @@ use crate::prelude::*;
 pub(crate) fn person_bubble(ui: &mut egui::Ui, text: egui::RichText, widest: f32, fill: Color32, corner: u8, margin: egui::Margin) -> egui::Response {
     let inner = (widest.min(ui.available_width()) - margin.sum().x).max(1.0);
     let galley = egui::WidgetText::from(text).into_galley(ui, Some(egui::TextWrapMode::Wrap), inner, egui::FontSelection::Default);
+
     ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
         egui::Frame::new().fill(fill).corner_radius(corner).inner_margin(margin).show(ui, |ui| ui.add(egui::Label::new(galley))).response
     })

@@ -8,6 +8,7 @@ use crate::mcp::bridge::NodeKind;
 /// A chat as the form makes it, of an agent called `name` run by `command`: its id.
 fn new_chat(app: &mut DrawingApp, name: &str, command: &str) -> String {
     let installed = [Preset::new(name, command)];
+
     app.create_chat(&NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &installed);
     app.chat_agent.clone().unwrap()
 }
@@ -27,26 +28,33 @@ fn ids(rows: &[Entry]) -> Vec<String> {
 fn a_new_chat_has_its_card_on_the_canvas_and_each_goes_as_asked() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let id = new_chat(&mut app, "Claude Code", "claude");
     // the card: a window with the chat's own id, selected, in the middle of the view
     let card = &app.scene.elements[0];
+
     assert_eq!((app.scene.elements.len(), card.id.as_str(), card.is_node(), app.selected.as_slice()), (1, id.as_str(), true, &[0][..]));
     assert_eq!(card.chat, Some(ChatSpec { name: "Claude Code · projeto".into(), agent: "claude".into(), cwd: "~/projeto".into(), folded: None }));
     assert_eq!(element_bounds(card).center(), app.to_world(app.canvas_rect.center()));
     // the next chat's lands beside it, not over it
     let other = new_chat(&mut app, "Codex", "codex");
     let (first, second) = (element_bounds(&app.scene.elements[0]), element_bounds(&app.scene.elements[1]));
+
     assert!(!first.intersects(second) && (second.center() - first.center()).length() < 400.0, "{first:?} {second:?}");
     // and a window under the middle of the view does not push a card out of sight: it goes beside it
     let mut window = app.new_element(ElementKind::Rectangle { x: -1000.0, y: -3000.0, width: 2000.0, height: 3200.0 });
+
     window.terminal = Some(TerminalSpec::default());
+
     let spot = {
         app.scene.elements.push(window);
         let spot = app.chat_spot(Pos2::new(0.0, -400.0));
+
         app.scene.elements.pop();
         spot
     };
+
     assert!(spot.min.y > 200.0 && spot.center().x == 0.0 && spot.max.y < 600.0, "just under the window: {spot:?}");
     // the card deleted: the conversation stays in the list, and nothing brings the card back
     app.selected = vec![0];
@@ -78,6 +86,7 @@ fn a_new_chat_has_its_card_on_the_canvas_and_each_goes_as_asked() {
 fn a_chat_from_before_gets_its_card_from_the_canvas_menu() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     // as chats.json had it before there were cards
     app.chats.push(serde_json::from_value(json!({ "id": "velho", "agent": "codex", "name": "Velho", "cwd": "~/x" })).unwrap());
@@ -86,8 +95,10 @@ fn a_chat_from_before_gets_its_card_from_the_canvas_menu() {
     // Adicionar › Chat: a new one, or one of the list with no card here
     assert_eq!(ids(&[app.chat_add_entry()]), ["Chat[add_chat - chat_node:velho]"]);
     let at = Pos2::new(120.0, 80.0);
+
     app.context_action(&ctx, &Target::Canvas(at), "chat_node:velho");
     let card = app.chat_node("velho").unwrap();
+
     assert_eq!((app.scene.elements[card].center(), app.selected.clone()), (at, vec![card]), "where the menu opened");
     assert_eq!(ids(&[app.chat_add_entry()]), ["add_chat"], "every chat is on the canvas: a plain row");
     // the card says what chats.json says, renamed there
@@ -97,6 +108,7 @@ fn a_chat_from_before_gets_its_card_from_the_canvas_menu() {
     // the card's last message: whose it is, its spaces folded and its lines kept (for its Markdown); an agent's
     // question is that agent's
     use crate::transcript::ChatItem;
+
     assert_eq!(app.chat_preview("velho"), None);
     app.chat_transcript("velho").items.extend([ChatItem::User("oi,\n tudo bem?".into()), ChatItem::Agent("tudo  certo".into())]);
     assert_eq!(app.chat_preview("velho").as_deref(), Some("tudo certo"));
@@ -106,14 +118,17 @@ fn a_chat_from_before_gets_its_card_from_the_canvas_menu() {
     assert_eq!(app.chat_preview("velho").as_deref(), Some("Você: oi,\ntudo bem?"));
     // its own menu: it opens the chat, has no copy, and deleting says what it takes
     let rows = app.context_entries(&Target::Element("velho".into()));
+
     assert_eq!(ids(&rows), ["open_chat", "open_mini_chat", "-", "lock", "front", "back", "-", "delete"]);
     assert!(rows.iter().any(|r| matches!(r, Entry::Item { id, label, .. } if id == "delete" && label == "Tirar do canvas")));
     app.context_action(&ctx, &Target::Element("velho".into()), "open_chat");
     assert_eq!((app.chat_open, app.chat_agent.as_deref()), (true, Some("velho")));
     // the drawing's own format carries the card (the clipboard, the MCP's view of the canvas)
     let json = Value::Array(interop_elements(&app.scene.elements));
+
     assert_eq!(json[0]["type"], "chat");
     let back = from_interop_elements(&json);
+
     assert_eq!((back[0].id.as_str(), &back[0].chat), ("velho", &app.scene.elements[card].chat));
 }
 
@@ -121,18 +136,23 @@ fn a_chat_from_before_gets_its_card_from_the_canvas_menu() {
 fn a_double_click_on_the_card_opens_its_chat_and_a_drag_anywhere_on_it_moves_it() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let id = new_chat(&mut app, "Claude Code", "claude");
+
     app.selected.clear();
     // its body is no terminal's screen: a drag there carries the card
     let before = element_bounds(&app.scene.elements[0]);
     let on = app.to_screen(before.center());
+
     drag(&mut app, &ctx, on, on + Vec2::new(80.0, 40.0));
     let after = element_bounds(&app.scene.elements[0]);
+
     assert_eq!((after.min - before.min, after.size()), (Vec2::new(80.0, 40.0), before.size()));
     assert!(!app.chat_open);
     app.chat_agent = None;
     let on = app.to_screen(after.center());
+
     double_click(&mut app, &ctx, on, 10.0);
     assert_eq!((app.chat_open, app.chat_agent), (true, Some(id)));
 }
@@ -142,11 +162,14 @@ fn a_rope_between_a_chat_and_a_terminal_is_what_the_bridge_lists_and_the_apps_to
     let mut app = DrawingApp { bridge: Bridge::start(None).ok(), ..Default::default() };
     let chat = new_chat(&mut app, "Claude Code", "claude");
     let mut dev = app.new_element(ElementKind::Rectangle { x: 600.0, y: 0.0, width: 200.0, height: 120.0 });
+
     dev.terminal = Some(TerminalSpec { name: "Dev".into(), ..Default::default() });
+
     let dev = {
         app.scene.elements.push(dev);
         app.scene.elements[1].id.clone()
     };
+
     app.connect(&chat, &dev);
     let shared = app.bridge.as_ref().unwrap().shared.clone();
     let (sender, _commands) = std::sync::mpsc::channel();
@@ -154,20 +177,24 @@ fn a_rope_between_a_chat_and_a_terminal_is_what_the_bridge_lists_and_the_apps_to
     // on the canvas the chat is the Maestro: an agent like a terminal, called so, that commands what it is roped to
     let nodes = app.agent_nodes();
     let node = nodes.iter().find(|n| n.id == chat).unwrap();
+
     assert_eq!((node.kind, node.name.as_str(), node.maestro, &node.links), (NodeKind::Chat, "Luna", true, &vec![dev.clone()]));
     app.publish_nodes();
     assert_eq!(list(&dev), "Você: \"Dev\"\nAgentes conectados:\n  - \"Luna\" (chat, parado)");
     assert_eq!(list(&chat), "Você: \"Luna\"\nAgentes conectados:\n  - \"Dev\"");
     // a second chat on the canvas: each Maestro says which chat it is
     let other = new_chat(&mut app, "Codex", "codex");
+
     app.connect(&other, &chat);
     app.publish_nodes();
     assert_eq!(list(&dev), "Você: \"Dev\"\nAgentes conectados:\n  - \"Luna (Claude Code · projeto)\" (chat, parado)");
     let seen = list(&chat);
+
     assert!(seen.contains("\"Dev\"") && seen.contains("\"Luna (Codex · projeto)\" (chat, parado)"), "{seen}");
     assert!(!list(&other).contains("\"Dev\""), "a chat roped reaches only what its ropes reach");
     // the MCP's disconnect cuts one rope, by the names list shows
     let pair = json!({ "a": "Dev", "b": "Luna (Claude Code · projeto)" });
+
     assert!(app.act("disconnect", &pair).unwrap().contains("desconectados"));
     assert_eq!(app.links()[&chat], vec![other.clone()]);
     assert!(app.act("disconnect", &pair).unwrap_err().contains("não estão conectados"));
@@ -186,22 +213,26 @@ fn a_rope_between_a_chat_and_a_terminal_is_what_the_bridge_lists_and_the_apps_to
 fn the_maestro_comes_onto_the_canvas_when_it_builds_its_team() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     // a chat from before there were cards: none on the canvas
     app.chats.push(serde_json::from_value(json!({ "id": "velho", "agent": "claude", "name": "Velho", "cwd": "~/x" })).unwrap());
     let (reply, said) = std::sync::mpsc::channel();
+
     // it recruits (the bridge says which chat): its card appears, and the recruit hangs from it, in the chat's folder
     app.apply_agent_command(UiCommand::Recruit { from: "velho".into(), command: "codex".into(), worktree: false, mode: None, reply: reply.clone() });
     assert!(said.recv().unwrap().unwrap().contains("criado abaixo de você"));
     let card = app.chat_node("velho").expect("the Maestro's card");
     let recruit = app.scene.elements.iter().find(|e| e.terminal.is_some()).cloned().unwrap();
     let spec = recruit.terminal.as_ref().unwrap();
+
     assert_eq!((spec.cwd.as_str(), spec.command.as_str(), spec.maestro), ("~/x", "codex", false));
     assert_eq!(app.links()["velho"], vec![recruit.id.clone()]);
     assert!(local_bounds(&recruit).min.y > local_bounds(&app.scene.elements[card]).max.y, "below the card");
     // its team is what `list` gives it now: the Maestro, and who it commands
     let nodes = app.agent_nodes();
     let maestro = nodes.iter().find(|n| n.id == "velho").unwrap();
+
     assert_eq!((maestro.name.as_str(), maestro.maestro, &maestro.links), ("Luna", true, &vec![recruit.id.clone()]));
     // a portal it opens hangs from the card too; what is no chat still needs a place on the canvas
     app.apply_agent_command(UiCommand::CreatePortal { from: "velho".into(), url: "exemplo.com".into(), name: String::new(), reply: reply.clone() });
@@ -218,34 +249,43 @@ fn a_chat_asks_the_chat_it_is_roped_to_over_tcp_by_a_token_of_its_own() {
     // agents this machine does not have: the question gets to the chat, its agent never runs
     let asker = new_chat(&mut app, "Sábia", "mago-agente-que-nao-existe");
     let asked = new_chat(&mut app, "Fantasma", "mago-agente-que-nao-existe");
+
     app.connect(&asker, &asked);
     app.publish_nodes();
     // what the asker's agent runs with: the bridge, and who it is by its own token
     let env: std::collections::HashMap<String, String> = app.chat_env(&asker).into_iter().collect();
     let (address, token) = (env["MAGOAGENT_BRIDGE"].clone(), env["MAGOAGENT_TOKEN"].clone());
+
     assert_eq!(env["MAGOAGENT_CHAT_ID"], asker);
     assert_eq!((env["MAGOAGENT_TERMINAL_ID"].as_str(), env["MAGOAGENT_TERMINAL_NAME"].as_str()), ("", "Luna (Sábia · projeto)"));
     assert!(token != app.bridge.as_ref().unwrap().token && env.contains_key("PATH"));
     // the token says which chat speaks: it cannot speak for another, and need not say who it is
     let request = json!({ "cmd": "ask", "name": "Luna (Fantasma · projeto)", "text": "tudo certo?", "timeout": 20 });
     let wait = std::time::Duration::from_secs(20);
+
     assert!(crate::mcp::bridge::request_to(&address, &token, &asked, request.clone(), wait).unwrap_err().contains("não pode falar por outro"));
     let asking = std::thread::spawn(move || crate::mcp::bridge::request_to(&address, &token, "", request, wait));
     let mut prompt = String::new();
+
     while !asking.is_finished() {
         let commands: Vec<UiCommand> = app.bridge.as_ref().unwrap().commands.try_iter().collect();
+
         for command in commands {
             app.apply_agent_command(command);
         }
+
         // in the asked chat's line, as the asker's
         if let Some(ask) = app.chat_asks.first() {
             assert_eq!(ask.chat, asked);
             prompt = ask.prompt();
         }
+
         app.chat_nodes_tick(&ctx);
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
+
     let why = asking.join().unwrap().unwrap_err();
+
     assert!(prompt.starts_with("Pergunta de \"Luna (Sábia · projeto)\"") && prompt.ends_with("tudo certo?"), "{prompt} / {why}");
     assert!(why.contains("\"Luna (Fantasma · projeto)\" não pôde receber a pergunta") && why.contains("não foi encontrado"), "{why}");
     assert!(app.chat_asks.is_empty());
@@ -255,10 +295,12 @@ fn a_chat_asks_the_chat_it_is_roped_to_over_tcp_by_a_token_of_its_own() {
 fn the_cards_menu_and_its_button_open_its_chat_in_the_mini_chat() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     // with the island off: on, the chat opens in it
     app.prefs.island = false;
     frame(&mut app, &ctx, vec![]);
     let id = new_chat(&mut app, "Claude Code", "claude");
+
     app.chat_open = false;
     app.chat_agent = None;
     assert!(ids(&app.chat_node_entries(&id)).contains(&"open_mini_chat".to_string()));
@@ -268,18 +310,22 @@ fn the_cards_menu_and_its_button_open_its_chat_in_the_mini_chat() {
     // the button sits in the header, inside the card, left of its dot
     let (frame_rect, z) = app.terminal_frame(&app.scene.elements[0]);
     let corner = crate::app::chat::node_ui::mini_button(frame_rect, z);
+
     assert!(frame_rect.contains_rect(corner) && corner.bottom() <= frame_rect.top() + TERMINAL_HEADER * z);
     // its click puts the card in full screen over the canvas, and a second one brings it back
     app.mini_set(false);
     let card_id = app.scene.elements[0].id.clone();
+
     for (_, expected) in [(0, Some(card_id.clone())), (1, None)] {
         let (frame_rect, z) = app.terminal_frame(&app.scene.elements[0]);
         let at = crate::app::chat::node_ui::mini_button(frame_rect, z).center();
+
         // the cards are drawn by their own overlay (update.rs), not by the canvas's frame
         for events in [vec![], vec![egui::Event::PointerMoved(at)], vec![egui::Event::PointerMoved(at)], vec![button(at, true)], vec![button(at, false)]] {
             let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), events, ..Default::default() };
             let _ = ctx.run_ui(raw, |_| app.chat_node_overlay(&ctx));
         }
+
         assert_eq!(app.terminal_elevated, expected);
         assert!(!app.mini.open, "no mini chat");
     }
@@ -289,13 +335,16 @@ fn the_cards_menu_and_its_button_open_its_chat_in_the_mini_chat() {
 fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let boss = new_chat(&mut app, "Chefe", "mago-agente-que-nao-existe");
     let (reply, said) = std::sync::mpsc::channel();
+
     // Terminal (the default): a terminal, as before
     app.apply_agent_command(UiCommand::Recruit { from: boss.clone(), command: "codex".into(), worktree: false, mode: None, reply: reply.clone() });
     assert!(said.recv().unwrap().unwrap().contains("criado abaixo de você"));
     assert_eq!((app.scene.elements.iter().filter(|e| e.terminal.is_some()).count(), app.chats.len()), (1, 1));
+
     // `mode` chat wins over the setting: a chat that is no Maestro, with its card, roped to the boss; below it is taken,
     // so in the free place nearest it, as the answer says
     app.apply_agent_command(UiCommand::Recruit {
@@ -305,23 +354,30 @@ fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() 
         mode: Some(AgentMode::Chat),
         reply: reply.clone(),
     });
+
     let answer = said.recv().unwrap().unwrap();
     let chat = app.chats.iter().find(|c| c.recruit).cloned().expect("the recruit's chat");
+
     assert_eq!((chat.agent.as_str(), chat.cwd.as_str()), ("codex", "~/projeto"));
     let card = app.chat_node(&chat.id).expect("its card");
+
     assert!(app.links()[&boss].contains(&chat.id));
     let (spot, boss_spot) = (local_bounds(&app.scene.elements[card]), local_bounds(&app.scene.elements[app.chat_node(&boss).unwrap()]));
+
     assert!(answer.contains(&format!("criado {}", side_of(spot, boss_spot))), "{answer}");
     let windows: Vec<Rect> = app.scene.elements.iter().filter(|e| e.is_node() && e.id != chat.id).map(local_bounds).collect();
+
     assert!(windows.iter().all(|window| !window.intersects(spot)), "{spot:?} over {windows:?}");
     // big enough to show its conversation, not the cut preview
     let size = local_bounds(&app.scene.elements[card]).size();
+
     assert!(crate::app::chat::node_ui::chat_live(Rect::from_min_size(Pos2::ZERO, size), 1.0, true), "{size:?}");
     assert_eq!(app.chat_starts, vec![(chat.id.clone(), "revise o diff".to_string())]);
     // an ordinary agent: its own name, no Maestro's hands
     assert_eq!(app.maestro_name(&chat.name), chat.name);
     assert_eq!(app.maestro_name(&boss), "Luna");
     let node = app.agent_nodes().into_iter().find(|n| n.id == chat.id).unwrap();
+
     assert_eq!((node.name, node.maestro), (chat.name.clone(), false));
     assert!(!crate::app::chat::tools::system_prompt(&app.prefs, &chat).contains("Luna, a assistente do MagoAgent"));
     // the setting alone does it too, and `mode` terminal beats it
@@ -343,18 +399,22 @@ fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() 
 fn a_chat_recruits_flags_fill_its_model_effort_and_permission_and_only_the_rest_is_the_message() {
     use crate::app::maestro::{RecruitFlags, recruit_flags};
     let (flags, prompt) = recruit_flags("--model sonnet --effort=high --permission-mode bypassPermissions \"faça X\"");
+
     assert_eq!(flags, RecruitFlags { model: Some("sonnet".into()), effort: Some("high".into()), mode: Some(1) });
     assert_eq!(prompt, "\"faça X\"");
     // a flag it doesn't know stays in the prompt; an effort that doesn't exist is dropped
     let (flags, prompt) = recruit_flags("--effort enorme --verbose revise");
+
     assert_eq!((flags.effort, prompt), (None, "--verbose revise"));
     assert_eq!(recruit_flags("--permission-mode auto oi").0.mode, Some(0));
 
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let boss = new_chat(&mut app, "Chefe", "mago-agente-que-nao-existe");
     let (reply, said) = std::sync::mpsc::channel();
+
     app.apply_agent_command(UiCommand::Recruit {
         from: boss,
         command: "claude --model sonnet --effort high --permission-mode bypassPermissions \"faça X\"".into(),
@@ -362,8 +422,10 @@ fn a_chat_recruits_flags_fill_its_model_effort_and_permission_and_only_the_rest_
         mode: Some(AgentMode::Chat),
         reply,
     });
+
     assert!(said.recv().unwrap().is_ok());
     let chat = app.chats.iter().find(|c| c.recruit).unwrap();
+
     assert_eq!((chat.model.as_str(), chat.effort.as_str(), chat.mode), ("sonnet", "high", 1));
     assert_eq!(app.chat_starts, vec![(chat.id.clone(), "faça X".to_string())]);
 }
@@ -372,10 +434,12 @@ fn a_chat_recruits_flags_fill_its_model_effort_and_permission_and_only_the_rest_
 fn a_recruit_chat_counts_toward_the_ceiling_while_its_card_is_on_the_canvas() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let boss = new_chat(&mut app, "Chefe", "mago-agente-que-nao-existe");
     let before = app.running_agents();
     let (reply, said) = std::sync::mpsc::channel();
+
     app.apply_agent_command(UiCommand::Recruit { from: boss.clone(), command: "claude".into(), worktree: false, mode: Some(AgentMode::Chat), reply });
     assert!(said.recv().unwrap().is_ok());
     // it answers nothing, yet it weighs
@@ -383,6 +447,7 @@ fn a_recruit_chat_counts_toward_the_ceiling_while_its_card_is_on_the_canvas() {
     assert_eq!(app.running_agents(), before + 1);
     app.prefs.max_agents = before + 1;
     let (reply, said) = std::sync::mpsc::channel();
+
     app.apply_agent_command(UiCommand::Recruit { from: boss, command: "claude".into(), worktree: false, mode: Some(AgentMode::Chat), reply });
     assert!(said.recv().unwrap().unwrap_err().contains("teto"));
 }
@@ -392,9 +457,11 @@ fn a_recruits_card_shows_its_task_folds_to_it_and_pops_what_it_does_out_of_sight
     use crate::transcript::{ChatItem, Step, Transcript};
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let boss = new_chat(&mut app, "Chefe", "mago-agente-que-nao-existe");
     let (reply, said) = std::sync::mpsc::channel();
+
     app.apply_agent_command(UiCommand::Recruit {
         from: boss.clone(),
         command: "codex \"revise   o diff\"".into(),
@@ -402,17 +469,21 @@ fn a_recruits_card_shows_its_task_folds_to_it_and_pops_what_it_does_out_of_sight
         mode: Some(AgentMode::Chat),
         reply,
     });
+
     assert!(said.recv().unwrap().is_ok());
     let chat = app.chats.iter().find(|c| c.recruit).cloned().unwrap();
+
     // its task: the first message, waiting to be sent, then as sent (another agent's question without who asked)
     assert_eq!(app.recruit_task(&chat.id).as_deref(), Some("revise o diff"));
     let mut transcript = Transcript::new(PathBuf::new());
+
     transcript.items.push(ChatItem::User("revise o diff agora".into()));
     app.transcripts.insert(chat.id.clone(), transcript);
     assert_eq!(app.recruit_task(&chat.id).as_deref(), Some("revise o diff agora"));
     // folded to its header and task, and open again at the height it had (by the MCP too)
     let card = app.chat_node(&chat.id).unwrap();
     let open = local_bounds(&app.scene.elements[card]).height();
+
     assert!(app.act("chat_node", &json!({ "action": "fold", "chat": chat.name })).unwrap().contains("recolhido"));
     assert_eq!(local_bounds(&app.scene.elements[card]).height(), crate::app::chat::recruit_card::FOLDED_HEIGHT);
     assert_eq!(app.scene.elements[card].chat.as_ref().unwrap().folded, Some(open));
@@ -420,9 +491,11 @@ fn a_recruits_card_shows_its_task_folds_to_it_and_pops_what_it_does_out_of_sight
     app.recruit_popups_tick();
     assert!(app.recruit_popups.is_empty());
     let step = Step { id: "t1".into(), name: "Bash".into(), what: "cargo test".into(), ..Default::default() };
+
     app.transcripts.get_mut(&chat.id).unwrap().items.push(ChatItem::Tool(step));
     app.recruit_popups_tick();
     let popped: Vec<_> = app.recruit_popups.iter().map(|p| (p.who.as_str(), p.text.as_str())).collect();
+
     assert_eq!(popped, vec![(chat.name.as_str(), "Bash cargo test")]);
     assert!(app.act("chat_node", &json!({ "action": "fold", "chat": chat.name })).unwrap().contains("aberto"));
     assert_eq!(local_bounds(&app.scene.elements[card]).height(), open);
@@ -434,11 +507,14 @@ fn a_recruits_card_shows_its_task_folds_to_it_and_pops_what_it_does_out_of_sight
 #[test]
 fn zooming_in_keeps_a_chat_card_as_it_was() {
     use crate::app::chat::{node::CHAT_NODE_SIZE, node_ui::chat_live};
+
     // the card's usual 300 x 150: the picture at 100% and at 230% alike
     for zoom in [1.0, 2.3] {
         assert!(!chat_live(Rect::from_min_size(Pos2::ZERO, CHAT_NODE_SIZE * zoom), zoom, false), "{zoom}");
     }
+
     // made bigger, the chat, at any zoom it can be read at
     let big = Vec2::new(420.0, 360.0);
+
     assert!(chat_live(Rect::from_min_size(Pos2::ZERO, big * 2.3), 2.3, false) && chat_live(Rect::from_min_size(Pos2::ZERO, big * 0.5), 0.5, false));
 }

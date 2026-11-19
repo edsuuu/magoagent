@@ -11,22 +11,28 @@ pub(crate) fn distance_to_segment(point: [f32; 2], start: [f32; 2], end: [f32; 2
     let v = [end[0] - start[0], end[1] - start[1]];
     let w = [point[0] - start[0], point[1] - start[1]];
     let len_sq = v[0] * v[0] + v[1] * v[1];
+
     if len_sq == 0.0 {
         return dist(point, start);
     }
+
     let t = ((w[0] * v[0] + w[1] * v[1]) / len_sq).clamp(0.0, 1.0);
+
     dist(point, [start[0] + t * v[0], start[1] + t * v[1]])
 }
 
 pub(crate) fn polygon_contains(poly: &[[f32; 2]], p: [f32; 2]) -> bool {
     let mut inside = false;
     let n = poly.len();
+
     for i in 0..n {
         let (a, b) = (poly[i], poly[(i + n - 1) % n]);
+
         if (a[1] > p[1]) != (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0] {
             inside = !inside;
         }
     }
+
     inside
 }
 
@@ -62,8 +68,10 @@ pub(crate) fn corner_cut(prev: [f32; 2], c: [f32; 2], next: [f32; 2], r: f32) ->
         let (dx, dy) = (o[0] - c[0], o[1] - c[1]);
         let len = (dx * dx + dy * dy).sqrt().max(0.001);
         let r = r.min(len / 2.0);
+
         [c[0] + dx / len * r, c[1] + dy / len * r]
     };
+
     (toward(prev), toward(next))
 }
 
@@ -72,6 +80,7 @@ pub(crate) fn quad(a: [f32; 2], c: [f32; 2], b: [f32; 2], steps: usize) -> Vec<[
         .map(|i| {
             let t = i as f32 / steps as f32;
             let u = 1.0 - t;
+
             [u * u * a[0] + 2.0 * u * t * c[0] + t * t * b[0], u * u * a[1] + 2.0 * u * t * c[1] + t * t * b[1]]
         })
         .collect()
@@ -81,25 +90,33 @@ pub(crate) fn quad(a: [f32; 2], c: [f32; 2], b: [f32; 2], steps: usize) -> Vec<[
 pub(crate) fn shape_polygon(element: &Element) -> Option<Vec<[f32; 2]>> {
     if let ElementKind::Ellipse { x, y, width: w, height: h } = &element.kind {
         let (cx, cy) = (x + w / 2.0, y + h / 2.0);
+
         return Some(
             (0..48)
                 .map(|i| {
                     let t = i as f32 / 48.0 * std::f32::consts::TAU;
+
                     [cx + w / 2.0 * t.cos(), cy + h / 2.0 * t.sin()]
                 })
                 .collect(),
         );
     }
+
     let (corners, r) = box_corners(element)?;
+
     if r <= 0.0 {
         return Some(corners);
     }
+
     let n = corners.len();
     let mut out = Vec::new();
+
     for i in 0..n {
         let (a, b) = corner_cut(corners[(i + n - 1) % n], corners[i], corners[(i + 1) % n], r);
+
         out.extend(quad(a, corners[i], b, 6));
     }
+
     Some(out)
 }
 
@@ -110,10 +127,13 @@ pub(crate) fn dist(a: [f32; 2], b: [f32; 2]) -> f32 {
 /// Axis-aligned bounds in world space (rotation included).
 pub(crate) fn element_bounds(e: &Element) -> Rect {
     let local = local_bounds(e);
+
     if e.angle == 0.0 {
         return local;
     }
+
     let c = local.center();
+
     [local.left_top(), local.right_top(), local.right_bottom(), local.left_bottom()]
         .map(|p| c + rot(p - c, e.angle))
         .into_iter()
@@ -128,17 +148,22 @@ pub(crate) fn may_show(e: &Element, view: Rect, zoom: f32) -> bool {
     let curved = matches!(&e.kind, ElementKind::Line { points, .. } if e.style.round && points.len() > 2);
     // ponytail: a curve swings out of its points' box by less than a third of its size; its own path would be exact but costs its samples
     let swing = if curved { 0.3 * area.size().max_elem() } else { 0.05 * area.size().max_elem() };
+
     area = area.expand(40.0 + 2.0 * e.style.stroke_width + swing);
+
     if let (Some(name), ElementKind::Rectangle { x, y, .. }) = (&e.frame, &e.kind)
         && !name.is_empty()
     {
         // 13 points at the screen's scale (never below half), each letter at most one em
         let size = 13.0 * zoom.max(0.5) / zoom.max(f32::EPSILON);
+
         area = area.union(Rect::from_min_size(Pos2::new(*x, y - 4.0 - size * 1.5), Vec2::new(name.chars().count() as f32 * size, size * 1.5)));
     }
+
     if e.angle != 0.0 {
         area = Rect::from_center_size(area.center(), Vec2::splat(area.size().length()));
     }
+
     // the halo and the antialiasing: a few screen pixels
     area.expand(8.0 / zoom.max(f32::EPSILON)).intersects(view)
 }
@@ -149,6 +174,7 @@ pub(crate) fn line_path(e: &Element) -> Vec<[f32; 2]> {
         ElementKind::Line { points, .. } if e.rope && points.len() == 2 => rope_curve(points[0], points[1]),
         ElementKind::Line { points, .. } if e.style.round && points.len() > 2 => {
             let mut ctl = vec![points[0]];
+
             ctl.extend(points);
             ctl.push(points[points.len() - 1]);
             catmull_rom(&ctl, LINE_CURVE_STEPS)
@@ -162,6 +188,7 @@ pub(crate) fn line_path(e: &Element) -> Vec<[f32; 2]> {
 /// the straight line by more the longer the rope.
 pub(crate) fn rope_rest(a: [f32; 2], b: [f32; 2]) -> [f32; 2] {
     let sag = (dist(a, b) * 0.12).max(20.0);
+
     [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0 + 2.0 * sag]
 }
 
@@ -171,6 +198,7 @@ pub(crate) fn rope_through(a: [f32; 2], control: [f32; 2], b: [f32; 2]) -> Vec<[
         .map(|i| {
             let t = i as f32 / 24.0;
             let (u, w) = ((1.0 - t) * (1.0 - t), 2.0 * t * (1.0 - t));
+
             [u * a[0] + w * control[0] + t * t * b[0], u * a[1] + w * control[1] + t * t * b[1]]
         })
         .collect()
@@ -183,27 +211,33 @@ pub(crate) fn rope_curve(a: [f32; 2], b: [f32; 2]) -> Vec<[f32; 2]> {
 
 /// Size of a text in world units: its widest line in the hand font, one line height per line. Kept by the text's
 /// fingerprint: a note's text is a text element too, and its box was measured glyph by glyph several times a frame
-/// for every note of the canvas, on screen or not (48 notes of 200 lines took 66 ms a frame; asked: "poderíamos
-/// deixar só o que está na visual da tela").
+/// for every note of the canvas, on screen or not.
 pub(crate) fn text_size(value: &str, size: f32) -> Vec2 {
     // ponytail: a 64-bit fingerprint, a collision gives a text another's box; the cache empties itself when full
     const KEPT: usize = 4096;
+
     thread_local! {
         static MEASURED: std::cell::RefCell<std::collections::HashMap<(u64, u32), Vec2>> = Default::default();
     }
+
     let key = (fingerprint(value.as_bytes()), size.to_bits());
+
     if let Some(known) = MEASURED.with_borrow(|measured| measured.get(&key).copied()) {
         return known;
     }
+
     let lines = text_lines(value);
     let width = lines.iter().map(|l| text_advance(l, size)).fold(0.0, f32::max);
     let measured = Vec2::new(width.max(size * 0.5), lines.len() as f32 * size * LINE_HEIGHT);
+
     MEASURED.with_borrow_mut(|known| {
         if known.len() >= KEPT {
             known.clear();
         }
+
         known.insert(key, measured);
     });
+
     measured
 }
 
@@ -213,10 +247,13 @@ pub(crate) fn fingerprint(bytes: &[u8]) -> u64 {
     let mix = |hash: u64, word: u64| (hash.rotate_left(5) ^ word).wrapping_mul(SEED);
     let (words, rest) = bytes.as_chunks::<8>();
     let mut hash = mix(0, bytes.len() as u64);
+
     for word in words {
         hash = mix(hash, u64::from_le_bytes(*word));
     }
+
     let mut tail = [0u8; 8];
+
     tail[..rest.len()].copy_from_slice(rest);
     mix(hash, u64::from_le_bytes(tail))
 }
@@ -231,12 +268,14 @@ pub(crate) const ASSISTANT_FONT: &[u8] = include_bytes!(concat!(env!("CARGO_MANI
 pub(crate) fn text_advance(line: &str, size: f32) -> f32 {
     static FACES: std::sync::OnceLock<Vec<ttf_parser::Face<'static>>> = std::sync::OnceLock::new();
     let faces = FACES.get_or_init(|| [HAND_FACE, ASSISTANT_FONT].into_iter().filter_map(|data| ttf_parser::Face::parse(data, 0).ok()).collect());
+
     line.chars()
         .map(|ch| {
             faces
                 .iter()
                 .find_map(|face| {
                     let glyph = face.glyph_index(ch)?;
+
                     Some(face.glyph_hor_advance(glyph)? as f32 / face.units_per_em() as f32 * size)
                 })
                 .unwrap_or(size)
@@ -255,6 +294,7 @@ pub(crate) fn local_bounds(e: &Element) -> Rect {
             // a rope's box holds its hanging curve (line_path has none for freehand)
             let curve = if e.rope { line_path(e) } else { Vec::new() };
             let path = if curve.is_empty() { points } else { &curve };
+
             path.iter().map(|&p| Rect::from_min_max(p.into(), p.into())).reduce(Rect::union).unwrap_or(Rect::ZERO)
         }
     }
@@ -266,33 +306,38 @@ pub(crate) const WINDOW_GAP: f32 = 60.0;
 /// Where a window the size of `want` goes among `elements`: at `want` when that is free, else in the rings around
 /// `around` (the window that opens it, or `want` itself), lined up with its edges 60 away: first below, right, left and
 /// above it, then its corners, then the next ring out, overlapping no window or note. What an agent opens stays around
-/// it, not piled up on one side (asked: "a posição dos terminais, às vezes ele junta tudo na direita"). Free is
-/// `CLEAR` away from every window and note: 20 left them touching (asked: "precisa ver o espaçamento das coisas no
-/// canvas, para não ficar tudo grudado").
+/// it, not piled up on one side. Free is `CLEAR` away from every window and note: 20 left them touching.
 pub(crate) fn free_spot_among<'a>(elements: impl Iterator<Item = &'a Element>, want: Rect, around: Rect) -> Rect {
     const GAP: f32 = WINDOW_GAP;
     // under the rings' gap, so the spot lined up beside the window that opens it stays free of it
     const CLEAR: f32 = GAP - 4.0;
     let taken: Vec<Rect> = elements.filter(|e| e.is_node() || e.created.is_some()).map(|e| element_bounds(e).expand(CLEAR)).collect();
     let free = |spot: &Rect| !taken.iter().any(|t| t.intersects(*spot));
+
     if free(&want) {
         return want;
     }
+
     let size = want.size();
+
     // column or row `k` of the rings: 0 lines up with `around`, past it one window (and the gap) at a time
     let place = |k: i32, low: f32, high: f32, length: f32| match k {
         0 => low,
         k if k > 0 => high + GAP + (k - 1) as f32 * (length + GAP),
         k => low - GAP - length - (-k - 1) as f32 * (length + GAP),
     };
+
     // ponytail: six rings; a canvas packed past that overlaps at `want`
     let mut spots: Vec<(i32, i32)> = (-6..=6).flat_map(|column| (-6..=6).map(move |row| (column, row))).filter(|spot| *spot != (0, 0)).collect();
+
     spots.sort_by_key(|&(column, row)| (column.abs().max(row.abs()), column.abs() + row.abs(), row < 0, column < 0, row == 0));
+
     spots
         .into_iter()
         .map(|(column, row)| {
             let x = place(column, around.min.x, around.max.x, size.x);
             let y = place(row, around.min.y, around.max.y, size.y);
+
             Rect::from_min_size(Pos2::new(x, y), size)
         })
         .find(free)
@@ -304,6 +349,7 @@ pub(crate) fn side_of(spot: Rect, of: Rect) -> &'static str {
     let away = spot.center() - of.center();
     // by how far past the other it is on each axis, in its own size
     let (across, down) = (away.x / (spot.width() + of.width()), away.y / (spot.height() + of.height()));
+
     match (across.abs() >= down.abs(), across >= 0.0, down >= 0.0) {
         (true, true, _) => "à sua direita",
         (true, false, _) => "à sua esquerda",

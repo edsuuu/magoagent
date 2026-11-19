@@ -1,7 +1,10 @@
 //! macOS: compiles the SwiftUI interface (macos/MagoUI, a SwiftPM static library) and links it with the Swift runtime.
 //! Every other system: nothing. The contract is in docs/swiftui.md.
 
-use std::{path::PathBuf, process::Command};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {

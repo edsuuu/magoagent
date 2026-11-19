@@ -52,7 +52,6 @@ struct ChatCounts: Decodable, Equatable {
 struct SidebarState: Decodable, Equatable {
     var hidden: Bool
     var waiting: Int
-    var clearHidden: Bool
     var agentsClosed: Bool
     var nextKeys: String
     var agents: [AgentRow]

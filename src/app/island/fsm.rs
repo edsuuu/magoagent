@@ -64,33 +64,42 @@ impl Machine {
     pub(crate) fn step(&mut self, time: f64, inside: bool, held: bool, close_after: f64, open_on_hover: bool) {
         if close_after != self.close_after {
             self.close_after = close_after;
+
             // changed while the countdown runs: it starts again with the new wait
             if self.stage == Stage::Home && self.due.is_some() && !self.by_hover {
                 self.due = Some(time + close_after);
             }
         }
+
         self.open_on_hover = open_on_hover;
+
         if held != self.held {
             self.held = held;
+
             if held {
                 self.clear();
             } else if !self.inside {
                 self.rest(time);
             }
         }
+
         if inside != self.inside {
             self.inside = inside;
             if inside { self.entered(time) } else { self.left(time) }
         }
+
         if self.hover_due.is_some_and(|due| time >= due) {
             self.hover_due = None;
+
             if self.stage == Stage::Petit && !self.held && self.open_on_hover {
                 self.enter(Stage::Home, time);
                 self.by_hover = true;
             }
         }
+
         if self.due.is_some_and(|due| time >= due) && !self.held {
             self.by_hover = false;
+
             match self.stage {
                 Stage::Petit => self.enter(Stage::Hidden, time),
                 Stage::Home | Stage::Greeting => self.enter(Stage::Petit, time),
@@ -151,6 +160,7 @@ impl Machine {
         let due = self.due.filter(|_| self.stage == Stage::Home && !self.held)?;
         let window = (self.close_after * 0.6).min(10.0);
         let left = due - time;
+
         (window > 0.0 && left < window).then(|| (left / window).clamp(0.0, 1.0) as f32)
     }
 
@@ -161,6 +171,7 @@ impl Machine {
     fn enter(&mut self, stage: Stage, time: f64) {
         self.clear();
         self.stage = stage;
+
         if !self.inside {
             self.rest(time);
         }
@@ -171,9 +182,11 @@ impl Machine {
         if self.held {
             return;
         }
+
         match self.stage {
             Stage::Petit => {
                 let stays = self.compact_after.unwrap_or(PETIT_STAYS);
+
                 self.due = (stays > 0.0).then_some(time + stays);
             }
             Stage::Home => self.due = Some(time + if self.by_hover { HOVER_CLOSES } else { self.close_after }),
@@ -215,6 +228,7 @@ mod tests {
     /// The machine stepped every 50 ms from `from` to `to` with the pointer `inside` or not; "Fechar auto" at 15 s.
     fn run(machine: &mut Machine, from: f64, to: f64, inside: bool, hover: bool) {
         let mut time = from;
+
         while time <= to {
             machine.step(time, inside, false, 15.0, hover);
             time += 0.05;
@@ -224,6 +238,7 @@ mod tests {
     #[test]
     fn the_pointer_only_peeks_and_the_click_opens() {
         let mut machine = Machine::default();
+
         run(&mut machine, 0.0, 1.0, false, false);
         assert_eq!(machine.stage(), Stage::Hidden);
         // the pointer comes and rests for five seconds: compact, never open
@@ -250,6 +265,7 @@ mod tests {
     #[test]
     fn the_island_uses_the_configured_thirty_second_auto_close() {
         let mut machine = Machine::default();
+
         machine.click(0.0);
         machine.step(0.0, false, false, 30.0, false);
         run_with_close_after(&mut machine, 0.0, 29.9, false, 30.0);
@@ -258,12 +274,12 @@ mod tests {
         assert_eq!(machine.stage(), Stage::Petit, "folds at thirty seconds");
     }
 
-    /// Asked ("tem um tempo para ele ficar menor? como eu deixo configurável"): the compact island shrinks to the notch
-    /// when the person set, and with 0 never.
+    /// The compact island shrinks to the notch when the person set, and with 0 never.
     #[test]
     fn the_compact_island_shrinks_when_the_person_set_and_never_with_zero() {
         for (seconds, shrinks) in [(15_u16, true), (0, false)] {
             let mut machine = Machine::default();
+
             machine.set_compact_after(seconds);
             run(&mut machine, 0.0, 0.2, true, false);
             assert_eq!(machine.stage(), Stage::Petit, "the pointer on the notch: compact");
@@ -278,6 +294,7 @@ mod tests {
 
     fn run_with_close_after(machine: &mut Machine, from: f64, to: f64, inside: bool, close_after: f64) {
         let mut time = from;
+
         while time <= to {
             machine.step(time, inside, false, close_after, false);
             time += 0.05;
@@ -287,6 +304,7 @@ mod tests {
     #[test]
     fn the_pointer_back_in_time_stops_the_clock() {
         let mut machine = Machine::default();
+
         run(&mut machine, 0.0, 0.1, true, false);
         machine.click(0.1);
         run(&mut machine, 0.1, 10.0, false, false);
@@ -299,6 +317,7 @@ mod tests {
     #[test]
     fn open_on_hover_opens_after_a_rest_and_folds_soon_until_a_click_inside() {
         let mut machine = Machine::default();
+
         run(&mut machine, 0.0, 0.3, true, true);
         assert_eq!(machine.stage(), Stage::Petit, "not at once");
         run(&mut machine, 0.3, 0.6, true, true);
@@ -320,12 +339,15 @@ mod tests {
     #[test]
     fn something_waiting_on_the_person_holds_it_open() {
         let mut machine = Machine::default();
+
         machine.force_home(0.0);
         let mut time = 0.0;
+
         while time < 100.0 {
             machine.step(time, false, true, 15.0, false);
             time += 0.5;
         }
+
         assert_eq!(machine.stage(), Stage::Home, "a question keeps it open with no pointer on it");
         // answered: the usual wait starts
         run(&mut machine, 100.0, 114.0, false, false);
@@ -343,6 +365,7 @@ mod tests {
     #[test]
     fn the_greeting_folds_soon_after_it_ends_later_under_the_pointer_and_at_once_when_it_leaves() {
         let mut machine = Machine::default();
+
         machine.launch();
         run(&mut machine, 0.0, 4.6, false, false);
         assert_eq!(machine.stage(), Stage::Greeting, "it plays to the end");
@@ -354,6 +377,7 @@ mod tests {
         assert_eq!(machine.stage(), Stage::Petit, "0.6 s after the end");
         // the pointer on it: ten seconds from when it came
         let mut machine = Machine::default();
+
         machine.launch();
         run(&mut machine, 0.0, 1.0, false, false);
         run(&mut machine, 1.0, 10.9, true, false);
@@ -363,6 +387,7 @@ mod tests {
         assert_eq!(machine.stage(), Stage::Petit);
         // the pointer leaves in the middle of it: compact at once
         let mut machine = Machine::default();
+
         machine.launch();
         run(&mut machine, 0.0, 1.0, true, false);
         run(&mut machine, 1.0, 1.1, false, false);
@@ -372,6 +397,7 @@ mod tests {
     #[test]
     fn work_somewhere_shows_the_compact_island_for_a_minute() {
         let mut machine = Machine::default();
+
         machine.step(0.0, false, false, 15.0, false);
         machine.reveal(0.0);
         assert_eq!(machine.stage(), Stage::Petit);

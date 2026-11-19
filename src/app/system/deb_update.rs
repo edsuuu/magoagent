@@ -22,6 +22,7 @@ pub(crate) fn install_answer(code: Option<i32>, stderr: &str) -> Result<(), Stri
         Some(126 | 127) => Err("a senha não foi confirmada; nada mudou".into()),
         _ => {
             let said = stderr.lines().map(str::trim).rfind(|line| !line.is_empty() && !line.starts_with("W:") && !line.starts_with("N:"));
+
             Err(format!("o apt não instalou o pacote ({})", said.unwrap_or("sem detalhes")))
         }
     }
@@ -34,6 +35,7 @@ pub(crate) fn install(deb: &Path) -> Result<(), String> {
         .arg(deb)
         .output()
         .map_err(|error| format!("o pkexec não abriu: {error}"))?;
+
     install_answer(output.status.code(), &String::from_utf8_lossy(&output.stderr))
 }
 
@@ -41,6 +43,7 @@ pub(crate) fn install(deb: &Path) -> Result<(), String> {
 fn program() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let text = exe.to_string_lossy();
+
     Some(PathBuf::from(text.strip_suffix(" (deleted)").unwrap_or(&text)))
 }
 
@@ -52,17 +55,23 @@ impl DrawingApp {
     pub(crate) fn reopen_updated(&mut self, release: &Release) -> Result<(), String> {
         let version = &release.version;
         let program = program().ok_or("não sei onde o MagoAgent está")?;
+
         self.save_everything().map_err(|why| format!("a versão {version} foi instalada, mas o trabalho não foi salvo ({why}); salve e reabra o MagoAgent"))?;
         self.stop_everything();
+
         if let Some(path) = super::updater::result_path() {
             let _ = fs::write(path, serde_json::json!({ "version": version, "ok": true }).to_string());
         }
+
         let mut reopen = crate::editor::command("sh");
+
         reopen.args(["-c", REOPEN, "magoagent-reabrir"]).arg(std::process::id().to_string()).arg(&program);
         reopen.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+
         // a group of its own: it outlives the app
         #[cfg(unix)]
         std::os::unix::process::CommandExt::process_group(&mut reopen, 0);
+
         reopen.spawn().map_err(|error| format!("a versão {version} foi instalada, mas o app não pôde se reabrir ({error}); abra o MagoAgent de novo"))?;
         self.quitting = true;
         self.viewport_commands.push(egui::ViewportCommand::Close);
@@ -80,6 +89,7 @@ mod tests {
         assert_eq!(install_answer(Some(126), ""), Err("a senha não foi confirmada; nada mudou".into()));
         assert_eq!(install_answer(Some(127), ""), Err("a senha não foi confirmada; nada mudou".into()));
         let apt = "W: Download is performed unsandboxed as root\nE: Unable to locate package x\n";
+
         assert_eq!(install_answer(Some(100), apt), Err("o apt não instalou o pacote (E: Unable to locate package x)".into()));
         assert_eq!(install_answer(None, ""), Err("o apt não instalou o pacote (sem detalhes)".into()));
     }
@@ -90,8 +100,10 @@ mod tests {
         // a process that ends at once stands for the app; `echo` for the program
         let mut gone = std::process::Command::new("true").spawn().unwrap();
         let pid = gone.id().to_string();
+
         gone.wait().unwrap();
         let output = std::process::Command::new("sh").args(["-c", REOPEN, "teste", &pid, "echo"]).output().unwrap();
+
         assert!(output.status.success());
     }
 }

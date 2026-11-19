@@ -7,9 +7,11 @@ impl DrawingApp {
     pub(crate) fn native_settings_act(&mut self, verb: &str, args: &Value) -> Result<String, String> {
         forget();
         let id = args["id"].as_str().unwrap_or_default();
+
         match verb {
             "tab" => {
                 let index = args["index"].as_u64().ok_or("tab pede o index")? as usize;
+
                 self.settings_tab = index.min(super::super::SETTINGS_TABS.len() - 1);
                 self.settings_edit = None;
                 Ok(String::new())
@@ -53,10 +55,13 @@ impl DrawingApp {
             value.as_i64().unwrap_or(0),
             value.as_str().unwrap_or_default().to_string(),
         );
+
         let prefs = &mut self.prefs;
+
         if let Some(rest) = id.strip_prefix("preset.") {
             let (at, field) = rest.split_once('.').ok_or("preset.N.campo")?;
             let preset = prefs.presets.get_mut(at.parse::<usize>().map_err(|error| error.to_string())?).ok_or("preset desconhecido")?;
+
             match field {
                 "on" => preset.on = on,
                 "name" => preset.name = words,
@@ -64,8 +69,10 @@ impl DrawingApp {
                 "icon" => preset.icon = crate::app::ui::TERMINAL_ICONS.get(index).copied().unwrap_or_default().into(),
                 _ => return Err(format!("campo do preset desconhecido: {field}")),
             }
+
             return Ok(String::new());
         }
+
         match id {
             "theme" => prefs.theme = [Theme::System, Theme::Light, Theme::Dark][index.min(2)],
             "language" => prefs.language = index.min(super::super::LANGUAGES.len() - 1),
@@ -78,8 +85,8 @@ impl DrawingApp {
             "close_to_background" => prefs.close_to_background = on,
             "island" => prefs.island = on,
             "island_place" => self.put_island(*Place::ALL.get(index).ok_or("lugar desconhecido")?),
-            "island_close_after" => prefs.island_close_after = super::super::general::CLOSE_AFTER[index.min(3)],
-            "island_compact_after" => prefs.island_compact_after = super::super::general::COMPACT_AFTER[index.min(4)],
+            "island_close_after" => prefs.island_close_after = super::super::island::CLOSE_AFTER[index.min(3)],
+            "island_compact_after" => prefs.island_compact_after = super::super::island::COMPACT_AFTER[index.min(4)],
             "paper" => prefs.paper = index == 1,
             "box_overlap" => prefs.box_overlap = index == 1,
             "window_outline" => prefs.window_outline = WindowOutline::ALL[index.min(WindowOutline::ALL.len() - 1)],
@@ -94,6 +101,7 @@ impl DrawingApp {
             }
             "shell" => {
                 let shells = crate::app::terminal::prefs::detected_shells();
+
                 prefs.terminal.shell = if index == 0 { String::new() } else { shells.get(index - 1).ok_or("shell desconhecido")?.1.clone() };
             }
             "copy_on_select" => prefs.terminal.copy_on_select = on,
@@ -112,7 +120,6 @@ impl DrawingApp {
                 }
             }
             "chat_panel" => prefs.chat_panel = on,
-            "agent_hooks" => prefs.agent_hooks = on,
             "voice_engine" => (prefs.voice_codex, prefs.voice_openai) = (index == 0, index == 2),
             "codex_voice" => prefs.codex_voice = crate::voice::codex::CODEX_VOICES.get(index).ok_or("voz desconhecida")?.0.into(),
             "openai_voice" => prefs.openai_voice = crate::voice::openai::OPENAI_VOICES.get(index).ok_or("voz desconhecida")?.0.into(),
@@ -123,6 +130,7 @@ impl DrawingApp {
                 } else {
                     prefs.voice_studio_key = words
                 }
+
                 // another address or key: the list is asked again
                 *self.studio_voices.lock().unwrap() = crate::voice::studio::StudioVoices::Idle;
             }
@@ -131,10 +139,12 @@ impl DrawingApp {
                     crate::voice::studio::StudioVoices::Done(found) => found.get(index).map(|(id, _)| id.clone()),
                     _ => None,
                 };
+
                 prefs.voice_studio_voice = found.ok_or("voz desconhecida")?;
             }
             "voice_mic" => {
                 let mics = crate::voice::input_names();
+
                 prefs.voice_mic = if index == 0 { String::new() } else { mics.get(index - 1).ok_or("microfone desconhecido")?.clone() };
             }
             "voice_pause" => prefs.voice_pause = number.clamp(4, 16) as f32 / 4.0,
@@ -156,6 +166,7 @@ impl DrawingApp {
             "update_check" => prefs.update_check = index.min(2) as u8,
             other => return Err(format!("ajuste desconhecido: {other}")),
         }
+
         Ok(String::new())
     }
 
@@ -164,18 +175,22 @@ impl DrawingApp {
         let arg = args["arg"].as_str().unwrap_or_default().to_string();
         let typed = args["value"].as_str().unwrap_or_default().to_string();
         let toast = |app: &mut Self, said: Result<String, String>| app.toast(said.unwrap_or_else(|why| why));
+
         if let Some(rest) = id.strip_prefix("preset.") {
             let (at, op) = rest.split_once('.').ok_or("preset.N.ação")?;
             let at: usize = at.parse().map_err(|error: std::num::ParseIntError| error.to_string())?;
             let presets = &mut self.prefs.presets;
+
             match op {
                 "up" if at > 0 && at < presets.len() => presets.swap(at, at - 1),
                 "down" if at + 1 < presets.len() => presets.swap(at, at + 1),
                 "remove" if at < presets.len() => drop(presets.remove(at)),
                 _ => {}
             }
+
             return Ok(String::new());
         }
+
         match id {
             "tour" => self.start_tour(),
             "island_reset" => {
@@ -184,10 +199,12 @@ impl DrawingApp {
             }
             "presets_add" => self.prefs.presets.push(Preset::new("", "")),
             "presets_reset" => self.prefs.presets = default_presets(),
-            "mcp_register" => {
-                let agent =
-                    crate::app::system::mcp_register::MCP_AGENTS.iter().find(|(name, _)| *name == arg).map(|(name, _)| *name).ok_or("agente desconhecido")?;
-                crate::app::system::mcp_register::mcp_register_soon(agent, &Context::default());
+            "mcp_register" | "mcp_remove" => {
+                use crate::app::system::mcp_register::{MCP_AGENTS, McpAction, mcp_soon};
+                let agent = MCP_AGENTS.iter().find(|(name, _)| *name == arg).map(|(name, _)| *name).ok_or("agente desconhecido")?;
+                let action = if id == "mcp_remove" { McpAction::Remove } else { McpAction::Register };
+
+                mcp_soon(agent, action, &Context::default());
             }
             "style_skill_open" => {
                 if let Err(why) = self.show_in_tree(&self.prefs.style_skill.clone()) {
@@ -196,11 +213,14 @@ impl DrawingApp {
             }
             "voice_play" => {
                 use crate::voice::studio::{StudioServer, StudioVoices};
+
                 let failed = match &*self.studio_voices.lock().unwrap() {
                     StudioVoices::Failed(why) => Some(why.clone()),
                     _ => None,
                 };
+
                 let sample = "Olá! Eu sou a Luna, a assistente do MagoAgent.";
+
                 match (self.prefs.voice_openai, crate::voice::openai::key(&self.prefs), failed) {
                     (true, Some(key), _) => self.voice_sample = crate::voice::openai::say(&key, &self.prefs.openai_voice, sample),
                     (true, None, _) => self.toast("Ponha a chave da OpenAI em Ajustes › Voz."),
@@ -213,14 +233,17 @@ impl DrawingApp {
             "hooks_install" if arg == "claude" => self.claude_hooks_open_preview(),
             "hooks_install" => {
                 let said = self.act_codex_hooks("install");
+
                 toast(self, said);
             }
             "hooks_remove" => {
                 let said = if arg == "claude" { self.act_claude_hooks("remove") } else { self.act_codex_hooks("remove") };
+
                 toast(self, said);
             }
             "github_save" => {
                 let said = self.github_save_token(&typed);
+
                 toast(self, said);
             }
             "github_test" => {
@@ -228,34 +251,31 @@ impl DrawingApp {
             }
             "github_remove" => {
                 let said = self.github_remove_token().map_err(|why| format!("O token não foi removido: {why}"));
+
                 toast(self, said);
             }
             "spotify_connect" => {
                 let said = self.spotify_connect();
+
                 toast(self, said);
             }
             "spotify_cancel" => self.spotify_cancel_login(),
             "spotify_disconnect" => {
                 let said = self.spotify_disconnect().map_err(|why| format!("A conta não foi desconectada: {why}"));
+
                 toast(self, said);
-            }
-            "spotify_previous" | "spotify_play_pause" | "spotify_next" => {
-                use crate::app::integrations::spotify::Command;
-                self.spotify_control(match id {
-                    "spotify_previous" => Command::Previous,
-                    "spotify_next" => Command::Next,
-                    _ => Command::PlayPause,
-                });
             }
             "hermes_confirm" => self.integrations.hermes_confirm = true,
             "hermes_cancel" => self.integrations.hermes_confirm = false,
             "hermes_install" | "hermes_remove" => {
                 self.integrations.hermes_confirm = false;
                 let said = self.act_hermes(id.trim_start_matches("hermes_"));
+
                 toast(self, said);
             }
             "whatsapp_save" => {
                 let said = self.whatsapp_save_credential(&typed);
+
                 toast(self, said);
                 self.integrations.whatsapp.forget();
             }
@@ -266,6 +286,7 @@ impl DrawingApp {
             }
             "whatsapp_remove" => {
                 let said = self.whatsapp_remove_credential().map_err(|why| format!("A credencial não foi removida: {why}"));
+
                 toast(self, said);
                 self.integrations.whatsapp.forget();
             }
@@ -289,6 +310,7 @@ impl DrawingApp {
             "update_cancel" => self.updates.confirming = false,
             other => return Err(format!("botão desconhecido: {other}")),
         }
+
         Ok(String::new())
     }
 
@@ -299,6 +321,7 @@ impl DrawingApp {
         let id = args["id"].as_str().unwrap_or_default();
         let def = hotkeys::find(id).ok_or_else(|| format!("atalho desconhecido: {id}"))?;
         let flag = |name: &str| args[name].as_bool().unwrap_or(false);
+
         match args["op"].as_str().unwrap_or_default() {
             "record" => self.hotkey_ask(def, Ask::Record),
             "cancel" => self.hotkey_ask(def, Ask::Cancel),
@@ -308,10 +331,13 @@ impl DrawingApp {
             "switch" => self.hotkey_ask(def, Ask::Switch(flag("on"))),
             "key" => {
                 let name = args["key"].as_str().unwrap_or_default();
+
                 let key = egui::Key::from_name(name)
                     .or_else(|| egui::Key::ALL.iter().copied().find(|key| key.name().eq_ignore_ascii_case(name)))
                     .ok_or_else(|| format!("tecla desconhecida: {name}"))?;
+
                 let modifiers = egui::Modifiers { alt: flag("alt"), ctrl: false, shift: flag("shift"), mac_cmd: flag("cmd"), command: flag("cmd") };
+
                 // only the shortcut being recorded takes the key
                 if self.hotkeys.recording.as_ref().is_some_and(|editing| editing.id == def.id)
                     && let Some(mut editing) = self.hotkeys.recording.take()
@@ -322,6 +348,7 @@ impl DrawingApp {
             }
             other => return Err(format!("hotkey {other}: operação desconhecida")),
         }
+
         Ok(String::new())
     }
 }

@@ -71,6 +71,7 @@ impl K {
     pub(in crate::app::ui) fn new(dark: bool) -> Self {
         let rgba = Color32::from_rgba_unmultiplied;
         let rgb = Color32::from_rgb;
+
         if dark {
             Self {
                 dark,
@@ -138,6 +139,7 @@ pub(in crate::app::ui) fn galley(ui: &egui::Ui, text: &str, size: f32, line: f32
 
 fn galley_in(ui: &egui::Ui, text: &str, font: FontId, line: f32, color: Color32, wrap: f32) -> Arc<egui::Galley> {
     let mut job = egui::text::LayoutJob::simple(text.into(), font, color, wrap);
+
     job.sections[0].format.line_height = Some(line);
     ui.painter().layout_job(job)
 }
@@ -152,19 +154,24 @@ fn open_group(ui: &egui::Ui, k: &K, top: f32) {
     if !k.cards || k.group.borrow().is_some() {
         return;
     }
+
     let shape = ui.painter().add(Shape::Noop);
     let left = ui.cursor().left();
+
     *k.group.borrow_mut() = Some(Group { shape, top, left, right: left + ui.available_width(), rows: 0, last_was_row: false });
 }
 
 /// Ends the open card: it is painted under what was drawn in it. True when there was one.
 pub(in crate::app::ui) fn close_group(ui: &mut egui::Ui, k: &K) -> bool {
     let Some(group) = k.group.borrow_mut().take() else { return false };
+
     if !group.last_was_row {
         ui.add_space(10.0);
     }
+
     let bottom = ui.min_rect().bottom();
     let rect = Rect::from_min_max(Pos2::new(group.left - INSET, group.top), Pos2::new(group.right + INSET, bottom));
+
     ui.painter().set(group.shape, egui::epaint::RectShape::new(rect, 12, k.card, Stroke::new(1.0, k.hairline), StrokeKind::Inside));
     true
 }
@@ -173,11 +180,14 @@ pub(in crate::app::ui) fn close_group(ui: &mut egui::Ui, k: &K) -> bool {
 /// first.
 fn enter_row(ui: &egui::Ui, k: &K, top: f32) {
     open_group(ui, k, top);
+
     if let Some(group) = k.group.borrow_mut().as_mut() {
         if group.rows > 0 {
             let y = top - ui.spacing().item_spacing.y / 2.0;
+
             ui.painter().hline(group.left - INSET..=group.right + INSET, y, Stroke::new(1.0, k.hairline));
         }
+
         group.rows += 1;
         group.last_was_row = true;
     }
@@ -188,13 +198,17 @@ pub(in crate::app::ui) fn title(ui: &mut egui::Ui, k: &K, text: &str) {
     if close_group(ui, k) {
         ui.add_space(GROUP_GAP - ui.spacing().item_spacing.y);
     }
+
     let g = galley_in(ui, text, semibold(TITLE), TITLE_LINE, k.muted_fg, f32::INFINITY);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), g.size().y), Sense::hover());
     let left = if k.cards { rect.left() - INSET + 4.0 } else { rect.left() };
+
     ui.painter().galley(Pos2::new(left, rect.top()), g, k.muted_fg);
+
     if k.cards {
         ui.add_space(6.0 - ui.spacing().item_spacing.y);
         let top = ui.cursor().top();
+
         open_group(ui, k, top);
     }
 }
@@ -205,10 +219,13 @@ pub(in crate::app::ui) fn divider(ui: &mut egui::Ui, k: &K) {
         if close_group(ui, k) {
             ui.add_space(GROUP_GAP - ui.spacing().item_spacing.y);
         }
+
         return;
     }
+
     ui.add_space(16.25);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
+
     ui.painter().hline(rect.x_range(), rect.center().y, Stroke::new(1.0, k.line(0.5)));
     ui.add_space(16.25);
 }
@@ -216,20 +233,25 @@ pub(in crate::app::ui) fn divider(ui: &mut egui::Ui, k: &K) {
 /// A paragraph of the muted kind that explains a group; in a card, a row of its own.
 pub(in crate::app::ui) fn note(ui: &mut egui::Ui, k: &K, text: &str) {
     let top = ui.cursor().top();
+
     enter_row(ui, k, top);
     let pad = if k.cards { 12.0 } else { 0.0 };
     let g = galley(ui, text, SMALL, SMALL_LINE, k.muted_fg, ui.available_width());
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), g.size().y + 2.0 * pad), Sense::hover());
+
     ui.painter().galley(rect.min + Vec2::new(0.0, pad), g, k.muted_fg);
 }
 
 /// Something other than rows drawn into the card (a list, a row of buttons): the card's padding comes around it.
 pub(in crate::app::ui) fn block<R>(ui: &mut egui::Ui, k: &K, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let top = ui.cursor().top();
+
     open_group(ui, k, top);
+
     if let Some(group) = k.group.borrow_mut().as_mut() {
         group.last_was_row = false;
     }
+
     ui.add_space(10.0 - ui.spacing().item_spacing.y);
     add(ui)
 }
@@ -239,6 +261,7 @@ fn label_column(ui: &egui::Ui, k: &K, label: &str, hint: &str, room: f32) -> (Ar
     let text = galley(ui, label, BODY, BODY_LINE, k.fg, room);
     let hint_galley = (!hint.is_empty()).then(|| galley(ui, hint, SMALL, SMALL_LINE, k.muted_fg, room));
     let block = text.size().y + hint_galley.as_ref().map_or(0.0, |g| 2.0 + g.size().y);
+
     (text, hint_galley, (block + 16.0).max(ROW))
 }
 
@@ -247,7 +270,9 @@ fn paint_label_column(ui: &egui::Ui, k: &K, rect: Rect, text: Arc<egui::Galley>,
     let block = text.size().y + hint.as_ref().map_or(0.0, |g| 2.0 + g.size().y);
     let top = rect.center().y - block / 2.0;
     let below = top + text.size().y + 2.0;
+
     ui.painter().galley(Pos2::new(rect.left(), top), text, k.fg);
+
     if let Some(g) = hint {
         ui.painter().galley(Pos2::new(rect.left(), below), g, k.muted_fg);
     }
@@ -258,15 +283,18 @@ fn paint_label_column(ui: &egui::Ui, k: &K, rect: Rect, text: Arc<egui::Galley>,
 pub(in crate::app::ui) fn row<R>(ui: &mut egui::Ui, k: &K, label: &str, hint: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let width = ui.available_width();
     let top = ui.cursor().top();
+
     enter_row(ui, k, top);
     let line = Rect::from_min_size(Pos2::new(ui.cursor().left(), top + (ROW - CONTROL_HEIGHT) / 2.0), Vec2::new(width, CONTROL_HEIGHT));
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(line).layout(egui::Layout::right_to_left(egui::Align::Center)));
+
     child.spacing_mut().item_spacing.x = 6.0;
     let result = add(&mut child);
     let control = child.min_rect().width();
     let room = (width - control - 16.0).max(80.0);
     let (text, hint_galley, height) = label_column(ui, k, label, hint, room);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
+
     paint_label_column(ui, k, rect, text, hint_galley);
     result
 }
@@ -275,9 +303,11 @@ pub(in crate::app::ui) fn row<R>(ui: &mut egui::Ui, k: &K, label: &str, hint: &s
 pub(in crate::app::ui) fn toggle(ui: &mut egui::Ui, k: &K, label: &str, hint: &str, value: &mut bool) -> bool {
     let width = ui.available_width();
     let top = ui.cursor().top();
+
     enter_row(ui, k, top);
     let (text, hint_galley, height) = label_column(ui, k, label, hint, width - 38.0 - 16.0);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
+
     paint_label_column(ui, k, rect, text, hint_galley);
     switch(ui, k, Pos2::new(rect.right() - 38.0, rect.center().y - 11.0), label, value)
 }
@@ -286,16 +316,21 @@ pub(in crate::app::ui) fn toggle(ui: &mut egui::Ui, k: &K, label: &str, hint: &s
 pub(in crate::app::ui) fn switch(ui: &mut egui::Ui, k: &K, at: Pos2, label: &str, value: &mut bool) -> bool {
     let rect = Rect::from_min_size(at, Vec2::new(38.0, 22.0));
     let response = ui.interact(rect, ui.scope_id().with(("switch", label)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
     response.widget_info(|| WidgetInfo::selected(Role::Switch, true, *value, label));
     let t = ui.ctx().animate_bool_with_time(response.id, *value, 0.12);
     let off = if k.dark { Color32::from_white_alpha(46) } else { Color32::from_black_alpha(46) };
+
     ui.painter().rect_filled(rect, 11.0, off.lerp_to_gamma(k.primary, t));
     let x = rect.left() + 11.0 + 16.0 * t;
+
     ui.painter().circle_filled(Pos2::new(x, rect.center().y), 9.0, Color32::WHITE);
     let clicked = response.clicked();
+
     if clicked {
         *value = !*value;
     }
+
     clicked
 }
 
@@ -304,6 +339,7 @@ fn segment_widths(ui: &egui::Ui, k: &K, labels: &[&str]) -> (Vec<f32>, f32) {
     let font = FontId::proportional(12.5);
     let widths: Vec<f32> = labels.iter().map(|l| ui.painter().layout_no_wrap(l.to_string(), font.clone(), k.fg).size().x + 24.0).collect();
     let total = widths.iter().sum::<f32>() + 2.0 * (labels.len() as f32 - 1.0).max(0.0) + 4.0;
+
     (widths, total)
 }
 
@@ -313,20 +349,28 @@ fn segments(ui: &mut egui::Ui, k: &K, id: egui::Id, track: Rect, labels: &[&str]
     let font = FontId::proportional(12.5);
     let mut x = track.left() + 2.0;
     let mut pick = chosen;
+
     for (i, (label, width)) in labels.iter().zip(widths).enumerate() {
         let segment = Rect::from_min_size(Pos2::new(x, track.top() + 2.0), Vec2::new(*width, track.height() - 4.0));
         let response = ui.interact(segment, id.with(i), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
         response.widget_info(|| WidgetInfo::selected(Role::RadioButton, true, i == chosen, *label));
+
         if i == chosen {
             ui.painter().rect_filled(segment, 6.0, k.segment);
         }
+
         let color = if i == chosen || response.hovered() { k.fg } else { k.soft_fg };
+
         ui.painter().text(segment.center(), egui::Align2::CENTER_CENTER, label, font.clone(), color);
+
         if response.clicked() {
             pick = i;
         }
+
         x += width + 2.0;
     }
+
     pick
 }
 
@@ -335,6 +379,7 @@ pub(in crate::app::ui) fn choice(ui: &mut egui::Ui, k: &K, label: &str, options:
     let (widths, total) = segment_widths(ui, k, options);
     let (track, _) = ui.allocate_exact_size(Vec2::new(total, CONTROL_HEIGHT), Sense::hover());
     let pick = segments(ui, k, ui.scope_id().with(("choice", label)), track, options, &widths, chosen);
+
     (pick != chosen).then_some(pick)
 }
 
@@ -346,32 +391,42 @@ pub(in crate::app::ui) fn select(ui: &mut egui::Ui, k: &K, label: &str, options:
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, CONTROL_HEIGHT), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
     let value = options.get(chosen).copied().unwrap_or("");
+
     response.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("{label}: {value}")));
     ui.painter().rect_filled(rect, RADIUS, k.well);
     ui.painter().rect_stroke(rect, RADIUS, Stroke::new(1.0, if response.hovered() { k.button_line } else { k.well_line }), StrokeKind::Inside);
     ui.painter().text(Pos2::new(rect.left() + 10.0, rect.center().y), egui::Align2::LEFT_CENTER, value, font.clone(), k.fg);
     // the chevron, at 14 from the right
     let c = Pos2::new(rect.right() - 14.0, rect.center().y);
+
     ui.painter().add(Shape::line(vec![c + Vec2::new(-3.5, -1.75), c + Vec2::new(0.0, 1.75), c + Vec2::new(3.5, -1.75)], Stroke::new(1.4, k.muted_fg)));
     let mut pick = None;
+
     egui::Popup::menu(&response).frame(popup_frame(k)).width(width).show(|ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
+
         for (i, option) in options.iter().enumerate() {
             let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 28.0), Sense::click());
             let response = response.on_hover_cursor(CursorIcon::PointingHand);
+
             response.widget_info(|| WidgetInfo::labeled(Role::Button, true, *option));
+
             if response.hovered() {
                 ui.painter().rect_filled(rect, 6.0, k.chosen);
             }
+
             if i == chosen {
                 paint_icon_scaled(ui.painter(), Icon::Check, Pos2::new(rect.left() + 13.0, rect.center().y), k.fg, 13.0 / 16.0, 0.0);
             }
+
             ui.painter().text(Pos2::new(rect.left() + 26.0, rect.center().y), egui::Align2::LEFT_CENTER, option, FontId::proportional(CONTROL), k.fg);
+
             if response.clicked() {
                 pick = Some(i);
             }
         }
     });
+
     pick.filter(|i| *i != chosen)
 }
 
@@ -383,9 +438,11 @@ pub(in crate::app::ui) fn popup_frame(k: &K) -> egui::Frame {
 /// `NumberStepper`: − the value + in a well 30 high, the buttons 30 wide. True when it changed.
 pub(in crate::app::ui) fn stepper(ui: &mut egui::Ui, k: &K, label: &str, value: &mut u8, range: std::ops::RangeInclusive<u8>, shown: &str) -> bool {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(CONTROL_HEIGHT * 2.0 + 48.0, CONTROL_HEIGHT), Sense::hover());
+
     ui.painter().rect_filled(rect, RADIUS, k.well);
     ui.painter().rect_stroke(rect, RADIUS, Stroke::new(1.0, k.well_line), StrokeKind::Inside);
     let mut changed = false;
+
     // laid out right to left, so the plus is the first one made
     for (i, (sign, delta)) in [(Icon::Plus, 1i16), (Icon::Minus, -1)].into_iter().enumerate() {
         let side = if i == 0 { rect.right() - CONTROL_HEIGHT } else { rect.left() };
@@ -394,7 +451,9 @@ pub(in crate::app::ui) fn stepper(ui: &mut egui::Ui, k: &K, label: &str, value: 
         let live = range.contains(&(next as u8)) && next >= 0;
         let response = ui.interact(button, ui.scope_id().with((label, delta)), if live { Sense::click() } else { Sense::hover() });
         let name = format!("{label} {}", if delta > 0 { "+" } else { "−" });
+
         response.widget_info(|| WidgetInfo::labeled(Role::Button, live, &name));
+
         let color = if !live {
             k.muted_fg.gamma_multiply(0.4)
         } else if response.hovered() {
@@ -402,12 +461,15 @@ pub(in crate::app::ui) fn stepper(ui: &mut egui::Ui, k: &K, label: &str, value: 
         } else {
             k.soft_fg
         };
+
         paint_icon(ui.painter(), sign, button.center(), color);
+
         if live && response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
             *value = next as u8;
             changed = true;
         }
     }
+
     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, shown, FontId::proportional(CONTROL), k.fg);
     changed
 }
@@ -417,8 +479,10 @@ pub(in crate::app::ui) fn button(ui: &mut egui::Ui, k: &K, text: &str) -> egui::
     let g = ui.painter().layout_no_wrap(text.into(), FontId::proportional(12.5), k.fg);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(g.size().x + 24.0, CONTROL_HEIGHT), Sense::click());
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
+
     response.widget_info(|| WidgetInfo::labeled(Role::Button, true, text));
     let fill = if response.hovered() { k.button.lerp_to_gamma(k.fg, 0.06) } else { k.button };
+
     ui.painter().rect_filled(rect, RADIUS, fill);
     ui.painter().rect_stroke(rect, RADIUS, Stroke::new(1.0, k.button_line), StrokeKind::Inside);
     ui.painter().galley(Pos2::new(rect.center().x - g.size().x / 2.0, rect.center().y - g.size().y / 2.0), g, k.fg);
@@ -429,11 +493,14 @@ pub(in crate::app::ui) fn button(ui: &mut egui::Ui, k: &K, text: &str) -> egui::
 pub(in crate::app::ui) fn ghost_button(ui: &mut egui::Ui, k: &K, icon: impl Into<Glyph>, name: &str, enabled: bool, danger: bool) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(24.0), if enabled { Sense::click() } else { Sense::hover() });
     let response = response.on_hover_cursor(CursorIcon::PointingHand);
+
     response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, name));
     let hot = enabled && response.hovered();
+
     if hot {
         ui.painter().rect_filled(rect, 6.0, k.chosen);
     }
+
     let color = if !enabled {
         k.muted_fg.gamma_multiply(0.4)
     } else if hot && danger {
@@ -443,14 +510,17 @@ pub(in crate::app::ui) fn ghost_button(ui: &mut egui::Ui, k: &K, icon: impl Into
     } else {
         k.muted_fg
     };
+
     match icon.into() {
         Glyph::Icon(icon) => paint_icon(ui.painter(), icon, rect.center(), color),
         Glyph::Chevron(up) => {
             let y = if up { 2.0 } else { -2.0 };
             let c = rect.center();
+
             ui.painter().add(Shape::line(vec![c + Vec2::new(-4.5, y), c + Vec2::new(0.0, -y), c + Vec2::new(4.5, y)], Stroke::new(1.4, color)));
         }
     }
+
     response
 }
 
@@ -480,8 +550,10 @@ pub(in crate::app::ui) fn input(
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, CONTROL_HEIGHT), Sense::hover());
     let inner = Rect::from_min_max(Pos2::new(rect.left() + 10.0, rect.top()), Pos2::new(rect.right() - 10.0, rect.bottom()));
     let focused = ui.memory(|m| m.has_focus(id));
+
     ui.painter().rect_filled(rect, RADIUS, k.well);
     ui.painter().rect_stroke(rect, RADIUS, Stroke::new(1.0, if focused { k.primary } else { k.well_line }), StrokeKind::Inside);
+
     let edit = egui::TextEdit::singleline(text)
         .id(id)
         .password(password)
@@ -491,7 +563,9 @@ pub(in crate::app::ui) fn input(
         .frame(egui::Frame::NONE)
         .align(egui::Align2::LEFT_CENTER)
         .desired_width(inner.width());
+
     let response = ui.put(inner, edit);
+
     response.widget_info(|| WidgetInfo::labeled(Role::TextInput, true, label));
     response
 }
@@ -502,5 +576,6 @@ pub(in crate::app::ui) fn segmented_tabs(ui: &mut egui::Ui, k: &K, id: egui::Id,
     let (strip, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), CONTROL_HEIGHT), Sense::hover());
     let left = if k.cards { strip.left() - INSET } else { strip.center().x - total / 2.0 };
     let track = Rect::from_min_size(Pos2::new(left, strip.top()), Vec2::new(total, CONTROL_HEIGHT));
+
     segments(ui, k, id, track, labels, &widths, chosen)
 }

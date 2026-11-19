@@ -8,6 +8,7 @@ impl DrawingApp {
     pub(super) fn act_email(&mut self, args: &Value) -> Result<String, String> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
         let email = &mut self.prefs.email;
+
         match text("action").as_str() {
             "" | "status" => Ok(format!("Servidor de email: {} {} — {}", email.command, email.args, email.status())),
             "on" if email.command.trim().is_empty() => Err("falta o programa: use action set com `command` (ou gmail_example)".into()),
@@ -22,6 +23,7 @@ impl DrawingApp {
             }
             "gmail_example" => {
                 (email.command, email.args) = (GMAIL_EXAMPLE.0.into(), GMAIL_EXAMPLE.1.into());
+
                 Ok(format!(
                     "Preenchi {} {} (o login do Google é do servidor, pelas instruções do pacote). Use action on para dar aos agentes.",
                     email.command, email.args
@@ -39,6 +41,7 @@ mod tests {
     #[test]
     fn the_maestro_sets_the_mail_bridge_up() {
         let mut app = DrawingApp::default();
+
         assert!(app.act_email(&json!({ "action": "on" })).is_err(), "nothing to give yet");
         app.act_email(&json!({ "action": "set", "command": "npx", "args": "-y pacote" })).unwrap();
         app.act_email(&json!({ "action": "on" })).unwrap();

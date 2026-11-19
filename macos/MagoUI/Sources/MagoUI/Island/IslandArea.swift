@@ -194,14 +194,13 @@ import SwiftUI
     private func place(_ shape: IslandShape, anchor: CGPoint) {
         let dock = islandDockOf(anchor, work: work)
         let notch = dock == .top ? notchRect.flatMap { abs($0.midX - anchor.x) < 1 ? $0.size : nil } : nil
-        let full = islandChatSize(saved: snapshot.chatSize, big: snapshot.chatBig, work: work)
-        let chat = snapshot.chat?.full == true ? full : islandTalkSize(saved: snapshot.talkSize, said: snapshot.chat?.said.count ?? 0, work: work)
+        let chat = islandTalkSize(saved: snapshot.talkSize, said: snapshot.chat?.said.count ?? 0, work: work)
         var (size, corner) = islandTarget(
             shape, tab: snapshot.tab, pinned: snapshot.ask != nil, settings: snapshot.settings,
             tall: snapshot.activity?.phase == "editing", body: askHeight - IslandSize.pageTop - 10, chat: chat)
         if dock.upright, shape != .open { size = islandUpright(shape, size, song: snapshot.song != nil) }
         if let notch { size = islandAroundNotch(shape, size, notch: notch, song: snapshot.song != nil, voice: snapshot.voice) }
-        let room = islandWindowCap(chat: full)
+        let room = islandWindowCap(chat: chat)
         let origin = islandKeptOrigin(anchor, room: room, work: work)
         let roomEven = CGSize(width: islandEven(room.width), height: islandEven(room.height))
         if origin != self.origin || roomEven != self.room {

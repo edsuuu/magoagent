@@ -1,8 +1,6 @@
-//! The GitHub tab (asked: "do github, pode criar uma tab ... para ele mostrar as pr ativas, fechadas, q travou ci ou cd,
-//! com review, mergeada"; "faltou o botao para abrir no navegador, preview para editar o comentario do pr, se deu
-//! conflito"). At the left the person's pull requests under four filters, each with its state's icon, its CI and what
-//! asks for them; at the right the one picked: what holds it back, its description written or previewed (or a comment),
-//! and the buttons. Under the list, each repository's main branch CI.
+//! The GitHub tab. At the left the person's pull requests under four filters, each with its state's icon, its CI and
+//! what asks for them; at the right the one picked: what holds it back, its description written or previewed (or a
+//! comment), and the buttons. Under the list, each repository's main branch CI.
 
 use super::forms;
 use super::icons;
@@ -59,6 +57,7 @@ enum Ask {
 /// The question Confirmar answers.
 fn question(ask: Ask, request: &PullRequest, merge: &str) -> String {
     let id = &request.id;
+
     match ask {
         Ask::Save => format!("Trocar a descrição de {id} no GitHub?"),
         Ask::Comment => format!("Publicar o comentário em {id}?"),
@@ -111,6 +110,7 @@ fn tinted(color: Color32, alpha: f32) -> Color32 {
 fn tag(painter: &Painter, right: f32, center_y: f32, text: &str, color: Color32) -> f32 {
     let galley = painter.layout_no_wrap(text.to_string(), font(11.0), color);
     let rect = Rect::from_min_max(Pos2::new(right - galley.size().x - 16.0, center_y - 10.0), Pos2::new(right, center_y + 10.0));
+
     painter.rect_filled(rect, 10, tinted(color, 0.13));
     painter.galley(Pos2::new(rect.left() + 8.0, center_y - galley.size().y / 2.0), galley, color);
     rect.left()
@@ -121,22 +121,30 @@ fn segment(ui: &mut egui::Ui, at: Pos2, words: [&str; 2], on: usize, id: &str) -
     let galleys: Vec<_> = words.iter().map(|word| ui.painter().layout_no_wrap(word.to_string(), font(11.0), DIM)).collect();
     let width = galleys.iter().map(|galley| galley.size().x + 20.0).sum::<f32>() + 4.0;
     let ground = Rect::from_min_size(at, Vec2::new(width, 24.0));
+
     ui.painter().rect_filled(ground, 12, HOVER);
     let mut x = ground.left() + 2.0;
     let mut clicked = None;
+
     for (index, galley) in galleys.into_iter().enumerate() {
         let item = Rect::from_min_size(Pos2::new(x, ground.top() + 2.0), Vec2::new(galley.size().x + 20.0, 20.0));
         let response = ui.interact(item, ui.scope_id().with((id, index)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
         if index == on {
             ui.painter().rect_filled(item, 10, SEG_ON);
         }
+
         let ink = if index == on || response.hovered() { INK } else { DIM };
+
         ui.painter().text(item.center(), egui::Align2::CENTER_CENTER, words[index], font(11.0), ink);
+
         if response.clicked() {
             clicked = Some(index);
         }
+
         x = item.right();
     }
+
     (clicked, width)
 }
 
@@ -146,28 +154,38 @@ impl DrawingApp {
         let gap = 10.0;
         let left = Rect::from_min_size(page.min, Vec2::new(((page.width() - gap) * 1.22 / 2.22).round(), page.height()));
         let right = Rect::from_min_max(Pos2::new(left.right() + gap, page.top()), page.max);
+
         for card in [left, right] {
             ui.painter().rect(card, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
         }
+
         let Some(pulse) = self.integrations.github.pulse.take() else {
             let words = self.integrations.github.error.clone().unwrap_or_else(|| "Lendo os pull requests no GitHub…".into());
             let galley = clipped(ui.painter(), words, font(12.0), DIM_3, left.width() - 28.0);
+
             ui.painter().galley(left.center() - galley.size() / 2.0, galley, DIM_3);
+
             return;
         };
+
         let mut state = std::mem::take(&mut self.island.github);
         let list = pulse.listed(state.filter);
+
         self.github_list(ui, left, &pulse, &list, &mut state);
         let picked = shown(&list, state.picked.as_deref()).cloned();
+
         if state.activity {
             self.github_activity(ui, right, &pulse.login, &mut state);
         } else if let Some(request) = picked {
             let mine = pulse.mine.iter().any(|known| known.id == request.id);
+
             self.github_side(ui, right, &request, mine, colors, &mut state);
         } else {
             let words = if state.filter == PrFilter::NeedsYou { "Nada precisa de você agora" } else { "Nenhum pull request aqui" };
+
             ui.painter().text(right.center(), egui::Align2::CENTER_CENTER, words, font(12.0), DIM_3);
         }
+
         self.integrations.github.pulse = Some(pulse);
         self.island.github = state;
     }
@@ -175,6 +193,7 @@ impl DrawingApp {
     /// Ctrl+O on the tab: the pull request shown opens in the browser, as Abrir no navegador.
     pub(super) fn github_open_shown(&self) {
         let (Some(pulse), state) = (&self.integrations.github.pulse, &self.island.github) else { return };
+
         if let Some(request) = shown(&pulse.listed(state.filter), state.picked.as_deref()).filter(|_| !state.activity) {
             self.integrations.pressed.borrow_mut().push(format!("open {}", request.page()));
         }
@@ -184,6 +203,7 @@ impl DrawingApp {
     fn github_list(&self, ui: &mut egui::Ui, card: Rect, pulse: &Pulse, list: &[&PullRequest], state: &mut Page) {
         let inner = card.shrink2(Vec2::new(12.0, 10.0));
         let mut x = inner.left();
+
         for filter in PrFilter::EVERY {
             let count = pulse.listed(filter).len();
             let on = state.filter == filter;
@@ -191,92 +211,124 @@ impl DrawingApp {
             let number = ui.painter().layout_no_wrap(count.to_string(), semi(11.5), INK);
             let rect = Rect::from_min_size(Pos2::new(x, inner.top()), Vec2::new(label.size().x + 5.0 + number.size().x + 18.0, 24.0));
             let response = ui.interact(rect, ui.scope_id().with(("github_filter", filter.key())), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
             let (ground, ink, count_ink) = match (on, filter == PrFilter::NeedsYou && count > 0) {
                 (true, _) => (Color32::from_rgb(0xe8, 0xe9, 0xec), Color32::from_rgb(0x11, 0x11, 0x11), Color32::from_rgb(0x11, 0x11, 0x11)),
                 (false, alert) => (if response.hovered() { SEG_ON } else { HOVER }, DIM, if alert { RED } else { INK }),
             };
+
             ui.painter().rect_filled(rect, 12, ground);
             let words_at = Pos2::new(rect.left() + 9.0, rect.center().y);
             let words = ui.painter().text(words_at, egui::Align2::LEFT_CENTER, filter.label(), font(11.5), ink);
+
             ui.painter().text(Pos2::new(words.right() + 5.0, rect.center().y), egui::Align2::LEFT_CENTER, count.to_string(), semi(11.5), count_ink);
+
             if response.clicked() {
                 state.filter = filter;
             }
+
             x = rect.right() + 6.0;
         }
+
         let foot_y = inner.bottom() - 8.0;
         let rows = Rect::from_min_max(Pos2::new(card.left() + 6.0, inner.top() + 30.0), Pos2::new(card.right() - 6.0, foot_y - 14.0));
+
         if list.is_empty() {
             ui.painter().text(rows.center(), egui::Align2::CENTER_CENTER, "Nenhum pull request neste filtro", font(12.0), DIM_3);
         }
+
         // Ctrl+↓ and Ctrl+↑ pick the next and the one before, its row scrolled into sight
         let step = ui.input_mut(|input| match (input.consume_key(Modifiers::CTRL, Key::ArrowDown), input.consume_key(Modifiers::CTRL, Key::ArrowUp)) {
             (true, _) => 1,
             (_, true) => -1,
             _ => 0,
         });
+
         let mut reveal = None;
+
         if step != 0 && !list.is_empty() {
             let at = shown(list, state.picked.as_deref()).and_then(|request| list.iter().position(|other| other.id == request.id)).unwrap_or(0);
             let next = (at as isize + step).clamp(0, list.len() as isize - 1) as usize;
+
             (state.picked, state.activity) = (Some(list[next].id.clone()), false);
             reveal = state.picked.clone();
         }
+
         let shown_id = shown(list, state.picked.as_deref()).map(|request| request.id.clone()).filter(|_| !state.activity);
         let now = now_ms();
+
         ui.scope_builder(egui::UiBuilder::new().max_rect(rows), |ui| {
             ui.spacing_mut().item_spacing = Vec2::new(0.0, 2.0);
             ui.spacing_mut().scroll = crate::app::ui::scroll_style();
+
             egui::ScrollArea::vertical().id_salt("island_github_list").auto_shrink([false, false]).show(ui, |ui| {
                 for request in list {
                     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::click());
                     let response = response.on_hover_cursor(CursorIcon::PointingHand);
+
                     if reveal.as_deref() == Some(request.id.as_str()) {
                         response.scroll_to_me(None);
                     }
+
                     if response.hovered() || shown_id.as_deref() == Some(request.id.as_str()) {
                         ui.painter().rect_filled(rect, 10, HOVER);
                     }
+
                     let (icon, color) = state_icon(request);
+
                     icons::paint(ui.painter(), icon, Pos2::new(rect.left() + 8.0 + 10.0, rect.center().y), 18.0, color);
                     // at the end: the CI, then what asks for the person
                     let mut marks_left = rect.right() - 8.0;
+
                     if let Some((mark, color)) = ci_mark(request.ci) {
                         let at = Pos2::new(marks_left - 9.0, rect.center().y);
+
                         ui.painter().circle_filled(at, 9.0, tinted(color, 0.12));
                         ui.painter().text(at, egui::Align2::CENTER_CENTER, mark, semi(10.0), color);
                         marks_left -= 22.0;
                     }
+
                     if request.review_requested_of_me && request.is_open() {
                         marks_left = tag(ui.painter(), marks_left, rect.center().y, "revisão", YELLOW) - 4.0;
                     }
+
                     if request.conflicts() && request.is_open() {
                         marks_left = tag(ui.painter(), marks_left, rect.center().y, "conflito", ORANGE) - 4.0;
                     }
+
                     let text_x = rect.left() + 8.0 + 20.0 + 9.0;
                     let width = (marks_left - 5.0 - text_x).max(20.0);
                     let title = clipped(ui.painter(), request.title.clone(), semi(12.5), INK, width);
+
                     ui.painter().galley(Pos2::new(text_x, rect.top() + 4.0), title, INK);
                     let meta = clipped(ui.painter(), request.subtitle(now), font(11.0), DIM_3, width);
+
                     ui.painter().galley(Pos2::new(text_x, rect.top() + 21.0), meta, DIM_3);
+
                     if response.clicked() {
                         (state.picked, state.activity) = (Some(request.id.clone()), false);
                     }
                 }
             });
         });
+
         // the last week at the end, and before it the main branch of each repository
         self.github_spark(ui, inner.right() - 8.0, foot_y, state);
+
         if pulse.main.is_empty() {
             return;
         }
+
         let mut x = inner.left() + 8.0;
         let said = ui.painter().text(Pos2::new(x, foot_y), egui::Align2::LEFT_CENTER, "Branch principal:", font(11.0), DIM_3);
+
         x = said.right() + 14.0;
+
         for branch in &pulse.main {
             if x > inner.right() - 60.0 - activity::SPARK_W {
                 break;
             }
+
             let color = ci_mark(branch.ci).map_or(DIM_3, |(_, color)| color);
             let name = branch.repo.rsplit('/').next().unwrap_or(&branch.repo);
             let room = inner.right() - x - 12.0 - activity::SPARK_W - 16.0;
@@ -284,14 +336,18 @@ impl DrawingApp {
             let width = words.size().x;
             // a click opens its Actions, where a red branch is explained
             let rect = Rect::from_min_size(Pos2::new(x - 3.0, foot_y - 9.0), Vec2::new(12.0 + width + 6.0, 18.0));
+
             let response = ui
                 .interact(rect, ui.scope_id().with(("github_main", &branch.repo)), Sense::click())
                 .on_hover_cursor(CursorIcon::PointingHand)
                 .on_hover_text(format!("Abrir as Actions de {} ({})", branch.repo, branch.branch));
+
             if response.clicked() {
                 self.integrations.pressed.borrow_mut().push(format!("open {}", branch.actions_page()));
             }
+
             let ink = if response.hovered() { INK } else { DIM };
+
             ui.painter().circle_filled(Pos2::new(x + 3.5, foot_y), 3.5, color);
             ui.painter().galley_with_override_text_color(Pos2::new(x + 12.0, foot_y - words.size().y / 2.0), words, ink);
             x += 12.0 + width + 14.0;
@@ -302,35 +358,47 @@ impl DrawingApp {
     fn github_side(&mut self, ui: &mut egui::Ui, card: Rect, request: &PullRequest, mine: bool, colors: &UiColors, state: &mut Page) {
         let inner = card.shrink2(Vec2::new(14.0, 12.0));
         let id = request.id.clone();
+
         if state.confirm.as_ref().is_some_and(|(_, of)| *of != id) {
             state.confirm = None;
         }
+
         // the detail is read once the pull request shows
         if self.github_detail(&id).is_none() && !self.github_detail_loading(&id) && self.github_detail_error(&id).is_none() {
             let _ = self.github_load_detail(&id);
         }
+
         let detail = self.github_detail(&id).cloned();
+
         if let Some(detail) = detail.as_ref().filter(|_| state.draft_of != id) {
             (state.draft, state.draft_of, state.refused) = (detail.body.clone(), id.clone(), String::new());
         }
+
         let (icon, color) = state_icon(request);
+
         icons::paint(ui.painter(), icon, Pos2::new(inner.left() + 8.0, inner.top() + 9.0), 16.0, color);
         let text_x = inner.left() + 24.0;
         let title = clipped(ui.painter(), request.title.clone(), semi(13.0), INK, inner.right() - text_x);
+
         ui.painter().galley(Pos2::new(text_x, inner.top()), title, INK);
         let mut meta = format!("{} #{}", request.repo(), request.number());
+
         if !request.head_ref.is_empty() && !request.base_ref.is_empty() {
             meta += &format!(" · {} → {}", request.head_ref, request.base_ref);
         }
+
         let meta = clipped(ui.painter(), meta, font(11.0), DIM_3, inner.right() - text_x);
+
         ui.painter().galley(Pos2::new(text_x, inner.top() + 18.0), meta, DIM_3);
         // what holds it back, each line to its page
         let mut y = inner.top() + 40.0;
+
         let blockers: Vec<(String, Option<String>)> = match &detail {
             Some(detail) => detail.blockers().into_iter().map(|blocker| (blocker.text, blocker.url)).collect(),
             None if request.conflicts() => vec![(format!("Conflito com a {}", if request.base_ref.is_empty() { "base" } else { &request.base_ref }), None)],
             None => Vec::new(),
         };
+
         let lines: Vec<(String, Option<String>, Color32, &str)> = if blockers.is_empty() {
             let (words, color, mark) = match request.state {
                 PrState::Merged => (request.state_words(), PURPLE, "✓"),
@@ -338,6 +406,7 @@ impl DrawingApp {
                 PrState::Open if request.ci == CiState::Pending => ("Checks rodando".to_string(), AMBER, "●"),
                 PrState::Open => ("Nada travando".to_string(), GREEN, "✓"),
             };
+
             vec![(words, None, color, mark)]
         } else {
             blockers
@@ -350,55 +419,74 @@ impl DrawingApp {
                     } else {
                         (RED, "✕")
                     };
+
                     (text, url, color, mark)
                 })
                 .collect()
         };
+
         // Aprovar (someone else's) and Mesclar (one ready) at the end of the first line
         let mut actions_left = inner.right();
         let ready = detail.as_ref().is_some_and(|detail| detail.unmergeable().is_none());
+
         for (words, ask, shows) in [("Mesclar", Ask::Merge, ready), ("Aprovar", Ask::Approve, request.is_open() && !mine)] {
             if !shows {
                 continue;
             }
+
             let width = ui.painter().layout_no_wrap(words.to_string(), font(11.5), INK).size().x + 22.0;
             let response = forms::chip(ui, Pos2::new(actions_left - width, y - 4.0), words, false);
+
             if response.clicked() {
                 state.confirm = Some((ask, id.clone()));
             }
+
             actions_left = response.rect.left() - 6.0;
         }
+
         for (index, (text, url, color, mark)) in lines.into_iter().take(3).enumerate() {
             let width = if index == 0 { actions_left - inner.left() } else { inner.width() };
             let row = Rect::from_min_size(Pos2::new(inner.left(), y), Vec2::new(width, 18.0));
+
             let hovered = url.as_ref().is_some_and(|url| {
                 let response = ui.interact(row, ui.scope_id().with(("github_blocker", &text)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
                 if response.clicked() {
                     self.integrations.pressed.borrow_mut().push(format!("open {url}"));
                 }
+
                 response.on_hover_text("Abrir no navegador").hovered()
             });
+
             let at = Pos2::new(row.left() + 8.0, row.center().y);
+
             ui.painter().circle_filled(at, 7.0, tinted(color, 0.16));
             ui.painter().text(at, egui::Align2::CENTER_CENTER, mark, semi(9.0), color);
             let words = clipped(ui.painter(), text, font(11.5), if hovered { INK } else { DIM }, row.width() - 24.0);
+
             ui.painter().galley(Pos2::new(row.left() + 24.0, row.center().y - words.size().y / 2.0), words, if hovered { INK } else { DIM });
             y += 22.0;
         }
+
         // Descrição or Comentar at the left, Escrever or Prévia at the right
         let seg_y = y + 4.0;
+
         if let (Some(index), _) = segment(ui, Pos2::new(inner.left(), seg_y), ["Descrição", "Comentar"], usize::from(state.comment), "github_mode") {
             state.comment = index == 1;
         }
+
         let modes = ["Escrever", "Prévia"];
         let width = modes.iter().map(|word| ui.painter().layout_no_wrap(word.to_string(), font(11.0), DIM).size().x + 20.0).sum::<f32>() + 4.0;
+
         if let (Some(index), _) = segment(ui, Pos2::new(inner.right() - width, seg_y), modes, usize::from(!state.writing), "github_view") {
             state.writing = index == 0;
         }
+
         // the buttons, and over them what the last press said
         let buttons_y = inner.bottom() - 26.0;
         let merge = detail.as_ref().map_or("", |detail| detail.merge_words());
         let confirming = state.confirm.as_ref().map(|(ask, _)| *ask);
+
         let said = match (self.github_writing(), self.github_last_write(), state.refused.is_empty()) {
             _ if confirming.is_some() => confirming.map(|ask| (question(ask, request, merge), INK)),
             (_, _, false) => Some((state.refused.clone(), RED)),
@@ -407,32 +495,43 @@ impl DrawingApp {
             (false, Some(Err(error)), _) => Some((error.clone(), RED)),
             _ => None,
         };
+
         let box_bottom = buttons_y - if said.is_some() { 26.0 } else { 8.0 };
+
         if let Some((words, color)) = said {
             let galley = clipped(ui.painter(), words, font(11.0), color, inner.width());
+
             ui.painter().galley(Pos2::new(inner.left(), buttons_y - 19.0), galley, color);
         }
+
         let area = Rect::from_min_max(Pos2::new(inner.left(), seg_y + 32.0), Pos2::new(inner.right(), box_bottom));
+
         ui.painter().rect(area, 12, CARD_FLAT, Stroke::new(1.0, Color32::from_white_alpha(12)), StrokeKind::Inside);
         let text_area = area.shrink2(Vec2::new(11.0, 8.0));
         let loading = detail.is_none();
+
         ui.scope_builder(egui::UiBuilder::new().max_rect(text_area), |ui| {
             ui.spacing_mut().scroll = crate::app::ui::scroll_style();
+
             egui::ScrollArea::vertical().id_salt(("island_github_text", &id, state.comment, state.writing)).auto_shrink([false, false]).show(ui, |ui| {
                 let width = text_area.width() - 8.0;
                 let text = if state.comment { &mut state.note } else { &mut state.draft };
+
                 match (!state.writing, loading && !state.comment) {
                     (_, true) => {
                         let words = self.github_detail_error(&id).map_or("Lendo a descrição…".to_string(), str::to_string);
+
                         ui.label(egui::RichText::new(words).font(font(11.5)).color(DIM_3));
                     }
                     (true, _) if text.trim().is_empty() => {
                         let words = if state.comment { "Nada escrito ainda." } else { "Sem descrição." };
+
                         ui.label(egui::RichText::new(words).font(font(11.5)).color(DIM_3));
                     }
                     (true, _) => crate::app::chat::markdown::prose_with(ui, text, colors, true, width, false, &mut |_, _| {}),
                     (false, _) => {
                         let hint = if state.comment { "Escreva um comentário…" } else { "Escreva a descrição em Markdown…" };
+
                         ui.add(
                             egui::TextEdit::multiline(text)
                                 .id(egui::Id::unique(("island_github_edit", &id, state.comment)))
@@ -447,9 +546,11 @@ impl DrawingApp {
                 }
             });
         });
+
         if let Some(ask) = confirming {
             let yes = forms::chip(ui, Pos2::new(inner.left(), buttons_y), "Confirmar", true);
             let no = forms::chip(ui, Pos2::new(yes.rect.right() + 6.0, buttons_y), "Cancelar", false);
+
             if yes.clicked() {
                 let sent = match ask {
                     Ask::Save => self.github_save_body(&id, &state.draft),
@@ -457,29 +558,40 @@ impl DrawingApp {
                     Ask::Approve => self.github_approve(&id),
                     Ask::Merge => self.github_merge(&id),
                 };
+
                 state.refused = sent.err().unwrap_or_default();
             }
+
             if yes.clicked() || no.clicked() {
                 state.confirm = None;
             }
+
             return;
         }
+
         let mut x = inner.left();
+
         let open =
             forms::chip(ui, Pos2::new(x, buttons_y), "Abrir no navegador", true).on_hover_text("Ctrl+O · Ctrl+↓ e Ctrl+↑ passam de um pull request a outro");
+
         if open.clicked() {
             self.integrations.pressed.borrow_mut().push(format!("open {}", request.page()));
         }
+
         x = open.rect.right() + 6.0;
         let checks = forms::chip(ui, Pos2::new(x, buttons_y), "Ver checks", false);
+
         if checks.clicked() {
             self.integrations.pressed.borrow_mut().push(format!("open {}", request.checks_page()));
         }
+
         x = checks.rect.right() + 6.0;
         let changed = detail.as_ref().is_some_and(|detail| detail.body != state.draft);
+
         if !state.comment && changed && forms::chip(ui, Pos2::new(x, buttons_y), "Salvar", false).clicked() {
             state.confirm = Some((Ask::Save, id.clone()));
         }
+
         if state.comment && !state.note.trim().is_empty() && forms::chip(ui, Pos2::new(x, buttons_y), "Comentar", false).clicked() {
             state.confirm = Some((Ask::Comment, id.clone()));
         }
@@ -508,6 +620,7 @@ mod tests {
     fn the_one_picked_shows_while_the_filter_keeps_it_else_the_first() {
         let (first, second) = (request("a#1", PrState::Open, false), request("a#2", PrState::Open, false));
         let list = vec![&first, &second];
+
         assert_eq!(shown(&list, Some("a#2")).map(|request| request.id.as_str()), Some("a#2"));
         assert_eq!(shown(&list, Some("a#9")).map(|request| request.id.as_str()), Some("a#1"), "filtered away: the first");
         assert_eq!(shown(&list, None).map(|request| request.id.as_str()), Some("a#1"));

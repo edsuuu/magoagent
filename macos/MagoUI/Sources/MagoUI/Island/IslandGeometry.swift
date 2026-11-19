@@ -25,7 +25,6 @@ enum IslandSize {
     static let expandedCorner: CGFloat = 22
     static let homeH: CGFloat = 160
     static let feedH: CGFloat = 270
-    static let chatH: CGFloat = 360
     static let githubH: CGFloat = 404
     static let musicH: CGFloat = 318
     static let editH: CGFloat = 290
@@ -34,7 +33,6 @@ enum IslandSize {
     static let approvalOpenH: CGFloat = 380
     static let questionMost: CGFloat = 420
     static let pageTop: CGFloat = 42
-    static let chatMin = CGSize(width: 420, height: 300)
     static let talkMin = CGSize(width: 420, height: 220)
     // around a camera notch
     static let closedWing: CGFloat = 30
@@ -88,14 +86,7 @@ func islandAroundNotch(_ shape: IslandShape, _ size: CGSize, notch: CGSize, song
     }
 }
 
-/// The conversation's size (`chat_size`) and the short one's (`talk_size`, it grows with what was said).
-func islandChatSize(saved: [Double]?, big: Bool, work: CGRect) -> CGSize {
-    let most = CGSize(width: work.width * 0.95, height: work.height * 0.95)
-    let size = big ? CGSize(width: work.width * 0.7, height: work.height * 0.7)
-        : saved.map { CGSize(width: $0[0], height: $0[1]) } ?? CGSize(width: IslandSize.expandedW, height: IslandSize.chatH)
-    return clamp(size, least: IslandSize.chatMin, most: most)
-}
-
+/// The conversation's size (`talk_size`): as pulled, or growing with what was said.
 func islandTalkSize(saved: [Double]?, said: Int, work: CGRect) -> CGSize {
     guard let saved, saved.count == 2 else { return CGSize(width: IslandSize.expandedW, height: min(240 + CGFloat(said) * 40, 300)) }
     return clamp(CGSize(width: saved[0], height: saved[1]), least: IslandSize.talkMin, most: CGSize(width: work.width * 0.95, height: work.height * 0.95))

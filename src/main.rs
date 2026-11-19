@@ -48,6 +48,7 @@ fn main() -> eframe::Result {
     // opened from the Finder the app has launchd's PATH: the login shell's joins it, before any thread
     #[cfg(target_os = "macos")]
     app::system::login_path::fix();
+
     // a Claude Code session that started the app (show_app, a shell inside one) leaves its markers:
     // the `claude` in our terminals would run as its child session (no transcript, its ids).
     // Without CLAUDECODE the CLAUDE_CODE_* are the person's own settings, and stay
@@ -59,9 +60,11 @@ fn main() -> eframe::Result {
             }
         }
     }
+
     // a shell that set NO_COLOR (agent hosts do) would hand every terminal of ours a colorless claude/ls
     // SAFETY: as above, no other thread yet
     unsafe { std::env::remove_var("NO_COLOR") };
+
     // Linux: WebKitGTK's DMA-BUF renderer leaves the portals' pages black inside the app's X11 window (NVIDIA's GBM
     // refuses its buffers); the older path draws them. WebKit reads it once, so here, before any thread; a value the
     // person set stays. ponytail: every driver and the terminals' programs inherit it; only where GBM fails if it costs
@@ -70,8 +73,10 @@ fn main() -> eframe::Result {
         // SAFETY: as above, no other thread yet
         unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
     }
+
     // a window app has no console on Windows: a panic also goes to crash.log in the data folder
     let console = std::panic::take_hook();
+
     std::panic::set_hook(Box::new(move |info| {
         if let Some(dir) = data_dir() {
             let at = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_secs());
@@ -79,15 +84,20 @@ fn main() -> eframe::Result {
             let file = fs::create_dir_all(&dir).and_then(|_| fs::OpenOptions::new().create(true).append(true).open(dir.join("crash.log")));
             let _ = file.and_then(|mut f| std::io::Write::write_all(&mut f, entry.as_bytes()));
         }
+
         console(info);
     }));
+
     let args: Vec<String> = std::env::args().skip(1).collect();
+
     if install::wanted(&args) {
         return install::run(&args);
     }
+
     match args.first().map(String::as_str) {
         Some("mcp") => {
             mcp::run();
+
             return Ok(());
         }
         // Claude Code's hooks (events.rs): never a console, never in the CLI's way
@@ -104,29 +114,37 @@ fn main() -> eframe::Result {
         }
         _ => {}
     }
+
     // a second launch while the app runs (its window maybe hidden by Fechar mantém em segundo plano): that one comes back
     if std::env::var_os("MAGOAGENT_SCRIPT").is_none_or(|s| s.is_empty()) && raise_running() {
         return Ok(());
     }
+
     let (title, app_id) = window_names();
+
     let mut viewport = egui::ViewportBuilder::default()
         .with_title(title.clone())
         .with_app_id(app_id)
         .with_inner_size([1440.0, 920.0])
         .with_min_inner_size([920.0, 640.0])
         .with_icon(eframe::icon_data::from_png_bytes(app_icon()).expect("the app's icon is a png"));
+
     // a scripted run (screen tests) opens without taking the keyboard from the person's app
     let scripted = std::env::var_os("MAGOAGENT_SCRIPT").is_some_and(|s| !s.is_empty());
+
     if scripted {
         viewport = viewport.with_active(false);
+
         // and where the test wants it ("x,y" on the screen): off the monitor the person is using
         let at = std::env::var("MAGOAGENT_WINDOW_AT")
             .ok()
             .and_then(|at| at.split_once(',').and_then(|(x, y)| Some([x.trim().parse::<f32>().ok()?, y.trim().parse::<f32>().ok()?])));
+
         if let Some(at) = at {
             viewport = viewport.with_position(at);
         }
     }
+
     if cfg!(target_os = "macos") {
         // the canvas runs under the title bar; the toolbar sits beside the window buttons. Transparent so OpenGL picks a
         // pixel format with alpha, the one every window gets: without it the island's room around it was black
@@ -137,58 +155,82 @@ fn main() -> eframe::Result {
         // avatar's see-through corners need it (the app's own window paints all of itself)
         viewport = viewport.with_decorations(false).with_transparent(true);
     }
+
     #[cfg_attr(not(any(target_os = "macos", target_os = "linux")), allow(unused_mut))]
     let mut native_options = eframe::NativeOptions { viewport, ..Default::default() };
+
     // Linux: on X11 (XWayland in a Wayland session) the island can stay over every window and hang where it is put
     #[cfg(target_os = "linux")]
     if app::island::x11::active() {
         native_options.event_loop_builder = Some(Box::new(|builder| {
             use winit::platform::x11::EventLoopBuilderExtX11;
+
             builder.with_x11();
         }));
+
         // the swap does not wait for the screen, as eframe does on Wayland: XWayland presents a covered or minimized
         // window once a second, and the swap of the app's window, waiting on it, held every window (the island drawn in
         // the same frame) at a frame a second. The frames are spaced in `logic` instead (`DrawingApp::pace`)
         native_options.glow_options.vsync = false;
     }
+
     #[cfg(target_os = "macos")]
     if scripted {
         // an accessory app: no Dock icon, and it never steals the front from the app in use
         native_options.event_loop_builder = Some(Box::new(|builder| {
             use winit::platform::macos::{ActivationPolicy, EventLoopBuilderExtMacOS};
+
             builder.with_activation_policy(ActivationPolicy::Accessory).with_activate_ignoring_other_apps(false);
         }));
     }
+
     eframe::run_native(
         &title,
         native_options,
         Box::new(|cc| {
             #[cfg(target_os = "macos")]
             remember_window(cc);
+
             // the areas SwiftUI draws (MAGOAGENT_SWIFTUI; docs/swiftui.md)
             #[cfg(target_os = "macos")]
             app::native::start(&cc.egui_ctx);
+
             let mut app =
                 DrawingApp { autosave: autosave_path(), script: Script::from_env(), perf: app::system::script::Perf::from_env(), ..Default::default() };
+
             app.bridge = Bridge::start(Some(cc.egui_ctx.clone())).ok();
+
             if let Some(bridge) = &app.bridge {
                 bridge.write_endpoint();
             }
+
             // a cópia do relay que os hooks da pessoa rodam acompanha a versão do app; uma instância de teste (cena própria) não mexe nela
             if std::env::var_os("MAGOAGENT_SCENE").is_none() {
                 std::thread::spawn(app::maestro::claude_hooks::refresh_relay);
             }
+
             let (prefs, bad_prefs) = prefs_path().map(|p| read_prefs(&p)).unwrap_or_default();
+
             if let Some(prefs) = prefs {
                 app.saved_prefs = prefs.clone();
                 app.prefs = prefs;
             }
+
             install_fonts(&cc.egui_ctx, app.prefs.ligatures);
+
+            // GNOME on Wayland: the extension for the island's eyes is in by default, unless taken out in Ajustes › Ilha;
+            // never from a test instance (a scene of its own)
+            #[cfg(target_os = "linux")]
+            if app.prefs.gnome_cursor && std::env::var_os("MAGOAGENT_SCENE").is_none() {
+                std::thread::spawn(app::island::gnome::install_if_missing);
+            }
+
             // Linux on X11: the swap does not wait for the screen, so each frame waits for the GPU (system/finish.rs)
             #[cfg(target_os = "linux")]
             if app::island::x11::active() {
                 cc.egui_ctx.add_plugin(app::system::finish::FinishFrames);
             }
+
             app.ligatures_shown = app.prefs.ligatures;
             // the drawing is the workspace on screen when the app closed
             app.load_spaces();
@@ -196,27 +238,36 @@ fn main() -> eframe::Result {
             app.load_chats();
             // the first thing after an update: how it ended
             app.show_update_result();
+
             if app.script.is_none() {
                 app::system::updates::reopen_after_windows_restarts();
             }
+
             // a roteiro drives the canvas
             app.chat_open = app.prefs.start_in_chat && app.script.is_none();
+
             // the welcome once, and always while there is no space to open (a roteiro asks for it by MAGOAGENT_WELCOME)
             if (app.script.is_none() || std::env::var_os("MAGOAGENT_WELCOME").is_some()) && (!app.prefs.welcome_seen || app.spaces.list.is_empty()) {
                 app.start_welcome();
             }
+
             // the tour once after it (a test scene opens it on a step: MAGOAGENT_TOUR=<passo>, ui/tour.rs), and the
             // notes of the version just installed (ui/changelog.rs)
             let asked = std::env::var_os("MAGOAGENT_SCENE").and_then(|_| std::env::var("MAGOAGENT_TOUR").ok());
+
             app.tour_on_open(asked.map(|step| step.trim().parse().unwrap_or(0)));
             app.show_whats_new(env!("CARGO_PKG_VERSION"));
+
             if let Some(kept) = bad_prefs {
                 // after the drawing's own warning, if it had one
                 let earlier = std::mem::take(&mut app.status);
+
                 let message =
                     format!("As preferências não puderam ser lidas e voltaram ao padrão. O arquivo antigo ficou na mesma pasta, como {}.", kept_name(&kept));
+
                 app.toast(if earlier.is_empty() { message } else { format!("{earlier}\n{message}") });
             }
+
             Ok(Box::new(app))
         }),
     )
@@ -236,14 +287,18 @@ fn attach_console() {
             fn SetStdHandle(which: u32, handle: isize) -> i32;
             fn GetFileType(handle: isize) -> u32;
         }
+
         const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
         // STD_OUTPUT_HANDLE and STD_ERROR_HANDLE
         const OUTPUTS: [u32; 2] = [-11i32 as u32, -12i32 as u32];
+
         // SAFETY: plain Win32 calls on this process's own standard handles; a handle that is not
         // there reads as 0 or -1 and an unknown one as type 0, and both are left alone
         unsafe {
             let given = OUTPUTS.map(|which| (which, GetStdHandle(which)));
+
             AttachConsole(ATTACH_PARENT_PROCESS);
+
             for (which, handle) in given {
                 if handle != 0 && handle != -1 && GetFileType(handle) != 0 {
                     SetStdHandle(which, handle);
@@ -265,6 +320,7 @@ fn remember_window(cc: &eframe::CreationContext) {
     let RawWindowHandle::AppKit(handle) = handle.as_raw() else { return };
     // SAFETY: the handle comes from the live window this callback was handed
     let view: &objc2_app_kit::NSView = unsafe { handle.ns_view.cast().as_ref() };
+
     WINDOW.with(|w| *w.borrow_mut() = view.window());
 }
 
@@ -275,6 +331,7 @@ fn remember_window(cc: &eframe::CreationContext) {
 pub(crate) fn step_aside_window(aside: bool) -> bool {
     WINDOW.with(|w| {
         let Some(window) = &*w.borrow() else { return false };
+
         window.setAlphaValue(if aside { 0.0 } else { 1.0 });
         window.setIgnoresMouseEvents(aside);
         window.setHasShadow(!aside);
@@ -289,6 +346,7 @@ pub(crate) fn step_aside_window(aside: bool) -> bool {
 #[cfg(target_os = "macos")]
 pub(crate) fn place_window_buttons(center: f64) {
     use objc2_app_kit::NSWindowButton;
+
     WINDOW.with(|w| {
         let Some(window) = &*w.borrow() else { return };
         let kinds = [NSWindowButton::CloseButton, NSWindowButton::MiniaturizeButton, NSWindowButton::ZoomButton];
@@ -297,11 +355,14 @@ pub(crate) fn place_window_buttons(center: f64) {
         let container = buttons.first().and_then(|b| unsafe { b.superview() }).and_then(|v| unsafe { v.superview() });
         let Some(container) = container else { return };
         let mut bounds = container.frame();
+
         bounds.size.height = center * 2.0;
         bounds.origin.y = window.frame().size.height - bounds.size.height;
         container.setFrame(bounds);
+
         for (i, button) in buttons.iter().enumerate() {
             let mut origin = button.frame().origin;
+
             origin.x = 18.0 + i as f64 * 20.0;
             origin.y = (bounds.size.height - button.frame().size.height) / 2.0;
             button.setFrameOrigin(origin);
@@ -325,5 +386,6 @@ fn raise_running() -> bool {
     let Some(path) = mcp::bridge::endpoint_path().filter(|p| mcp::bridge::app_open(p)) else { return false };
     let saved = file::read_json::<serde_json::Value>(&path).unwrap_or_default();
     let (address, token) = (saved["address"].as_str().unwrap_or_default(), saved["token"].as_str().unwrap_or_default());
+
     mcp::bridge::request_to(address, token, "", serde_json::json!({ "cmd": "raise" }), std::time::Duration::from_secs(5)).is_ok()
 }

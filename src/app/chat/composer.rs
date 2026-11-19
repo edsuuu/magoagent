@@ -35,9 +35,11 @@ const PLUS: &[&[(f32, f32)]] = &[&[(12.0, 5.0), (12.0, 19.0)], &[(5.0, 12.0), (1
 fn round(ui: &egui::Ui, center: Pos2, salt: &str, look: &Look) -> egui::Response {
     let rect = Rect::from_center_size(center, Vec2::splat(32.0));
     let response = ui.interact(rect, ui.scope_id().with(salt), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
     if response.hovered() {
         ui.painter().circle_filled(center, 16.0, look.hover);
     }
+
     response
 }
 
@@ -66,6 +68,7 @@ impl DrawingApp {
         let hint = dictating.as_deref().unwrap_or(hint);
         // 16 + 12 of margins and the hairline's 2
         let inner = width - 30.0;
+
         let frame = egui::Frame::new()
             .fill(look.panel)
             .stroke(Stroke::new(1.0, look.line))
@@ -74,6 +77,7 @@ impl DrawingApp {
             .show(ui, |ui| {
                 ui.set_width(inner);
                 ui.spacing_mut().item_spacing.y = 0.0;
+
                 // read before the box takes the key: Response::has_focus is false in the test window,
                 // and Shift lives on the key event, not the global modifiers
                 // a dialog over the chat (Remover chat) takes the Enter
@@ -82,8 +86,10 @@ impl DrawingApp {
                     && ui.input(|i| {
                         i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift))
                     });
+
                 // the pictures pasted or dropped, above the words
                 self.attached_row(ui, c);
+
                 egui::ScrollArea::vertical().id_salt("chat_draft_scroll").auto_shrink([false, true]).max_height(cap).show(ui, |ui| {
                     let edit = egui::TextEdit::multiline(draft)
                         .id(draft_id)
@@ -95,40 +101,49 @@ impl DrawingApp {
                         // Tab never moves focus off the box (it would land on Anexar, and Enter would press it)
                         .lock_focus(true)
                         .frame(egui::Frame::NONE);
+
                     ui.add(edit);
                 });
+
                 ui.add_space(10.0);
                 let (row, _) = ui.allocate_exact_size(Vec2::new(inner, 32.0), Sense::hover());
                 let y = row.center().y;
                 // Anexar
                 let plus = round(ui, Pos2::new(row.left() + 16.0, y), "chat_attach", look).tip("Anexar imagem");
+
                 glyph(ui.painter(), Pos2::new(row.left() + 16.0, y), 16.0, 2.0, if plus.hovered() { look.text } else { look.soft }, PLUS);
                 out.attach = plus.clicked();
                 // send, at the right: the primary color with the ground's arrow, grey with nothing to send
                 let at = Pos2::new(row.right() - 16.0, y);
                 let send = ui.interact(Rect::from_center_size(at, Vec2::splat(32.0)), ui.scope_id().with("chat_send"), Sense::click());
                 let (fill, ink) = if ready { (look.text, look.bg) } else { (look.raised, look.muted) };
+
                 ui.painter().circle_filled(at, 16.0, fill);
                 glyph(ui.painter(), at, 16.0, 2.4, ink, ARROW);
                 clicked_send = ready && send.on_hover_cursor(CursorIcon::PointingHand).clicked();
                 // the call (with its microphone and speakers while it is on), then Ditar
                 // the call on hold (voice::CALL_ON): Ditar takes its place; Ditar on hold (DICTATION_ON): nothing there
                 let call = at - Vec2::new(if crate::app::voice::CALL_ON { 36.0 } else { 0.0 }, 0.0);
+
                 if crate::app::voice::CALL_ON {
                     out.voice = self.voice_buttons(ui, call, look, t);
                 }
+
                 let mut left_of = call.x - 16.0 - if self.voice.on { 72.0 } else { 0.0 };
+
                 if !self.voice.on && crate::app::voice::DICTATION_ON {
                     let mic = call - Vec2::new(36.0, 0.0);
                     let on = self.dictation.is_some();
                     // grey while it starts, blue once it listens
                     let ready = self.dictation.as_ref().is_some_and(|d| d.ready);
                     let r = round(ui, mic, "chat_dictate", look);
+
                     let r = match (on, ready) {
                         (false, _) => r.tip("Ditar"),
                         (true, true) => r.tip("Só falar agora"),
                         (true, false) => r,
                     };
+
                     let ink = if on {
                         ui.painter().circle_filled(mic, 16.0, if ready { ACCENT } else { look.raised });
                         if ready { Color32::WHITE } else { look.text }
@@ -137,13 +152,16 @@ impl DrawingApp {
                     } else {
                         look.soft
                     };
+
                     crate::app::voice::paint_mic(ui.painter(), mic, ink, false);
                     out.dictate = r.clicked();
                     left_of = mic.x - 16.0;
+
                     // listening: the microphone's level live beside it, five bars
                     if let Some(dictation) = self.dictation.as_ref().filter(|dictation| dictation.ready) {
                         let level = (dictation.level() * 4.0).min(1.0);
                         let right = mic.x - 24.0;
+
                         for bar in 0..5 {
                             // each bar its own sway, the middle ones tallest
                             let sway = ((t * 9.0 + bar as f64 * 1.7).sin() as f32 * 0.5 + 0.5) * 0.6 + 0.4;
@@ -151,30 +169,37 @@ impl DrawingApp {
                             let height = 3.0 + 15.0 * level * sway * weight;
                             let x = right - (4 - bar) as f32 * 5.0;
                             let line = Rect::from_center_size(Pos2::new(x, mic.y), Vec2::new(3.0, height));
+
                             ui.painter().rect_filled(line, 1.5, ACCENT);
                         }
+
                         ui.ctx().request_repaint();
                         left_of = right - 4.0 * 5.0 - 10.0;
                     }
                 }
+
                 // a chat's own chips between Anexar and the voice
                 if let Some(chat) = self.chat_agent.as_ref().and_then(|id| self.chats.iter().find(|c| &c.id == id)) {
                     let chips = Rect::from_min_max(Pos2::new(row.left() + 38.0, y - 14.0), Pos2::new(left_of - 6.0, y + 14.0));
+
                     if chips.width() > 40.0 {
                         out.footer = self.chat_footer(ui, chips, chat, look);
                     }
                 }
+
                 enter && !swallow
             });
+
         out.rect = frame.response.rect;
         out.send = ready && (frame.inner || clicked_send);
         // under the card only what the voice is doing (dictation, the call); the keys' hint is gone
-        // (the owner asked: the box says enough)
         let voice = &self.voice;
+
         let line = if let Some(dictation) = &self.dictation {
             dictation.line().map(|l| (l, look.soft))
         } else if voice.on || !voice.status.is_empty() {
             let state = voice.state.label();
+
             Some((
                 if voice.status.is_empty() { state.to_string() } else { format!("{state} · {}", voice.status) },
                 if voice.on { look.soft } else { look.faint },
@@ -182,12 +207,15 @@ impl DrawingApp {
         } else {
             None
         };
+
         if let (true, Some((text, color))) = (hints != Hints::None, line) {
             ui.add_space(8.0);
             let (line, _) = ui.allocate_exact_size(Vec2::new(width, 14.0), Sense::hover());
             let g = crate::app::chat::list::clipped(ui.painter(), text, FontId::proportional(12.0), color, width);
+
             ui.painter().galley(Pos2::new(line.center().x - g.size().x / 2.0, line.center().y - g.size().y / 2.0), g, color);
         }
+
         out
     }
 }

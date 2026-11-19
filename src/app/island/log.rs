@@ -27,22 +27,27 @@ impl DrawingApp {
     /// `team`: the app's chat whose recruits at work get a line each at its end (`team_rows`).
     pub(super) fn island_log(&self, ui: &mut egui::Ui, log: Rect, items: &[&ChatItem], working: bool, team: Option<&str>, time: f64) -> Option<String> {
         let mut clicked = None;
+
         ui.scope_builder(egui::UiBuilder::new().max_rect(log), |ui| {
             ui.spacing_mut().scroll = crate::app::ui::scroll_style();
+
             egui::ScrollArea::vertical().id_salt("island_prompt_log").stick_to_bottom(true).auto_shrink(false).show(ui, |ui| {
                 // the room the scroll bar leaves (`ui::scroll_style`)
                 let width = ui.available_width();
+
                 ui.set_width(width);
                 ui.spacing_mut().item_spacing.y = MESSAGE_GAP;
                 // the answers as the chat on the canvas draws them (code cards with Copiar, pictures, files), always dark
                 ui.visuals_mut().dark_mode = true;
                 let colors = UiColors::new(true);
+
                 for item in items {
                     match item {
                         // another agent's question: whose it is over it, as the chat on the canvas says (chat_item)
                         ChatItem::User(text) => match crate::app::chat::ask::asked_by(text) {
                             Some((who, question)) => {
                                 let kind = if crate::app::chat::ask::is_answer(text) { "Resposta de" } else { "Pergunta de" };
+
                                 ui.vertical(|ui| {
                                     ui.spacing_mut().item_spacing.y = 4.0;
                                     asker(ui, &format!("{kind} {who}"), width);
@@ -56,45 +61,56 @@ impl DrawingApp {
                         _ => {}
                     }
                 }
+
                 // the agent at work: its dots where the answer will come
                 if working {
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 16.0), Sense::hover());
+
                     for dot in 0..3 {
                         let lift = ((time * 6.0 - dot as f64).sin() * 0.5 + 0.5) as f32;
                         let at = Pos2::new(rect.left() + 4.0 + dot as f32 * 9.0, rect.center().y - lift * 2.0);
+
                         ui.painter().circle_filled(at, 2.5, REPLY.gamma_multiply(0.5 + lift * 0.5));
                     }
                 }
+
                 if let Some(id) = team {
                     self.team_rows(ui, id, &crate::app::chat::list::Look::new(true, &colors), time);
                 }
             });
         });
+
         clicked
     }
 
     /// A picture the person pasted, at the right as their words, fitted in `PICTURE` (the chat's thumbnails, decoded once).
     fn island_picture(&self, ui: &mut egui::Ui, data: &str, width: f32) -> bool {
         let pic = self.chat_images.borrow_mut().entry(image_key(data)).or_insert_with(|| thumb(ui.ctx(), data)).clone();
+
         let size = match pic.get() {
             Some(None) => return false,
             Some(Some(pic)) => fit(pic.size, PICTURE),
             None => PICTURE,
         };
+
         let (rect, _) = ui.allocate_exact_size(Vec2::new(width, size.y), Sense::hover());
         let frame = Rect::from_min_size(Pos2::new(rect.right() - size.x, rect.top()), size);
         let response = ui.interact(frame, ui.scope_id().with(("island_picture", image_key(data))), Sense::click());
         let response = response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Ver em tela cheia");
+
         match pic.get().and_then(Option::as_ref) {
             Some(pic) => {
                 let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+
                 ui.painter().add(egui::epaint::RectShape::filled(frame, 10, Color32::WHITE).with_texture(pic.texture.id(), uv));
             }
             None => {
                 ui.painter().rect_filled(frame, 10, Color32::from_white_alpha(14));
             }
         }
+
         let edge = if response.hovered() { 60 } else { 22 };
+
         ui.painter().rect_stroke(frame, 10, Stroke::new(1.0, Color32::from_white_alpha(edge)), StrokeKind::Inside);
         response.clicked()
     }
@@ -103,22 +119,27 @@ impl DrawingApp {
 /// `size` (pixels) shrunk to fit `most`, its shape kept.
 fn fit(size: [u32; 2], most: Vec2) -> Vec2 {
     let size = Vec2::new(size[0].max(1) as f32, size[1].max(1) as f32);
+
     size * (most.x / size.x).min(most.y / size.y).min(1.0)
 }
 
 /// The person's words: `.chat-row.user`, at the right, 32 in from the left; `.bubble`: 13% white, radius 12; selectable.
 fn bubble(ui: &mut egui::Ui, text: &str, width: f32) {
     let text = unmarked(text);
+
     if text.is_empty() {
         return;
     }
+
     let format = TextFormat { font_id: font(SIZE), color: INK, line_height: Some(LINE_HEIGHT), ..Default::default() };
     let mut job = LayoutJob::single_section(text, format);
+
     job.wrap.max_width = width - 32.0 - 20.0;
     let galley = ui.painter().layout_job(job.clone());
     let size = galley.size() + Vec2::new(20.0, 14.0);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, size.y), Sense::hover());
     let bubble = Rect::from_min_size(Pos2::new(rect.right() - size.x, rect.top()), size);
+
     ui.painter().rect_filled(bubble, 12, Color32::from_white_alpha(33));
     selectable(ui, bubble.min + Vec2::new(10.0, 7.0), job);
 }
@@ -127,13 +148,15 @@ fn bubble(ui: &mut egui::Ui, text: &str, width: f32) {
 fn asker(ui: &mut egui::Ui, label: &str, width: f32) {
     let galley = crate::app::chat::list::clipped(ui.painter(), label.to_string(), font(11.0), REPLY, width - 32.0);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, galley.size().y), Sense::hover());
+
     ui.painter().galley(Pos2::new(rect.right() - galley.size().x, rect.top()), galley, REPLY);
 }
 
-/// `job` at `at` as text the person can select and copy (asked: "o texto que o Claude retornar eu preciso poder
-/// selecionar, até as minhas mensagens"): the same job that was measured, wrapped at its own width, from the left.
+/// `job` at `at` as text the person can select and copy: the same job that was measured, wrapped at its own width,
+/// from the left.
 fn selectable(ui: &mut egui::Ui, at: Pos2, job: LayoutJob) {
     let room = Rect::from_min_size(at, Vec2::new(job.wrap.max_width, f32::INFINITY));
+
     ui.scope_builder(egui::UiBuilder::new().max_rect(room).layout(egui::Layout::top_down(egui::Align::LEFT)), |ui| {
         ui.add(egui::Label::new(job).wrap().selectable(true));
     });
@@ -143,9 +166,11 @@ fn selectable(ui: &mut egui::Ui, at: Pos2, job: LayoutJob) {
 fn unmarked(text: &str) -> String {
     let mut out = String::new();
     let mut rest = text;
+
     while let Some(start) = rest.find("[Image #") {
         let after = &rest[start + "[Image #".len()..];
         let digits = after.bytes().take_while(u8::is_ascii_digit).count();
+
         if digits > 0 && after[digits..].starts_with(']') {
             out.push_str(&rest[..start]);
             rest = after[digits + 1..].strip_prefix(' ').unwrap_or(&after[digits + 1..]);
@@ -154,6 +179,7 @@ fn unmarked(text: &str) -> String {
             rest = &rest[start + 1..];
         }
     }
+
     out.push_str(rest);
     out.trim().to_string()
 }
@@ -166,6 +192,7 @@ mod tests {
     fn the_log_has_the_words_and_the_persons_pictures_only() {
         let picture = |user| ChatItem::Image { data: "x".into(), media: "image/png".into(), user, at: 0 };
         let items = [ChatItem::User("oi".into()), ChatItem::System("x".into()), picture(true), picture(false), ChatItem::Agent("olá".into())];
+
         assert_eq!(said(&items).collect::<Vec<_>>(), [&items[0], &items[2], &items[4]]);
     }
 
@@ -183,9 +210,11 @@ mod tests {
         let path = std::env::temp_dir().join(format!("mago-island-log-{}.png", std::process::id()));
         let answer = ChatItem::Agent(format!("Abra e digite `wsl -d`:\n\n```bash\nwsl -d Ubuntu\n```\n\n![Print das duas telas]({})", path.display()));
         let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(600.0, 900.0))), ..Default::default() };
+
         let output = ctx.run_ui(raw, |ui| {
             app.island_log(ui, Rect::from_min_size(Pos2::ZERO, Vec2::new(500.0, 880.0)), &[&answer], false, None, 0.0);
         });
+
         let texts: Vec<String> = output
             .shapes
             .iter()
@@ -194,6 +223,7 @@ mod tests {
                 _ => None,
             })
             .collect();
+
         assert!(texts.iter().any(|text| text == "Copiar"), "the code card and its Copiar: {texts:?}");
         assert!(texts.iter().any(|text| text.contains("digite wsl -d")), "the inline code keeps its space: {texts:?}");
         assert!(!texts.iter().any(|text| text.contains("Print das duas telas")), "the picture is not its words: {texts:?}");
@@ -205,6 +235,7 @@ mod tests {
     fn a_picture_fits_its_box_and_keeps_its_shape() {
         assert_eq!(fit([1100, 700], PICTURE), Vec2::new(220.0, 140.0));
         let wide = fit([686, 316], PICTURE);
+
         assert!((wide.x - 220.0).abs() < 0.01 && (wide.y - 101.34).abs() < 0.01, "{wide:?}");
         assert_eq!(fit([100, 50], PICTURE), Vec2::new(100.0, 50.0), "a small one stays its size");
     }

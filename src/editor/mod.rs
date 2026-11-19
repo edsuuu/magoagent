@@ -47,10 +47,13 @@ pub(crate) use unified::unified_rows;
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
     #[cfg_attr(not(windows), expect(unused_mut))]
     let mut c = std::process::Command::new(program);
+
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
+
         c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
+
     c
 }

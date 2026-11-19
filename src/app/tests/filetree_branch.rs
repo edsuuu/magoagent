@@ -8,8 +8,10 @@ fn the_branch_chip_switches_branches_and_refuses_what_would_lose_changes() {
     if crate::editor::command("git").arg("--version").output().is_err() {
         return;
     }
+
     let ctx = Context::default();
     let dir = temp("branch");
+
     git(&dir, &["init", "-q"]);
     git(&dir, &["config", "user.email", "t@example.com"]);
     git(&dir, &["config", "user.name", "t"]);
@@ -21,9 +23,11 @@ fn the_branch_chip_switches_branches_and_refuses_what_would_lose_changes() {
     fs::write(dir.join("a.txt"), "two").unwrap();
     git(&dir, &["commit", "-qam", "second"]);
     let mut app = DrawingApp::default();
+
     tree_frame(&mut app, &ctx, 0.0, vec![]);
     let id = tree_on(&mut app, &dir);
     let listed = app.act_file_tree(&json!({ "action": "branches" })).unwrap();
+
     assert_eq!(listed, "  main\n* outro", "the current one is marked");
     // a clean switch
     assert_eq!(app.act_file_tree(&json!({ "action": "checkout", "name": "main" })), Ok("Ramo trocado para main.".into()));
@@ -32,6 +36,7 @@ fn the_branch_chip_switches_branches_and_refuses_what_would_lose_changes() {
     // an edit that the other branch's file would overwrite: refused, and the tree stays where it is
     fs::write(dir.join("a.txt"), "mine").unwrap();
     let why = app.act_file_tree(&json!({ "action": "checkout", "name": "outro" })).unwrap_err();
+
     assert!(why.contains("mudanças locais") && why.contains("outro"), "{why}");
     assert_eq!(crate::editor::run_git(&dir, &["symbolic-ref", "--short", "HEAD"]).unwrap().trim(), "main");
     assert_eq!(fs::read_to_string(dir.join("a.txt")).unwrap(), "mine");

@@ -10,9 +10,8 @@ const DEV_BADGE: Color32 = Color32::from_rgb(0xf0, 0xa0, 0x20);
 
 /// The window's buttons, close at the right. Windows' are 46 wide, in a block as tall as the reference app's window overlay
 /// (a tone apart from the canvas), and close turns red under the pointer. On Linux they are GNOME's, as Chrome draws them
-/// there (asked: "porque o do Chrome fica diferente do nosso app, está com os botões do Windows"): round, 24 across, 32
-/// apart and 8 from the window's edge, on the top row with the canvas's buttons, with no ground of their own and close gray
-/// like the others.
+/// there: round, 24 across, 32 apart and 8 from the window's edge, on the top row with the canvas's buttons, with no ground
+/// of their own and close gray like the others.
 // ponytail: always minimize, maximize, close at the right; GNOME's own order (button-layout) is not read
 const GNOME: bool = cfg!(target_os = "linux");
 const CAPTION_WIDTH: f32 = if GNOME { 32.0 } else { 46.0 };
@@ -28,6 +27,7 @@ const CLOSE_RED: Color32 = Color32::from_rgb(0xe8, 0x11, 0x23);
 pub(crate) fn caption_button(width: f32, k: usize) -> Rect {
     let left = width - CAPTION_MARGIN - CAPTION_WIDTH * (k + 1) as f32;
     let bottom = if GNOME { TOP_ROW_Y + CAPTION_WIDTH / 2.0 } else { CAPTION_HEIGHT };
+
     Rect::from_min_size(Pos2::new(left, 0.0), Vec2::new(CAPTION_WIDTH, bottom))
 }
 
@@ -45,6 +45,7 @@ impl DrawingApp {
     /// has no sidebar), 1 the chat's.
     pub(crate) fn top_button(&self, k: usize) -> Rect {
         let left = (self.sidebar_width() + 12.0).max(MENU_LEFT) + k as f32 * (TOP_BUTTON + TOP_GAP);
+
         Rect::from_min_size(Pos2::new(left, TOP_ROW_Y - TOP_BUTTON / 2.0), Vec2::splat(TOP_BUTTON))
     }
 
@@ -53,6 +54,7 @@ impl DrawingApp {
     pub(crate) fn pane_button(&self, width: f32, k: usize) -> Rect {
         let captions = if TITLE_BAR > 0.0 { CAPTIONS } else { 0.0 };
         let right = width - captions - 12.0 - (super::super::panes::PANES.len() - 1 - k) as f32 * (TOP_BUTTON + TOP_GAP);
+
         Rect::from_min_size(Pos2::new(right - TOP_BUTTON, TOP_ROW_Y - TOP_BUTTON / 2.0), Vec2::splat(TOP_BUTTON))
     }
 
@@ -63,19 +65,26 @@ impl DrawingApp {
         let (dark, chat) = (self.dark(), self.chat_open);
         let ink = glass_ink(dark);
         let p = ui.painter().clone();
+
         let round = |ui: &mut egui::Ui, rect: Rect, id: &str, icon: Icon, on: bool, tip: &str| {
             let button = ui.interact(rect, egui::Id::unique(id), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip(keys_label(tip));
+
             paint_glass(&p, rect, TOP_BUTTON / 2.0, dark, false);
+
             if button.hovered() {
                 p.circle_filled(rect.center(), GLASS_BUTTON / 2.0, ink.gamma_multiply(0.1));
             }
-            // ☰'s three bars read bigger than the other marks: a size down (asked)
+
+            // ☰'s three bars read bigger than the other marks: a size down
             let scale = if matches!(icon, Icon::Menu) { 0.85 } else { GLASS_ICON };
+
             paint_icon_scaled(&p, icon, rect.center(), if on { glass_accent(dark) } else { ink.gamma_multiply(0.85) }, scale, 0.0);
             button.clicked()
         };
+
         let (first, second) = (self.top_button(0), self.top_button(1));
         let folded = self.prefs.sidebar_hidden;
+
         if chat {
             if round(ui, first, "top_settings", Icon::Gear, self.settings_open, "Ajustes") {
                 self.settings_open = !self.settings_open;
@@ -83,30 +92,39 @@ impl DrawingApp {
         } else if round(ui, first, "top_menu", Icon::Menu, false, if folded { "Abrir barra lateral" } else { "Fechar barra lateral" }) {
             self.prefs.sidebar_hidden = !folded;
         }
+
         if round(ui, second, "top_chat", Icon::Composer, chat, if chat { "Voltar ao canvas" } else { "Abrir o chat" }) {
             self.chat_open = !chat;
         }
+
         // how many wait on the person, in an amber badge; over the chat, the title says what runs
         let (running, waiting) = self.chats_counts();
+
         if waiting > 0 {
             let badge = second.right_top() + Vec2::new(-3.0, 4.0);
             let count = p.layout_no_wrap(waiting.min(99).to_string(), FontId::proportional(10.0), Color32::from_rgb(0x1d, 0x1d, 0x1f));
             let pill = Rect::from_center_size(badge, Vec2::new((count.size().x + 8.0).max(16.0), 16.0));
+
             p.rect(pill, 8, crate::app::chat::list::AMBER, Stroke::new(1.5, if dark { Color32::from_gray(0x1a) } else { Color32::WHITE }), StrokeKind::Outside);
             p.galley(pill.center() - count.size() / 2.0, count, Color32::from_rgb(0x1d, 0x1d, 0x1f));
         }
+
         // on the Mac the buttons sit in the list's top row, which says Conversas, + and « itself
         if chat && TITLE_BAR == 0.0 {
             return second.right();
         }
+
         if chat {
             let at = Pos2::new(second.right() + TOP_GAP + 6.0, TOP_ROW_Y);
             let title = crate::app::chat::list::bold(&p, at - Vec2::new(0.0, 9.0), "Chats", 14.0, ink);
             let rest = format!(" · {running} rodando · {waiting} esperando");
+
             p.text(Pos2::new(title.right(), TOP_ROW_Y), egui::Align2::LEFT_CENTER, rest, FontId::proportional(14.0), ink.gamma_multiply(0.6));
+
             // the words, not a button: the bar under them still moves the window
             return second.right();
         }
+
         let space = self.spaces.list.iter().find(|w| w.id == self.spaces.current).filter(|_| folded && !chat);
         let Some(space) = space else { return second.right() };
         // up to the toolbar, which shares the row
@@ -114,26 +132,36 @@ impl DrawingApp {
         let limit = if toolbar.is_positive() { toolbar.left() } else { ui.ctx().content_rect().width() / 2.0 } - 12.0;
         let name = p.layout_no_wrap(space.name.clone(), FontId::proportional(14.0), ink.gamma_multiply(0.9));
         let left = second.right() + TOP_GAP;
+
         // 11 in from each end, a 12 folder, 6 to the name
         let pill = Rect::from_min_max(
             Pos2::new(left, TOP_ROW_Y - TOP_BUTTON / 2.0),
             Pos2::new((left + 11.0 + 18.0 + name.size().x + 11.0).min(limit), TOP_ROW_Y + TOP_BUTTON / 2.0),
         );
+
         if pill.width() < 60.0 {
             return second.right();
         }
+
         let button = ui.interact(pill, egui::Id::unique("top_space"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).tip("Abrir barra lateral");
+
         paint_glass(&p, pill, 16.0, dark, false);
+
         if button.hovered() {
             p.rect_filled(pill, 16, ink.gamma_multiply(0.06));
         }
+
         let [r, g, b] = space.color;
+
         paint_icon_scaled(&p, Icon::Open, Pos2::new(pill.left() + 17.0, pill.center().y), Color32::from_rgb(r, g, b), 0.75, 0.0);
         let text = Pos2::new(pill.left() + 29.0, pill.center().y - name.size().y / 2.0);
+
         p.with_clip_rect(pill.shrink2(Vec2::new(11.0, 0.0))).galley(text, name, ink);
+
         if button.clicked() {
             self.prefs.sidebar_hidden = false;
         }
+
         pill.right()
     }
 
@@ -149,43 +177,58 @@ impl DrawingApp {
         let maximized = ctx.input(|i| i.viewport().maximized == Some(true));
         let width = ctx.content_rect().width();
         let toolbar = self.toolbar_span;
+
         let (left, right) =
             if toolbar.is_positive() && toolbar.top() < TITLE_BAR { (toolbar.left() - 4.0, toolbar.right() + 4.0) } else { (width / 2.0, width / 2.0) };
+
         let from = self.sidebar_width().min(left);
+
         // an empty stretch of the bar (its press is `caption_drag`'s)
         let side = |name: &str, from: f32, to: f32, add: &mut dyn FnMut(&mut egui::Ui, Rect)| {
             // not constrained to the window: with last frame's width (the toolbar moving while the sidebar
             // slides) egui would push it back inside, and the caption buttons with it
             let area = egui::Area::new(egui::Id::unique(name)).fixed_pos(Pos2::new(from, 0.0)).constrain(false);
+
             area.order(egui::Order::Foreground).show(ctx, |ui| {
                 let (bar, _) = ui.allocate_exact_size(Vec2::new((to - from).max(0.0), TITLE_BAR), Sense::hover());
+
                 add(ui, bar);
             });
         };
+
         let first = self.top_button(0);
+
         side("title_bar", from, left, &mut |ui, _| {
             let end = self.top_buttons(ui);
+
             if crate::file::development() {
                 // the build of the repo, as its icon says too (painted only: the stretch still moves the window)
                 let chip = Rect::from_center_size(Pos2::new(end + 26.0, first.center().y), Vec2::new(36.0, 18.0));
+
                 ui.painter().rect_filled(chip, 9.0, DEV_BADGE);
                 ui.painter().text(chip.center(), egui::Align2::CENTER_CENTER, "DEV", FontId::proportional(11.0), Color32::from_rgb(0x1e, 0x1e, 0x22));
             }
+
             self.title_buttons = Rect::from_min_max(first.min, Pos2::new(end, first.bottom()));
         });
+
         side("title_bar_right", right, width, &mut |ui, bar| {
             self.pane_buttons(ui);
             let p = ui.painter().clone();
+
             if !GNOME {
                 p.rect_filled(Rect::from_min_max(Pos2::new(bar.right() - CAPTIONS, 0.0), Pos2::new(bar.right(), CAPTION_HEIGHT)), 0, ground);
             }
+
             // right to left: close, maximize / restore, minimize
             let names = ["Fechar", if maximized { "Restaurar" } else { "Maximizar" }, "Minimizar"];
+
             for (k, name) in names.into_iter().enumerate() {
                 let rect = caption_button(bar.right(), k);
                 let button = ui.interact(rect, egui::Id::unique(("caption", k)), Sense::click()).tip(name);
                 let close = k == 0;
                 let at = if GNOME { Pos2::new(rect.center().x, TOP_ROW_Y) } else { rect.center() };
+
                 if GNOME {
                     if button.hovered() {
                         p.circle_filled(at, ROUND / 2.0, if button.is_pointer_button_down_on() { ink.gamma_multiply(0.2) } else { hover });
@@ -193,7 +236,9 @@ impl DrawingApp {
                 } else if button.hovered() {
                     p.rect_filled(rect, 0, if close { CLOSE_RED } else { hover });
                 }
+
                 caption_glyph(&p, k, maximized, at, if !GNOME && close && button.hovered() { Color32::WHITE } else { ink });
+
                 if button.clicked() {
                     ctx.send_viewport_cmd(match k {
                         0 => egui::ViewportCommand::Close,
@@ -203,6 +248,7 @@ impl DrawingApp {
                 }
             }
         });
+
         // on Windows the empty stretches are the window's own caption: the system moves it there
         // (and maximizes on a double-click, snaps at the screen's edges) even while a frame is slow
         #[cfg(windows)]
@@ -211,6 +257,7 @@ impl DrawingApp {
             // up to the panels' buttons when they show
             let end = self.panes.buttons.map_or(width - CAPTIONS, |buttons| buttons.left() - 4.0);
             let bare = [stretch(self.title_buttons.right() + 4.0, left), stretch(right, end)];
+
             native_caption::set(&bare, ctx.pixels_per_point());
         }
     }
@@ -242,14 +289,16 @@ impl DrawingApp {
         let (Some(screen), time) = (raw.screen_rect, raw.time.unwrap_or(0.0)) else { return };
         let maximized = raw.viewport().maximized == Some(true);
         let (buttons, panes) = (self.title_buttons, self.panes.buttons);
-        // the welcome covers the whole bar: all of its top moves the window, but the window's own buttons (asked: "se eu
-        // tô na intro e clico e arrasto a janela no meio ela deve deixar eu arrastar")
+        // the welcome covers the whole bar: all of its top moves the window, but the window's own buttons
         let welcome = self.welcome.is_some();
+
         let empty = |pos: Pos2| {
             if welcome {
                 return pos.y < TITLE_BAR && pos.x < screen.right() - CAPTIONS;
             }
+
             let bar = [egui::Id::unique("title_bar"), egui::Id::unique("title_bar_right")];
+
             let on_bar = match ctx.layer_id_at(pos) {
                 Some(layer) if bar.contains(&layer.id) => true,
                 Some(layer) if covers_the_bar(layer.id) => {
@@ -257,18 +306,23 @@ impl DrawingApp {
                 }
                 _ => false,
             };
+
             pos.y < TITLE_BAR
                 && on_bar
                 && !buttons.contains(pos)
                 && !panes.is_some_and(|rect| rect.expand(4.0).contains(pos))
                 && pos.x < screen.right() - CAPTIONS
         };
+
         raw.events.retain(|e| {
             let egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, .. } = e else { return true };
+
             if !empty(*pos) {
                 return true;
             }
+
             let again = self.caption_press.is_some_and(|(t, p)| time - t < 0.5 && p.distance(*pos) < 6.0);
+
             self.caption_press = if again { None } else { Some((time, *pos)) };
             ctx.send_viewport_cmd(if again { egui::ViewportCommand::Maximized(!maximized) } else { egui::ViewportCommand::StartDrag });
             false
@@ -310,6 +364,7 @@ pub(crate) mod native_caption {
     pub(crate) fn set(bare: &[Rect], pixels_per_point: f32) {
         let px = |v: f32| (v * pixels_per_point).round() as i32;
         let rects = bare.iter().filter(|r| r.is_positive()).map(|r| [px(r.min.x), px(r.min.y), px(r.max.x), px(r.max.y)]).collect();
+
         *BARE.lock().unwrap() = rects;
     }
 
@@ -317,6 +372,7 @@ pub(crate) mod native_caption {
     pub(crate) fn install(window: &impl wry::raw_window_handle::HasWindowHandle) -> bool {
         let Ok(handle) = window.window_handle() else { return false };
         let wry::raw_window_handle::RawWindowHandle::Win32(win) = handle.as_raw() else { return false };
+
         // SAFETY: the app's own window, hooked for its whole life; the procedure only reads BARE
         unsafe { SetWindowSubclass(win.hwnd.get(), hit_test, 1, 0) != 0 }
     }
@@ -324,13 +380,17 @@ pub(crate) mod native_caption {
     unsafe extern "system" fn hit_test(hwnd: isize, msg: u32, wparam: usize, lparam: isize, _: usize, _: usize) -> isize {
         // SAFETY: the system's own message, passed on unchanged
         let hit = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+
         if msg != WM_NCHITTEST || hit != HTCLIENT {
             return hit;
         }
+
         let mut at = Point { x: (lparam & 0xffff) as i16 as i32, y: ((lparam >> 16) & 0xffff) as i16 as i32 };
+
         // SAFETY: a plain point on the stack
         unsafe { ScreenToClient(hwnd, &mut at) };
         let inside = |r: &[i32; 4]| at.x >= r[0] && at.x < r[2] && at.y >= r[1] && at.y < r[3];
+
         if BARE.lock().map(|b| b.iter().any(inside)).unwrap_or(false) { HTCAPTION } else { hit }
     }
     #[test]
@@ -344,9 +404,11 @@ pub(crate) mod native_caption {
 /// there and never reaches the app. Runs on the raw input, before any widget sees the press.
 pub(crate) fn edge_resize(ctx: &Context, raw: &mut egui::RawInput) {
     let Some(screen) = raw.screen_rect.filter(|_| raw.viewport().maximized != Some(true)) else { return };
+
     raw.events.retain(|e| {
         let egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed: true, .. } = e else { return true };
         let Some((direction, _)) = resize_edge(screen, *pos) else { return true };
+
         ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(direction));
         false
     });
@@ -358,6 +420,7 @@ pub(crate) fn edge_resize(ctx: &Context, raw: &mut egui::RawInput) {
 pub(crate) fn edge_cursor(ctx: &Context) {
     let maximized = ctx.input(|i| i.viewport().maximized == Some(true));
     let edge = ctx.input(|i| i.pointer.hover_pos()).and_then(|p| resize_edge(ctx.content_rect(), p));
+
     if let (false, Some((_, cursor))) = (maximized, edge) {
         ctx.set_cursor_icon(cursor);
     }
@@ -367,11 +430,14 @@ pub(crate) fn edge_cursor(ctx: &Context) {
 pub(crate) fn resize_edge(screen: Rect, pos: Pos2) -> Option<(egui::ResizeDirection, CursorIcon)> {
     use egui::ResizeDirection as R;
     let gaps = [pos.x - screen.left(), screen.right() - pos.x, pos.y - screen.top(), screen.bottom() - pos.y];
+
     if gaps.iter().any(|g| *g < 0.0) || gaps.iter().all(|g| *g >= EDGE) {
         return None;
     }
+
     // on the band, a side's corner reaches CORNER along it
     let [west, east, north, south] = gaps.map(|g| g < CORNER);
+
     Some(match (north, south, west, east) {
         (true, _, true, _) => (R::NorthWest, CursorIcon::ResizeNorthWest),
         (true, _, _, true) => (R::NorthEast, CursorIcon::ResizeNorthEast),
@@ -390,8 +456,10 @@ fn caption_glyph(p: &Painter, k: usize, maximized: bool, at: Pos2, color: Color3
     let stroke = Stroke::new(1.0, color);
     // on the pixel grid, so the 1 px lines stay sharp
     let at = at.round() + Vec2::splat(0.5);
+
     if GNOME {
         let square = |min: Vec2, size: f32| Rect::from_min_size(at + min, Vec2::splat(size));
+
         match (k, maximized) {
             (0, _) => cross(p, at, 4.0, stroke),
             (1, false) => {
@@ -405,9 +473,12 @@ fn caption_glyph(p: &Painter, k: usize, maximized: bool, at: Pos2, color: Color3
                 p.hline(at.x - 4.0..=at.x + 4.0, at.y + 3.0, stroke);
             }
         }
+
         return;
     }
+
     let square = |min: Vec2, size: f32| Rect::from_min_size(at + min, Vec2::splat(size));
+
     match (k, maximized) {
         (0, _) => cross(p, at, 5.0, stroke),
         (1, false) => {

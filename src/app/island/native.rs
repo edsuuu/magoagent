@@ -51,7 +51,6 @@ pub(crate) struct Snapshot {
     pub(crate) close_after: u8,
     pub(crate) compact_after: u16,
     pub(crate) color: String,
-    pub(crate) agent_hooks: bool,
     pub(crate) claude_hooks: bool,
     pub(crate) song: Option<SongOut>,
     pub(crate) luna_dances: bool,
@@ -60,9 +59,7 @@ pub(crate) struct Snapshot {
     pub(crate) projects: Vec<String>,
     /// Where it hangs from, as saved (screen points from the main screen's top left); none: the first place.
     pub(crate) at: Option<[f32; 2]>,
-    pub(crate) chat_size: Option<[f32; 2]>,
     pub(crate) talk_size: Option<[f32; 2]>,
-    pub(crate) chat_big: bool,
     /// What the app forced since (`seq` grows by one each): the stage ("home", "petit", "greeting"; "reveal": peek only if closed) and a place asked
     /// in Ajustes or by the MCP ("top", "bottom", "left", "right").
     pub(crate) seq: u64,
@@ -154,8 +151,6 @@ pub(crate) struct ChatOut {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) working: bool,
-    /// The whole mini chat (⤢), not the compact conversation.
-    pub(crate) full: bool,
     /// A session outside the app shown instead (its pill's id).
     pub(crate) session: Option<String>,
     /// What was said, the last ones: (the person, the words).
@@ -347,8 +342,10 @@ impl DrawingApp {
     /// Every frame, with SwiftUI drawing the island: what it shows goes to Swift, and the sounds of what happened play.
     pub(crate) fn native_island(&mut self) {
         let snapshot = self.native_island_snapshot();
+
         crate::app::native::publish("island", &snapshot);
         let groove = self.luna_groove();
+
         let live = Live {
             mic: f32::from_bits(self.voice.shared.level.load(Ordering::Relaxed)).min(1.0),
             bpm: groove.as_ref().map_or(0.0, |groove| groove.bpm),
@@ -359,6 +356,7 @@ impl DrawingApp {
             dance: groove.as_ref().map_or(String::new(), |groove| format!("{:?}", groove.dance).to_lowercase()),
             bands: groove.and_then(|groove| groove.bands).map(|bands| bands.to_vec()),
         };
+
         crate::app::native::publish("island.live", &live);
     }
 
@@ -367,22 +365,28 @@ impl DrawingApp {
     pub(crate) fn native_island_snapshot(&mut self) -> Snapshot {
         let now = crate::app::system::tray::unix_seconds();
         let paused = crate::app::system::tray::alerts_paused(self.prefs.pause_alerts_until, now);
+
         if paused || !self.prefs.island || self.welcome.is_some() {
             self.island = super::Island::default();
+
             return Snapshot::default();
         }
+
         let time = self.now;
         let rows: Vec<AgentRow> = self.agent_rows().into_iter().filter(|row| row.state != AgentState::Ended).collect();
         let asks: Vec<String> = self.person_asks.borrow().iter().map(|ask| ask.chat.clone()).collect();
         let outside = self.outside_pills();
         let mood = mood(rows.iter().map(|row| &row.state).chain(outside.iter().map(|pill| &pill.state)));
+
         self.island.folded.retain(|chat| asks.contains(chat));
         let pinned = asks.iter().any(|chat| !self.island.folded.contains(chat));
         let mut tones: Vec<crate::voice::Sound> = Vec::new();
+
         if std::mem::take(&mut self.island.chat_asked) {
-            (self.island.chat_full, self.island.tab, self.island.settings) = (true, Tab::Chat, false);
+            (self.island.tab, self.island.settings) = (Tab::Chat, false);
             self.island.machine.force_home(time);
         }
+
         if let Some((alert, at)) = self.integrations.github.ring.take()
             && now_ms() - at < 10_000
         {
@@ -392,61 +396,82 @@ impl DrawingApp {
                 _ => {}
             }
         }
+
         let music_on = self.spotify_sources() != crate::app::integrations::spotify::Sources::default();
         let github_on = self.prefs.integrations.github;
         let island = &mut self.island;
+
         if (island.tab == Tab::Music && !music_on) || (island.tab == Tab::GitHub && !github_on) {
             island.tab = Tab::Home;
         }
+
         // an agent got busy: the island peeks if it was closed (`reveal`), which only Swift knows
         let busy = matches!(mood, Mood::Needs(_) | Mood::Working(_));
         let revealed = busy && !island.was_busy;
+
         // the end is celebrated quietly, as `island_ui`: no chime, a check on Luna until the island is opened
         if island.was_busy && mood == Mood::Ready {
             island.celebrate_until = time + 6.0;
         }
+
         island.was_busy = busy;
         island.finished |= done::turn_done(&island.working, &rows);
+
         if done::turn_waits(&island.working, &rows) {
             island.machine.force_home(time);
         }
+
         island.working = rows.iter().filter(|row| matches!(row.state, AgentState::Working(_))).map(|row| row.id.clone()).collect();
         let asked_before = std::mem::replace(&mut island.asked, asks.len());
+
         if asks.len() < asked_before {
             tones.push(sounds::APPROVE);
         }
+
         if asks.len() > asked_before {
             tones.push(sounds::ASK);
         }
+
         let (forced, place) = (stage_name(island.machine.stage()), island.place_ask.take());
         let forced = forced.or(revealed.then_some("reveal"));
+
         if forced.is_some() {
             // read as an inbox: back to rest, so the next force is seen too
             island.machine = fsm::Machine::default();
         }
+
         let ask = self.native_ask(&asks);
         let view = self.island_view(rows, asks, mood, time);
+
         if view.failures > std::mem::replace(&mut self.island.failures, view.failures) {
             tones.push(sounds::ERROR);
         }
+
         for tone in tones {
             self.island_chime(tone, time);
         }
+
         let place = place.map(|place| match place {
             super::Place::Top => "top",
             super::Place::Bottom => "bottom",
             super::Place::Left => "left",
             super::Place::Right => "right",
         });
+
         let claude_hooks = self.native_hooks(time);
+
         let (seq, forced, place) = INBOX.with(|inbox| {
             let mut inbox = inbox.borrow_mut();
+
             if forced.is_some() || place.is_some() {
                 (inbox.seq, inbox.forced, inbox.place) = (inbox.seq + 1, forced, place);
             }
+
             (inbox.seq, inbox.forced, inbox.place)
         });
+
         let items = self.integration_items();
+
         let chips_of = |id: &str| -> Vec<(String, String)> {
             items
                 .iter()
@@ -454,10 +479,12 @@ impl DrawingApp {
                 .map(|item| item.chips.iter().map(|(label, action)| (label.to_string(), action.clone())).collect())
                 .unwrap_or_default()
         };
+
         let (feed_rows, hidden) = feed::feed_lines(&view.lines, &self.island.hidden);
         let feed = feed_rows.iter().map(|line| line.id.clone()).collect();
         let island = &self.island;
         let spotify = &self.integrations.spotify;
+
         Snapshot {
             on: true,
             mood: match view.mood {
@@ -501,7 +528,7 @@ impl DrawingApp {
                 headline: activity.headline.clone(),
             }),
             glimpse: view.glimpse.iter().map(|(number, text)| Said { person: false, number: *number, text: text.clone() }).collect(),
-            chat: self.island_chat_out(view.chat_row.as_ref(), view.session.clone(), view.chat_full),
+            chat: self.island_chat_out(view.chat_row.as_ref(), view.session.clone()),
             voice: view.voice_on,
             voice_state: match view.voice_state {
                 crate::voice::VoiceState::Off => "off",
@@ -517,7 +544,6 @@ impl DrawingApp {
             close_after: view.close_after,
             compact_after: self.prefs.island_compact_after,
             color: hex(view.color),
-            agent_hooks: self.prefs.agent_hooks,
             claude_hooks,
             song: spotify.shown(time).map(|now| SongOut {
                 title: now.track.title.clone(),
@@ -541,9 +567,7 @@ impl DrawingApp {
             github: github_on.then(|| self.native_github()),
             projects: island.form.as_ref().map(|form| form.projects.clone()).unwrap_or_default(),
             at: self.prefs.island_at,
-            chat_size: self.prefs.island_chat,
             talk_size: self.prefs.island_talk,
-            chat_big: island.chat_big,
             seq,
             forced,
             place,
@@ -553,25 +577,31 @@ impl DrawingApp {
     /// The first ask waiting, as its card shows it (`ask.rs`).
     fn native_ask(&self, asks: &[String]) -> Option<AskOut> {
         let chat = asks.first()?;
+
         let line = {
             let all = self.person_asks.borrow();
             let source = all.iter().find(|ask| &ask.chat == chat).and_then(|ask| ask.source.as_ref().map(|source| source.pill.clone()));
+
             source.map_or(chat.clone(), |pill| format!("{PILL_PREFIX}{pill}"))
         };
+
         let color = self
             .agent_rows()
             .iter()
             .find(|row| row.id == line)
             .map(|row| hex(self.agent_color(&row.id)))
             .or_else(|| self.outside_pills().into_iter().find(|pill| pill.id == line).map(|pill| hex(pill.color)));
+
         let all = self.person_asks.borrow();
         let ask = all.iter().find(|ask| &ask.chat == chat)?;
         let outside = ask.source.as_ref().map(|source| source.label.clone());
+
         let doing = match ask.questions.len() {
             0 => format!("precisa de permissão · {}", ask.tool_label()),
             1 => "está perguntando".to_string(),
             total => format!("está perguntando ({} de {total})", ask.step.min(total - 1) + 1),
         };
+
         Some(AskOut {
             chat: chat.clone(),
             name: outside.clone().or_else(|| self.chats.iter().find(|item| &item.id == chat).map(|item| item.name.clone())),
@@ -591,12 +621,15 @@ impl DrawingApp {
     }
 
     /// The conversation page: the chat shown and the last things said in it.
-    fn island_chat_out(&self, row: Option<&AgentRow>, session: Option<String>, full: bool) -> Option<ChatOut> {
+    fn island_chat_out(&self, row: Option<&AgentRow>, session: Option<String>) -> Option<ChatOut> {
         if let Some(session) = session {
             let name = self.outside_pills().into_iter().find(|pill| pill.id == session).map(|pill| pill.name).unwrap_or_default();
-            return Some(ChatOut { id: session.clone(), name, working: false, full: false, session: Some(session), said: Vec::new() });
+
+            return Some(ChatOut { id: session.clone(), name, working: false, session: Some(session), said: Vec::new() });
         }
+
         let row = row?;
+
         let said = self.transcripts.get(&row.id).map_or(Vec::new(), |transcript| {
             let said: Vec<Said> = super::log::said(&transcript.items)
                 .filter_map(|item| match item {
@@ -605,10 +638,12 @@ impl DrawingApp {
                     _ => None,
                 })
                 .collect();
+
             // ponytail: the last 40 messages only; page further back if the person asks for the whole log here
             said[said.len().saturating_sub(40)..].to_vec()
         });
-        Some(ChatOut { id: row.id.clone(), name: self.chat_short_name(row), working: matches!(row.state, AgentState::Working(_)), full, session: None, said })
+
+        Some(ChatOut { id: row.id.clone(), name: self.chat_short_name(row), working: matches!(row.state, AgentState::Working(_)), session: None, said })
     }
 
     /// GitHub's tab: the person's pull requests and the ones asking for their review.
@@ -616,6 +651,7 @@ impl DrawingApp {
         use crate::app::integrations::github::{CiState, PrFilter, PrState};
         let github = &self.integrations.github;
         let Some(pulse) = github.pulse.as_ref() else { return GithubOut { login: String::new(), error: github.error.clone(), prs: Vec::new() } };
+
         let prs = pulse
             .listed(PrFilter::All)
             .into_iter()
@@ -646,6 +682,7 @@ impl DrawingApp {
                 failing: request.failing.iter().map(|check| check.name.clone()).collect(),
             })
             .collect();
+
         GithubOut { login: pulse.login.clone(), error: github.error.clone(), prs }
     }
 
@@ -653,11 +690,13 @@ impl DrawingApp {
     fn native_hooks(&self, time: f64) -> bool {
         INBOX.with(|inbox| {
             let mut inbox = inbox.borrow_mut();
+
             match inbox.hooks {
                 Some((at, installed)) if (0.0..3.0).contains(&(time - at)) => installed,
                 _ => {
                     use crate::app::maestro::claude_hooks::{installed_at, settings_path};
                     let installed = settings_path().is_some_and(|path| installed_at(&path));
+
                     inbox.hooks = Some((time, installed));
                     installed
                 }
@@ -669,6 +708,7 @@ impl DrawingApp {
     pub(crate) fn native_island_act(&mut self, verb: &str, args: &Value) -> Result<String, String> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().to_string();
         let time = self.now;
+
         match verb {
             // the island became `shape` (Swift's clock): its sound, and closed it goes back to Início
             "shape" => {
@@ -678,36 +718,47 @@ impl DrawingApp {
                     "open" => super::Shape::Open,
                     other => return Err(format!("forma desconhecida: {other}")),
                 };
+
                 let pinned = !self.person_asks.borrow().is_empty();
+
                 let tone = match (self.island.last_shape.replace(shape), shape) {
                     (Some(super::Shape::Closed), super::Shape::Compact) => Some(sounds::PEEK),
                     (Some(super::Shape::Open), super::Shape::Compact | super::Shape::Closed) => Some(sounds::CLOSE),
                     (Some(super::Shape::Closed | super::Shape::Compact), super::Shape::Open) => Some(if pinned { sounds::ASK } else { sounds::OPEN }),
                     _ => None,
                 };
+
                 // open, what finished is in sight: the check goes
                 if shape == super::Shape::Open {
                     self.island.finished = false;
                 }
+
                 if shape != super::Shape::Open {
                     let island = &mut self.island;
-                    (island.tab, island.chat_big, island.chat_full, island.session, island.settings) = (Tab::Home, false, false, None, false);
+
+                    (island.tab, island.session, island.settings) = (Tab::Home, None, false);
                 }
+
                 if let Some(tone) = tone {
                     self.island_chime(tone, time);
                 }
             }
             "tab" => {
                 let tab = Tab::named(&text("tab")).ok_or("aba desconhecida")?;
+
                 self.island.settings = false;
                 self.island.tab = tab;
+
                 if tab != Tab::Chat {
                     self.island.session = None;
                 }
+
                 self.island.form = if tab == Tab::New { Some(self.island.form.take().unwrap_or_else(|| self.island_form())) } else { None };
+
                 if tab == Tab::Chat && self.chat_agent.is_none() {
                     self.chat_agent = self.chats.first().map(|chat| chat.id.clone());
                 }
+
                 self.island_chime(sounds::BLIP, time);
             }
             "settings" => self.island.settings = !self.island.settings,
@@ -719,11 +770,13 @@ impl DrawingApp {
             }
             "focus" => {
                 let id = text("id");
+
                 self.outside_focus(&id);
                 self.island.focus = Some(id);
             }
             "open" => {
                 let id = text("id");
+
                 self.island_chime(sounds::BLIP, time);
                 self.island_show(&id, time);
             }
@@ -744,19 +797,17 @@ impl DrawingApp {
                 self.island_fold();
                 (self.island.tab, self.island.form, self.island.settings) = (Tab::Home, None, false);
             }
-            "full" => self.island.chat_full = true,
-            "big" => self.island.chat_big = !self.island.chat_big,
             // the conversation pulled by an edge (`done`: let go, kept in the prefs) or double-clicked back
             "size" => {
                 let size = [args["width"].as_f64().unwrap_or(0.0) as f32, args["height"].as_f64().unwrap_or(0.0) as f32];
-                self.island.chat_big = false;
-                *if self.island.chat_full { &mut self.prefs.island_chat } else { &mut self.prefs.island_talk } = Some(size);
+
+                self.prefs.island_talk = Some(size);
             }
-            "unpull" if self.island.chat_full => (self.prefs.island_chat, self.island.chat_big) = (None, false),
             "unpull" => self.prefs.island_talk = None,
             "hide" => {
                 let id = text("id");
                 let signature = self.island.listed.iter().find(|(listed, _)| *listed == id).map(|(_, signature)| *signature).ok_or("linha desconhecida")?;
+
                 self.island.hidden.insert(id, signature);
             }
             // a line of an integration with no tab of its own (WhatsApp): its first button; or a card's button
@@ -767,15 +818,18 @@ impl DrawingApp {
                         let id = text("id");
                         let items = self.integration_items();
                         let item = items.into_iter().find(|item| item.id == id).ok_or("integração desconhecida")?;
+
                         item.chips.first().map(|(_, action)| action.clone()).ok_or("sem botão")?
                     }
                 };
+
                 self.integrations.pressed.borrow_mut().push(action);
             }
             "spotify" => self.spotify_press(&text("words")),
             // where it hangs from, let go by the person (screen points from the main screen's top left)
             "place" => {
                 let at = [args["x"].as_f64().unwrap_or(0.0) as f32, args["y"].as_f64().unwrap_or(0.0) as f32];
+
                 (self.island.anchor, self.prefs.island_at) = (Some(at), Some(at));
             }
             "ask" => return self.native_island_ask(args),
@@ -787,13 +841,18 @@ impl DrawingApp {
                     prompt: text("prompt"),
                     ..Default::default()
                 };
+
                 let installed = self.installed_agents();
                 let message = self.island_new_chat(&form, &installed)?;
+
                 self.prefs.island_projects = super::forms::remember_project(&form.folder, &self.prefs.island_projects);
+
                 if let Some(id) = self.chat_agent.clone().filter(|_| !form.prompt.trim().is_empty()) {
                     self.chat_outbox.push((id, form.prompt.trim().to_string()));
                 }
+
                 (self.island.form, self.island.tab) = (None, Tab::Chat);
+
                 return Ok(message);
             }
             "chime" => {
@@ -805,10 +864,12 @@ impl DrawingApp {
                     "error" => sounds::ERROR,
                     other => return Err(format!("som desconhecido: {other}")),
                 };
+
                 self.island_chime(sound, time);
             }
             other => return Err(format!("ação desconhecida da ilha: {other}")),
         }
+
         Ok("Feito.".into())
     }
 
@@ -818,21 +879,28 @@ impl DrawingApp {
         let chat = args["chat"].as_str().unwrap_or_default();
         let mut asks = self.person_asks.borrow_mut();
         let index = asks.iter().position(|ask| ask.chat == chat).ok_or("Nenhuma pergunta desse chat.")?;
+
         if asks[index].guarded(self.now) {
             return Err("Espere um instante: a pergunta acabou de chegar.".into());
         }
+
         if let Some(allow) = args["allow"].as_bool() {
             asks.remove(index).send(allow);
+
             return Ok(if allow { "Permitido." } else { "Negado." }.into());
         }
+
         let ask = &mut asks[index];
+
         let send = if let Some(option) = args["pick"].as_u64() {
             ask.pick(option as usize)
         } else if let Some(words) = args["other"].as_str() {
             let step = ask.step.min(ask.questions.len().saturating_sub(1));
+
             if let Some(other) = ask.other.get_mut(step) {
                 *other = words.to_string();
             }
+
             ask.answer_other()
         } else if args["next"].as_bool() == Some(true) {
             ask.next()
@@ -841,18 +909,24 @@ impl DrawingApp {
             false
         } else if args["terminal"].as_bool() == Some(true) {
             let ask = asks.remove(index);
+
             if let Some(source) = &ask.source {
                 self.outside.declined.borrow_mut().push((source.session.clone(), now_ms()));
             }
+
             ask.send_terminal();
+
             return Ok("Respondendo no terminal.".into());
         } else {
             return Err("diga allow, pick, other, next, open ou terminal".into());
         };
+
         if send {
             asks.remove(index).send(true);
+
             return Ok("Respondido.".into());
         }
+
         Ok("Feito.".into())
     }
 }
@@ -880,13 +954,16 @@ mod tests {
     #[test]
     fn the_snapshot_has_the_agents_the_tabs_and_what_the_island_is_set_to() {
         let mut app = DrawingApp::default();
+
         app.prefs.island = false;
         assert_eq!(app.native_island_snapshot(), Snapshot::default(), "turned off: nothing");
         app.prefs.island = true;
         app.chats = vec![chat("a")];
         let snapshot = app.native_island_snapshot();
+
         assert!(snapshot.on);
         let line = snapshot.lines.iter().find(|line| line.id == "a").expect("the chat is a line");
+
         // each agent wears its own colour (`agent_color`), the same as in the egui lists
         assert_eq!((line.tab, line.chat, line.outside, line.tool), ("chats", true, false, false));
         assert_eq!(line.color, hex(app.agent_color("a")));
@@ -896,16 +973,20 @@ mod tests {
         assert_eq!(snapshot.color, "#000000");
         assert!(snapshot.ask.is_none() && !snapshot.pinned);
         let json = serde_json::to_value(&snapshot).unwrap();
+
         assert!(json["lines"][0]["mago"].is_string() && json["closeAfter"].is_number(), "camelCase for Swift: {json}");
     }
 
     #[test]
     fn what_the_app_forces_reaches_swift_once_each_time() {
         let mut app = DrawingApp::default();
+
         app.prefs.island = true;
         let first = app.native_island_snapshot().seq;
+
         app.island_show_page(Tab::GitHub);
         let snapshot = app.native_island_snapshot();
+
         assert_eq!((snapshot.seq, snapshot.forced, snapshot.tab), (first + 1, Some("home"), "home"), "GitHub off: Início");
         assert_eq!(app.native_island_snapshot().seq, first + 1, "read once");
         // forced again while Swift has it open: seen again
@@ -913,12 +994,14 @@ mod tests {
         assert_eq!(app.native_island_snapshot().seq, first + 2);
         app.put_island(super::super::Place::Left);
         let snapshot = app.native_island_snapshot();
+
         assert_eq!((snapshot.seq, snapshot.place), (first + 3, Some("left")));
     }
 
     #[test]
     fn swift_moves_the_tabs_and_closing_goes_back_to_the_start() {
         let mut app = DrawingApp::default();
+
         app.prefs.island = true;
         app.native_island_act("tab", &json!({ "tab": "new" })).unwrap();
         assert_eq!((app.island.tab, app.island.form.is_some()), (Tab::New, true));

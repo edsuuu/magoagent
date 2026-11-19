@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 fn free_name(directory: &Path, text: &str, id: &str) -> PathBuf {
     let file = crate::app::maestro::binder::note_file(&note_name(text)).unwrap_or_else(|| format!("{id}.md"));
     let stem = file.trim_end_matches(".md").to_string();
+
     (1..)
         .map(|number| directory.join(if number == 1 { file.clone() } else { format!("{stem}-{number}.md") }))
         .find(|candidate| !candidate.exists())
@@ -29,21 +30,28 @@ impl DrawingApp {
         let scene = self.autosave.clone().ok_or("Sem pasta de dados: a nota não tem arquivo para mover.")?;
         let element = &self.scene.elements[note];
         let (old, text) = (crate::file::note_file(&scene, element), self.note_text(note));
+
         let new = match folder {
             Some(directory) => free_name(directory, &text, &element.id),
             None => scene.with_file_name("notas").join(format!("{}.md", element.id)),
         };
+
         let fail = |error: std::io::Error| format!("Não foi possível mover o arquivo da nota: {error}");
+
         if old != new {
             std::fs::create_dir_all(new.parent().unwrap_or(Path::new("."))).map_err(fail)?;
             crate::file::write_atomic(&new, &text).map_err(fail)?;
+
             if folder.is_some() {
                 crate::file::register_moved_note_file(&scene, &new).map_err(fail)?;
             }
+
             let _ = std::fs::remove_file(&old);
         }
+
         self.snapshot();
         self.scene.elements[note].note.file = folder.map(|_| new.to_string_lossy().into_owned());
+
         Ok(match folder {
             Some(_) => format!("Arquivo da nota em {}.", new.display()),
             None => "Arquivo da nota de volta na pasta do app.".into(),
@@ -60,6 +68,7 @@ impl DrawingApp {
                 None => return,
             }
         };
+
         if let Err(error) = result {
             self.toast(error);
         }
@@ -69,18 +78,23 @@ impl DrawingApp {
     /// empty brings it back).
     pub(crate) fn act_note_file(&mut self, action: &str, name: &str, args: &Value) -> Result<String, String> {
         let note = self.node_named(name)?;
+
         if self.scene.elements[note].created.is_none() {
             return Err(format!("{name} não é uma nota"));
         }
+
         if action == "blur" {
             let on = match args["value"].as_str().map(|text| text.to_lowercase()) {
                 Some(word) if ["off", "desligar", "false"].contains(&word.as_str()) => false,
                 Some(word) if ["on", "ligar", "true"].contains(&word.as_str()) => true,
                 _ => args["value"].as_bool().unwrap_or(!self.scene.elements[note].note.blurred),
             };
+
             self.set_note_blur(note, on);
+
             return Ok(if on { "Nota desfocada." } else { "Nota sem desfoque." }.into());
         }
+
         match args["folder"].as_str().map(str::trim).filter(|text| !text.is_empty()) {
             Some(folder) if !Path::new(folder).is_dir() => Err(format!("{folder} não é uma pasta")),
             folder => self.move_note_file(note, folder.map(Path::new)),

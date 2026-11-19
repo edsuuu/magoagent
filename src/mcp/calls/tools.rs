@@ -5,6 +5,7 @@ pub(crate) fn tools() -> Value {
     let ids = json!({ "type": "array", "items": { "type": "string" } });
     let agent_name = json!({ "type": "string", "description": "o nome do agente, como list_agents mostra" });
     let tree_name = json!({ "type": "string", "description": "o nome da Árvore de Arquivos, como list_agents mostra; opcional com uma só ligada a você" });
+
     // its own value: the list is past what one `json!` expands
     let recruit = json!({
         "command": { "type": "string", "description": "o agente e a tarefa; padrão claude (ex.: codex, ou claude \"revise o diff\")" },
@@ -13,6 +14,7 @@ pub(crate) fn tools() -> Value {
         "worktree": { "type": "boolean", "description": "true: num git worktree próprio, num ramo dele" },
         "mode": { "type": "string", "enum": ["terminal", "chat"], "description": "só quando a pessoa pedir com essas palavras (\"em terminal\", \"em chat\"); sem isto vale o ajuste Invocação dos agentes, o que ela escolheu: não passe por conta própria. terminal: Claude Code completo num terminal; chat: conversa leve num chat do app" },
     });
+
     json!([
         {
             "name": "get_scene",

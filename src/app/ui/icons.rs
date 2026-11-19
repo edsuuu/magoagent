@@ -81,35 +81,46 @@ const CORNER_ROUND: f32 = 1.4;
 /// both of its sides: the stroke turns instead of meeting in a point.
 fn round_corners(points: &[Pos2], closed: bool) -> Vec<Pos2> {
     let count = points.len();
+
     if count < 3 {
         return points.to_vec();
     }
+
     let mut rounded = Vec::with_capacity(count * 5);
+
     for index in 0..count {
         let corner = points[index];
         let ends = !closed && (index == 0 || index == count - 1);
+
         if ends {
             rounded.push(corner);
+
             continue;
         }
+
         let before = points[(index + count - 1) % count];
         let after = points[(index + 1) % count];
         let reach = CORNER_ROUND.min(corner.distance(before) / 2.0).min(corner.distance(after) / 2.0);
         let from = corner + (before - corner).normalized() * reach;
         let to = corner + (after - corner).normalized() * reach;
+
         // a quadratic curve from `from` to `to` pulled toward the corner
         for step in 0..=4 {
             let t = step as f32 / 4.0;
             let point = from.to_vec2() * (1.0 - t) * (1.0 - t) + corner.to_vec2() * 2.0 * t * (1.0 - t) + to.to_vec2() * t * t;
+
             rounded.push(point.to_pos2());
         }
     }
+
     // two corners that meet halfway along a side leave the same point twice: a zero-long piece egui would
     // turn into a long spike (its join has no direction)
     rounded.dedup_by(|next, kept| next.distance(*kept) < 0.01);
+
     if closed && rounded.len() > 1 && rounded[0].distance(rounded[rounded.len() - 1]) < 0.01 {
         rounded.pop();
     }
+
     rounded
 }
 
@@ -120,32 +131,42 @@ pub(crate) fn paint_icon_scaled(p: &Painter, icon: Icon, c: Pos2, color: Color32
     let layer = p.layer_id();
     let next = || p.ctx().graphics_mut(|g| g.entry(layer).next_idx());
     let start = next();
+
     paint_icon(p, icon, c, color);
     let end = next();
     let transform = egui::emath::TSTransform::new(c.to_vec2() * (1.0 - scale) - Vec2::new(0.0, lift), scale);
+
     p.ctx().graphics_mut(|g| g.entry(layer).transform_range(start, end, transform));
 }
 
 pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
     let s = Stroke::new(1.25, color);
     let at = |x: f32, y: f32| c + Vec2::new(x, y);
+
     // the corners are rounded (egui joins strokes in a point): the reference app's icons have round joins
     let line = |pts: &[(f32, f32)]| {
         let points: Vec<Pos2> = pts.iter().map(|(x, y)| at(*x, *y)).collect();
+
         p.add(Shape::line(round_corners(&points, false), s));
     };
+
     let closed = |pts: &[(f32, f32)]| {
         let points: Vec<Pos2> = pts.iter().map(|(x, y)| at(*x, *y)).collect();
+
         p.add(Shape::closed_line(round_corners(&points, true), s));
     };
+
     let rect = |x: f32, y: f32, w: f32, h: f32, r: u8| {
         p.rect_stroke(Rect::from_min_size(at(x, y), Vec2::new(w, h)), r, s, StrokeKind::Middle);
     };
+
     let arrow_v = |up: bool| {
         let d = if up { -1.0 } else { 1.0 };
+
         line(&[(0.0, -5.0 * d), (0.0, 5.0 * d)]);
         line(&[(-3.5, 1.5 * d), (0.0, 5.0 * d), (3.5, 1.5 * d)]);
     };
+
     match icon {
         Icon::Tool(Tool::Hand) => {
             line(&[(-3.0, 1.0), (-3.0, -5.0)]);
@@ -190,6 +211,7 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         Icon::Tool(Tool::Laser) => {
             line(&[(-6.5, 6.5), (2.0, -2.0)]);
             line(&[(-5.0, 7.0), (3.5, -1.5)]);
+
             for (x, y) in [(4.5, -6.5), (6.5, -4.5), (6.0, -7.0), (2.5, -7.0), (7.0, -2.0)] {
                 p.circle_filled(at(x, y), 0.8, color);
             }
@@ -208,12 +230,15 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             line(&[(-7.0, 0.0), (7.0, 0.0)]);
             line(&[(-6.0, -3.5), (6.0, -3.5)]);
             line(&[(-6.0, 3.5), (6.0, 3.5)]);
+
             let meridian: Vec<(f32, f32)> = (0..=12)
                 .map(|k| {
                     let a = -std::f32::consts::FRAC_PI_2 + k as f32 * std::f32::consts::PI / 12.0;
+
                     (3.2 * a.cos(), 7.0 * a.sin())
                 })
                 .collect();
+
             line(&meridian);
             line(&meridian.iter().map(|(x, y)| (-x, *y)).collect::<Vec<_>>());
         }
@@ -242,11 +267,13 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         }
         Icon::Lock(locked) => {
             rect(-5.0, -1.0, 10.0, 8.0, 2);
+
             if locked {
                 line(&[(-3.0, -1.0), (-3.0, -4.0), (-2.0, -6.0), (0.0, -6.8), (2.0, -6.0), (3.0, -4.0), (3.0, -1.0)]);
             } else {
                 line(&[(-3.0, -1.0), (-3.0, -4.0), (-2.0, -6.0), (0.0, -6.8), (2.0, -6.0), (3.0, -4.0)]);
             }
+
             p.circle_filled(at(0.0, 3.0), 1.0, color);
         }
         Icon::Minus => line(&[(-6.0, 0.0), (6.0, 0.0)]),
@@ -256,6 +283,7 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         }
         Icon::Undo | Icon::Redo => {
             let m = if matches!(icon, Icon::Undo) { 1.0 } else { -1.0 };
+
             line(&[(-3.0 * m, -5.0), (-6.0 * m, -2.0), (-3.0 * m, 1.0)]);
             line(&[(-6.0 * m, -2.0), (2.0 * m, -2.0), (5.0 * m, 0.0), (6.0 * m, 3.0), (5.0 * m, 5.0), (2.0 * m, 6.0), (-m, 6.0)]);
         }
@@ -280,15 +308,16 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             p.circle_filled(at(0.0, 7.0), 1.4, color);
         }
         // as Recarregar in the menus (menu_look's Reload on its 24 grid, here 9 → 6.5): the circle turning right, its
-        // arrow at the top right. The arrow at the arc's start, across it, read as a hook (asked: "o ícone de recarregar
-        // está bugado")
+        // arrow at the top right. The arrow at the arc's start, across it, read as a hook
         Icon::Restart => {
             let mut pts: Vec<(f32, f32)> = (0..=18)
                 .map(|k| {
                     let angle = (k as f32 * 15.0).to_radians();
+
                     (6.5 * angle.cos(), 6.5 * angle.sin())
                 })
                 .collect();
+
             pts.extend([(1.8, -6.5), (4.9, -4.5), (6.5, -2.9)]);
             line(&pts);
             line(&[(6.5, -6.5), (6.5, -2.9), (2.9, -2.9)]);
@@ -314,6 +343,7 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         Icon::Composer => {
             rect(-7.0, -6.0, 14.0, 9.0, 2);
             line(&[(-4.0, -2.0), (3.0, -2.0)]);
+
             for x in [-5.0, 0.0, 5.0] {
                 p.circle_filled(at(x, 6.0), 1.2, color);
             }
@@ -340,6 +370,7 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         }
         Icon::Arrow(right) => {
             let (d, tip) = (if right { 1.0 } else { -1.0 }, if right { 6.0 } else { -6.0 });
+
             line(&[(-tip, 0.0), (tip, 0.0)]);
             line(&[(tip - 3.5 * d, -3.5), (tip, 0.0), (tip - 3.5 * d, 3.5)]);
         }
@@ -359,12 +390,15 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         Icon::Gear => {
             // eight teeth around a hub: two points out, two in, per tooth
             let step = std::f32::consts::TAU / 32.0;
+
             let teeth: Vec<(f32, f32)> = (0..32)
                 .map(|k| {
                     let (a, r) = ((k as f32 - 0.5) * step, if k % 4 < 2 { 7.0 } else { 5.2 });
+
                     (r * a.cos(), r * a.sin())
                 })
                 .collect();
+
             closed(&teeth);
             p.circle_stroke(c, 2.3, s);
         }
@@ -434,6 +468,7 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         Icon::Layers(three) => {
             closed(&[(0.0, -7.0), (7.0, -3.5), (0.0, 0.0), (-7.0, -3.5)]);
             line(&[(-7.0, 2.0), (0.0, 5.5), (7.0, 2.0)]);
+
             if three {
                 line(&[(-7.0, 5.5), (0.0, 9.0), (7.0, 5.5)]);
             }
@@ -463,11 +498,13 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         }
         Icon::Dash(style) => {
             let pts = [at(-7.0, 0.0), at(7.0, 0.0)];
+
             let shapes = match style {
                 StrokeStyle::Solid => vec![Shape::line_segment(pts, Stroke::new(2.0, color))],
                 StrokeStyle::Dashed => Shape::dashed_line(&pts, Stroke::new(2.0, color), 3.5, 2.5),
                 StrokeStyle::Dotted => Shape::dashed_line(&pts, Stroke::new(2.0, color), 1.5, 2.5),
             };
+
             p.extend(shapes);
         }
         Icon::Sloppiness(level) => match level {
@@ -486,17 +523,22 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             } else {
                 line(&[(-6.0, 6.0), (-6.0, -6.0), (6.0, -6.0)]);
             }
+
             p.add(Shape::dashed_line(&[at(-6.0, 6.0), at(6.0, 6.0), at(6.0, -6.0)], Stroke::new(1.0, color), 1.5, 2.0));
         }
         Icon::Hachure | Icon::CrossHatch | Icon::SolidFill => {
             let r = Rect::from_center_size(c, Vec2::splat(13.0));
+
             if matches!(icon, Icon::SolidFill) {
                 p.rect_filled(r, 2, color);
             } else {
                 p.rect_stroke(r, 2, s, StrokeKind::Middle);
+
                 for i in -2..=2 {
                     let o = i as f32 * 3.5;
+
                     p.line_segment([at(o - 4.0, 5.0), at(o + 4.0, -5.0)].map(|q| q.clamp(r.min, r.max)), s);
+
                     if matches!(icon, Icon::CrossHatch) {
                         p.line_segment([at(o - 4.0, -5.0), at(o + 4.0, 5.0)].map(|q| q.clamp(r.min, r.max)), s);
                     }
@@ -509,8 +551,10 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
         Icon::ToBack | Icon::ToFront => {
             let up = matches!(icon, Icon::ToFront);
             let y = if up { -6.5 } else { 6.5 };
+
             line(&[(-6.0, y), (6.0, y)]);
             let d = if up { 1.0 } else { -1.0 };
+
             line(&[(0.0, -3.5 * d), (0.0, 6.0 * d)]);
             line(&[(-3.5, -0.5 * d), (0.0, -3.5 * d), (3.5, -0.5 * d)]);
         }
@@ -524,25 +568,31 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             // shaft plus the head at +x (mirrored for the start end)
             let m = if flip { -1.0 } else { 1.0 };
             let tip = at(6.5 * m, 0.0);
+
             line(&[(-6.5 * m, 0.0), (6.5 * m, 0.0)]);
             let back = |dx: f32, dy: f32| at((6.5 - dx) * m, dy);
+
             match head {
                 None => {}
                 Some(Head::Arrow) => line(&[(2.0 * m, -3.5), (6.5 * m, 0.0), (2.0 * m, 3.5)]),
                 Some(Head::Bar) => line(&[(6.5 * m, -4.0), (6.5 * m, 4.0)]),
                 Some(h @ (Head::Triangle | Head::TriangleOutline)) => {
                     let pts = vec![tip, back(5.0, -3.0), back(5.0, 3.0)];
+
                     p.add(Shape::convex_polygon(pts, if h == Head::Triangle { color } else { Color32::TRANSPARENT }, s));
                 }
                 Some(h @ (Head::Diamond | Head::DiamondOutline)) => {
                     let pts = vec![tip, back(3.0, -2.5), back(6.0, 0.0), back(3.0, 2.5)];
+
                     p.add(Shape::convex_polygon(pts, if h == Head::Diamond { color } else { Color32::TRANSPARENT }, s));
                 }
                 Some(h @ (Head::Circle | Head::CircleOutline)) => {
                     let center = back(2.5, 0.0);
+
                     if h == Head::Circle {
                         p.circle_filled(center, 2.5, color);
                     }
+
                     p.circle_stroke(center, 2.5, s);
                 }
             }
@@ -553,11 +603,13 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             } else {
                 line(&[(-6.0, 6.0), (6.0, -6.0)]);
             }
+
             line(&[(2.0, -6.5), (6.5, -6.0), (6.0, -1.5)]);
         }
         Icon::Group | Icon::Ungroup => {
             rect(-6.5, -6.5, 8.0, 8.0, 1);
             rect(-1.5, -1.5, 8.0, 8.0, 1);
+
             if matches!(icon, Icon::Group) {
                 p.add(Shape::dashed_line(&[at(-7.5, -7.5), at(7.5, -7.5), at(7.5, 7.5), at(-7.5, 7.5), at(-7.5, -7.5)], Stroke::new(1.0, color), 1.5, 1.5));
             }
@@ -569,21 +621,26 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
 pub(crate) fn crescent(c: Pos2) -> Vec<Pos2> {
     let (outer, r1) = (c, 6.5);
     let (inner, r2) = (c + Vec2::new(3.6, -3.0), 6.3);
+
     // contiguous arc of `ring` where `keep` holds, in increasing angle
     let arc = |center: Pos2, r: f32, keep: &dyn Fn(Pos2) -> bool| -> Vec<Pos2> {
         let n = 120;
         let pts: Vec<Pos2> = (0..n).map(|k| center + Vec2::angled(k as f32 / n as f32 * std::f32::consts::TAU) * r).collect();
         let start = (0..n).find(|&k| !keep(pts[k]) && keep(pts[(k + 1) % n])).map_or(0, |k| k + 1);
+
         (0..n).map(|k| pts[(start + k) % n]).take_while(|p| keep(*p)).collect()
     };
+
     let mut path = arc(outer, r1, &|p| p.distance(inner) > r2);
     let mut bite = arc(inner, r2, &|p| p.distance(outer) < r1);
+
     // the bite must start where the outer arc ended
     if let (Some(end), Some(first), Some(last)) = (path.last(), bite.first(), bite.last())
         && first.distance(*end) > last.distance(*end)
     {
         bite.reverse();
     }
+
     path.extend(bite);
     path
 }
@@ -598,10 +655,12 @@ mod tests {
         let square = [Pos2::new(0.0, 0.0), Pos2::new(2.0, 0.0), Pos2::new(2.0, 2.0), Pos2::new(0.0, 2.0)];
         let rounded = round_corners(&square, true);
         let pairs = rounded.iter().zip(rounded.iter().cycle().skip(1));
+
         assert!(pairs.clone().all(|(point, next)| point.distance(*next) >= 0.01), "no zero-long piece: {rounded:?}");
         assert!(rounded.iter().all(|point| (0.0..=2.0).contains(&point.x) && (0.0..=2.0).contains(&point.y)), "inside the square");
         // a line keeps its two ends
         let line = round_corners(&square[..3], false);
+
         assert_eq!((line[0], *line.last().unwrap()), (square[0], square[2]));
     }
 }

@@ -27,14 +27,17 @@ pub(crate) const MESSAGE_MAX: usize = 256 * 1024;
 pub(crate) fn design_region(points: &[[f64; 2]]) -> Option<[f64; 4]> {
     let mut min = [f64::MAX; 2];
     let mut max = [f64::MIN; 2];
+
     for p in points {
         for k in 0..2 {
             min[k] = min[k].min(p[k]);
             max[k] = max[k].max(p[k]);
         }
     }
+
     let (w, h) = (max[0] - min[0], max[1] - min[1]);
     let (x, y) = ((min[0] - PAD).max(0.0), (min[1] - PAD).max(0.0));
+
     (w >= TAP || h >= TAP).then_some([x, y, max[0] + PAD - x, max[1] + PAD - y])
 }
 
@@ -94,19 +97,25 @@ impl Mark {
     fn line(&self) -> String {
         let [x, y, w, h] = self.rect;
         let mut line = format!("x {} y {}, {}×{} px na página.", x.round(), y.round(), w.round(), h.round());
+
         if let Some(page) = &self.page {
             line += &format!(" Em {page}.");
         }
+
         let [vw, vh] = self.view;
+
         if vw > 0.0 && vh > 0.0 {
             line += &format!(" Área visível: {}×{} px.", vw.round(), vh.round());
         }
+
         if let Some(picture) = &self.picture {
             line += &format!(" Recorte (imagem): {picture}.");
         }
+
         if !self.note.is_empty() {
             line += &format!(" Nota: {}", self.note);
         }
+
         line
     }
 }
@@ -114,22 +123,27 @@ impl Mark {
 /// What the agent reads: the kept annotations numbered, then the circled region, then the comment.
 pub(crate) fn design_prompt(portal: &str, url: &str, kept: &[Mark], region: Option<&Mark>, comment: &str) -> String {
     let mut text = format!("Anotação no navegador \"{portal}\" ({url})");
+
     for (i, mark) in kept.iter().enumerate() {
         text += &format!("\nAnotação {}: {}", i + 1, mark.line());
     }
+
     if let Some(mark) = region {
         text += &format!("\nRegião circulada: {}", mark.line());
     }
+
     format!("{text}\n---\n{comment}")
 }
 
 /// Standard base64, for a picture the page shows.
 pub(crate) fn base64(bytes: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
     bytes
         .chunks(3)
         .flat_map(|c| {
             let n = c.iter().enumerate().fold(0u32, |n, (i, &b)| n | (b as u32) << (16 - 8 * i));
+
             (0..4).map(move |i| if i <= c.len() { ALPHABET[(n >> (18 - 6 * i) & 63) as usize] as char } else { '=' })
         })
         .collect()
@@ -154,15 +168,18 @@ fn one_line(text: &str) -> String {
 /// hides below the dialog's fold behind empty lines) and at most `PAGE_TEXT` characters.
 fn page_text(text: &str) -> String {
     let mut out: Vec<&str> = Vec::new();
+
     for line in text.trim().lines().map(str::trim_end) {
         if !(line.is_empty() && out.last().is_some_and(|l| l.is_empty())) {
             out.push(line);
         }
     }
+
     let text = out.join(
         "
 ",
     );
+
     match text.char_indices().nth(PAGE_TEXT) {
         Some((cut, _)) => format!("{}…", &text[..cut]),
         None => text,
@@ -176,8 +193,10 @@ pub(crate) const PAGE_TEXT: usize = 4000;
 fn save_picture(png: &Option<Vec<u8>>) -> Option<String> {
     let dir = std::env::temp_dir().join("magoagent-design");
     let png = png.as_ref()?;
+
     fs::create_dir_all(&dir).ok()?;
     let path = dir.join(format!("{}.png", new_id()));
+
     fs::write(&path, png).ok()?;
     Some(path.display().to_string())
 }
@@ -195,27 +214,32 @@ pub(crate) fn snapshot(webview: &wry::WebView, [x, y, w, h]: [f64; 4], done: imp
     let zoom = unsafe { view.pageZoom() };
     let [x, y, w, h] = [x, y, w, h].map(|v| v * zoom);
     let config = unsafe { objc2_web_kit::WKSnapshotConfiguration::new(mtm) };
+
     unsafe { config.setRect(NSRect::new(NSPoint::new(x.max(0.0), y.max(0.0)), NSSize::new(w.max(1.0), h.max(1.0)))) };
     let done = std::cell::Cell::new(Some(done));
+
     let block = block2::RcBlock::new(move |image: *mut NSImage, _: *mut NSError| {
         let png = unsafe { image.as_ref() }.and_then(|image| {
             let tiff = image.TIFFRepresentation()?;
             let rep = NSBitmapImageRep::imageRepWithData(&tiff)?;
+
             unsafe { rep.representationUsingType_properties(NSBitmapImageFileType::PNG, &NSDictionary::new()) }.map(|d| d.to_vec())
         });
+
         if let Some(done) = done.take() {
             done(png);
         }
     });
+
     unsafe { view.takeSnapshotWithConfiguration_completionHandler(Some(&config), &block) };
 }
 
 impl DrawingApp {
     /// The agents roped to an element: the terminals running a command (a plain shell would run each pasted line as a
-    /// command) and the chats' cards, Luna's and a chat recruit's (asked, of the Design mode with Luna roped to the
-    /// browser: "por que não está vinculado automaticamente?"; only terminals counted, "Nenhum agente conectado").
+    /// command) and the chats' cards, Luna's and a chat recruit's.
     pub(crate) fn roped_agents(&self, id: &str) -> Vec<String> {
         let agent = |element: &Element| element.terminal.as_ref().is_some_and(|t| !t.command.trim().is_empty()) || element.chat.is_some();
+
         self.links().get(id).into_iter().flatten().filter(|o| self.scene.elements.iter().any(|e| &e.id == *o && agent(e))).cloned().collect()
     }
 
@@ -244,23 +268,28 @@ impl DrawingApp {
         let agents: Vec<Value> = self.design_agents(id).into_iter().map(|(id, name)| json!({ "id": id, "name": name })).collect();
         let nonce = uuid::Uuid::new_v4().simple().to_string();
         let mut config = json!({ "nonce": nonce, "agents": agents, "annotations": self.annotation_list(id), "panel": panel });
+
         let uid = match self.open_tab_view_mut(id) {
             Some(tab) => {
                 config["queue"] = json!(tab.polls_design());
                 let script = DESIGN_SCRIPT.replace("__CONFIG__", &config.to_string());
+
                 // ponytail: the secret lives in the page's world, so a page that hooked
                 // JSON.stringify before the user sent a note there can forge notes until it
                 // navigates; closing that needs a pristine post captured by an initialization
                 // script at document start (per platform), the way wry installs window.ipc
                 tab.secret = Some(nonce);
                 let _ = tab.webview.evaluate_script(&script);
+
                 tab.uid
             }
             None => {
                 self.toast("Nenhum quadro do navegador está disponível. Saia do Design e tente novamente quando o navegador estiver visível.");
+
                 return;
             }
         };
+
         self.design = Some(DesignSession { portal: id.into(), tab: uid, seq: 0, region: None });
     }
 
@@ -279,6 +308,7 @@ impl DrawingApp {
     /// Pushes the kept annotations to the page's overlay, if it is armed on the portal.
     fn design_sync(&self, portal: &str) {
         let list = Value::Array(self.annotation_list(portal));
+
         self.portal_script(portal, &format!("window.__magoDesign&&window.__magoDesign.sync({list})"));
     }
 
@@ -292,6 +322,7 @@ impl DrawingApp {
         if let Some(url) = self.open_tab_view(portal).and_then(|t| t.webview.url().ok()).filter(|u| !u.is_empty()) {
             return url;
         }
+
         self.scene.elements.iter().find(|e| e.id == portal).and_then(|e| e.portal.as_ref()).map(|p| p.url.clone()).unwrap_or_default()
     }
 
@@ -301,6 +332,7 @@ impl DrawingApp {
             if index < kept.len() {
                 kept.remove(index);
             }
+
             if kept.is_empty() {
                 self.annotations.remove(portal);
             }
@@ -317,22 +349,30 @@ impl DrawingApp {
         if message.len() > MESSAGE_MAX || !self.design.as_ref().is_some_and(|d| d.portal == portal && d.tab == tab) {
             return;
         }
+
         let Ok(msg) = serde_json::from_str::<Value>(message) else { return };
+
         if !self.secret_armed(portal, tab, msg["nonce"].as_str()) {
             return;
         }
+
         match msg["op"].as_str().unwrap_or_default() {
             "region" => {
                 let points: Vec<[f64; 2]> =
                     msg["points"].as_array().into_iter().flatten().filter_map(|p| Some([p.get(0)?.as_f64()?, p.get(1)?.as_f64()?])).collect();
+
                 let Some(rect) = design_region(&points) else {
                     self.portal_script(portal, "window.__magoDesign&&window.__magoDesign.error()");
+
                     return;
                 };
+
                 let Some(design) = self.design.as_mut() else { return };
+
                 design.seq += 1;
                 design.region = Some(Region { rect, png: None, view: pair(&msg["view"]) });
                 self.portal_script(portal, &format!("window.__magoDesign&&window.__magoDesign.region({})", json!(rect)));
+
                 // the picture of the region comes back on its own (macOS, Linux); on Windows there is none
                 #[cfg(any(target_os = "macos", target_os = "linux"))]
                 if let Some(view) = self.open_tab_view(portal) {
@@ -341,19 +381,25 @@ impl DrawingApp {
                     let (portal, ctx) = (portal.to_string(), ctx.clone());
                     // the snapshot is of what shows: the page's px less the scroll
                     let [sx, sy] = pair(&msg["scroll"]);
+
                     snapshot(&view.webview, [rect[0] - sx, rect[1] - sy, rect[2], rect[3]], move |png| {
                         let _ = events.send(PortalEvent::Shot { portal, seq, png });
+
                         ctx.request_repaint();
                     });
+
                     return;
                 }
+
                 let _ = ctx;
+
                 self.portal_script(portal, "window.__magoDesign&&window.__magoDesign.preview(null)");
             }
             "keep" => {
                 let note = page_text(msg["comment"].as_str().unwrap_or_default());
                 let Some(region) = self.design.as_mut().and_then(|d| d.region.take()) else { return };
                 let url = self.portal_url(portal);
+
                 self.keep_annotation(portal, Annotation { rect: region.rect, note, png: region.png, url, view: region.view });
                 self.design_sync(portal);
             }
@@ -376,6 +422,7 @@ impl DrawingApp {
             "send" => {
                 let comment = page_text(msg["comment"].as_str().unwrap_or_default());
                 let agent = msg["agent"].as_str().unwrap_or_default().to_string();
+
                 self.design_send(portal, &agent, &comment);
             }
             _ => {}
@@ -387,6 +434,7 @@ impl DrawingApp {
         let Some(design) = self.design.as_mut().filter(|d| d.portal == portal && d.seq == seq) else { return };
         let Some(region) = design.region.as_mut() else { return };
         let preview = data_url(&png);
+
         region.png = png;
         self.portal_script(portal, &format!("window.__magoDesign&&window.__magoDesign.preview({})", json!(preview)));
     }
@@ -395,14 +443,18 @@ impl DrawingApp {
     /// agent with the comment. Design ends; the text waits for the app's dialog (design_confirm_ui).
     fn design_send(&mut self, portal: &str, agent: &str, comment: &str) {
         let region = self.design.take().and_then(|d| d.region);
+
         let Some((_, agent_name)) = self.design_agents(portal).into_iter().find(|(id, _)| id == agent) else {
             self.toast("Nenhum agente ligado ao navegador: a anotação não foi enviada");
+
             return;
         };
+
         let Some(element) = self.scene.elements.iter().find(|e| e.id == portal) else { return };
         let name = element.portal.as_ref().map_or("Navegador".to_string(), |p| one_line(&p.name));
         let url = one_line(&self.portal_url(portal));
         let page = |at: &str| Some(one_line(at)).filter(|at| !at.is_empty() && *at != url);
+
         let kept: Vec<Mark> = self
             .annotations
             .get(portal)
@@ -410,8 +462,10 @@ impl DrawingApp {
             .flatten()
             .map(|a| Mark { rect: a.rect, picture: save_picture(&a.png), note: a.note.clone(), page: page(&a.url), view: a.view })
             .collect();
+
         let region = region.map(|r| Mark { rect: r.rect, picture: save_picture(&r.png), view: r.view, ..Default::default() });
         let prompt = design_prompt(&name, &url, &kept, region.as_ref(), comment);
+
         self.design_confirm = Some(DesignConfirm { portal: portal.into(), agent: agent.into(), name: agent_name, prompt, since: self.now });
     }
 
@@ -425,15 +479,20 @@ impl DrawingApp {
         let enter = ctx.input(|i| i.key_pressed(Key::Enter));
         let to_chat = self.is_chat(&confirm.agent);
         let settled = self.now - confirm.since > 0.4;
+
         let (ok, cancel) = dialog_ui(ctx, &c, &format!("Enviar a {}?", confirm.name), "Enviar", |ui| {
             let into = if to_chat { "vai para o chat do agente" } else { "vai ser digitado no terminal do agente" };
+
             dialog_note(ui, &format!("Este texto {into}. Confira e clique em Enviar:"), &c);
             ui.add_space(4.0);
+
             egui::ScrollArea::vertical().max_height(260.0).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible).show(ui, |ui| {
                 ui.label(egui::RichText::new(confirm.prompt.as_str()).monospace().size(12.0).color(c.text));
             });
         });
+
         let ok = ok && !enter && settled;
+
         if ok || cancel {
             self.finish_design_send(ctx, ok);
         }
@@ -443,14 +502,18 @@ impl DrawingApp {
     /// annotations go; Cancelar sends nothing. Refused, the dialog stays with its comment.
     pub(crate) fn finish_design_send(&mut self, ctx: &Context, send: bool) {
         let Some(confirm) = self.design_confirm.take().filter(|_| send) else { return };
+
         if !self.roped_agents(&confirm.portal).contains(&confirm.agent) {
             self.toast("O agente não está mais ligado ao navegador: a anotação não foi enviada");
+
             return;
         }
+
         // refused (the toast says why): the comment and the annotations stay for another try; a chat that still answers
         // gets it at the end of its queue
         let sent =
             if self.is_chat(&confirm.agent) { self.chat_send(ctx, &confirm.agent, &confirm.prompt) } else { self.send_prompt(&confirm.agent, &confirm.prompt) };
+
         if sent {
             self.clear_annotations(&confirm.portal);
             self.toast("Anotação enviada a 1 agente");
@@ -476,6 +539,7 @@ mod tests {
     #[test]
     fn annotations_renumber_when_one_is_dropped() {
         let mut app = DrawingApp::default();
+
         app.keep_annotation("p", Annotation { rect: [0.0, 0.0, 10.0, 10.0], note: "um".into(), ..Default::default() });
         app.keep_annotation("p", Annotation { rect: [5.0, 5.0, 10.0, 10.0], note: "dois".into(), ..Default::default() });
         app.drop_annotation("p", 0);
@@ -489,6 +553,7 @@ mod tests {
         let kept = [Mark { rect: [1.0, 2.0, 3.0, 4.0], picture: Some("/tmp/a.png".into()), note: "troque a cor".into(), ..Default::default() }];
         let region = Mark { rect: [9.0, 8.0, 7.0, 6.0], ..Default::default() };
         let text = design_prompt("Loja", "https://exemplo.com/conta", &kept, Some(&region), "isso");
+
         assert_eq!(
             text,
             "Anotação no navegador \"Loja\" (https://exemplo.com/conta)\nAnotação 1: x 1 y 2, 3×4 px na página. Recorte (imagem): /tmp/a.png. Nota: troque a cor\nRegião circulada: x 9 y 8, 7×6 px na página.\n---\nisso"
@@ -498,6 +563,7 @@ mod tests {
     #[test]
     fn a_mark_names_another_page_and_the_visible_area() {
         let mark = Mark { rect: [0.0, 1200.4, 300.0, 80.0], page: Some("https://exemplo.com/conta".into()), view: [1280.0, 720.0], ..Default::default() };
+
         assert_eq!(mark.line(), "x 0 y 1200, 300×80 px na página. Em https://exemplo.com/conta. Área visível: 1280×720 px.");
     }
 
@@ -507,16 +573,20 @@ mod tests {
     fn the_page_send_waits_for_the_apps_dialog() {
         let mut app = DrawingApp::default();
         let mut portal = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 800.0, height: 600.0 });
+
         portal.portal = Some(PortalSpec { name: "Loja".into(), url: "https://exemplo.com/".into(), ..Default::default() });
         let mut agent = app.new_element(ElementKind::Rectangle { x: 900.0, y: 0.0, width: 600.0, height: 400.0 });
+
         agent.terminal = Some(TerminalSpec { name: "Revisor".into(), command: "claude".into(), ..Default::default() });
         let (portal_id, agent_id) = (portal.id.clone(), agent.id.clone());
+
         app.scene.elements.extend([portal, agent]);
         app.tie_to_terminal(&agent_id, std::slice::from_ref(&portal_id));
         app.keep_annotation(&portal_id, Annotation { rect: [1.0, 2.0, 3.0, 4.0], url: "https://exemplo.com/conta".into(), ..Default::default() });
         app.keep_annotation(&portal_id, Annotation { rect: [5.0, 6.0, 7.0, 8.0], url: "https://exemplo.com/".into(), ..Default::default() });
         app.design_send(&portal_id, &agent_id, "isso");
         let confirm = app.design_confirm.clone().expect("held for the dialog");
+
         assert_eq!(confirm.name, "Revisor");
         assert!(confirm.prompt.contains("Anotação 1: x 1 y 2, 3×4 px na página. Em https://exemplo.com/conta."), "{}", confirm.prompt);
         assert!(confirm.prompt.contains("Anotação 2: x 5 y 6, 7×8 px na página.\n"), "{}", confirm.prompt);
@@ -536,22 +606,27 @@ mod tests {
         assert!(app.design_confirm.is_none());
     }
 
-    /// Asked, of the Design mode with Luna roped to the browser: "por que não está vinculado automaticamente?". A chat's
-    /// card roped to it (Luna's, a chat recruit's) is an agent there too; a plain shell is not.
+    /// In the Design mode, a chat's card roped to the browser (Luna's, a chat recruit's) is an agent there too; a plain
+    /// shell is not.
     #[test]
     fn a_chat_roped_to_the_browser_is_an_agent_of_its_design_mode() {
         let mut app = DrawingApp::default();
+
         app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &[Preset::new("Claude Code", "claude")]);
         let chat = app.chat_agent.clone().unwrap();
         let mut portal = app.new_element(ElementKind::Rectangle { x: 2000.0, y: 0.0, width: 800.0, height: 600.0 });
+
         portal.portal = Some(PortalSpec { name: "Loja".into(), url: "https://exemplo.com/".into(), ..Default::default() });
         let mut shell = app.new_element(ElementKind::Rectangle { x: 3000.0, y: 0.0, width: 600.0, height: 400.0 });
+
         shell.terminal = Some(TerminalSpec { name: "Shell".into(), ..Default::default() });
         let (portal_id, shell_id) = (portal.id.clone(), shell.id.clone());
+
         app.scene.elements.extend([portal, shell]);
         app.rope_between(&chat, &portal_id, false);
         app.rope_between(&shell_id, &portal_id, false);
         let agents = app.design_agents(&portal_id);
+
         assert_eq!(agents, vec![(chat.clone(), app.speaker(&chat))], "the chat, not the shell");
         app.design_send(&portal_id, &chat, "isso");
         assert!(app.design_confirm.as_ref().is_some_and(|confirm| confirm.agent == chat), "held for the dialog, to go to the chat");
@@ -573,6 +648,7 @@ rode isso
 
 rode isso"
         );
+
         assert_eq!(page_text(&"a".repeat(PAGE_TEXT + 10)).chars().count(), PAGE_TEXT + 1);
     }
 
@@ -582,6 +658,7 @@ rode isso"
         let confirm = DesignConfirm { portal: "p".into(), agent: "a".into(), name: "Revisor".into(), prompt: "x".into(), since: 0.0 };
         let mut app = DrawingApp { design_confirm: Some(confirm), now: 5.0, ..Default::default() };
         let enter = egui::Event::Key { key: Key::Enter, physical_key: None, pressed: true, repeat: false, modifiers: Default::default() };
+
         ctx.run_ui(egui::RawInput { events: vec![enter], ..Default::default() }, |_| app.design_confirm_ui(&ctx)).textures_delta.clear();
         assert!(app.design_confirm.is_some(), "only a click on Enviar sends");
     }

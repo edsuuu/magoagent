@@ -28,6 +28,7 @@ pub(crate) struct TermUi {
 /// `size` as a new terminal would take it: on the grid, inside the range.
 pub(crate) fn adopted_size(size: Vec2) -> [f32; 2] {
     let snap = |v: f32, lo: f32, hi: f32| ((v / GRID).round() * GRID).clamp(lo, hi);
+
     [snap(size.x, SIZE_RANGE.0[0], SIZE_RANGE.1[0]), snap(size.y, SIZE_RANGE.0[1], SIZE_RANGE.1[1])]
 }
 
@@ -35,6 +36,7 @@ impl DrawingApp {
     /// The colors and the font size (pt) a terminal is painted with: its own over the defaults.
     pub(crate) fn terminal_look(&self, spec: &TerminalSpec) -> (Look, f32) {
         let (theme, font, _) = self.prefs.terminal.resolve(&spec.look);
+
         (Look::of(theme, self.dark()), font)
     }
 
@@ -64,6 +66,7 @@ impl DrawingApp {
         let same_size = adopted_size(local_bounds(e).size()) == adopted_size(self.new_terminal_size());
         let same_font = font == self.prefs.terminal.font_size;
         let same_theme = theme == self.prefs.terminal.theme;
+
         let mut rows = vec![
             entry("copy_sel", "Copiar", None, false, has_selection),
             item("paste_text", "Colar"),
@@ -86,7 +89,9 @@ impl DrawingApp {
             ),
             Entry::Sep,
         ];
+
         rows.extend(self.disconnect_rows(&e.id).unwrap_or_default());
+
         rows.extend([
             item("copy_el", "Copiar Elemento"),
             entry("dup", "Duplicar", None, false, !e.locked),
@@ -94,6 +99,7 @@ impl DrawingApp {
             Entry::Sep,
             item("delete", "Apagar"),
         ]);
+
         rows
     }
 
@@ -101,6 +107,7 @@ impl DrawingApp {
     pub(crate) fn terminal_menu_action(&mut self, ctx: &Context, index: Option<usize>, id: &str) -> bool {
         let Some(i) = index.filter(|i| self.scene.elements[*i].terminal.is_some()) else { return false };
         let tid = self.scene.elements[i].id.clone();
+
         match id {
             "copy_sel" => {
                 if let Some(text) = self.live_handle(&tid).map(TermHandle::selected_text).filter(|t| !t.is_empty()) {
@@ -114,6 +121,7 @@ impl DrawingApp {
             }
             "select_all_text" => {
                 self.terminal_focus = Some(tid.clone());
+
                 if let Some(h) = self.live_handle(&tid) {
                     h.select_all();
                 }
@@ -124,6 +132,7 @@ impl DrawingApp {
             "use_theme" => self.use_theme_of(i),
             _ => return false,
         }
+
         true
     }
 
@@ -132,10 +141,13 @@ impl DrawingApp {
         if self.scene.elements[i].terminal.as_ref().is_none_or(|t| t.look.blurred == on) {
             return;
         }
+
         self.snapshot();
+
         if let Some(t) = self.scene.elements[i].terminal.as_mut() {
             t.look.blurred = on;
         }
+
         if on && self.terminal_focus.as_ref() == Some(&self.scene.elements[i].id) {
             self.terminal_focus = None;
         }
@@ -144,12 +156,14 @@ impl DrawingApp {
     /// "Usar Esta Fonte": the terminal's font size becomes the default's.
     pub(crate) fn use_font_of(&mut self, i: usize) {
         let spec = self.scene.elements[i].terminal.clone().unwrap_or_default();
+
         self.prefs.terminal.font_size = self.prefs.terminal.resolve(&spec.look).1;
     }
 
     /// "Usar Este Tema": the terminal's theme becomes the default's.
     pub(crate) fn use_theme_of(&mut self, i: usize) {
         let spec = self.scene.elements[i].terminal.clone().unwrap_or_default();
+
         self.prefs.terminal.theme = self.prefs.terminal.resolve(&spec.look).0.to_string();
     }
 
@@ -160,10 +174,12 @@ impl DrawingApp {
         let Some(h) = self.live_handle(id).cloned() else { return };
         let at = |pos: Pos2| cell_at(pos, origin, cell);
         let on_grid = |pos: Pos2| pos.y >= origin.y - 4.0;
+
         if r.drag_started && r.pos.is_some_and(on_grid) {
             h.begin_selection(at(r.pos.unwrap_or(origin)), Pick::Chars);
             self.term_ui.selecting = Some(id.to_string());
         }
+
         if self.term_ui.selecting.as_deref() == Some(id) {
             if r.dragging
                 && let Some(pos) = r.pos
@@ -171,15 +187,19 @@ impl DrawingApp {
                 h.extend_selection(at(pos));
                 ctx.request_repaint();
             }
+
             if r.drag_stopped {
                 self.term_ui.selecting = None;
+
                 if self.prefs.terminal.copy_on_select && h.has_selection() {
                     ctx.copy_text(h.selected_text());
                 }
             }
         }
+
         if r.clicked && r.pos.is_some_and(on_grid) {
             h.clear_selection();
+
             let pick = if r.triple {
                 Some(Pick::Line)
             } else if r.double {
@@ -187,8 +207,10 @@ impl DrawingApp {
             } else {
                 None
             };
+
             if let (Some(pick), Some(pos)) = (pick, r.pos) {
                 h.begin_selection(at(pos), pick);
+
                 if self.prefs.terminal.copy_on_select {
                     ctx.copy_text(h.selected_text());
                 }
@@ -201,10 +223,12 @@ impl DrawingApp {
     /// bytes to write to the shell.
     pub(crate) fn pasted_bytes(&self, id: &str, event: &egui::Event) -> Option<Vec<u8>> {
         let bracketed = self.live_handle(id)?.mode().contains(alacritty_terminal::term::TermMode::BRACKETED_PASTE);
+
         match event {
             egui::Event::Paste(text) => Some(paste_bytes(text, bracketed)),
             egui::Event::PasteImage(img) => {
                 let path = crate::app::canvas::pointer::save_pasted(img, &std::env::temp_dir())?;
+
                 Some(paste_bytes(&format!("{} ", shell_quote(&path.to_string_lossy())), bracketed))
             }
             _ => None,
@@ -236,6 +260,7 @@ pub(crate) fn shell_quote(path: &str) -> String {
     if !path.chars().any(|c| c.is_whitespace() || "'\"$&();<>|`\\!*?[]{}#~".contains(c)) {
         return path.to_string();
     }
+
     if cfg!(windows) { format!("\"{}\"", path.replace('"', "")) } else { format!("'{}'", path.replace('\'', "'\\''")) }
 }
 
@@ -257,6 +282,7 @@ mod tests {
     fn app_with_terminal() -> (DrawingApp, usize) {
         let mut app = DrawingApp::default();
         let mut e = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 640.0, height: 400.0 });
+
         e.terminal = Some(TerminalSpec { name: "Um".into(), ..Default::default() });
         app.scene.elements.push(e);
         (app, 0)
@@ -266,6 +292,7 @@ mod tests {
     fn the_menu_lists_the_reference_apps_items_in_its_order() {
         let (app, i) = app_with_terminal();
         let rows = app.terminal_entries(i);
+
         assert_eq!(
             outline(&rows),
             [
@@ -289,7 +316,9 @@ mod tests {
                 "Apagar",
             ]
         );
+
         let Entry::Sub { items, .. } = &rows[11] else { panic!("the defaults are a submenu") };
+
         assert_eq!(outline(items), ["Usar Este Tamanho", "Usar Esta Fonte", "Usar Este Tema"]);
     }
 
@@ -299,29 +328,36 @@ mod tests {
         let enabled = |rows: &[Entry], want: &str| rows.iter().any(|r| matches!(r, Entry::Item { id, enabled: true, .. } if id == want));
         // no selection: nothing to copy; a fresh one has the defaults' font and theme, not their size
         let rows = app.terminal_entries(i);
+
         assert!(!enabled(&rows, "copy_sel") && enabled(&rows, "paste_text"));
         let Entry::Sub { items, .. } = &rows[11] else { panic!() };
+
         assert!(enabled(items, "use_size") && !enabled(items, "use_font") && !enabled(items, "use_theme"));
         // its own font and theme can be made the defaults; a blurred one offers to clear it
         let t = app.scene.elements[i].terminal.as_mut().unwrap();
+
         t.look = TermLook { theme: Some("nord".into()), font_size: Some(18.0), shell: String::new(), blurred: true };
         t.unloaded = true;
         t.quiet = true;
         app.scene.elements[i].locked = true;
         let rows = app.terminal_entries(i);
         let outline = outline(&rows);
+
         assert!(outline.contains(&"Remover Desfoque".to_string()) && outline.contains(&"Desbloquear".to_string()));
         assert!(!enabled(&rows, "unload") && !enabled(&rows, "dup"));
         let Entry::Sub { items, .. } = &rows[11] else { panic!() };
+
         assert!(enabled(items, "use_font") && enabled(items, "use_theme"));
         // and adopting them changes the defaults, after which those rows go off
         let ctx = Context::default();
+
         assert!(app.terminal_menu_action(&ctx, Some(i), "use_font") && app.terminal_menu_action(&ctx, Some(i), "use_theme"));
         assert!(app.terminal_menu_action(&ctx, Some(i), "use_size"));
         assert_eq!((app.prefs.terminal.font_size, app.prefs.terminal.theme.as_str()), (18.0, "nord"));
         assert_eq!(app.prefs.terminal.size, Some([640.0, 400.0]));
         assert_eq!(app.new_terminal_size(), Vec2::new(640.0, 400.0));
         let Entry::Sub { items, .. } = &app.terminal_entries(i)[11] else { panic!() };
+
         assert!(!enabled(items, "use_size") && !enabled(items, "use_font") && !enabled(items, "use_theme"));
         // rows the app already knew are left to it
         assert!(!app.terminal_menu_action(&ctx, Some(i), "rename"));
@@ -330,6 +366,7 @@ mod tests {
     #[test]
     fn blurring_is_one_undo_step_and_takes_the_keys_away() {
         let (mut app, i) = app_with_terminal();
+
         app.terminal_focus = Some(app.scene.elements[i].id.clone());
         app.set_blurred(i, true);
         assert!(app.scene.elements[i].terminal.as_ref().unwrap().look.blurred && app.terminal_focus.is_none());
@@ -353,22 +390,29 @@ mod tests {
     fn a_drag_selects_in_the_grid_and_a_click_clears_it() {
         let (mut app, i) = app_with_terminal();
         let id = app.scene.elements[i].id.clone();
+
         let (program, args): (&str, Vec<&str>) =
             if cfg!(windows) { ("cmd", vec!["/c", "echo", "pointer-test"]) } else { ("sh", vec!["-c", "echo pointer-test"]) };
+
         let session = TerminalSession::spawn("", "", (40, 6), None, vec![], Some((program, &args)), 100).unwrap();
+
         for _ in 0..100 {
             if session.handle.screen_text().contains("pointer-test") {
                 break;
             }
+
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
+
         let text = session.handle.screen_text();
         let row = text.lines().position(|l| l.contains("pointer-test")).unwrap() as f32;
         let col = text.lines().nth(row as usize).unwrap().find("pointer-test").unwrap() as f32;
+
         app.terminals.insert(id.clone(), Ok(session));
         let (origin, cell) = (Pos2::new(100.0, 100.0), Vec2::new(10.0, 20.0));
         let ctx = Context::default();
         let at = |dx: f32| Some(origin + Vec2::new((col + dx) * 10.0 + 1.0, row * 20.0 + 5.0));
+
         app.terminal_pointer(&ctx, &id, origin, cell, &PointerGesture { pos: at(0.0), drag_started: true, ..Default::default() });
         app.terminal_pointer(&ctx, &id, origin, cell, &PointerGesture { pos: at(6.6), dragging: true, ..Default::default() });
         app.terminal_pointer(&ctx, &id, origin, cell, &PointerGesture { pos: at(6.6), drag_stopped: true, ..Default::default() });

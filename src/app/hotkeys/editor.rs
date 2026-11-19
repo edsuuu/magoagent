@@ -26,10 +26,12 @@ impl Problem {
     /// What Ajustes says of `combo` for `def`.
     pub(crate) fn words(&self, def: &ShortcutDef, combo: Option<&Combo>) -> String {
         let keys = combo.map_or_else(String::new, |combo| keys::combo_label(combo, def.scope() == Scope::App));
+
         match self {
             Problem::Taken(id) => {
                 let other = super::find(id).map_or(*id, |other| other.label);
                 let place = if super::find(id).is_some_and(|other| other.scope() == Scope::Global) { "o atalho global" } else { "o atalho" };
+
                 format!("{keys} já é {place} «{other}»: escolha outra combinação ou limpe a de lá primeiro.")
             }
             Problem::Reserved(what) => format!("{keys} é reservada: {what}."),
@@ -48,11 +50,13 @@ impl Problem {
 /// island's.
 pub(crate) fn reserved() -> Vec<(Combo, Scope, String)> {
     let mut all = Vec::new();
+
     let mut add = |keys: &str, scope: Scope, what: &str| {
         if let Some(combo) = keys::parse_keys(keys) {
             all.push((combo, scope, what.to_string()));
         }
     };
+
     for (keys, what) in [
         ("Alt+Tab", "o sistema troca de janela com ela"),
         ("Alt+Shift+Tab", "o sistema troca de janela com ela"),
@@ -62,6 +66,7 @@ pub(crate) fn reserved() -> Vec<(Combo, Scope, String)> {
     ] {
         add(keys, Scope::Global, what);
     }
+
     for (keys, what) in [
         ("Ctrl+C", "copiar"),
         ("Ctrl+X", "recortar"),
@@ -76,19 +81,23 @@ pub(crate) fn reserved() -> Vec<(Combo, Scope, String)> {
     ] {
         add(keys, Scope::App, what);
     }
+
     for arrow in ["Left", "Right", "Up", "Down"] {
         add(arrow, Scope::App, "mover a seleção");
         add(&format!("Shift+{arrow}"), Scope::App, "mover a seleção");
     }
+
     for tool in Tool::TOOLBAR.into_iter().chain(Tool::DRAWING).chain(Tool::EXTRA) {
         for key in tool.keys() {
             add(key.name(), Scope::App, &format!("a ferramenta {}", tool.label()));
         }
     }
+
     for digit in 1..=9 {
         add(&format!("Ctrl+{digit}"), Scope::Island, "na ilha aberta, ir a uma pílula");
         add(&digit.to_string(), Scope::Island, "na ilha, escolher a opção da pergunta");
     }
+
     for (keys, what) in [
         ("Ctrl+O", "na ilha aberta, abrir a conversa no app"),
         ("Ctrl+K", "na ilha aberta, buscar"),
@@ -99,25 +108,32 @@ pub(crate) fn reserved() -> Vec<(Combo, Scope, String)> {
     ] {
         add(keys, Scope::Island, what);
     }
+
     all
 }
 
 /// Whether `combo` can be the keys of `def`, with the rest as kept in `stored`.
 pub(crate) fn check(def: &ShortcutDef, combo: &Combo, stored: &Bindings) -> Result<(), Problem> {
     let scope = def.scope();
+
     if scope == Scope::Global && keys::virtual_key(combo.key).is_none() {
         return Err(Problem::Unsupported);
     }
+
     if let Some((_, _, what)) = reserved().into_iter().find(|(keys, place, _)| keys == combo && place.overlaps(scope)) {
         return Err(Problem::Reserved(what));
     }
+
     let taken = super::every().find(|other| other.id != def.id && other.scope().overlaps(scope) && super::keys_of(other, stored).contains(combo));
+
     if let Some(other) = taken {
         return Err(Problem::Taken(other.id));
     }
+
     let name = combo.key.name();
     let function_key = name.strip_prefix('F').is_some_and(|digits| digits.parse::<u8>().is_ok());
     let letter = matches!(name.as_bytes(), [byte] if byte.is_ascii_uppercase());
+
     match def.act {
         Act::Global(_) if !combo.has_command() => Err(Problem::NeedsModifier),
         Act::App(_) if !combo.has_command() && !combo.shift && !function_key => Err(Problem::NeedsModifier),
@@ -145,15 +161,18 @@ pub(crate) fn apply(def: &ShortcutDef, choice: Pending, stored: &mut Bindings) -
         }
         Pending::Clear => {
             let enabled = super::enabled(def, stored);
+
             super::set_binding(stored, def, Binding { keys: String::new(), enabled });
         }
         Pending::Default => {
             for combo in def.defaults.iter().filter_map(|keys| keys::parse_keys(keys)) {
                 check(def, &combo, stored)?;
             }
+
             stored.remove(def.id);
         }
     }
+
     Ok(())
 }
 
@@ -180,6 +199,7 @@ impl Editing {
     /// A key pressed while recording, in `stored`: true when it ended the change (saved or dropped).
     pub(crate) fn press(&mut self, recorded: Recorded, stored: &mut Bindings) -> bool {
         let Some(def) = self.def() else { return true };
+
         match recorded {
             Recorded::Cancel => return true,
             Recorded::Save => return self.save(stored),
@@ -187,12 +207,14 @@ impl Editing {
             Recorded::Clear => (self.pending, self.problem) = (Some(Pending::Clear), None),
             Recorded::Keys(combo) => (self.pending, self.problem) = (Some(Pending::Keys(combo)), check(def, &combo, stored).err()),
         }
+
         false
     }
 
     /// Salvar: the pending keys applied, true when they were; else why not stays to be read.
     pub(crate) fn save(&mut self, stored: &mut Bindings) -> bool {
         let (Some(def), Some(pending)) = (self.def(), self.pending) else { return false };
+
         match apply(def, pending, stored) {
             Ok(()) => true,
             Err(problem) => {
@@ -205,11 +227,13 @@ impl Editing {
     /// What Ajustes says under the shortcut while it changes: the problem, else how to go on.
     pub(crate) fn hint(&self) -> String {
         let Some(def) = self.def() else { return String::new() };
+
         let combo = match self.pending {
             Some(Pending::Keys(combo)) => Some(combo),
             Some(Pending::Default) => def.defaults.first().and_then(|keys| keys::parse_keys(keys)),
             _ => None,
         };
+
         match (&self.problem, self.pending) {
             (Some(problem), _) => problem.words(def, combo.as_ref()),
             (None, None) => "Pressione a combinação. Esc cancela e Backspace deixa sem tecla.".into(),
@@ -234,6 +258,7 @@ mod tests {
     #[test]
     fn keys_another_shortcut_has_are_refused_saying_whose() {
         let mut stored = Bindings::new();
+
         assert_eq!(check_of("save", "Ctrl+S", &stored), Ok(()), "its own keys");
         assert_eq!(check_of("save", "Ctrl+Z", &stored), Err(Problem::Taken("undo")));
         assert_eq!(check_of("save", "Ctrl+Y", &stored), Err(Problem::Taken("redo")), "a second default is taken too");
@@ -248,6 +273,7 @@ mod tests {
         apply(find("undo").unwrap(), Pending::Clear, &mut stored).unwrap();
         assert_eq!(check_of("save", "Ctrl+Z", &stored), Ok(()));
         let words = Problem::Taken("goToAlert").words(find("save").unwrap(), Some(&combo("Ctrl+Alt+A")));
+
         assert_eq!(
             words,
             keys_label("Cmd+Alt+A já é o atalho global «Ir à pergunta ou permissão pendente»: escolha outra combinação ou limpe a de lá primeiro.")
@@ -257,6 +283,7 @@ mod tests {
     #[test]
     fn the_keys_that_never_change_and_the_systems_are_refused() {
         let stored = Bindings::new();
+
         assert_eq!(check_of("save", "Ctrl+C", &stored), Err(Problem::Reserved("copiar".into())));
         assert_eq!(check_of("openChat", "Ctrl+V", &stored), Err(Problem::Reserved("colar".into())), "a global one would take it from the app");
         assert_eq!(check_of("save", "V", &stored), Err(Problem::Reserved("a ferramenta Seleção".into())), "the canvas's tools");
@@ -269,12 +296,14 @@ mod tests {
         assert_eq!(check_of("openChat", "Ctrl+K", &stored), Err(Problem::Reserved("na ilha aberta, buscar".into())));
         assert_eq!(check_of("save", "Ctrl+K", &stored), Ok(()), "the island is another window");
         let words = Problem::Reserved("copiar".into()).words(find("save").unwrap(), Some(&combo("Ctrl+C")));
+
         assert_eq!(words, format!("{} é reservada: copiar.", if cfg!(target_os = "macos") { "Cmd+C" } else { "Ctrl+C" }));
     }
 
     #[test]
     fn a_combination_that_makes_no_shortcut_is_refused() {
         let stored = Bindings::new();
+
         // a global one needs Ctrl, Alt or Win, and a key the system takes
         assert_eq!(check_of("openChat", "J", &stored), Err(Problem::NeedsModifier));
         assert_eq!(check_of("openChat", "Shift+J", &stored), Err(Problem::NeedsModifier));
@@ -289,6 +318,7 @@ mod tests {
         assert_eq!(check_of("showChat", "Ctrl+Shift+J", &stored), Ok(()));
         assert_eq!(check_of("save", "Ctrl+J", &stored), Ok(()), "the canvas's own are not read in a terminal");
         let global = find("openChat").unwrap();
+
         assert!(Problem::NeedsModifier.words(global, None).starts_with("Junte Ctrl ou Alt"));
         assert!(Problem::NeedsModifier.words(find("save").unwrap(), None).starts_with("Junte Ctrl, Alt ou Shift"));
     }
@@ -297,6 +327,7 @@ mod tests {
     fn a_combination_pressed_waits_for_salvar_and_esc_drops_it() {
         let mut stored = Bindings::new();
         let mut editing = Editing::new("save");
+
         assert!(editing.hint().starts_with("Pressione a combinação"));
         assert!(!editing.press(Recorded::Modifier, &mut stored), "Ctrl alone: still pressing");
         assert_eq!(editing.pending, None);
@@ -309,11 +340,13 @@ mod tests {
         assert!(stored.is_empty());
         // Enter (or Salvar): applied
         let mut editing = Editing::new("save");
+
         editing.press(Recorded::Keys(combo("Ctrl+Alt+F5")), &mut stored);
         assert!(editing.press(Recorded::Save, &mut stored));
         assert_eq!(shown_keys(find("save").unwrap(), &stored), keys_label("Cmd+Alt+F5"));
         // a combination of another one waits with why, and Salvar saves nothing
         let mut editing = Editing::new("save");
+
         editing.press(Recorded::Keys(combo("Ctrl+Z")), &mut stored);
         assert_eq!(editing.problem, Some(Problem::Taken("undo")));
         assert!(editing.hint().contains("«Desfazer»"), "{}", editing.hint());
@@ -330,11 +363,13 @@ mod tests {
     fn limpar_leaves_no_key_and_padrao_brings_the_default_back_unless_another_took_it() {
         let mut stored = Bindings::new();
         let (save, undo, chat) = (find("save").unwrap(), find("undo").unwrap(), find("openChat").unwrap());
+
         apply(save, Pending::Clear, &mut stored).unwrap();
         assert!(keys_of(save, &stored).is_empty());
         assert_eq!(shown_keys(save, &stored), "Sem tecla");
         // Backspace in the recorder, then Salvar, does the same
         let mut editing = Editing::new("openChat");
+
         editing.press(Recorded::Clear, &mut stored);
         assert_eq!(editing.pending, Some(Pending::Clear));
         assert!(editing.save(&mut stored));

@@ -30,7 +30,6 @@ struct IslandSnapshot: Decodable, Equatable {
     var closeAfter = 15
     var compactAfter = 60
     var color = "#000000"
-    var agentHooks = false
     var claudeHooks = false
     var song: IslandSong?
     var lunaDances = false
@@ -38,9 +37,7 @@ struct IslandSnapshot: Decodable, Equatable {
     var github: IslandGithub?
     var projects: [String] = []
     var at: [Double]?
-    var chatSize: [Double]?
     var talkSize: [Double]?
-    var chatBig = false
     var seq: UInt64 = 0
     var forced: String?
     var place: String?
@@ -134,7 +131,6 @@ struct IslandChat: Decodable, Equatable {
     var id: String
     var name: String
     var working: Bool
-    var full: Bool
     var session: String?
     var said: [IslandSaid]
 }

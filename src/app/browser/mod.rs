@@ -36,6 +36,7 @@ impl DrawingApp {}
 pub(crate) fn pages_in_swift() -> bool {
     #[cfg(target_os = "macos")]
     return crate::app::native::enabled("canvas");
+
     #[cfg(not(target_os = "macos"))]
     false
 }
@@ -43,6 +44,7 @@ pub(crate) fn pages_in_swift() -> bool {
 /// The selection box's outline as four 2-point strips, for the page to let through.
 pub(crate) fn marquee_edges(m: Rect) -> [Rect; 4] {
     let (a, b) = (m.min - Vec2::splat(1.0), m.max + Vec2::splat(1.0));
+
     [
         Rect::from_min_max(a, Pos2::new(b.x, a.y + 2.0)),
         Rect::from_min_max(Pos2::new(a.x, b.y - 2.0), b),

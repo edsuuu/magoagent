@@ -56,15 +56,19 @@ impl Excluded {
             .and_then(|t| serde_json::from_str::<Lists>(&t).ok())
             .and_then(|m| m.get(root.to_string_lossy().as_ref()).cloned())
             .and_then(|v| serde_json::from_value::<Vec<String>>(v).ok());
+
         let dirs = saved.unwrap_or_else(|| {
             let mut dirs: Vec<String> = DEFAULT.iter().map(|d| d.to_string()).collect();
+
             for d in gitignore_dirs(root) {
                 if !dirs.contains(&d) {
                     dirs.push(d);
                 }
             }
+
             dirs
         });
+
         Excluded { root: root.to_path_buf(), dirs }
     }
 
@@ -72,16 +76,21 @@ impl Excluded {
     pub(crate) fn contains(&self, p: &Path) -> bool {
         let Ok(rel) = p.strip_prefix(&self.root) else { return false };
         let mut path = String::new();
+
         for c in rel.components() {
             let name = c.as_os_str().to_string_lossy();
+
             if !path.is_empty() {
                 path.push('/');
             }
+
             path.push_str(&name);
+
             if ALWAYS.contains(&name.as_ref()) || self.dirs.iter().any(|d| matches(d, &path, &name)) {
                 return true;
             }
         }
+
         false
     }
 }
@@ -90,12 +99,14 @@ impl Excluded {
 /// directories at the root. ponytail: nested .gitignore files and patterns are not read.
 fn gitignore_dirs(root: &Path) -> Vec<String> {
     let text = std::fs::read_to_string(root.join(".gitignore")).unwrap_or_default();
+
     text.lines()
         .map(str::trim)
         .filter(|l| !l.is_empty() && !l.starts_with(['#', '!']) && !l.contains(['*', '?', '[', '\\']))
         .filter_map(|l| {
             let anchored = l.starts_with('/') || l.trim_end_matches('/').contains('/');
             let path = l.trim_matches('/');
+
             (!path.is_empty() && root.join(path).is_dir()).then(|| if anchored { format!("/{path}") } else { path.to_string() })
         })
         .collect()
@@ -108,23 +119,28 @@ mod tests {
     fn project(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("mago-excl-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
+
         for d in ["node_modules/pkg", "vendor/lib", "src/vendor", "docs", "out/gen"] {
             std::fs::create_dir_all(dir.join(d)).unwrap();
         }
+
         dir
     }
 
     #[test]
     fn defaults_and_gitignore() {
         let dir = project("a");
+
         std::fs::write(dir.join(".gitignore"), "# c\nout/\n*.log\n.env\ndocs/nope\n!keep\n").unwrap();
         let ex = Excluded::load_from(None, &dir);
+
         assert!(ex.contains(&dir.join("node_modules/pkg/index.js")) && ex.contains(&dir.join("src/vendor/x.php")));
         assert!(ex.contains(&dir.join("out/gen/a.txt")), "a gitignore folder");
         assert!(!ex.contains(&dir.join("docs/a.md")) && !ex.contains(&dir.join("src/build/a.rs")));
         assert!(ex.contains(&dir.join("build/a.rs")), "/build is the root's only");
         // the agents' worktrees are never searched, even by a saved list that forgot them
         let bare = Excluded { root: dir.clone(), dirs: vec![] };
+
         assert!(ex.contains(&dir.join(".magoagent/worktrees/x/a.rs")) && bare.contains(&dir.join(".magoagent/worktrees/x/a.rs")));
         assert!(!bare.contains(&dir.join("src/a.rs")));
         let _ = std::fs::remove_dir_all(&dir);

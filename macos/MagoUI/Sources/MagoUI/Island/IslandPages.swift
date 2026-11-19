@@ -558,14 +558,8 @@ struct IslandSettingsPage: View {
                     }
                 }
                 .frame(height: 24)
-                // 3: the hooks of Claude Code, the API, and the app's settings
+                // 3: the app's settings
                 HStack(spacing: 14) {
-                    ForEach([("Claude Code", snapshot.agentHooks), ("API", false)], id: \.0) { name, on in
-                        HStack(spacing: 4) {
-                            Circle().fill(on ? IslandInk.green : IslandInk.red).frame(width: 6, height: 6)
-                            Text(name).font(.system(size: 11)).foregroundStyle(IslandInk.dim)
-                        }
-                    }
                     Spacer()
                     IslandLink(text: "Ajustes…", size: 11.5) { model.act("app_settings") }
                 }
@@ -597,11 +591,7 @@ struct IslandChatPage: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity).islandCard()
             } else if let chat = model.snapshot.chat {
-                if chat.full, let view = MagoViews.chat?(chat.id) {
-                    view.clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                } else {
-                    talk(chat)
-                }
+                talk(chat)
             } else {
                 Text("Escolha um agente em Conversas.").font(.system(size: 12)).foregroundStyle(IslandInk.dim)
                     .frame(maxWidth: .infinity, maxHeight: .infinity).islandCard()
@@ -618,7 +608,6 @@ struct IslandChatPage: View {
                 Text(chat.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(IslandInk.ink).lineLimit(1)
                 if chat.working { ProgressView().controlSize(.mini) }
                 Spacer()
-                IslandLink(text: "Abrir em miniatura", size: 11) { model.act("full") }
             }
             ScrollViewReader { reader in
                 ScrollView {

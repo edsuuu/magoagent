@@ -27,6 +27,7 @@ impl Status {
 
     fn of(word: &str) -> Status {
         let word = word.to_lowercase();
+
         if word.contains("needs") || word.contains("auth") {
             Status::NeedsAuth
         } else if word.contains("fail") || word.contains("error") {
@@ -89,17 +90,20 @@ impl Report {
 /// "221k", "26.7k", "622", "1.2M" (o que o `/context` imprime, com ou sem "~") em tokens.
 pub(crate) fn parse_tokens(text: &str) -> Option<u64> {
     let text = text.trim().trim_start_matches('~').replace(',', "");
+
     let (number, scale) = match text.chars().last()? {
         'k' | 'K' => (&text[..text.len() - 1], 1e3),
         'm' | 'M' => (&text[..text.len() - 1], 1e6),
         _ => (text.as_str(), 1.0),
     };
+
     number.trim().parse::<f64>().ok().map(|n| (n * scale).round() as u64)
 }
 
 /// 301800 → "301.8k", 221000 → "221k", 622 → "622", 1_200_000 → "1.2M".
 pub(crate) fn short(n: u64) -> String {
     let trim = |v: f64, unit: &str| format!("{}{unit}", format!("{v:.1}").trim_end_matches('0').trim_end_matches('.'));
+
     match n {
         0..=999 => n.to_string(),
         1_000..=999_949 => trim(n as f64 / 1e3, "k"),
@@ -125,10 +129,13 @@ pub(crate) fn tool_name<'a>(full: &'a str, server: &str) -> &'a str {
 /// As células de uma linha de tabela markdown; None para o traço e para o que não é linha.
 fn cells(line: &str) -> Option<Vec<&str>> {
     let line = line.trim();
+
     if !line.starts_with('|') {
         return None;
     }
+
     let cells: Vec<&str> = line.trim_matches('|').split('|').map(str::trim).collect();
+
     (!cells.iter().all(|c| c.chars().all(|ch| ch == '-' || ch == ':'))).then_some(cells)
 }
 
@@ -137,23 +144,30 @@ pub(crate) fn parse_context(text: &str) -> Result<Report, String> {
     let mut report = Report::default();
     let mut section = "";
     let mut seen = false;
+
     for line in text.lines() {
         let line = line.trim_end();
+
         if let Some(title) = line.strip_prefix("### ") {
             section = title.trim();
+
             continue;
         }
+
         if let Some(model) = line.strip_prefix("**Model:**") {
             report.model = model.trim().to_string();
         } else if let Some(rest) = line.strip_prefix("**Tokens:**") {
             // "36.8k / 400k (9%)"
             let (used, window) = rest.split_once('/').ok_or("não entendi a linha de tokens do /context")?;
+
             report.used = parse_tokens(used).ok_or("tokens usados ilegíveis")?;
             report.window = parse_tokens(window.split('(').next().unwrap_or_default()).ok_or("janela ilegível")?;
             seen = true;
         }
+
         let Some(c) = cells(line) else { continue };
         let tokens = |s: &str| parse_tokens(s).unwrap_or(0);
+
         match (section, c.as_slice()) {
             (_, [first, ..]) if ["Category", "Tool", "Type"].contains(first) => {}
             ("Estimated usage by category", [name, t, p]) => {
@@ -166,6 +180,7 @@ pub(crate) fn parse_context(text: &str) -> Result<Report, String> {
             _ => {}
         }
     }
+
     if seen { Ok(report) } else { Err("o /context não trouxe a linha de tokens".into()) }
 }
 
@@ -173,6 +188,7 @@ pub(crate) fn parse_context(text: &str) -> Result<Report, String> {
 pub(crate) fn print_result(json: &str) -> Result<String, String> {
     let v: Value = serde_json::from_str(json.trim()).map_err(|_| "a saída do claude não era JSON".to_string())?;
     let text = v["result"].as_str().unwrap_or_default().to_string();
+
     if v["is_error"] == true { Err(text) } else { Ok(text) }
 }
 
@@ -188,12 +204,15 @@ pub(crate) fn parse_init(event: &Value) -> Option<Init> {
     if event["type"] != "system" || event["subtype"] != "init" {
         return None;
     }
+
     let servers = event["mcp_servers"]
         .as_array()?
         .iter()
         .filter_map(|s| Some(Server { name: s["name"].as_str()?.to_string(), status: Status::of(s["status"].as_str().unwrap_or_default()) }))
         .collect();
+
     let mcp_tools = event["tools"].as_array().into_iter().flatten().filter_map(Value::as_str).filter(|t| t.starts_with("mcp__")).map(String::from).collect();
+
     Some(Init { model: event["model"].as_str().unwrap_or_default().to_string(), servers, mcp_tools })
 }
 
@@ -203,9 +222,11 @@ pub(crate) fn context_used(event: &Value) -> Option<u64> {
     if event["type"] != "assistant" || !event["parent_tool_use_id"].is_null() {
         return None;
     }
+
     let usage = &event["message"]["usage"];
     let n = |k: &str| usage[k].as_u64().unwrap_or(0);
     let total = n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens") + n("output_tokens");
+
     (total > 0).then_some(total)
 }
 
@@ -215,6 +236,7 @@ pub(crate) fn context_window(event: &Value) -> Option<u64> {
     if event["type"] != "result" {
         return None;
     }
+
     event["modelUsage"].as_object()?.values().filter_map(|usage| usage["contextWindow"].as_u64()).max()
 }
 
@@ -224,6 +246,7 @@ pub(crate) fn parse_mcp_list(text: &str) -> Vec<Server> {
         .filter_map(|line| {
             let (name, rest) = line.split_once(": ")?;
             let (_, state) = rest.rsplit_once(" - ")?;
+
             Some(Server { name: name.trim().to_string(), status: Status::of(state) })
         })
         .collect()
@@ -250,10 +273,12 @@ mod tests {
     #[test]
     fn the_context_report_is_read_by_category() {
         let r = parse_context(CONTEXT).unwrap();
+
         assert_eq!((r.model.as_str(), r.used, r.window), ("claude-fable-5-2", 301_800, 400_000));
         assert_eq!(r.cats.len(), 8);
         assert_eq!(r.cats[5], Cat { name: "Messages".into(), tokens: 221_000, pct: 55.2 });
         assert_eq!(r.cat("MCP tools (deferred)"), 188_800);
+
         assert_eq!(
             r.tools,
             [
@@ -261,6 +286,7 @@ mod tests {
                 ToolRow { server: "rea".into(), name: "xrefs".into(), tokens: 242 },
             ]
         );
+
         assert_eq!(r.memory, [("C:\\proj\\CLAUDE.md".to_string(), 21)]);
         // 400k - 33k de buffer - 301.8k usados: os "65k até o auto-compact" do painel
         assert_eq!(short(r.until_compact()), "65.2k");
@@ -283,18 +309,24 @@ mod tests {
             "tools": ["Bash", "mcp__rea__xrefs", "mcp__rea__open_binary", "mcp__claude_ai_Gmail__reply"],
             "mcp_servers": [{"name": "rea", "status": "connected"}, {"name": "claude.ai Gmail", "status": "needs-auth"},
                 {"name": "phpstorm", "status": "failed"}, {"name": "windows-mcp", "status": "pending"}]});
+
         let init = parse_init(&init).unwrap();
         let states: Vec<Status> = init.servers.iter().map(|s| s.status).collect();
+
         assert_eq!(states, [Status::Connected, Status::NeedsAuth, Status::Failed, Status::Pending]);
         assert_eq!(init.mcp_tools.len(), 3);
         assert_eq!(tool_name("mcp__claude_ai_Gmail__reply", "claude.ai Gmail"), "reply");
         assert!(parse_init(&json!({"type": "assistant"})).is_none());
+
         let usage = json!({"type": "assistant", "parent_tool_use_id": null, "message": {"usage":
             {"input_tokens": 2, "cache_creation_input_tokens": 16678, "cache_read_input_tokens": 19911, "output_tokens": 4}}});
+
         assert_eq!(context_used(&usage), Some(36_595));
         let sub = json!({"type": "assistant", "parent_tool_use_id": "t1", "message": {"usage": {"input_tokens": 9}}});
+
         assert_eq!(context_used(&sub), None);
         let done = json!({"type": "result", "modelUsage": {"claude-haiku": {"contextWindow": 200000}, "claude-opus": {"contextWindow": 500000}}});
+
         assert_eq!(context_window(&done), Some(500_000));
         assert_eq!(context_window(&usage), None);
     }
@@ -304,6 +336,7 @@ mod tests {
         let text = "Checking MCP server health…\n\nclaude.ai Gmail: https://gmail.example/mcp - ✔ Connected\nplugin:playwright:playwright: npx @playwright/mcp@latest - ✔ Connected\nphpstorm: http://127.0.0.1:1/stream (HTTP) - ✘ Failed to connect — ECONNREFUSED\nnotion: https://x.example/mcp?key=SEGREDO - ! Needs authentication\n";
         let list = parse_mcp_list(text);
         let seen: Vec<(&str, Status)> = list.iter().map(|s| (s.name.as_str(), s.status)).collect();
+
         assert_eq!(
             seen,
             [
@@ -318,6 +351,7 @@ mod tests {
     #[test]
     fn auto_compact_goes_to_the_cli_only_for_a_known_value() {
         let mut prefs = Prefs::default();
+
         assert!(autocompact_args(&prefs).is_empty());
         prefs.chat_autocompact = "200k".into();
         assert_eq!(autocompact_args(&prefs), ["--autocompact", "200k"]);
