@@ -627,7 +627,7 @@ Troca o provedor de um chat antes da primeira mensagem: `agent` claude ou codex.
 
 ### `chat_command`
 
-Roda um comando com barra do chat, como se a pessoa o digitasse na caixa: login (abre o navegador; console ou sso depois), logout, status, mcp, doctor, update, clear (conversa nova no mesmo chat; a anterior fica na lista Conversas, com o título dela, para ler e continuar), model e effort (com o nome ou nível), help. A saída aparece no chat, sem ir ao modelo. Outros /comandos (compact, os de .claude/commands) são mensagens ao agente: use chat_send.
+Roda um comando com barra do chat, como se a pessoa o digitasse na caixa: login (abre o navegador; console ou sso depois), logout, status, mcp, doctor, update, clear (conversa nova no mesmo chat; a anterior fica na lista Conversas, com o título dela, para ler e continuar), model e effort (com o nome ou nível), help, btw <pergunta> (pergunta à parte ao Claude Code, mesmo trabalhando, sem entrar na conversa), usage (o consumo do plano: 5 horas e 7 dias), context (abre o painel Contexto). A saída aparece no chat, sem ir ao modelo. Outros /comandos (compact, os de .claude/commands) são mensagens ao agente: use chat_send.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|

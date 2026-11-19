@@ -57,6 +57,7 @@ mod terminals;
 mod tools;
 mod tour;
 mod typing;
+mod usage_glance;
 mod windows;
 mod zoom;
 
