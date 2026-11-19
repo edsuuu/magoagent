@@ -117,6 +117,7 @@ struct FTTreeColumn: View {
                 }
                 .padding(.horizontal, 4)
             }
+            .modifier(FTScroller(pal: pal))
             .focusable()
             .focused($focused)
             .focusEffectDisabled()

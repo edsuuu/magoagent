@@ -179,3 +179,63 @@ struct FTRule: View {
     let color: NSColor
     var body: some View { Rectangle().fill(Color(color)).frame(height: 1) }
 }
+
+/// The egui tree's scrollbar (`filetree/ui/draw.rs`), only while the rows run past the box: a 6 wide thumb 7 in from the
+/// right edge and 3 from either end, at least 20 tall, `strong` (`muted` under the pointer or dragged), and the rows 13
+/// narrower to leave it room.
+/// ponytail: macOS 15 (scroll geometry and position); on 14 the system's overlay scroller stays.
+struct FTScroller: ViewModifier {
+    let pal: FTPalette
+
+    func body(content: Content) -> some View {
+        if #available(macOS 15, *) { content.modifier(Thumb(pal: pal)) } else { content }
+    }
+
+    @available(macOS 15, *)
+    private struct Thumb: ViewModifier {
+        let pal: FTPalette
+        @State private var geometry: ScrollGeometry?
+        @State private var position = ScrollPosition()
+        @State private var hover = false
+        @State private var from: CGFloat?
+
+        private var overflows: Bool { geometry.map { $0.contentSize.height > $0.containerSize.height } ?? false }
+
+        func body(content: Content) -> some View {
+            content
+                .scrollIndicators(.never)
+                .contentMargins(.trailing, overflows ? 13 : 0, for: .scrollContent)
+                .scrollPosition($position)
+                .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { _, new in geometry = new }
+                .overlay(alignment: .topTrailing) { thumb }
+        }
+
+        @ViewBuilder private var thumb: some View {
+            if let geometry, overflows {
+                let (shown, total) = (geometry.containerSize.height, geometry.contentSize.height)
+                let track = shown - 6
+                let height = min(max(shown / total * track, 20), track)
+                let span = max(total - shown, 1)
+                let offset = min(max(geometry.contentOffset.y, 0), span)
+
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color(hover || from != nil ? pal.muted : pal.strong))
+                    .frame(width: 6, height: height)
+                    .contentShape(Rectangle())
+                    .onHover { hover = $0 }
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { drag in
+                                let start = from ?? offset
+
+                                from = start
+                                position.scrollTo(y: min(max(start + drag.translation.height / max(track - height, 1) * span, 0), span))
+                            }
+                            .onEnded { _ in from = nil }
+                    )
+                    .padding(.top, 3 + offset / span * (track - height))
+                    .padding(.trailing, 7)
+            }
+        }
+    }
+}
