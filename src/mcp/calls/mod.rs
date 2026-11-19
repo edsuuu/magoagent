@@ -26,13 +26,13 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
 
             Ok(text(reply.to_string()))
         }),
-        "note" => with_scene(true, |scene| Ok(text(note_call(scene, args)?.to_string()))),
+        "note" => with_scene(true, |scene| Ok(text(note_call(scene, args, caller_id().as_deref())?.to_string()))),
         "note_buttons" => with_scene(true, |scene| {
             if args["id"].as_str().is_none() {
                 return Err("diga o `id` da nota".into());
             }
 
-            Ok(text(note_call(scene, &json!({ "id": args["id"], "buttons": args["buttons"] }))?.to_string()))
+            Ok(text(note_call(scene, &json!({ "id": args["id"], "buttons": args["buttons"] }), None)?.to_string()))
         }),
         "update_elements" => with_scene(true, |scene| {
             let items = list(args, "elements")?;

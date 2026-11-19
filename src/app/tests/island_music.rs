@@ -121,7 +121,7 @@ pub(super) fn drawn(app: &DrawingApp) -> Rect {
 const LEFT: [f32; 2] = [0.0, 400.0];
 const RIGHT: [f32; 2] = [ISLAND_SCREEN.x - 1.0, 400.0];
 
-/// An agent at work puts the island compact with Luna thinking in her balloon (she does not dance when told not to):
+/// An agent at work with the island compact (the pointer peeked at it) has Luna thinking in her balloon (she does not dance when told not to):
 /// the cover and the bars show beside her all the same, the bars up with the song heard, and the balloon on none of
 /// them; on the top edge and standing up on either side.
 #[test]
@@ -130,6 +130,7 @@ fn with_lunas_balloon_the_cover_and_the_bars_still_show() {
         let (mut app, ctx) = playing(anchor, false);
 
         app.chat_runs.insert("a".into(), crate::app::chat::direct::ChatRun::held(app.now));
+        app.island.peek(1.0);
         let output = settle(&mut app, &ctx, 1.0, 1.0, vec![]);
         let island = drawn(&app);
         let upright = anchor.is_some();

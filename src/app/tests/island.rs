@@ -417,10 +417,10 @@ fn the_island_waits_for_the_welcome_to_be_done() {
     app.take_outside_hook(&payload, Some(reply));
     assert!(app.person_asks.borrow().is_empty());
     assert!(answer.try_recv().is_ok(), "the hook was answered at once: the terminal asks");
-    // through the welcome, the island comes (compact: the session outside is at work)
+    // through the welcome, the island comes: closed, as the session outside at work no longer shows it compact
     app.welcome = None;
     run(&mut app, &ctx, 2.0, 3.0, vec![]);
-    assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "{:?}", app.island.size());
+    assert!((app.island.size().x - CLOSED_W).abs() < 4.0, "{:?}", app.island.size());
 }
 
 #[test]

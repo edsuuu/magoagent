@@ -176,7 +176,8 @@ impl DrawingApp {
     /// An answer nobody waits for goes to the chat that asked: as the answering agent's (whose it is over its bubble),
     /// in line if that chat is answering now, and a dot runs along their rope.
     fn bring_answer(&mut self, ctx: &Context, ask: &ChatAsk, answer: Result<String, String>) {
-        if !self.is_chat(&ask.from) {
+        // "No response requested." brought back would have the asker answer it the same, and so on
+        if !self.is_chat(&ask.from) || answer.as_deref().is_ok_and(crate::transcript::said_nothing) {
             return;
         }
 

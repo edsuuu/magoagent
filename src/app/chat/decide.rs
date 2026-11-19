@@ -303,6 +303,22 @@ impl DrawingApp {
 
         self.toast(if ask.questions.is_empty() { format!("{name} pede permissão") } else { format!("{name} tem uma pergunta para você") });
         self.person_asks.get_mut().push(ask);
+        self.show_asker(from);
+    }
+
+    /// An agent stopped on the person: the one thing that brings the app's window to the front by itself, on the chat
+    /// that asks. On the canvas, its card selected in the middle of the view; with no card there (or on the chat
+    /// screen), the chat itself.
+    pub(crate) fn show_asker(&mut self, chat: &str) {
+        self.bring_to_front();
+
+        match self.chat_node(chat).filter(|_| !self.chat_open) {
+            Some(index) => {
+                self.selected = vec![index];
+                self.glide_to(self.scene.elements[index].center());
+            }
+            None => self.chat_on(chat),
+        }
     }
 
     /// The chat waits on the person.

@@ -50,7 +50,7 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
                 let size = match kind.as_str() {
                     "terminal" => terminal_size(80, 24),
                     "ide" | "filetree" => FILETREE_SIZE,
-                    _ => Vec2::new(960.0, 640.0),
+                    _ => PORTAL_SIZE,
                 };
 
                 v.entry("width").or_insert(json!(size.x));
@@ -93,14 +93,15 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
     Ok(created)
 }
 
-/// What an agent opens on the canvas (a terminal to run its tests or its API, a portal, a file tree) hangs from it, as
+/// What an agent opens on the canvas (a terminal to run its tests or its API, a portal, a file tree, a note) hangs from it, as
 /// `recruit` hangs its child: a rope from `caller` (the canvas terminal or chat card it runs in) to each window just
 /// `created`, so it reaches them (read_terminal, portal_*) and list_agents shows them. A caller this drawing does not
 /// have (a chat with no card here) is the app's to tie when the drawing comes in (`tie_to_terminal`). Back: the windows
 /// tied.
 pub(crate) fn tie_to_caller(scene: &mut Scene, caller: Option<&str>, created: &[Value]) -> Result<Vec<String>, String> {
     let Some(caller) = caller.filter(|caller| scene.elements.iter().any(|e| e.id == *caller)) else { return Ok(Vec::new()) };
-    let window = |id: &str| scene.elements.iter().any(|e| e.id == id && e.id != caller && e.is_node());
+    // its notes too: each agent's note is tied to it (read_note, write_note), not loose on the canvas
+    let window = |id: &str| scene.elements.iter().any(|e| e.id == id && e.id != caller && (e.is_node() || e.created.is_some()));
     let windows: Vec<String> = created.iter().filter_map(|c| c["id"].as_str()).filter(|id| window(id)).map(String::from).collect();
 
     for id in windows.iter().map(String::as_str) {
@@ -123,18 +124,20 @@ pub(crate) fn tie_to_caller(scene: &mut Scene, caller: Option<&str>, created: &[
     Ok(windows)
 }
 
-/// A window an agent added over another window or a note moves to the free place nearest to the agent (to where it put
-/// it, when no window asked): it reads the canvas from a list, and stacked what it opened. Its label goes with it.
+/// A window or a note an agent added over anything on the canvas (a window, a note, a drawing) moves to the free place
+/// nearest to the agent (to where it put it, when no window asked): it reads the canvas from a list, and stacked what
+/// it opened. Its label goes with it. What it draws stays where it drew it: a diagram is read as a whole.
 pub(crate) fn make_room(scene: &mut Scene, caller: Option<&str>, created: &[Value]) {
     let around = caller.and_then(|id| scene.elements.iter().find(|e| e.id == id)).map(element_bounds);
     let ids: Vec<&str> = created.iter().filter_map(|c| c["id"].as_str()).collect();
 
     for (index_of, id) in ids.iter().copied().enumerate() {
-        let Some(index) = scene.elements.iter().position(|e| e.id == id && e.is_node()) else { continue };
+        let Some(index) = scene.elements.iter().position(|e| e.id == id && (e.is_node() || e.created.is_some())) else { continue };
         let at = element_bounds(&scene.elements[index]);
-        // in the order it made them: the later one gives way
+        // in the order it made them: the later one gives way (with its label, which sits on it)
         let later = &ids[index_of..];
-        let spot = free_spot_among(scene.elements.iter().filter(|e| !later.contains(&e.id.as_str())), at, around.unwrap_or(at));
+        let mine = |e: &Element| later.iter().any(|id| e.id == *id || e.id.strip_suffix("-label") == Some(id));
+        let spot = free_spot_among(scene.elements.iter().filter(|e| !mine(e)), at, around.unwrap_or(at));
         let delta = spot.min - at.min;
 
         if delta != Vec2::ZERO {

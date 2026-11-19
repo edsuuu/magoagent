@@ -106,3 +106,31 @@ fn a_double_click_on_a_title_lifts_a_window_and_another_puts_it_back() {
     assert_eq!((app.terminal_elevated.as_ref(), app.editing), (None, None));
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// What the agents open never brings the app's window to the front; a question or a permission an agent waits on does,
+/// on the chat that asks: its card selected on the canvas, or the chat itself when it has no card there.
+#[test]
+fn only_an_agent_waiting_on_the_person_brings_the_window_to_the_front() {
+    let mut app = DrawingApp::default();
+    let raised = |app: &mut DrawingApp| std::mem::take(&mut app.viewport_commands).contains(&egui::ViewportCommand::Focus);
+    let id = push_chat(&mut app, "Luna");
+
+    app.maestro_show("canvas");
+    assert!(!raised(&mut app), "showing a screen stays in place");
+    let card = app.add_chat_node(&id, None).unwrap();
+
+    app.selected.clear();
+    assert!(app.maestro_look(&id, None).is_ok());
+    assert!(!raised(&mut app), "focus_canvas moves the view, not the window");
+    let (reply, _answer) = std::sync::mpsc::channel();
+
+    app.ask_person(&id, &json!({ "tool_name": "AskUserQuestion", "input": { "questions": [{ "question": "Qual?", "options": [] }] } }), reply);
+    assert!(raised(&mut app), "a question brings it");
+    assert_eq!((app.selected.clone(), app.chat_open), (vec![card], false), "on the asker's card");
+    // with no card on the canvas, the chat itself
+    let other = push_chat(&mut app, "Ana");
+    let (reply, _answer) = std::sync::mpsc::channel();
+
+    app.ask_person(&other, &json!({ "tool_name": "Bash", "input": { "command": "ls" } }), reply);
+    assert!(raised(&mut app) && app.chat_open, "a permission too, on its chat");
+}

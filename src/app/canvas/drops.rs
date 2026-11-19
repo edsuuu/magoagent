@@ -6,9 +6,8 @@ use crate::app::chat::direct::folder;
 use crate::prelude::*;
 use std::path::Path;
 
-/// Notes and pages are this size when they come from a file (portals the reference app's 600×400).
+/// Notes are this size when they come from a file; pages open as the portals do (`PORTAL_SIZE`).
 const NOTE_DROP: Vec2 = Vec2::new(300.0, 250.0);
-const PAGE_DROP: Vec2 = Vec2::new(600.0, 400.0);
 const FILE_DROP: Vec2 = Vec2::new(260.0, 80.0);
 /// Each file of a drop lands this far down and right of the one before.
 const CASCADE: f32 = 30.0;
@@ -59,7 +58,7 @@ impl DrawingApp {
                 images.push(path.clone());
                 made.push(format!("{name}: imagem"));
             } else if matches!(extension.as_str(), "html" | "htm") {
-                let bounds = rect(PAGE_DROP);
+                let bounds = rect(PORTAL_SIZE);
                 let mut node = self.new_element(ElementKind::Rectangle { x: bounds.min.x, y: bounds.min.y, width: bounds.width(), height: bounds.height() });
 
                 node.style = node_style(node.style);

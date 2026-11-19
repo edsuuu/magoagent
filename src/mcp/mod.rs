@@ -37,7 +37,12 @@ uma marca de link no canto que, clicada, abre o arquivo numa Árvore de Arquivos
 desenhar sobre o código que a pessoa pediu para abrir ou ver na IDE do canvas, ponha em cada caixa o `link` do arquivo (e da \
 linha) de que ela fala, com o caminho absoluto. file_link abre um desses links (ou volta) como o clique da pessoa. \
 Fluxo sugerido: planeje o layout (ex.: caixas de 180x80 com 80px de espaço), crie tudo com add_elements, chame \
-view para ver a imagem e corrija com update_elements. \
+view para ver a imagem e corrija com update_elements. Antes de desenhar, leia get_scene e desenhe num espaço livre: nunca \
+em cima de janelas, notas ou desenhos que já estão no canvas, nem uma coisa sua em cima de outra (janelas e notas que \
+caem em cima de algo vão sozinhas para o lugar livre mais perto). Notas: a sua nasce ao seu lado, ligada a você por \
+corda; para mudar uma, passe o `id` dela (o mesmo título também muda a que você já tem) em vez de abrir outra igual. \
+Com muitas notas no canvas, agrupe as do mesmo assunto (canvas_group create com um nome, ou note_stack stack num \
+fichário) e dê a cada assunto uma cor diferente (`color` da nota ou canvas_group color), para a pessoa achar cada um. \
 Agentes: o canvas também tem terminais (type \"terminal\" com name, command e cwd) e uma seta presa a dois deles os conecta; \
 um agente novo para uma tarefa é recruit_agent, que segue o ajuste Invocação dos agentes (um chat do app ou um terminal), não um terminal com claude. Um terminal com command \"claude\" retoma a conversa de antes ao reiniciar \
 (claude --resume); update_elements com resume false desliga isso, resume true liga. De dentro de um terminal do MagoAgent, list_agents mostra quem está \
