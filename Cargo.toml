@@ -3,6 +3,7 @@ name = "magoagent"
 version = "0.0.33"
 edition = "2024"
 authors = ["edsuuu"]
+license = "MIT"
 description = "MagoAgent: quadro branco nativo em Rust"
 # an app, not a library: never goes to crates.io
 publish = false
