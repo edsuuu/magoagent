@@ -11,7 +11,7 @@ enum Areas {
             switch name {
             // ÁREAS: um caso por área, ex.: case "island": IslandArea.start()
             case "chat": ChatArea.start()
-            case "canvas": CanvasArea.start()
+            case "canvas": CanvasArea.start(); BrowserArea.start()
             case "island": IslandArea.start()
             case "shell": ShellArea.start()
             case "filetree": FileTreeArea.start()
@@ -37,4 +37,8 @@ public enum MagoViews {
     /// o id do elemento árvore de arquivos
     public static var filetree: ((String) -> AnyView)?
     public static var settings: (() -> AnyView)?
+    /// o id do elemento navegador: o corpo do cartão e a barra (a página é nativa, em `pages`)
+    public static var portal: ((String) -> AnyView)?
+    /// por cima do canvas inteiro: a vista onde ficam as páginas dos navegadores
+    public static var pages: (() -> AnyView)?
 }

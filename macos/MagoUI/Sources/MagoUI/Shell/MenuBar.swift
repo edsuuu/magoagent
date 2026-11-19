@@ -169,7 +169,7 @@ import AppKit
     }
 
     private func take(_ event: NSEvent, in window: NSWindow?) -> Bool {
-        guard event.window === window, window?.firstResponder is NSText == false else { return false }
+        guard event.window === window, window?.firstResponder is NSText == false, !PageHostView.hasKeyboard(window) else { return false }
         guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
               let letter = event.charactersIgnoringModifiers?.lowercased(), letter.count == 1,
               ShellModel.shared.state?.keysFree == true, keys.contains(letter) else { return false }

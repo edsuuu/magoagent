@@ -38,6 +38,7 @@ struct CanvasView: View {
                 ForEach(entries.filter { $0.drawing.node != nil }, id: \.id) { entry in
                     hosted(entry, camera: camera, seen: camera.world(geometry.size))
                 }
+                MagoViews.pages?()
                 if let overlay {
                     Canvas { context, _ in paintOverlay(&context, overlay, camera: camera, hand: hand) }
                         .allowsHitTesting(false)

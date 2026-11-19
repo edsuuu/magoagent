@@ -266,6 +266,16 @@ impl eframe::App for DrawingApp {
         if !self.caption_hooked {
             self.caption_hooked = crate::app::ui::titlebar::native_caption::install(&*frame);
         }
+        #[cfg(target_os = "macos")]
+        if crate::app::browser::pages_in_swift() {
+            // the pages go into SwiftUI's canvas, and wait while it is off screen (browser/native.rs)
+            if let Some(host) = crate::app::browser::page_host() {
+                self.sync_portals(&host, &ctx);
+            }
+        } else {
+            self.sync_portals(&*frame, &ctx);
+        }
+        #[cfg(not(target_os = "macos"))]
         self.sync_portals(&*frame, &ctx);
         #[cfg(not(target_os = "linux"))]
         self.sync_voice_page(&*frame, &ctx);

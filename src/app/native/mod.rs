@@ -21,6 +21,7 @@ unsafe extern "C" {
     fn mago_ui_publish(topic: *const c_char, json: *const c_char);
     fn mago_ui_stop();
     fn mago_ui_font(bytes: *const u8, length: std::ffi::c_ulong);
+    fn mago_ui_page_host() -> *mut std::ffi::c_void;
 }
 
 /// Swift's envelope: `{"id": 7, "action": "chat_new", "args": {...}}`.
@@ -93,6 +94,18 @@ pub(crate) fn stop() {
     }
 }
 
+/// The canvas's NSView the browsers' pages go in (browser/native.rs), while it is in a window; None before `start`.
+pub(crate) fn page_host() -> Option<std::ptr::NonNull<std::ffi::c_void>> {
+    CONTEXT.get()?;
+    // SAFETY: on the main thread (the frame), after `start`
+    std::ptr::NonNull::new(unsafe { mago_ui_page_host() })
+}
+
+/// The app's context, for an action of Swift's that needs one outside `ui` (a chat's send).
+pub(crate) fn context() -> Option<Context> {
+    CONTEXT.get().cloned()
+}
+
 /// Sends `value` to Swift under `topic` when its JSON differs from the last sent. Main thread only.
 pub(crate) fn publish<T: Serialize>(topic: &str, value: &T) {
     if CONTEXT.get().is_none() {
@@ -155,6 +168,7 @@ impl DrawingApp {
         }
         if enabled("canvas") {
             self.native_canvas();
+            self.native_browser();
         }
         if enabled("island") {
             self.native_island();
@@ -211,6 +225,7 @@ impl DrawingApp {
             // Some(("island", verb)) => self.native_island_act(verb, args),
             Some(("chat", verb)) => self.native_chat_act(verb, args),
             Some(("canvas", verb)) => self.native_canvas_act(verb, args),
+            Some(("browser", verb)) => self.native_browser_act(verb, args),
             Some(("island", verb)) => self.native_island_act(verb, args),
             Some(("shell", verb)) => self.native_shell_act(verb, args),
             Some(("filetree", verb)) => self.native_filetree_act(verb, args),

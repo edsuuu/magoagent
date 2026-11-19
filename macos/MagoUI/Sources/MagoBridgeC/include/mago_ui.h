@@ -15,5 +15,7 @@ void mago_ui_publish(const char *topic, const char *json);
 void mago_ui_stop(void);
 // uma fonte do app (os bytes do .ttf que o Rust embute), registrada no CoreText para as vistas a usarem pelo nome
 void mago_ui_font(const unsigned char *bytes, unsigned long length);
+// a NSView do canvas onde ficam as páginas dos navegadores (o pai do WKWebView do wry); NULL enquanto ela não está numa janela
+void *mago_ui_page_host(void);
 
 #endif

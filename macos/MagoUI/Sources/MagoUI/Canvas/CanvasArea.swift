@@ -7,12 +7,13 @@ import SwiftUI
         MagoViews.canvas = { AnyView(CanvasView()) }
     }
 
-    /// The live view of a window on the canvas, when its area registered one (a browser's page is native and not here).
+    /// The live view of a window on the canvas, when its area registered one (a browser's page is native, in `MagoViews.pages`).
     static func view(kind: String, id: String) -> AnyView? {
         switch kind {
         case "terminal": MagoViews.terminal?(id)
         case "chat": MagoViews.chat?(id)
         case "filetree": MagoViews.filetree?(id)
+        case "portal": MagoViews.portal?(id)
         default: nil
         }
     }
