@@ -80,6 +80,8 @@ pub(crate) struct Entry {
     pub(crate) ago: Option<f64>,
     /// Its mini wizard's colour.
     pub(crate) color: Color32,
+    /// The agent it runs, as its header tags it ("Claude Code", "Codex"), or the program of a session outside.
+    pub(crate) program: String,
     /// The space it runs in (its id, no floor); "" none; `OUTSIDE` outside the app.
     pub(crate) space: String,
     /// What the conversation and the menus need; none for a session outside.
@@ -89,15 +91,17 @@ pub(crate) struct Entry {
 }
 
 /// `entries` the chip `show` and the search `query` (lowercase) keep.
-pub(crate) fn kept<'a>(entries: &'a [Entry], show: Show, query: &str) -> Vec<&'a Entry> {
+pub(crate) fn kept<'a>(entries: impl IntoIterator<Item = &'a Entry>, show: Show, query: &str) -> Vec<&'a Entry> {
     let says = |entry: &Entry| query.is_empty() || format!("{} {}", entry.name, entry.last).to_lowercase().contains(query);
 
-    entries.iter().filter(|entry| show.keeps(&entry.state) && says(entry)).collect()
+    entries.into_iter().filter(|entry| show.keeps(&entry.state) && says(entry)).collect()
 }
 
 /// How many of `entries` each chip has.
-pub(crate) fn counts(entries: &[Entry]) -> [usize; 4] {
-    Show::ALL.map(|show| entries.iter().filter(|entry| show.keeps(&entry.state)).count())
+pub(crate) fn counts<'a>(entries: impl IntoIterator<Item = &'a Entry>) -> [usize; 4] {
+    let states: Vec<AgentState> = entries.into_iter().map(|entry| entry.state).collect();
+
+    Show::ALL.map(|show| states.iter().filter(|state| show.keeps(state)).count())
 }
 
 /// "N rodando · M esperando" of the title bar: working or waiting, and waiting.
@@ -152,9 +156,16 @@ fn asks_for(ask: &PersonAsk, id: &str) -> bool {
 impl DrawingApp {
     /// A terminal running an agent: Claude Code or Codex by its command, its session, or the title Claude gives it.
     fn runs_agent(&self, row: &AgentRow) -> bool {
-        let title = self.terminals.get(&row.id).and_then(|s| s.as_ref().ok()).and_then(|s| s.title()).unwrap_or_default();
+        self.row_program(row).is_some()
+    }
 
-        crate::app::chat::header::program(&row.spec, self.agent_sessions.contains_key(&row.id)).is_some() || crate::app::ui::agents::claude_title(&title)
+    /// The agent a row runs, as its header tags it: Claude Code or Codex by its command, its session, or the title Claude
+    /// gives its terminal.
+    fn row_program(&self, row: &AgentRow) -> Option<&'static str> {
+        let title = self.terminals.get(&row.id).and_then(|s| s.as_ref().ok()).and_then(|s| s.title()).unwrap_or_default();
+        let claude = self.agent_sessions.contains_key(&row.id) || crate::app::ui::agents::claude_title(&title);
+
+        crate::app::chat::header::program(&row.spec, claude)
     }
 
     /// The list's lines: the chats (not a draft), the terminals running an agent (and the one whose conversation is
@@ -173,6 +184,7 @@ impl DrawingApp {
                 last: self.last_line(&row),
                 ago: self.row_ago(&row),
                 color: self.agent_color(&row.id),
+                program: self.row_program(&row).unwrap_or_default().to_string(),
                 space: self.row_space(&row),
                 row: Some(row),
                 asleep: false,
@@ -193,6 +205,7 @@ impl DrawingApp {
                 name: pill.name,
                 state: pill.state,
                 color: pill.color,
+                program: pill.kind,
                 space: OUTSIDE.into(),
                 row: None,
                 asleep: pill.asleep,
@@ -357,7 +370,18 @@ mod tests {
     use super::*;
 
     fn entry(id: &str, state: AgentState, space: &str) -> Entry {
-        Entry { id: id.into(), name: id.into(), state, last: String::new(), ago: None, color: GREEN, space: space.into(), row: None, asleep: false }
+        Entry {
+            id: id.into(),
+            name: id.into(),
+            state,
+            last: String::new(),
+            ago: None,
+            color: GREEN,
+            program: "Claude Code".into(),
+            space: space.into(),
+            row: None,
+            asleep: false,
+        }
     }
 
     #[test]

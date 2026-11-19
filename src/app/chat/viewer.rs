@@ -1,9 +1,10 @@
 //! The chat's picture viewer: one image over the whole chat (the conversation isn't drawn behind
 //! it), with its name, size, sender and time, Copiar and Salvar como…, the zoom (− % +, Ajustar,
-//! 1:1, the wheel), dragging to move, a minimap and the previous and next image.
+//! 1:1, the wheel), dragging to move, a minimap and the previous and next image. It walks the open
+//! conversation's pictures, or the ones waiting in the box (images.rs `attached_row`).
 
 use crate::app::chat::image_key;
-use crate::app::chat::images::{Decoding, clipped, decode, details, picture};
+use crate::app::chat::images::{Attached, Decoding, clipped, decode, details, picture};
 use crate::prelude::*;
 use crate::transcript::ChatItem;
 
@@ -11,12 +12,68 @@ use crate::transcript::ChatItem;
 const STEPS: [f32; 12] = [0.1, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0];
 
 pub(crate) struct Viewer {
-    pub(crate) key: (usize, String),
+    pub(crate) source: PictureSource,
     pub(crate) full: Decoding,
     /// Screen pixels per picture pixel; None fits it in the view (never past 1:1).
     pub(crate) zoom: Option<f32>,
     /// The picture's center off the view's, in points.
     pan: Vec2,
+}
+
+/// The picture the viewer shows.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum PictureSource {
+    /// One of the open conversation's, by its `image_key`.
+    Message((usize, String)),
+    /// One waiting in the box, by its file.
+    Attached(PathBuf),
+}
+
+/// A picture the viewer walks through, and what its header says of it.
+struct Page<'a> {
+    source: PictureSource,
+    name: String,
+    /// After its size: who sent it and when, or that it goes with the next message.
+    about: String,
+    /// A message's picture, in base64, and its type, for Copiar and Salvar como…; a picture in the box is a file the
+    /// person already has, and offers neither.
+    data: Option<(&'a str, &'a str)>,
+}
+
+impl Page<'_> {
+    /// The open conversation's pictures, oldest first; `agent` sent the ones not the person's.
+    fn said<'a>(names: &[(&'a ChatItem, String)], agent: &str) -> Vec<Page<'a>> {
+        let page = |(item, name): &(&'a ChatItem, String)| {
+            let ChatItem::Image { data, media, user, at } = item else { return None };
+            let mut about = format!("enviada por {}", if *user { "você" } else { agent });
+
+            if let Some(time) = (*at > 0).then(|| local_clock(*at)).flatten() {
+                about += &format!(" às {time}");
+            }
+
+            Some(Page { source: PictureSource::Message(image_key(data)), name: name.clone(), about, data: Some((data.as_str(), media.as_str())) })
+        };
+
+        names.iter().filter_map(page).collect()
+    }
+
+    /// The pictures waiting in the box, in their order.
+    fn attached(attached: &[Attached]) -> Vec<Page<'static>> {
+        let about = |picture: &Attached| if picture.pasted { "colada · vai com a próxima mensagem" } else { "anexada · vai com a próxima mensagem" };
+
+        let page =
+            |picture: &Attached| Page { source: PictureSource::Attached(picture.path.clone()), name: picture.name(), about: about(picture).into(), data: None };
+
+        attached.iter().map(page).collect()
+    }
+
+    /// The viewer on it, reading the whole picture in a thread.
+    fn open(&self, ctx: &Context) -> Viewer {
+        match &self.source {
+            PictureSource::Message(key) => Viewer::open(ctx, key.clone(), self.data.map_or("", |(data, _)| data)),
+            PictureSource::Attached(path) => Viewer::attached(ctx, path),
+        }
+    }
 }
 
 /// What the viewer's buttons ask for that needs the app.
@@ -108,23 +165,33 @@ impl DrawingApp {
     }
 
     fn viewer_ui(&self, ctx: &Context, agent: &str) -> Option<Act> {
-        let list = self.chat_image_names();
-        let mut pics = self.chat_pics.borrow_mut();
+        let names = self.chat_image_names();
+        let mut guard = self.chat_pics.borrow_mut();
+        let pics = &mut *guard;
         let viewer = pics.viewer.as_mut()?;
-        let found = list.iter().position(|(item, _)| matches!(item, ChatItem::Image { data, .. } if image_key(data) == viewer.key));
 
-        // its message left the memory, or another agent's chat shows
-        let Some(at) = found else {
+        let list = match viewer.source {
+            PictureSource::Message(_) => Page::said(&names, agent),
+            PictureSource::Attached(_) => Page::attached(&pics.attached),
+        };
+
+        // its message left the memory, another agent's chat shows, or it left the box
+        let Some(at) = list.iter().position(|page| page.source == viewer.source) else {
             pics.viewer = None;
 
             return None;
         };
 
-        let (ChatItem::Image { data, media, user, at: when }, name) = &list[at] else { return None };
+        let Page { name, about, data, .. } = &list[at];
         let l = look(&self.colors(), self.dark());
         let area = Rect::from_min_max(Pos2::new(0.0, TOOLBAR_BOTTOM + 4.0), ctx.content_rect().max);
+
         // the full picture once read, the thumbnail meanwhile
-        let thumb = self.chat_images.borrow().get(&viewer.key).cloned();
+        let thumb = match &viewer.source {
+            PictureSource::Message(key) => self.chat_images.borrow().get(key).cloned(),
+            PictureSource::Attached(path) => pics.attached.iter().find(|picture| &picture.path == path).map(|picture| picture.pic.clone()),
+        };
+
         let pic = viewer.full.get().and_then(Option::as_ref).or(thumb.as_ref().and_then(|t| t.get()).and_then(Option::as_ref));
         let mut act = None;
         let mut go = None;
@@ -149,13 +216,8 @@ impl DrawingApp {
             p.hline(head.x_range(), head.bottom() - 0.5, Stroke::new(1.0, l.line));
             paint_icon(&p, Icon::Image, Pos2::new(head.left() + 27.0, head.center().y), l.muted);
             let mut sub = pic.map(details).unwrap_or_default();
-            let who = if *user { "você" } else { agent };
 
-            sub += &format!("{}enviada por {who}", if sub.is_empty() { "" } else { " · " });
-
-            if let Some(time) = (*when > 0).then(|| local_clock(*when)).flatten() {
-                sub += &format!(" às {time}");
-            }
+            sub += &format!("{}{about}", if sub.is_empty() { "" } else { " · " });
 
             let mut x = head.right() - 12.0;
             let close_rect = Rect::from_min_size(Pos2::new(x - 32.0, head.center().y - 16.0), Vec2::splat(32.0));
@@ -165,17 +227,21 @@ impl DrawingApp {
             cross(&p, close_rect.center(), 5.5, Stroke::new(1.6, l.text));
             close |= r.on_hover_cursor(CursorIcon::PointingHand).clicked();
             x = close_rect.left() - 4.0;
-            p.vline(x - 0.5, head.center().y - 12.0..=head.center().y + 12.0, Stroke::new(1.0, l.edge));
-            x -= 4.0 + 8.0;
 
-            if header_button(ui, &p, &mut x, head.center().y, Icon::Download, "Salvar como…", &l) {
-                act = Some(Act::Save(data.clone(), name.clone(), media.rsplit('/').next().unwrap_or("png").replace("jpeg", "jpg")));
-            }
+            // Copiar and Salvar como…, past a hairline, for a message's picture
+            if let Some((data, media)) = data {
+                p.vline(x - 0.5, head.center().y - 12.0..=head.center().y + 12.0, Stroke::new(1.0, l.edge));
+                x -= 4.0 + 8.0;
 
-            x -= 8.0;
+                if header_button(ui, &p, &mut x, head.center().y, Icon::Download, "Salvar como…", &l) {
+                    act = Some(Act::Save(data.to_string(), name.clone(), media.rsplit('/').next().unwrap_or("png").replace("jpeg", "jpg")));
+                }
 
-            if header_button(ui, &p, &mut x, head.center().y, Icon::Duplicate, "Copiar", &l) {
-                act = Some(Act::Copy(data.clone()));
+                x -= 8.0;
+
+                if header_button(ui, &p, &mut x, head.center().y, Icon::Duplicate, "Copiar", &l) {
+                    act = Some(Act::Copy(data.to_string()));
+                }
             }
 
             let room = x - 16.0 - (head.left() + 48.0);
@@ -346,8 +412,8 @@ impl DrawingApp {
             }
         });
 
-        if let Some((ChatItem::Image { data, .. }, _)) = go.and_then(|k| list.get(k)) {
-            pics.viewer = Some(Viewer::open(ctx, image_key(data), data));
+        if let Some(page) = go.and_then(|k| list.get(k)) {
+            pics.viewer = Some(page.open(ctx));
         }
 
         if close {
@@ -359,10 +425,18 @@ impl DrawingApp {
 }
 
 impl Viewer {
+    /// A picture of the conversation, `data` its base64.
     pub(crate) fn open(ctx: &Context, key: (usize, String), data: &str) -> Viewer {
         let data = data.to_string();
 
-        Viewer { key, full: decode(ctx, u32::MAX, move || crate::render::base64_decode(&data)), zoom: None, pan: Vec2::ZERO }
+        Viewer { source: PictureSource::Message(key), full: decode(ctx, u32::MAX, move || crate::render::base64_decode(&data)), zoom: None, pan: Vec2::ZERO }
+    }
+
+    /// A picture waiting in the box, read off its file.
+    pub(crate) fn attached(ctx: &Context, path: &std::path::Path) -> Viewer {
+        let file = path.to_path_buf();
+
+        Viewer { source: PictureSource::Attached(file.clone()), full: decode(ctx, u32::MAX, move || fs::read(file).ok()), zoom: None, pan: Vec2::ZERO }
     }
 }
 

@@ -8,6 +8,7 @@ use crate::app::ui::agents::{AgentRow, AgentState, ago};
 use crate::app::ui::menu_look::{context_menu, dots_menu, menu_row};
 use crate::prelude::*;
 use crate::transcript::ChatItem;
+pub(crate) mod display;
 pub(crate) mod running;
 pub(crate) mod team;
 mod view;
@@ -242,6 +243,8 @@ pub(crate) struct ListAction {
     pub(crate) outside: Option<String>,
     /// A Maestro's agents opened (true) or folded under it (team.rs).
     pub(crate) team: Option<(String, bool)>,
+    /// Exibição changed how the list shows the chats (display.rs).
+    pub(crate) display: Option<display::ListPrefs>,
 }
 
 /// The list's search and chip, and when each chat last changed (`chat_when`) with when that was looked up.

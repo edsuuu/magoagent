@@ -1,5 +1,6 @@
-//! The chat's pictures: thumbnails in the conversation (a click opens `chat_viewer`), and the ones
-//! pasted or dropped on the box, shown there until they go with the next message.
+//! The chat's pictures: thumbnails in the conversation, and the ones pasted or dropped on the box, shown there until
+//! they go with the next message; a click on either opens the viewer (viewer.rs). Their name, size and weight are in
+//! the tip, not under them.
 
 use crate::app::chat::image_key;
 use crate::app::chat::viewer::Viewer;
@@ -66,14 +67,15 @@ pub(crate) struct ChatPics {
 pub(crate) struct Attached {
     pub(crate) path: PathBuf,
     /// Pasted with Ctrl+V: a png of ours in the temp folder.
-    pasted: bool,
+    pub(crate) pasted: bool,
     bytes: u64,
-    pic: Decoding,
+    /// Its thumbnail, which the viewer shows while it reads the whole picture.
+    pub(crate) pic: Decoding,
 }
 
 impl DrawingApp {
-    /// An image of the conversation: a thumbnail with its name, size and weight, beside the one
-    /// right before it when there's room; a click opens it over the chat.
+    /// An image of the conversation: a thumbnail (its name, size and weight in the tip), beside the one right before it
+    /// when there's room; a click opens it over the chat.
     pub(crate) fn chat_thumb(&self, ui: &mut egui::Ui, item: &ChatItem, c: &UiColors) {
         let ChatItem::Image { data, user, .. } = item else { return };
         let key = image_key(data);
@@ -86,8 +88,8 @@ impl DrawingApp {
 
         let pic = pic.get().and_then(Option::as_ref);
         let name = self.chat_image_names().into_iter().find(|(i, _)| std::ptr::eq(*i, item)).map(|(_, n)| n).unwrap_or_default();
-        // the box with its border, the gap and two lines of 16
-        let card = Vec2::new(CARD.x + 2.0, CARD.y + 2.0 + 6.0 + 32.0);
+        // the box with its border
+        let card = CARD + Vec2::splat(2.0);
         let mut pics = self.chat_pics.borrow_mut();
         let (bounds, pass) = (ui.max_rect(), ui.ctx().cumulative_pass_nr());
 
@@ -118,12 +120,8 @@ impl DrawingApp {
 
         p.rect_filled(mark, 6, Color32::from_rgb(0x12, 0x12, 0x12).gamma_multiply(0.85));
         paint_icon(p, Icon::Expand, mark.center(), Color32::from_rgb(0xec, 0xec, 0xec));
-        let under = if dark { Color32::from_rgb(0xa8, 0xa8, 0xa8) } else { c.muted };
 
-        caption(p, name, frame.left_bottom() + Vec2::new(0.0, 6.0), 12.0, c.text, frame.width());
-        caption(p, pic.map(details).unwrap_or_default(), frame.left_bottom() + Vec2::new(0.0, 22.0), 12.0, under, frame.width());
-
-        if response.on_hover_cursor(CursorIcon::PointingHand).tip("Clique para ampliar").clicked() {
+        if response.on_hover_cursor(CursorIcon::PointingHand).tip(thumb_tip(&name, &pic.map(details).unwrap_or_default())).clicked() {
             pics.viewer = Some(Viewer::open(ui.ctx(), key, data));
         }
     }
@@ -192,8 +190,8 @@ impl DrawingApp {
         (n > 0).then(|| format!("{n} {} · {}", if n == 1 { "imagem" } else { "imagens" }, size_label(bytes)))
     }
 
-    /// The pictures that go with the next message, above the words in the box: each with where it
-    /// came from, its size and a × to take it out; their count and weight at the right.
+    /// The pictures that go with the next message, above the words in the box: each with a × to take it out (where it
+    /// came from and its size in the tip; a click opens it in the viewer); their count and weight at the right.
     pub(crate) fn attached_row(&self, ui: &mut egui::Ui, c: &UiColors) {
         let Some(total) = self.attached_summary() else { return };
         let dark = self.dark();
@@ -203,7 +201,7 @@ impl DrawingApp {
 
         let total = ui.painter().layout_no_wrap(total, FontId::proportional(13.0), under);
         let right = ui.max_rect().right();
-        let mut remove = None;
+        let (mut remove, mut open) = (None, None);
 
         // room above for the ×, which stands out of the corner
         ui.add_space(8.0);
@@ -213,19 +211,19 @@ impl DrawingApp {
             ui.spacing_mut().item_spacing = Vec2::new(12.0, 12.0);
 
             for (k, a) in self.chat_pics.borrow().attached.iter().enumerate() {
-                let (rect, _) = ui.allocate_exact_size(Vec2::new(PREVIEW.x, PREVIEW.y + 5.0 + 30.0), Sense::hover());
+                let (frame, thumbnail) = ui.allocate_exact_size(PREVIEW, Sense::click());
                 let p = ui.painter();
-                let frame = Rect::from_min_size(rect.min, PREVIEW);
                 let pic = a.pic.get().and_then(Option::as_ref);
 
                 picture(p, pic, frame.shrink(1.0), 8, c);
                 p.rect_stroke(frame, 9, Stroke::new(1.0, border), StrokeKind::Inside);
-                let origin = if a.pasted { "Colado · Ctrl+V".to_string() } else { a.path.file_name().unwrap_or_default().to_string_lossy().into_owned() };
-
-                caption(p, origin, frame.left_bottom() + Vec2::new(0.0, 5.0), 11.5, c.text, frame.width());
                 let size = pic.map_or(size_label(a.bytes), |pic| format!("{} × {} · {}", pic.size[0], pic.size[1], size_label(a.bytes)));
 
-                caption(p, size, frame.left_bottom() + Vec2::new(0.0, 20.0), 11.5, under, frame.width());
+                if thumbnail.on_hover_cursor(CursorIcon::PointingHand).tip(thumb_tip(&a.name(), &size)).clicked() {
+                    open = Some(k);
+                }
+
+                // the ×, over the thumbnail's corner, takes the clicks there
                 let x = Pos2::new(frame.right() - 4.0, frame.top() + 4.0);
                 let response = ui.interact(Rect::from_center_size(x, Vec2::splat(22.0)), ui.scope_id().with(("unattach", k)), Sense::click());
                 let p = ui.painter();
@@ -251,8 +249,27 @@ impl DrawingApp {
             if gone.pasted {
                 let _ = fs::remove_file(gone.path);
             }
+        } else if let Some(k) = open {
+            let mut pics = self.chat_pics.borrow_mut();
+            let viewer = Viewer::attached(ui.ctx(), &pics.attached[k].path);
+
+            pics.viewer = Some(viewer);
         }
     }
+}
+
+impl Attached {
+    /// What it is called: the file's name, or that it was pasted.
+    pub(crate) fn name(&self) -> String {
+        if self.pasted { "Imagem colada (Ctrl+V)".into() } else { self.path.file_name().unwrap_or_default().to_string_lossy().into_owned() }
+    }
+}
+
+/// A thumbnail's tip: its name and size (what the card no longer writes under it), then what a click does.
+fn thumb_tip(name: &str, size: &str) -> String {
+    let about: Vec<&str> = [name, size].into_iter().filter(|part| !part.is_empty()).collect();
+
+    if about.is_empty() { "Clique para ampliar".into() } else { format!("{}\nClique para ampliar", about.join(" · ")) }
 }
 
 pub(crate) fn thumb(ctx: &Context, data: &str) -> Decoding {
@@ -320,13 +337,6 @@ pub(crate) fn picture(p: &Painter, pic: Option<&Pic>, rect: Rect, radius: u8, c:
             p.rect_filled(rect, radius, c.surface_low);
         }
     }
-}
-
-/// One line of text at `at`, cut with "…" to fit `width`.
-fn caption(p: &Painter, text: String, at: Pos2, size: f32, color: Color32, width: f32) {
-    let galley = clipped(p, text, size, color, width);
-
-    p.galley(at, galley, color);
 }
 
 pub(crate) fn clipped(p: &Painter, text: String, size: f32, color: Color32, width: f32) -> std::sync::Arc<egui::Galley> {
@@ -477,7 +487,11 @@ mod tests {
 
         assert!(second.left() > 240.0, "{second:?}");
         click(&mut app, &ctx, second.center());
-        let open = |app: &DrawingApp| app.chat_pics.borrow().viewer.as_ref().map(|v| v.key.0);
+
+        let open = |app: &DrawingApp| match app.chat_pics.borrow().viewer.as_ref().map(|v| v.source.clone()) {
+            Some(crate::app::chat::viewer::PictureSource::Message(key)) => Some(key.0),
+            _ => None,
+        };
 
         let (first, last) = match &app.transcripts.values().next().unwrap().items[1..] {
             [ChatItem::Image { data: a, .. }, ChatItem::Image { data: b, .. }] => (a.len(), b.len()),
