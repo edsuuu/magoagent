@@ -40,6 +40,11 @@ import SwiftUI
         center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.reopenIfHidden() }
         }
+        // a right click on the canvas opens egui's menu for what is under it (NativeMenu shows it)
+        NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { event in
+            let (location, number) = (event.locationInWindow, event.windowNumber)
+            return MainActor.assumeIsolated { ShellController.shared.contextOpen(at: location, window: number) } ? nil : event
+        }
         window.makeKeyAndOrderFront(nil)
         placeButtons()
     }
@@ -49,6 +54,7 @@ import SwiftUI
         window?.title = state.title
         window?.appearance = state.theme == "system" ? nil : NSAppearance(named: state.dark ? .darkAqua : .aqua)
         MenuBar.shared.update(state.shortcuts)
+        NativeMenu.shared.update(state.menu)
         let badges = (state.tools.main + state.tools.drawing + state.tools.extra).map { $0.badge.lowercased() }.filter { $0.count == 1 }
         // the numeric keys pick the same tools; Shift+X is Desenhar para criar forma
         ToolKeys.shared.keys = Set(badges + ["1", "2", "3", "4", "5", "6", "7", "8", "0", "x"])
@@ -72,6 +78,14 @@ import SwiftUI
             origin.y = (bounds.size.height - button.frame.height) / 2
             button.setFrameOrigin(origin)
         }
+    }
+
+    /// A right click at `location` of window `number`: on the canvas, its menu opens (true); elsewhere it goes on as it was.
+    private func contextOpen(at location: CGPoint, window number: Int) -> Bool {
+        guard let window, window.windowNumber == number, let canvas = window.contentView?.hitTest(location) as? CanvasInputView else { return false }
+        let point = canvas.convert(location, from: nil)
+        shellVerb("context_open", ["px": point.x, "py": point.y])
+        return true
     }
 
     private func reopenIfHidden() {

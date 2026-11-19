@@ -33,6 +33,7 @@ struct ShellState: Decodable, Equatable {
     var toast: Toast?
     var shortcuts: [MenuKey]
     var settingsOpen: Bool
+    var menu: MenuModel?
     var strokePicks: [[Int]]
     var backgroundPicks: [[Int]]
     var spaceColors: [[Int]]
@@ -57,6 +58,29 @@ struct SidebarState: Decodable, Equatable {
     var agents: [AgentRow]
     var spaces: [SpaceRow]
     var groups: [GroupRow]
+    var usage: [UsageLine]
+    var usageOpen: Bool
+    var maestro: String
+}
+
+struct UsageLine: Decodable, Equatable, Identifiable {
+    var agent: String
+    var title: String
+    var used: Double
+    var plan: String?
+    var meters: [UsageMeter]
+    var note: String?
+    var id: String { agent }
+}
+
+struct UsageMeter: Decodable, Equatable {
+    var name: String
+    var used: Double
+}
+
+struct TeamFold: Decodable, Equatable {
+    var summary: String
+    var open: Bool
 }
 
 struct AgentRow: Decodable, Equatable, Identifiable {
@@ -69,6 +93,10 @@ struct AgentRow: Decodable, Equatable, Identifiable {
     var chat: Bool
     var needsYou: Bool
     var program: String
+    var color: [Int]
+    var mago: String
+    var member: Bool
+    var team: TeamFold?
 }
 
 struct SpaceRow: Decodable, Equatable, Identifiable {
@@ -148,6 +176,7 @@ struct PaneState: Decodable, Equatable {
 struct PaneButton: Decodable, Equatable, Identifiable {
     var id: String
     var name: String
+    var count: Int
 }
 
 struct Dialogs: Decodable, Equatable {
@@ -158,6 +187,28 @@ struct Dialogs: Decodable, Equatable {
     var welcome: WelcomeDialog?
     var tour: TourDialog?
     var changelog: ChangelogDialog?
+    var rename: RenameDialog?
+}
+
+struct RenameDialog: Decodable, Equatable {
+    var name: String
+    var group: Bool
+}
+
+/// The menu open over the canvas (src/app/ui/native/menu.rs): rows `item`, `sub`, `sep` or `title`.
+struct MenuModel: Decodable, Equatable {
+    var entries: [MenuEntry]
+}
+
+struct MenuEntry: Decodable, Equatable {
+    var kind: String
+    var id: String
+    var label: String
+    var check: Bool?
+    var enabled: Bool
+    var danger: Bool
+    var keys: String
+    var items: [MenuEntry]
 }
 
 struct TerminalDialog: Decodable, Equatable {

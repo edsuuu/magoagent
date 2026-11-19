@@ -33,7 +33,7 @@ mod marquee;
 pub(crate) mod minis;
 pub(crate) mod music;
 #[cfg(target_os = "macos")]
-mod native;
+pub(crate) mod native;
 pub(crate) mod paint;
 pub(crate) mod picture;
 pub(crate) mod pill;

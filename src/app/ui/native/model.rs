@@ -52,7 +52,7 @@ pub(super) struct Shell {
     space: Option<SpaceRef>,
     floor: String,
     chats: Chats,
-    sidebar: Sidebar,
+    sidebar: super::sidebar::Sidebar,
     tools: Tools,
     tool: String,
     drawing: bool,
@@ -71,6 +71,8 @@ pub(super) struct Shell {
     toast: Option<Toast>,
     shortcuts: Vec<MenuKey>,
     settings_open: bool,
+    /// The menu open now (a right click's, a bar's popover, a rope's connections), drawn as a native menu.
+    menu: Option<super::menu::MenuModel>,
     /// The picks the row offers (strokes, backgrounds), as the reference app's.
     stroke_picks: Vec<[u8; 4]>,
     background_picks: Vec<[u8; 4]>,
@@ -90,56 +92,6 @@ struct SpaceRef {
 struct Chats {
     running: usize,
     waiting: usize,
-}
-
-#[derive(Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-struct Sidebar {
-    hidden: bool,
-    /// Agents waiting on the person, in every space.
-    waiting: usize,
-    agents_closed: bool,
-    next_keys: String,
-    agents: Vec<AgentModel>,
-    spaces: Vec<SpaceRow>,
-    groups: Vec<GroupRow>,
-}
-
-#[derive(Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-struct AgentModel {
-    id: String,
-    name: String,
-    /// working, waiting, idle or ended.
-    state: &'static str,
-    label: &'static str,
-    note: Option<String>,
-    mission: Option<String>,
-    chat: bool,
-    needs_you: bool,
-    program: String,
-}
-
-#[derive(Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-struct SpaceRow {
-    id: String,
-    name: String,
-    color: [u8; 3],
-    root: String,
-    pinned: bool,
-    group: String,
-    running: usize,
-    needs: usize,
-    current: bool,
-    floors: usize,
-}
-
-#[derive(Serialize, PartialEq)]
-struct GroupRow {
-    id: String,
-    name: String,
-    open: bool,
 }
 
 #[derive(Serialize, PartialEq)]
@@ -209,6 +161,8 @@ struct PaneModel {
 struct PaneButton {
     id: &'static str,
     name: &'static str,
+    /// The badge: Alterações' changed files.
+    count: usize,
 }
 
 #[derive(Serialize, PartialEq, Default)]
@@ -221,6 +175,14 @@ struct Dialogs {
     welcome: Option<WelcomeModel>,
     tour: Option<TourModel>,
     changelog: Option<ChangelogModel>,
+    rename: Option<RenameModel>,
+}
+
+/// Renomear (a terminal, a portal, a note) or, hung from its pill, a group's name.
+#[derive(Serialize, PartialEq)]
+struct RenameModel {
+    name: String,
+    group: bool,
 }
 
 #[derive(Serialize, PartialEq)]
@@ -435,68 +397,6 @@ impl DrawingApp {
         })
     }
 
-    fn sidebar_model(&self) -> Sidebar {
-        let counts = self.space_counts();
-        let needing = self.needing_you();
-
-        let agents = self
-            .space_agents()
-            .iter()
-            .map(|row| {
-                let (state, label) = match row.state {
-                    crate::app::ui::agents::AgentState::Working(_) | crate::app::ui::agents::AgentState::Active(_) => ("working", "Trabalhando"),
-                    crate::app::ui::agents::AgentState::Waiting => ("waiting", "Esperando você"),
-                    crate::app::ui::agents::AgentState::Idle(_) => ("idle", "Pronto"),
-                    crate::app::ui::agents::AgentState::Ended => ("ended", "Encerrado"),
-                };
-
-                AgentModel {
-                    id: row.id.clone(),
-                    name: row.spec.label().to_string(),
-                    state,
-                    label,
-                    note: self.state_note(row),
-                    mission: row.mission.clone(),
-                    chat: self.is_chat(&row.id),
-                    needs_you: needing.contains(&row.id),
-                    program: row.spec.command.split_whitespace().next().unwrap_or_default().to_string(),
-                }
-            })
-            .collect();
-
-        let spaces = self
-            .spaces
-            .list
-            .iter()
-            .map(|space| {
-                let (running, needs) = counts.get(&space.id).copied().unwrap_or_default();
-
-                SpaceRow {
-                    id: space.id.clone(),
-                    name: space.name.clone(),
-                    color: space.color,
-                    root: space.root.clone(),
-                    pinned: space.pinned,
-                    group: space.group.clone(),
-                    running,
-                    needs,
-                    current: space.id == self.spaces.current,
-                    floors: space.floors.len(),
-                }
-            })
-            .collect();
-
-        Sidebar {
-            hidden: self.prefs.sidebar_hidden,
-            waiting: needing.len(),
-            agents_closed: self.prefs.sidebar_agents_closed,
-            next_keys: self.app_keys_text(crate::app::hotkeys::local::AppAction::NextNeedingYou),
-            agents,
-            spaces,
-            groups: self.spaces.groups.iter().map(|g| GroupRow { id: g.id.clone(), name: g.name.clone(), open: g.open }).collect(),
-        }
-    }
-
     fn floors_model(&self) -> Vec<FloorRow> {
         let Some(space) = self.current_space() else { return vec![] };
         let above = space.floors.iter().rev().map(|f| FloorRow { id: f.id.clone(), name: f.name.clone(), color: f.color, current: space.floor == f.id });
@@ -554,6 +454,7 @@ impl DrawingApp {
                 installed: c.installed,
                 confirming: self.updates.confirming,
             }),
+            rename: self.rename.as_ref().map(|(id, name)| RenameModel { name: name.clone(), group: id.starts_with("group:") }),
         }
     }
 
@@ -626,12 +527,16 @@ impl DrawingApp {
             floors_overview: self.floors_ui.overview,
             pane: PaneModel {
                 open: self.panes.open.map(|pane| crate::app::panes::PANES.iter().find(|p| p.0 == pane).map_or("", |p| p.1)),
-                buttons: crate::app::panes::PANES.iter().map(|p| PaneButton { id: p.1, name: p.2 }).collect(),
+                buttons: crate::app::panes::PANES
+                    .iter()
+                    .map(|p| PaneButton { id: p.1, name: p.2, count: if p.0 == crate::app::panes::Pane::Changes { self.changed_file_count() } else { 0 } })
+                    .collect(),
             },
             dialogs: self.dialogs_model(),
             toast: self.toast_model(),
             shortcuts: self.menu_keys(),
             settings_open: self.settings_open,
+            menu: self.menu_model(),
             stroke_picks: STROKE_PICKS.to_vec(),
             background_picks: BACKGROUND_PICKS.to_vec(),
             space_colors: crate::app::workspaces::space_colors(),

@@ -82,7 +82,7 @@ struct ShellContent: View {
                     HStack(alignment: .bottom, spacing: 6.5) {
                         HistoryPill(state: state)
                         Spacer()
-                        FloorsPill(state: state)
+                        FloorsPill(state: state, sheet: $sheet)
                         ZoomPill(state: state)
                     }
                     .padding(10)
@@ -113,8 +113,8 @@ private struct Placeholder: View {
         ZStack {
             Color(nsColor: .windowBackgroundColor)
             VStack(spacing: 6) {
-                Image(systemName: "rectangle.dashed").font(.system(size: 28)).foregroundStyle(.tertiary)
-                Text("\(text) ainda não registrado").font(.system(size: 13)).foregroundStyle(.secondary)
+                Image(systemName: "rectangle.dashed").font(.app(28)).foregroundStyle(.tertiary)
+                Text("\(text) ainda não registrado").font(.app(13)).foregroundStyle(.secondary)
             }
         }
     }
@@ -130,7 +130,7 @@ private struct SettingsCover: View {
                     if let view = MagoViews.settings { view() } else { Placeholder(text: "Ajustes") }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                Button { shellVerb("settings", ["open": false]) } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 18)).foregroundStyle(.secondary) }
+                Button { shellVerb("settings", ["open": false]) } label: { Image(systemName: "xmark.circle.fill").font(.app(18)).foregroundStyle(.secondary) }
                     .buttonStyle(.plain).keyboardShortcut(.cancelAction).padding(10).help("Fechar Ajustes")
             }
             .frame(maxWidth: 980, maxHeight: 700)

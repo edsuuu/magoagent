@@ -222,3 +222,64 @@ fn the_sidebar_lists_the_spaces_with_their_agents_counts() {
     assert_eq!(shell["space"]["name"], "Blog");
     assert_eq!(shell["floors"][0]["name"], "Térreo", "the ground floor is always there");
 }
+
+#[test]
+fn a_right_click_opens_the_egui_menu_for_swift_and_a_pick_runs_its_row() {
+    let mut app = DrawingApp::default();
+
+    app.canvas_rect = Rect::ZERO;
+    rectangle(&mut app);
+    verb(&mut app, "context_open", json!({ "px": 400, "py": 400 })).unwrap();
+    let menu = &shell(&app)["menu"]["entries"];
+
+    assert_eq!((menu[0]["kind"].clone(), menu[0]["label"].clone()), (json!("sub"), json!("Adicionar")), "the empty canvas's menu");
+    verb(&mut app, "menu", json!({ "id": "" })).unwrap();
+    assert!(shell(&app)["menu"].is_null(), "closed without a pick");
+    // on the rectangle's edge: its own menu, Apagar in red, and the pick deletes it
+    verb(&mut app, "context_open", json!({ "px": 1, "py": 30 })).unwrap();
+    let entries = shell(&app)["menu"]["entries"].as_array().unwrap().clone();
+    let delete = entries.iter().find(|entry| entry["id"] == "delete").unwrap();
+
+    assert_eq!((delete["label"].clone(), delete["danger"].clone()), (json!("Apagar"), json!(true)));
+    verb(&mut app, "menu", json!({ "id": "delete" })).unwrap();
+    assert!(app.scene.elements.is_empty());
+    assert!(shell(&app)["menu"].is_null());
+}
+
+#[test]
+fn renomear_shows_the_name_and_saves_the_text_swift_sends() {
+    let mut app = DrawingApp::default();
+
+    rectangle(&mut app);
+    app.scene.elements[0].portal = Some(PortalSpec { name: "Docs".into(), ..Default::default() });
+    let id = app.scene.elements[0].id.clone();
+
+    // what Renomear of its menu opens (context/rename.rs::open_rename)
+    app.rename = Some((id.clone(), "Docs".into()));
+    let rename = &shell(&app)["dialogs"]["rename"];
+
+    assert_eq!((rename["name"].clone(), rename["group"].clone()), (json!("Docs"), json!(false)));
+    verb(&mut app, "dialog", json!({ "dialog": "rename", "action": "confirm", "value": "Manual" })).unwrap();
+    assert_eq!(app.scene.elements[0].portal.as_ref().unwrap().name, "Manual");
+    assert!(shell(&app)["dialogs"]["rename"].is_null());
+    app.rename = Some((id, "Manual".into()));
+    verb(&mut app, "dialog", json!({ "dialog": "rename", "action": "cancel" })).unwrap();
+    assert!(app.rename.is_none());
+}
+
+#[test]
+fn the_corner_buttons_and_the_usage_card_reach_their_places() {
+    let mut app = DrawingApp::default();
+    let shell_now = shell(&app);
+    let buttons = shell_now["pane"]["buttons"].as_array().unwrap();
+
+    assert!(buttons.iter().all(|button| button["count"] == 0), "no changed files, no badge");
+    assert_eq!(shell_now["sidebar"]["agents"], json!([]));
+    assert_eq!(shell_now["sidebar"]["usageOpen"], false, "no card without a reading");
+    // Configurações… of the usage card opens Ajustes on Agentes
+    verb(&mut app, "settings", json!({ "tab": "Agentes" })).unwrap();
+    assert!(app.settings_open);
+    assert_eq!(crate::app::ui::settings::SETTINGS_TABS[app.settings_tab], "Agentes");
+    verb(&mut app, "settings", json!({ "open": false })).unwrap();
+    assert!(!app.settings_open);
+}

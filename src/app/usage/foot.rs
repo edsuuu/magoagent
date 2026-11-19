@@ -26,7 +26,7 @@ pub(crate) fn usage_height(count: usize) -> f32 {
 }
 
 /// A meter as the popover names it: the session says its 5 hours, the week is the week.
-fn meter_name(meter: &Meter) -> &str {
+pub(crate) fn meter_name(meter: &Meter) -> &str {
     match meter.title.as_str() {
         "Sessão" => "Sessão 5 h",
         "Semanal" => "Semana",
@@ -44,7 +44,7 @@ fn paint_bar(painter: &Painter, rect: Rect, used: f64, ground: Color32, accent: 
 }
 
 /// "Sessão renova hoje às 22:30 · semana seg, 17/11 às 05:00", from the meters that say when.
-fn renew_text(reading: &Reading, now: i64) -> Option<String> {
+pub(crate) fn renew_text(reading: &Reading, now: i64) -> Option<String> {
     let when = |title: &str| {
         let at = reading.meters.iter().find(|meter| meter.title == title)?.resets_at?;
 

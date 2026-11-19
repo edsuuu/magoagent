@@ -92,6 +92,11 @@ pub(crate) fn start(context: &Context) {
     publish("areas", &areas);
 }
 
+/// The app's egui context, once the bridge started (what a verb needs for the clipboard).
+pub(crate) fn context() -> Option<&'static Context> {
+    CONTEXT.get()
+}
+
 /// The app is closing: Swift closes its windows.
 pub(crate) fn stop() {
     if CONTEXT.get().is_some() {
@@ -105,11 +110,6 @@ pub(crate) fn page_host() -> Option<std::ptr::NonNull<std::ffi::c_void>> {
     CONTEXT.get()?;
     // SAFETY: on the main thread (the frame), after `start`
     std::ptr::NonNull::new(unsafe { mago_ui_page_host() })
-}
-
-/// The app's context, for an action of Swift's that needs one outside `ui` (a chat's send).
-pub(crate) fn context() -> Option<Context> {
-    CONTEXT.get().cloned()
 }
 
 /// Sends `value` to Swift under `topic` when its JSON differs from the last sent. Main thread only.

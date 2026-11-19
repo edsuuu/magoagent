@@ -1,34 +1,11 @@
 import SwiftUI
 
-/// The SF Symbol that stands for each tool (the egui toolbar draws its own marks).
-func toolSymbol(_ id: String) -> String {
-    switch id {
-    case "select": "cursorarrow"
-    case "hand": "hand.raised"
-    // the terminal's button is the chat's too: its dialog picks one
-    case "terminal": "terminal"
-    case "filetree": "folder"
-    case "portal": "globe"
-    case "sticky": "note.text"
-    case "draw": "pencil.tip"
-    case "text": "textformat"
-    case "eraser": "eraser"
-    case "rectangle": "rectangle"
-    case "diamond": "diamond"
-    case "ellipse": "circle"
-    case "arrow": "arrow.up.right"
-    case "line": "line.diagonal"
-    case "frame": "rectangle.dashed"
-    case "autoshape": "wand.and.stars"
-    case "laser": "scope"
-    case "fill": "paintbucket"
-    case "lasso": "lasso"
-    case "chat": "bubble.left"
-    default: "questionmark"
-    }
+/// A tool's icon on its button: the terminal's button is the chat's too (its dialog picks one), so it wears the chat's mark.
+func toolIcon(_ id: String) -> MagoIcon {
+    .tool(id == "terminal" ? "chat" : id)
 }
 
-/// The toolbar: the main tools, a hair, and the drawing row's button; under it the drawing tools and, as a menu, the extra ones.
+/// The toolbar: the main tools, a hair, and the drawing row's button; under it the drawing tools and "Mais ferramentas".
 struct ToolbarView: View {
     let state: ShellState
 
@@ -36,22 +13,22 @@ struct ToolbarView: View {
         VStack(spacing: 8) {
             GlassRow {
                 ForEach(state.tools.main) { tool in
-                    GlassButton(symbol: toolSymbol(tool.id), tip: tool.label, on: state.tool == tool.id, badge: tool.badge) {
+                    GlassButton(icon: toolIcon(tool.id), tip: tool.label, on: state.tool == tool.id, badge: tool.badge) {
                         shellVerb("tool", ["id": tool.id])
                     }
                 }
                 GlassDivider()
-                GlassButton(symbol: "square.on.circle", tip: "Ferramentas de desenho", on: state.drawing) { shellVerb("draw_toggle") }
+                GlassButton(icon: .shapes, tip: "Ferramentas de desenho", on: state.drawing) { shellVerb("draw_toggle") }
             }
             if state.drawing {
                 GlassRow {
                     ForEach(state.tools.drawing) { tool in
-                        GlassButton(symbol: toolSymbol(tool.id), tip: tool.label, on: state.tool == tool.id, badge: tool.badge) {
+                        GlassButton(icon: toolIcon(tool.id), tip: tool.label, on: state.tool == tool.id, badge: tool.badge) {
                             shellVerb("tool", ["id": tool.id])
                         }
                     }
                     GlassDivider()
-                    ExtraToolsMenu(state: state)
+                    ExtraToolsButton(state: state)
                 }
                 .transition(.move(edge: .top).combined(with: .scale(scale: 0.92)).combined(with: .opacity))
             }
@@ -60,29 +37,23 @@ struct ToolbarView: View {
     }
 }
 
-/// "Mais ferramentas": a native menu, the current extra tool wearing its mark on the button.
-private struct ExtraToolsMenu: View {
+/// "Mais ferramentas": ⋮, or the extra tool in use; its menu lists them, the one in use in the accent.
+private struct ExtraToolsButton: View {
     let state: ShellState
+    @State private var open = false
 
     var body: some View {
         let current = state.tools.extra.first { $0.id == state.tool }
-        Menu {
-            ForEach(state.tools.extra) { tool in
-                Button {
-                    shellVerb("tool", ["id": tool.id])
-                } label: {
-                    Label(tool.badge.isEmpty ? tool.label : "\(tool.label)    \(tool.badge)", systemImage: toolSymbol(tool.id))
+        GlassButton(icon: current.map { toolIcon($0.id) } ?? .more, tip: "Mais ferramentas", on: current != nil || open) { open.toggle() }
+            .popover(isPresented: $open, arrowEdge: .bottom) {
+                ForEach(state.tools.extra) { tool in
+                    MenuRow(icon: toolIcon(tool.id), label: tool.label, current: tool.id == state.tool) {
+                        shellVerb("tool", ["id": tool.id])
+                        open = false
+                    }
                 }
+                .menuBox(width: 230)
             }
-        } label: {
-            Image(systemName: current.map { toolSymbol($0.id) } ?? "ellipsis").font(.system(size: 15))
-                .foregroundStyle(current == nil ? Color.primary.opacity(0.85) : Color.accent007aff)
-                .frame(width: 30, height: 30)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .frame(width: 30, height: 30)
-        .help("Mais ferramentas")
     }
 }
 
@@ -90,6 +61,6 @@ private struct ExtraToolsMenu: View {
 struct HintView: View {
     let text: String
     var body: some View {
-        Text(text).font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center).allowsHitTesting(false)
+        Text(text).font(.app(13)).foregroundStyle(MenuLook.muted).multilineTextAlignment(.center).allowsHitTesting(false)
     }
 }

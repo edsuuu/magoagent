@@ -102,7 +102,7 @@ impl DrawingApp {
 
             let ctx = crate::app::native::context().ok_or("a interface não está ligada ao app")?;
 
-            self.finish_design_send(&ctx, true);
+            self.finish_design_send(ctx, true);
 
             return Ok(String::new());
         }

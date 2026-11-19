@@ -7,7 +7,9 @@
 //! sidebar's slide, the toast's clock) is what this reads.
 
 mod act;
+mod menu;
 mod model;
+mod sidebar;
 #[cfg(test)]
 mod tests;
 

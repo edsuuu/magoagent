@@ -81,7 +81,7 @@ struct FTHeader: View {
                 FTGlyph(name: "git-branch", size: 9.75, color: pal.muted)
                 Text(state.git.branch.isEmpty ? "HEAD" : state.git.branch)
                     .font(.app(11)).foregroundStyle(Color(pal.fg).opacity(0.8)).lineLimit(1).frame(maxWidth: 78, alignment: .leading)
-                if state.git.changes > 0 { Text("\(state.git.changes)").font(.app(11)).foregroundStyle(Color(pal.muted)) }
+                if state.git.changes > 0 { Text(verbatim: String(state.git.changes)).font(.app(11)).foregroundStyle(Color(pal.muted)) }
             }
             .padding(.leading, 7.5).padding(.trailing, 6.5)
             .frame(height: 19.5)

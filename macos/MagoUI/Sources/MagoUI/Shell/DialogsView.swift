@@ -42,7 +42,7 @@ private struct Field<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(caption).font(.system(size: 12)).foregroundStyle(.secondary)
+            Text(caption).font(.app(12)).foregroundStyle(.secondary)
             content
         }
     }
@@ -89,6 +89,8 @@ struct DialogsView: View {
                 TerminalDialogView(dialog: terminal)
             } else if let export = state.dialogs.export {
                 ExportView(export: export)
+            } else if let rename = state.dialogs.rename {
+                RenameView(rename: rename)
             } else if let sheet {
                 SpaceSheetView(sheet: sheet) { self.sheet = nil }
             }
@@ -119,16 +121,16 @@ private struct TerminalDialogView: View {
                 .pickerStyle(.segmented).labelsHidden()
             }
             HStack {
-                Text("INÍCIO RÁPIDO").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("INÍCIO RÁPIDO").font(.app(12)).foregroundStyle(.secondary)
                 Spacer()
-                Button("Editar presets…") { shellVerb("settings", ["open": true]) }.buttonStyle(.link).font(.system(size: 12))
+                Button("Editar presets…") { shellVerb("settings", ["open": true]) }.buttonStyle(.link).font(.app(12))
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 5), spacing: 4) {
                 ForEach(Array(dialog.presets.enumerated()), id: \.offset) { index, preset in
                     Button { set("preset", index) } label: {
                         VStack(spacing: 4) {
-                            Image(systemName: symbol(preset)).font(.system(size: 18)).frame(height: 24)
-                            Text(preset.name).font(.system(size: 12)).lineLimit(1)
+                            Image(systemName: symbol(preset)).font(.app(18)).frame(height: 24)
+                            Text(preset.name).font(.app(12)).lineLimit(1)
                         }
                         .frame(maxWidth: .infinity).frame(height: 55)
                         .foregroundStyle(preset.selected ? Color.primary : Color.secondary)
@@ -149,13 +151,13 @@ private struct TerminalDialogView: View {
                 Toggle(isOn: Binding(get: { dialog.maestro }, set: { set("maestro", $0) })) {
                     VStack(alignment: .leading) {
                         Text("Luna")
-                        Text("Faz deste terminal a Luna, capaz de reger o restante do canvas.").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Text("Faz deste terminal a Luna, capaz de reger o restante do canvas.").font(.app(11)).foregroundStyle(.secondary)
                     }
                 }
                 Toggle(isOn: Binding(get: { dialog.startInChat }, set: { set("startInChat", $0) })) {
                     VStack(alignment: .leading) {
                         Text("Iniciar no modo de chat")
-                        Text("Um clique nele abre o chat em vez da tela.").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Text("Um clique nele abre o chat em vez da tela.").font(.app(11)).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -213,6 +215,22 @@ private struct ExportView: View {
     private func set(_ field: String, _ value: Any) { shellVerb("dialog", ["dialog": "export", "action": "set", "field": field, "value": value]) }
 }
 
+/// Renomear (context/rename.rs): a terminal's, a portal's or a note's name; a group's, as egui's balloon asks it.
+// ponytail: a group's name asks in this card, not in a balloon hung from its pill (the pill is egui's canvas)
+private struct RenameView: View {
+    let rename: RenameDialog
+    @State private var name = ""
+
+    var body: some View {
+        DialogCard(title: rename.group ? "Renomear grupo" : "Renomear", confirm: "Salvar", width: rename.group ? 256 : 480, onConfirm: {
+            shellVerb("dialog", ["dialog": "rename", "action": "confirm", "value": rename.group ? String(name.prefix(120)) : name])
+        }, onCancel: { shellVerb("dialog", ["dialog": "rename", "action": "cancel"]) }) {
+            Field(caption: rename.group ? "Nome do grupo" : "Nome") { TextField("Nome", text: $name).textFieldStyle(.roundedBorder) }
+        }
+        .onAppear { name = rename.name }
+    }
+}
+
 /// Limpar todos os dados asks first: what goes, where, and that it can't be undone.
 private struct WipeView: View {
     let wipe: WipeDialog
@@ -234,7 +252,7 @@ private struct WipeView: View {
                 Text("Os hooks instalados no Claude Code e no Codex ficam como estão. Não dá para desfazer.")
                 Text(wipe.folders.joined(separator: "\n")).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary).padding(.top, 4)
             }
-            .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+            .font(.app(13)).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -248,12 +266,12 @@ private struct WelcomeView: View {
 
     var body: some View {
         DialogCard(title: "Bem-vindo ao MagoAgent", confirm: "Começar", width: 520, onConfirm: finish, onCancel: finish) {
-            Text("Um quadro branco com terminais, chats e agentes que trabalham juntos.").font(.system(size: 13)).foregroundStyle(.secondary)
+            Text("Um quadro branco com terminais, chats e agentes que trabalham juntos.").font(.app(13)).foregroundStyle(.secondary)
             if welcome.noSpace {
                 Field(caption: "Nome do primeiro espaço") { TextField("Projeto", text: $name).textFieldStyle(.roundedBorder) }
                 FolderField(caption: "Pasta raiz", placeholder: "~/projetos/loja", text: $folder)
             }
-            if !welcome.error.isEmpty { Text(welcome.error).font(.system(size: 12)).foregroundStyle(.red) }
+            if !welcome.error.isEmpty { Text(welcome.error).font(.app(12)).foregroundStyle(.red) }
         }
     }
 
@@ -266,7 +284,7 @@ private struct TourView: View {
     var body: some View {
         DialogCard(title: "Apresentação", confirm: tour.step + 1 < tour.steps ? "Próximo" : "Concluir", width: 380,
                    onConfirm: { shellVerb("tour", ["action": "next"]) }, onCancel: { shellVerb("tour", ["action": "end"]) }) {
-            Text("Passo \(tour.step + 1) de \(tour.steps)").font(.system(size: 13)).foregroundStyle(.secondary)
+            Text("Passo \(tour.step + 1) de \(tour.steps)").font(.app(13)).foregroundStyle(.secondary)
             if tour.step > 0 { Button("Voltar") { shellVerb("tour", ["action": "back"]) }.buttonStyle(.link) }
         }
     }
@@ -278,13 +296,13 @@ private struct ChangelogView: View {
     var body: some View {
         let title = changelog.installed ? "O que há de novo na \(changelog.version)" : "Versão \(changelog.version) disponível"
         DialogCard(title: title, confirm: confirmLabel, width: 520, onConfirm: confirm, onCancel: close) {
-            ScrollView { Text(changelog.notes).font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 260)
+            ScrollView { Text(changelog.notes).font(.app(13)).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 260)
             if !changelog.installed && !changelog.confirming {
                 HStack {
                     Button("Atualizar depois") { shellVerb("changelog", ["choice": "later"]) }
                     Button("Pular esta versão") { shellVerb("changelog", ["choice": "skip"]) }
                 }
-                .buttonStyle(.link).font(.system(size: 12))
+                .buttonStyle(.link).font(.app(12))
             }
         }
     }
@@ -305,6 +323,7 @@ private struct SpaceSheetView: View {
     let close: () -> Void
     @State private var name = ""
     @State private var folder = ""
+    @State private var cloneGround = false
 
     var body: some View {
         switch sheet {
@@ -315,7 +334,7 @@ private struct SpaceSheetView: View {
             }, onCancel: close) {
                 Field(caption: "Nome") { TextField("Projeto", text: $name).textFieldStyle(.roundedBorder) }
                 FolderField(caption: "Pasta raiz", placeholder: "~/projetos/loja", text: $folder)
-                Text("Terminais e árvores novos deste espaço começam nessa pasta.").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("Terminais e árvores novos deste espaço começam nessa pasta.").font(.app(12)).foregroundStyle(.secondary)
             }
         case .removeSpace(let id, let name, let running):
             DialogCard(title: "Remover espaço", confirm: "Remover", danger: true, onConfirm: {
@@ -323,7 +342,7 @@ private struct SpaceSheetView: View {
                 close()
             }, onCancel: close) {
                 let ends = running == 0 ? "" : running == 1 ? " e o terminal que roda nele é encerrado" : " e os \(running) terminais que rodam nele são encerrados"
-                Text("\"\(name)\" sai da lista\(ends). O desenho dele continua no disco.").font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+                Text("\"\(name)\" sai da lista\(ends). O desenho dele continua no disco.").font(.app(13)).fixedSize(horizontal: false, vertical: true)
             }
         case .newGroup:
             DialogCard(title: "Novo grupo", confirm: "Criar", canConfirm: !name.trimmingCharacters(in: .whitespaces).isEmpty, onConfirm: {
@@ -341,13 +360,21 @@ private struct SpaceSheetView: View {
                 Field(caption: "Nome do grupo") { TextField("Nome do grupo", text: $name).textFieldStyle(.roundedBorder) }
             }
             .onAppear { name = current }
+        case .newFloor:
+            DialogCard(title: "Novo Andar", confirm: "Criar", canConfirm: !name.trimmingCharacters(in: .whitespaces).isEmpty, onConfirm: {
+                appAction("floors", ["action": "create", "name": name, "clone_ground": cloneGround])
+                close()
+            }, onCancel: close) {
+                Field(caption: "Nome do andar") { TextField("", text: $name).textFieldStyle(.roundedBorder) }
+                Toggle("Clonar layout do Térreo", isOn: $cloneGround).font(.app(13))
+            }
         case .removeGroup(let id, _):
             DialogCard(title: "Apagar Grupo", confirm: "Apagar", danger: true, onConfirm: {
                 appAction("workspace_groups", ["action": "remove", "name": id])
                 close()
             }, onCancel: close) {
                 Text("Este grupo será excluído permanentemente. Os espaços de trabalho dentro dele serão movidos para não agrupados.")
-                    .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+                    .font(.app(13)).fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -367,7 +394,7 @@ private struct PaletteView: View {
             Color.black.opacity(0.35).ignoresSafeArea().onTapGesture { shellVerb("palette", ["action": "close"]) }
             VStack(spacing: 12) {
                 TextField(palette.nodes ? "Buscar nós para conectar…" : "Procure menus, comandos e descubra gemas ocultas", text: $query)
-                    .textFieldStyle(.plain).font(.system(size: 16)).focused($focused)
+                    .textFieldStyle(.plain).font(.app(16)).focused($focused)
                     .padding(.horizontal, 12).frame(height: 40)
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.accent007aff, lineWidth: 1))
@@ -385,9 +412,9 @@ private struct PaletteView: View {
                                 }
                                 Button { selected = index; run() } label: {
                                     HStack {
-                                        Text(row.label).font(.system(size: 15))
+                                        Text(row.label).font(.app(15))
                                         Spacer()
-                                        Text(row.keys).font(.system(size: 11)).foregroundStyle(.secondary)
+                                        Text(row.keys).font(.app(11)).foregroundStyle(.secondary)
                                     }
                                     .padding(.horizontal, 12).frame(height: 38)
                                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(index == selected ? 0.08 : 0)))

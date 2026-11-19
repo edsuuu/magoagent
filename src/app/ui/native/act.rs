@@ -124,8 +124,13 @@ impl DrawingApp {
 
                 Ok(String::new())
             }
+            // `tab` opens Ajustes at that page (the usage card's Configurações… goes to Agentes)
             "settings" => {
-                self.settings_open = args["open"].as_bool().unwrap_or(!self.settings_open);
+                match args["tab"].as_str() {
+                    Some(tab) => self.open_settings_at(tab),
+                    None => self.settings_open = args["open"].as_bool().unwrap_or(!self.settings_open),
+                }
+
                 Ok(String::new())
             }
             "agent" => {
@@ -147,6 +152,17 @@ impl DrawingApp {
 
                 self.viewport_commands.push(egui::ViewportCommand::Close);
                 Ok("closing".into())
+            }
+            // a right click on the canvas (its view's points), and the row picked in the menu it opened ("" closes it)
+            "context_open" => {
+                let number = |key: &str| args[key].as_f64().unwrap_or_default() as f32;
+
+                self.shell_context_open(Pos2::new(number("px"), number("py")));
+                Ok(String::new())
+            }
+            "menu" => {
+                self.shell_menu(&text("id"));
+                Ok(String::new())
             }
             "dialog" => self.shell_dialog(&text("dialog"), &text("action"), args),
             "palette" => self.shell_palette(&text("action"), args),
@@ -362,6 +378,13 @@ impl DrawingApp {
 
                 if let Err(why) = self.wipe_all_data() {
                     self.toast(format!("Nada foi apagado: {why}."));
+                }
+            }
+            ("rename", "cancel") => self.rename = None,
+            // the field's text comes with the confirm: Swift keeps it while it is typed
+            ("rename", "confirm") => {
+                if let Some((id, name)) = self.rename.take() {
+                    self.set_name(&id, args["value"].as_str().unwrap_or(&name));
                 }
             }
             (dialog, action) => return Err(format!("diálogo desconhecido: {dialog} {action}")),
