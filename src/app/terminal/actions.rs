@@ -143,6 +143,11 @@ impl DrawingApp {
 
                 return Ok(format!("{name} {}.", if on { "bloqueado" } else { "desbloqueado" }));
             }
+            "dock" => {
+                let on = switch(args).unwrap_or(!self.scene.elements[i].docked());
+
+                return self.set_docked(&id, on);
+            }
             "delete" => {
                 self.selected = vec![i];
                 self.delete_selected();
@@ -151,7 +156,7 @@ impl DrawingApp {
             }
             other => {
                 return Err(format!(
-                    "ação desconhecida: {other} (copy, paste, select_all, clear_selection, rename, monitor, blur, reload, unload, use_size, use_font, use_theme, copy_element, duplicate, lock, delete)"
+                    "ação desconhecida: {other} (copy, paste, select_all, clear_selection, rename, monitor, blur, reload, unload, use_size, use_font, use_theme, copy_element, duplicate, lock, dock, delete)"
                 ));
             }
         }

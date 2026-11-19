@@ -128,11 +128,12 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "create_terminal",
-            "description": "Abre um terminal no canvas à sua direita (com o lugar tomado, no lugar livre mais perto de você; a resposta diz onde), já ligado a você por uma corda (ao seu terminal ou ao seu cartão de chat), rodando `command` como se fosse digitado (ex.: cargo test, npm run dev): use para rodar testes, uma API ou um servidor que você vai acompanhar. A resposta diz o nome dele. Ligado a você, ele aparece em list_agents com o estado (trabalhando, parado, encerrado), read_terminal lê a tela, ask_agent com raw manda teclas (\\x03 para parar) e terminal_processes mostra o que roda nele. Sem corda não há terminal: só de dentro de um terminal da Luna ou de um chat do MagoAgent.",
+            "description": "Abre um terminal no painel Comandos (fora do canvas, para não poluí-lo: a pessoa vê a saída ao vivo lá e pode levá-lo ao canvas) ou, com `canvas` true, no canvas à sua direita (com o lugar tomado, no lugar livre mais perto de você; a resposta diz onde), já ligado a você por uma corda (ao seu terminal ou ao seu cartão de chat), rodando `command` como se fosse digitado (ex.: cargo test, npm run dev): use para rodar testes, uma API ou um servidor que você vai acompanhar. A resposta diz o nome dele. Ligado a você, ele aparece em list_agents com o estado (trabalhando, parado, encerrado), read_terminal lê a tela, ask_agent com raw manda teclas (\\x03 para parar) e terminal_processes mostra o que roda nele. Sem corda não há terminal: só de dentro de um terminal da Luna ou de um chat do MagoAgent.",
             "inputSchema": { "type": "object", "properties": {
                 "command": { "type": "string", "description": "o que roda nele; vazio: só o shell" },
                 "name": { "type": "string", "description": "opcional; padrão o programa do comando (cargo, npm…)" },
                 "cwd": { "type": "string", "description": "a pasta; padrão a sua" },
+                "canvas": { "type": "boolean", "description": "true: um cartão no canvas em vez do painel Comandos (só quando a pessoa pedir no canvas)" },
             } },
         }),
         json!({
@@ -142,11 +143,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "terminal_menu",
-            "description": "As opções do cartão de um terminal, as mesmas do menu do botão direito: copy devolve (e põe na área de transferência) o que está selecionado, paste cola `text`, select_all e clear_selection, rename dá o nome `value`, message_box abre ou fecha (`value` on ou off) a caixa de mensagem embaixo do terminal, monitor liga ou desliga (`value` on ou off) o aviso de quando o trabalho termina, blur esconde a tela do terminal atrás de um véu (off tira), reload e unload (descarrega o shell até recarregar), use_size, use_font e use_theme fazem do tamanho, do tamanho de fonte e do tema deste terminal os padrões dos novos, copy_element, duplicate (a cópia fica ligada a você por corda), lock (`value` on ou off) e delete.",
+            "description": "As opções do cartão de um terminal, as mesmas do menu do botão direito: copy devolve (e põe na área de transferência) o que está selecionado, paste cola `text`, select_all e clear_selection, rename dá o nome `value`, message_box abre ou fecha (`value` on ou off) a caixa de mensagem embaixo do terminal, monitor liga ou desliga (`value` on ou off) o aviso de quando o trabalho termina, blur esconde a tela do terminal atrás de um véu (off tira), reload e unload (descarrega o shell até recarregar), use_size, use_font e use_theme fazem do tamanho, do tamanho de fonte e do tema deste terminal os padrões dos novos, copy_element, duplicate (a cópia fica ligada a você por corda), lock (`value` on ou off), dock (`value` on leva o terminal para o painel Comandos, fora do canvas; off traz de volta ao canvas; sem `value` alterna) e delete.",
             "inputSchema": { "type": "object", "properties": {
                 "name": { "type": "string", "description": "o nome do terminal" },
-                "action": { "type": "string", "enum": ["copy", "paste", "select_all", "clear_selection", "rename", "message_box", "monitor", "blur", "reload", "unload", "use_size", "use_font", "use_theme", "copy_element", "duplicate", "lock", "delete"] },
-                "value": { "type": "string", "description": "rename: o nome novo; message_box, monitor, blur, lock: on ou off" },
+                "action": { "type": "string", "enum": ["copy", "paste", "select_all", "clear_selection", "rename", "message_box", "monitor", "blur", "reload", "unload", "use_size", "use_font", "use_theme", "copy_element", "duplicate", "lock", "dock", "delete"] },
+                "value": { "type": "string", "description": "rename: o nome novo; message_box, monitor, blur, lock, dock: on ou off" },
                 "text": { "type": "string", "description": "paste: o texto" },
             }, "required": ["name", "action"] },
         }),
@@ -433,9 +434,9 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "panel",
-            "description": "O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão) ou note (Nota rápida: texto simples da pessoa; o texto em si fica na ferramenta quick_note), ao lado do canvas, ou doubts (Dúvidas: as perguntas dos agentes, também por cima do modo chat; as perguntas em si ficam na ferramenta doubts). As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.",
+            "description": "O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão) ou note (Nota rápida: texto simples da pessoa; o texto em si fica na ferramenta quick_note), ao lado do canvas, ou doubts (Dúvidas: as perguntas dos agentes, também por cima do modo chat; as perguntas em si ficam na ferramenta doubts), ou commands (Comandos: os terminais que rodam comandos, como testes e servidores, fora do canvas; cada um abre como sanfona com a saída ao vivo; terminal_menu dock move um terminal entre o canvas e este painel). As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.",
             "inputSchema": { "type": "object", "properties": {
-                "name": { "type": "string", "enum": ["changes", "note", "doubts"] },
+                "name": { "type": "string", "enum": ["changes", "commands", "note", "doubts"] },
                 "open": { "type": "boolean" },
                 "width": { "type": "number", "description": "a largura do painel em pixels (de 300 até deixar 360 ao canvas); 0 volta à padrão" },
                 "worktree": name("Alterações: o worktree a mostrar (nome da pasta, ramo ou caminho); todos: as Árvores do canvas"),

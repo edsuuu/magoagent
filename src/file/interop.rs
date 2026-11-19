@@ -101,6 +101,10 @@ pub(crate) fn interop_elements(elements: &[Element]) -> Vec<Value> {
                         (v["icon"], v["color"], v["quiet"]) = (t.icon.clone().into(), json!(t.color), t.quiet.into());
                         (v["maestro"], v["chat"], v["unloaded"], v["resume"]) = (t.maestro.into(), t.chat.into(), t.unloaded.into(), t.resume.into());
 
+                        if t.docked {
+                            v["docked"] = true.into();
+                        }
+
                         if !t.claude_session.is_empty() {
                             (v["claudeSession"], v["claudeFolder"]) = (t.claude_session.clone().into(), t.claude_folder.clone().into());
                         }
@@ -281,6 +285,7 @@ pub(crate) fn from_interop_elements(elements: &Value) -> Vec<Element> {
                     claude_folder: str_field(v, "claudeFolder"),
                     resume: v["resume"].as_bool().unwrap_or(true),
                     look: serde_json::from_value(v["termLook"].clone()).unwrap_or_default(),
+                    docked: v["docked"] == true,
                 }),
                 portal: (v["type"] == "portal").then(|| PortalSpec {
                     name: str_field(v, "name"),

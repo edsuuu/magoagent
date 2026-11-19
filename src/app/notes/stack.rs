@@ -585,11 +585,14 @@ impl DrawingApp {
     }
 }
 
-/// A page waiting behind its pile's front: neither it nor its text is painted or hit.
+/// A page waiting behind its pile's front, or a terminal kept in Comandos and its ropes (panes/commands.rs): neither it
+/// nor its text is painted or hit.
 pub(crate) fn hidden_page(elements: &[Element], element: &Element) -> bool {
     let waits = |page: &Element| page.created.is_some() && page.note.stacked && !page.note.front;
 
-    waits(element) || note_of_label(elements, element).is_some_and(|note_index| waits(&elements[note_index]))
+    waits(element)
+        || note_of_label(elements, element).is_some_and(|note_index| waits(&elements[note_index]))
+        || crate::app::panes::commands::off_canvas(elements, element)
 }
 
 /// "Mais N páginas" (one: "Mais 1 página").
