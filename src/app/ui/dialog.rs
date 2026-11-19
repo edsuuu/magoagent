@@ -58,26 +58,34 @@ fn sheet(ctx: &Context, c: &UiColors, title: &str, confirm: &str, top: f32, rais
     let (now, frame) = (ctx.input(|i| i.time), ctx.cumulative_frame_nr());
     let (start, seen) = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(id.with("open"), || (now, frame)));
     let start = if frame > seen + 1 { now } else { start };
+
     ctx.data_mut(|d| d.insert_temp(id.with("open"), (start, frame)));
     let open = ((now - start) / 0.16).clamp(0.0, 1.0) as f32;
+
     if open < 1.0 {
         ctx.request_repaint();
     }
+
     let max = (ctx.content_rect().height() * 0.8 - BAR).max(120.0);
     // the veil (it takes every click, so nothing under the sheet answers) and the sheet over it; over another sheet the
     // veil is darker and the card has a line and a shadow, or it would melt into the one under it (same colour)
     let screen = ctx.content_rect();
+
     let veil = egui::Area::new(id.with("veil")).order(egui::Order::Foreground).fixed_pos(screen.min).movable(false).show(ctx, |ui| {
         let (rect, _) = ui.allocate_exact_size(screen.size(), Sense::click_and_drag());
         let alpha = if raised { 150.0 } else { 77.0 };
+
         ui.painter().rect_filled(rect, 0, Color32::from_black_alpha((alpha * open) as u8));
     });
+
     let frame = if raised {
         let shadow = egui::epaint::Shadow { offset: [0, 16], blur: 48, spread: 0, color: Color32::from_black_alpha(if k.dark { 160 } else { 70 }) };
+
         egui::Frame::new().fill(k.bg).corner_radius(11).stroke(Stroke::new(1.0, k.border)).shadow(shadow)
     } else {
         egui::Frame::new().fill(k.bg).corner_radius(11).shadow(egui::epaint::Shadow::NONE)
     };
+
     egui::Area::new(id).order(egui::Order::Foreground).anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO).show(ctx, |ui| {
         frame.show(ui, |ui| {
             ui.set_opacity(open);
@@ -85,14 +93,17 @@ fn sheet(ctx: &Context, c: &UiColors, title: &str, confirm: &str, top: f32, rais
             ui.set_max_height(max + BAR);
             ui.spacing_mut().item_spacing = Vec2::ZERO;
             let (bar, _) = ui.allocate_exact_size(Vec2::new(SHEET, BAR), Sense::hover());
+
             ui.painter().hline(bar.x_range(), bar.bottom() - 0.5, Stroke::new(1.0, k.border));
             let middle = bar.top() + BAR_MIDDLE;
+
             // the title and its two buttons in one size
             ui.painter().text(Pos2::new(bar.center().x, middle), egui::Align2::CENTER_CENTER, title, FontId::proportional(15.0), k.fg);
             cancel = bar_button(ui, &k, Pos2::new(bar.left() + 9.0, middle), false, "Cancelar", 15.0);
             ok = bar_button(ui, &k, Pos2::new(bar.right() - 9.0, middle), true, confirm, 15.0);
             // a thin bar that shows over the fields only while scrolling
             ui.spacing_mut().scroll = crate::app::ui::scroll_style();
+
             egui::ScrollArea::vertical().max_height(max).auto_shrink([false, true]).show(ui, |ui| {
                 egui::Frame::new().inner_margin(egui::Margin { left: SIDE as i8, right: SIDE as i8, top: top as i8, bottom: 10 }).show(ui, |ui| {
                     ui.set_width(DIALOG_WIDTH);
@@ -101,14 +112,17 @@ fn sheet(ctx: &Context, c: &UiColors, title: &str, confirm: &str, top: f32, rais
             });
         });
     });
+
     // a click on the veil brought it up; the sheet goes back over it, unless a menu is open from
     // it (Recentes): that one is newer and must stay above, or the sheet would hide it
     if !egui::Popup::is_any_open(ctx) {
         if raised {
             ctx.move_to_top(veil.response.layer_id);
         }
+
         ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, id));
     }
+
     ok |= ctx.input(|i| i.key_pressed(Key::Enter));
     cancel |= ctx.input(|i| i.key_pressed(Key::Escape));
     (ok, cancel)
@@ -118,13 +132,18 @@ fn sheet(ctx: &Context, c: &UiColors, title: &str, confirm: &str, top: f32, rais
 fn bar_button(ui: &mut egui::Ui, k: &K, edge: Pos2, right: bool, text: &str, size: f32) -> bool {
     let galley = ui.painter().layout_no_wrap(text.into(), FontId::proportional(size), k.primary);
     let size = Vec2::new(galley.size().x + 20.0, 27.0);
+
     let rect =
         if right { Rect::from_min_size(Pos2::new(edge.x - size.x, edge.y - 13.5), size) } else { Rect::from_min_size(Pos2::new(edge.x, edge.y - 13.5), size) };
+
     let response = ui.interact(rect, ui.scope_id().with(("bar", text)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
     response.widget_info(|| WidgetInfo::labeled(Role::Button, true, text));
+
     if response.hovered() {
         ui.painter().rect_filled(rect, RADIUS, k.muted.gamma_multiply(if k.dark { 0.5 } else { 1.0 }));
     }
+
     ui.painter().galley(rect.center() - galley.size() / 2.0, galley, k.primary);
     response.clicked()
 }
@@ -134,6 +153,7 @@ pub(crate) fn dialog_caption(ui: &mut egui::Ui, text: &str, c: &UiColors) {
     let k = tokens(c);
     let galley = kit::galley(ui, text, 13.0, 18.2, k.muted_fg, f32::INFINITY);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), galley.size().y + LABEL_GAP), Sense::hover());
+
     ui.painter().galley(rect.min, galley, k.muted_fg);
 }
 
@@ -149,13 +169,17 @@ fn input_box_tab(ui: &mut egui::Ui, k: &K, label: &str, text: &mut String, hint:
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let id = ui.scope_id().with(("dialog_input", label));
     let focused = ui.memory(|m| m.has_focus(id));
+
     if k.dark {
         ui.painter().rect_filled(rect, RADIUS, k.input.gamma_multiply(0.3));
     }
+
     if focused {
         ui.painter().rect_stroke(rect, RADIUS, Stroke::new(2.0, k.primary.gamma_multiply(0.15)), StrokeKind::Outside);
     }
+
     ui.painter().rect_stroke(rect, RADIUS, Stroke::new(1.0, if focused { k.primary } else { k.input }), StrokeKind::Inside);
+
     let edit = egui::TextEdit::singleline(text)
         .id(id)
         .password(password)
@@ -166,7 +190,9 @@ fn input_box_tab(ui: &mut egui::Ui, k: &K, label: &str, text: &mut String, hint:
         .frame(egui::Frame::NONE)
         .align(egui::Align2::LEFT_CENTER)
         .desired_width(size.x - 2.0 * RADIUS);
+
     let response = ui.put(Rect::from_min_max(rect.min + Vec2::new(RADIUS, 0.0), rect.max - Vec2::new(RADIUS, 0.0)), edit);
+
     response.widget_info(|| WidgetInfo::labeled(Role::TextInput, true, label));
     response
 }
@@ -184,10 +210,12 @@ pub(crate) fn dialog_field_mono(ui: &mut egui::Ui, label: &str, text: &mut Strin
 fn field(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, width: f32, font: FontId, c: &UiColors) -> egui::Response {
     dialog_caption(ui, label, c);
     let response = input_box(ui, &tokens(c), label, text, hint, Vec2::new(width, FIELD), font, false);
+
     // a dialog opens typing in its first field
     if ui.memory(|m| m.focused().is_none()) {
         response.request_focus();
     }
+
     ui.add_space(GAP);
     response
 }
@@ -195,7 +223,9 @@ fn field(ui: &mut egui::Ui, label: &str, text: &mut String, hint: &str, width: f
 /// A button the height of the folder field, with `text` in it: the outline of a button (`variant="outline"`).
 fn field_button(ui: &mut egui::Ui, k: &K, rect: Rect, text: &str) -> egui::Response {
     let response = ui.interact(rect, ui.scope_id().with(("field_button", text)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
     response.widget_info(|| WidgetInfo::labeled(Role::Button, true, text));
+
     let fill = if response.hovered() {
         k.muted
     } else if k.dark {
@@ -203,6 +233,7 @@ fn field_button(ui: &mut egui::Ui, k: &K, rect: Rect, text: &str) -> egui::Respo
     } else {
         k.bg
     };
+
     ui.painter().rect_filled(rect, RADIUS, fill);
     ui.painter().rect_stroke(rect, RADIUS, Stroke::new(1.0, if k.dark { k.input } else { k.border }), StrokeKind::Inside);
     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, text, FontId::proportional(12.0), k.fg);
@@ -215,67 +246,85 @@ pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String,
     const HEIGHT: f32 = 30.0;
     const BROWSE: f32 = 83.0;
     let k = tokens(c);
+
     dialog_caption(ui, label, c);
     let (row, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, HEIGHT), Sense::hover());
     let field = Rect::from_min_max(row.min, Pos2::new(row.right() - BROWSE - 5.0, row.bottom()));
     // open, where the list was last drawn, the folders a Tab found
     let list_id = ui.scope_id().with(("folder_list", label));
     let (mut open, last, mut found): (bool, Rect, Vec<String>) = ui.data(|d| d.get_temp(list_id)).unwrap_or((false, Rect::NOTHING, vec![]));
+
     let (response, tabbed) = ui
         .scope_builder(egui::UiBuilder::new().max_rect(field), |ui| {
             let id = ui.scope_id().with(("dialog_input", label));
             let tab = ui.memory(|m| m.has_focus(id)) && ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab));
             let tabbed = tab.then(|| complete_folder(folder));
+
             if let Some((done, _)) = &tabbed {
                 *folder = done.clone();
                 // the caret after what was filled in
                 let mut state = egui::TextEdit::load_state(ui.ctx(), id).unwrap_or_default();
+
                 state.cursor.set_char_range(Some(egui::text::CCursorRange::one(egui::text::CCursor::new(folder.chars().count()))));
                 state.store(ui.ctx(), id);
             }
+
             (input_box_tab(ui, &k, label, folder, hint, field.size(), FontId::monospace(14.0), false, true), tabbed.map(|t| t.1))
         })
         .inner;
+
     if response.changed() {
         found.clear();
     }
+
     if let Some(list) = tabbed {
         found = list;
     }
+
     if response.clicked() || response.gained_focus() {
         open = true;
     }
+
     let pressed = ui.input(|i| i.pointer.any_pressed().then(|| i.pointer.interact_pos()).flatten());
+
     if pressed.is_some_and(|p| !field.contains(p) && !last.contains(p)) || ui.input(|i| i.key_pressed(Key::Escape)) {
         open = false;
     }
+
     let spot = Rect::from_min_size(Pos2::new(row.right() - BROWSE, row.top()), Vec2::new(BROWSE, HEIGHT));
+
     if field_button(ui, &k, spot, "Procurar...").clicked()
         && let Some(dir) = rfd::FileDialog::new().set_title(title).pick_folder()
     {
         *folder = dir.to_string_lossy().into();
         open = false;
     }
+
     // what a Tab found, else the recent and favorite folders
     let rows: Vec<(String, Option<bool>)> =
         if found.is_empty() { folders.choices().into_iter().map(|(p, f)| (p, Some(f))).collect() } else { found.iter().map(|p| (p.clone(), None)).collect() };
+
     let mut list = Rect::NOTHING;
     // it unfolds and folds in 0.15 s, the dialog growing with it
     let full = if (open || !found.is_empty()) && !rows.is_empty() { rows.len().min(6) as f32 * (super::folders::FOLDER_ROW + 1.0) + 8.0 } else { 0.0 };
     let height = ui.ctx().animate_value_with_time(list_id.with("height"), full, 0.15);
+
     if height > 0.5 && !rows.is_empty() {
         ui.add_space(6.0 * (height / full.max(height)).min(1.0));
         let (rect, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, height), Sense::click());
         let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(rect));
+
         ui.set_clip_rect(rect.intersect(ui.clip_rect()));
         ui.painter().rect_filled(rect, RADIUS, if k.dark { k.input.gamma_multiply(0.18) } else { k.bg });
         ui.painter().rect_stroke(rect, RADIUS, Stroke::new(1.0, if k.dark { k.input } else { k.border }), StrokeKind::Inside);
+
         let pick = ui
             .scope_builder(egui::UiBuilder::new().max_rect(rect.shrink(4.0)), |ui| {
                 ui.spacing_mut().item_spacing.y = 1.0;
                 egui::ScrollArea::vertical().id_salt(list_id).max_height((rect.height() - 8.0).max(0.0)).show(ui, |ui| folder_list(ui, &rows, c)).inner
             })
             .inner;
+
         match pick {
             Some(FolderPick::Use(path)) => {
                 *folder = path;
@@ -286,6 +335,7 @@ pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String,
             None => list = rect,
         }
     }
+
     ui.data_mut(|d| d.insert_temp(list_id, (open, list, found)));
     ui.add_space(GAP);
 }
@@ -294,8 +344,10 @@ pub(crate) fn dialog_folder(ui: &mut egui::Ui, label: &str, folder: &mut String,
 /// right. The response is the row's, for a tip.
 pub(crate) fn dialog_toggle(ui: &mut egui::Ui, on: &mut bool, label: &str, hint: &str, c: &UiColors) -> egui::Response {
     let top = ui.cursor().min;
+
     kit::toggle(ui, &tokens(c), label, hint, on);
     let row = Rect::from_min_max(top, Pos2::new(top.x + ui.available_width(), ui.cursor().min.y));
+
     ui.add_space(GAP);
     ui.interact(row, ui.scope_id().with(("toggle_row", label)), Sense::hover())
 }
@@ -308,6 +360,7 @@ pub(crate) fn dialog_check(ui: &mut egui::Ui, on: &mut bool, label: &str, c: &Ui
 /// Ajustes' segmented tabs in a dialog, centered: which one is chosen after this frame's click.
 pub(crate) fn dialog_segments(ui: &mut egui::Ui, id: &str, labels: &[&str], chosen: usize, c: &UiColors) -> usize {
     let pick = kit::segmented_tabs(ui, &tokens(c), egui::Id::unique(("dialog_segments", id)), labels, chosen);
+
     ui.add_space(GAP - 3.25);
     pick
 }
@@ -321,9 +374,11 @@ pub(crate) fn dialog_note(ui: &mut egui::Ui, text: &str, c: &UiColors) {
 /// A pick-list in the field's look (the box of `SheetSelect`): `shown` is what it says now.
 pub(crate) fn dialog_combo(ui: &mut egui::Ui, id: &str, shown: String, width: f32, c: &UiColors, items: impl FnOnce(&mut egui::Ui)) {
     let k = tokens(c);
+
     ui.scope(|ui| {
         let fill = if k.dark { k.input.gamma_multiply(0.3) } else { k.bg };
         let visuals = ui.visuals_mut();
+
         for w in [&mut visuals.widgets.inactive, &mut visuals.widgets.hovered, &mut visuals.widgets.active, &mut visuals.widgets.open] {
             w.weak_bg_fill = fill;
             w.bg_fill = fill;
@@ -331,8 +386,10 @@ pub(crate) fn dialog_combo(ui: &mut egui::Ui, id: &str, shown: String, width: f3
             w.corner_radius = egui::CornerRadius::same(8);
             w.fg_stroke.color = k.fg;
         }
+
         // its list as the app's menus: their box, the chosen one in their highlight (not egui's old violet)
         let menu = crate::app::ui::menu_look::menu_colors(k.dark);
+
         visuals.selection.bg_fill = menu.hover;
         visuals.selection.stroke.color = k.fg;
         visuals.window_fill = menu.bg;
@@ -341,6 +398,7 @@ pub(crate) fn dialog_combo(ui: &mut egui::Ui, id: &str, shown: String, width: f3
         ui.spacing_mut().interact_size.y = 30.0;
         egui::ComboBox::from_id_salt(id).selected_text(egui::RichText::new(shown).size(14.0).color(k.fg)).width(width).show_ui(ui, items);
     });
+
     ui.add_space(GAP);
 }
 
@@ -350,6 +408,7 @@ pub(crate) fn dialog_combo(ui: &mut egui::Ui, id: &str, shown: String, width: f3
 pub(crate) fn name_balloon(ctx: &Context, c: &UiColors, anchor: Rect, label: &str, hint: &str, text: &mut String, first: bool) -> Option<bool> {
     let k = tokens(c);
     let (mut save, mut cancel) = (false, false);
+
     let area = egui::Area::new(egui::Id::unique("name_balloon"))
         .fixed_pos(anchor.left_bottom() + Vec2::new(0.0, 6.0))
         .order(egui::Order::Foreground)
@@ -360,21 +419,26 @@ pub(crate) fn name_balloon(ctx: &Context, c: &UiColors, anchor: Rect, label: &st
                 ui.spacing_mut().item_spacing = Vec2::new(6.5, 8.0);
                 let width = ui.available_width();
                 let response = input_box(ui, &k, label, text, hint, Vec2::new(width, 26.0), FontId::proportional(14.0), false);
+
                 if first {
                     response.request_focus();
                     select_all_text(ui.ctx(), response.id, text.chars().count());
                 }
+
                 if text.chars().count() > 120 {
                     *text = text.chars().take(120).collect();
                 }
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     save = kit::button(ui, &k, "Salvar").clicked();
                     cancel = kit::button(ui, &k, "Cancelar").clicked();
                 });
             });
         });
+
     let outside = ctx.input(|i| i.pointer.any_pressed())
         && ctx.input(|i| i.pointer.interact_pos()).is_some_and(|p| !area.response.rect.contains(p) && !anchor.contains(p));
+
     save |= ctx.input(|i| i.key_pressed(Key::Enter));
     cancel |= outside || ctx.input(|i| i.key_pressed(Key::Escape));
     if save { Some(true) } else { cancel.then_some(false) }

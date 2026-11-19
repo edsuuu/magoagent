@@ -77,6 +77,7 @@ pub(crate) fn node_style(style: Style) -> Style {
 /// `~` for the home folder.
 pub(crate) fn display_folder(cwd: &str) -> String {
     let home = std::env::home_dir().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default();
+
     match cwd.strip_prefix(&home) {
         _ if cwd.is_empty() => "~".into(),
         Some(rest) if !home.is_empty() => format!("~{rest}"),
@@ -94,6 +95,7 @@ impl DrawingApp {
     pub(crate) fn agent_nodes(&self) -> Vec<Node> {
         let scene = &self.scene;
         let links = links_in(scene);
+
         let labels: HashMap<&str, &str> = scene
             .elements
             .iter()
@@ -102,8 +104,10 @@ impl DrawingApp {
                 _ => None,
             })
             .collect();
+
         let label = |id: &str| labels.get(id).map(|v| v.to_string());
         let named = |name: &str, fallback: &str| if name.trim().is_empty() { fallback.to_string() } else { name.trim().to_string() };
+
         scene
             .elements
             .iter()
@@ -114,6 +118,7 @@ impl DrawingApp {
                     (NodeKind::Portal, named(&p.name, "Navegador"), p.url.clone())
                 } else if e.created.is_some() {
                     let text = label(&e.id).unwrap_or_default();
+
                     (NodeKind::Note, note_name(&text), text)
                 } else if let Some(tree) = &e.filetree {
                     (NodeKind::Tree, tree.name(), tree.root_path().to_string_lossy().into())
@@ -122,6 +127,7 @@ impl DrawingApp {
                 } else {
                     return None;
                 };
+
                 Some(Node {
                     id: e.id.clone(),
                     kind,
@@ -139,6 +145,7 @@ impl DrawingApp {
 /// Element ids roped together in a drawing, both ways.
 fn links_in(scene: &Scene) -> HashMap<String, Vec<String>> {
     let mut links: HashMap<String, Vec<String>> = HashMap::new();
+
     for e in &scene.elements {
         if let (ElementKind::Line { .. }, Some(a), Some(b)) = (&e.kind, &e.ends.start, &e.ends.end)
             && a.element_id != b.element_id
@@ -147,6 +154,7 @@ fn links_in(scene: &Scene) -> HashMap<String, Vec<String>> {
             links.entry(b.element_id.clone()).or_default().push(a.element_id.clone());
         }
     }
+
     links
 }
 
@@ -160,11 +168,14 @@ fn edit_key_held() -> bool {
         unsafe extern "system" {
             fn GetKeyState(key: i32) -> i16;
         }
+
         const VK_INSERT: i32 = 0x2D;
         const VK_DELETE: i32 = 0x2E;
+
         // the state as of the key message being handled: the top bit is "down"
         unsafe { GetKeyState(VK_INSERT) < 0 || GetKeyState(VK_DELETE) < 0 }
     }
+
     #[cfg(not(windows))]
     false
 }

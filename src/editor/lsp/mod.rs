@@ -54,6 +54,7 @@ pub struct Inspections {
 impl Inspections {
     pub fn new(ctx: egui::Context, root: PathBuf) -> Self {
         let (tx, rx) = channel();
+
         Self { root, ctx, servers: HashMap::new(), tx, rx, diags: HashMap::new(), versions: HashMap::new(), missing: HashMap::new(), status: String::new() }
     }
 
@@ -63,28 +64,38 @@ impl Inspections {
             if let Some((_, hint)) = lang.servers.first() {
                 self.missing.insert(lang.name, hint);
             }
+
             None
         })?;
+
         let key = argv[0];
+
         if self.servers.contains_key(key) {
             return Some(key);
         }
+
         let mut cmd = super::command(which(key)?);
+
         cmd.args(&argv[1..]).current_dir(&self.root).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+
         let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
                 self.status = format!("{key}: {e}");
                 self.missing.insert(lang.name, hint);
+
                 return None;
             }
         };
+
         let stdout = child.stdout.take()?;
         let mut stdin = child.stdin.take()?;
         let (tx, ctx) = (self.tx.clone(), self.ctx.clone());
+
         std::thread::spawn(move || read_loop(key, stdout, tx, ctx));
         let root = uri(&self.root);
         let name = self.root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+
         write(
             &mut stdin,
             &json!({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {
@@ -106,6 +117,7 @@ impl Inspections {
                 },
             }}),
         );
+
         self.status = format!("{key} iniciando…");
         self.servers.insert(key, Server { child, stdin, ready: false, queue: vec![] });
         Some(key)
@@ -113,6 +125,7 @@ impl Inspections {
 
     fn notify(&mut self, key: &'static str, method: &str, params: Value) {
         let msg = json!({"jsonrpc": "2.0", "method": method, "params": params});
+
         if let Some(s) = self.servers.get_mut(key) {
             if s.ready { write(&mut s.stdin, &msg) } else { s.queue.push(msg) }
         }
@@ -120,6 +133,7 @@ impl Inspections {
 
     pub fn open(&mut self, path: &Path, lang: &'static Lang, text: &str) {
         let Some(key) = self.server(lang) else { return };
+
         self.versions.insert(path_key(path), 1);
         self.notify(key, "textDocument/didOpen", json!({"textDocument": {"uri": uri(path), "languageId": lang.id, "version": 1, "text": text}}));
     }
@@ -127,8 +141,10 @@ impl Inspections {
     pub fn change(&mut self, path: &Path, lang: &'static Lang, text: &str) {
         let Some(key) = lang.servers.iter().map(|(a, _)| a[0]).find(|k| self.servers.contains_key(k)) else { return };
         let v = self.versions.entry(path_key(path)).or_insert(1);
+
         *v += 1;
         let v = *v;
+
         self.notify(key, "textDocument/didChange", json!({"textDocument": {"uri": uri(path), "version": v}, "contentChanges": [{"text": text}]}));
     }
 
@@ -136,6 +152,7 @@ impl Inspections {
         if let Some(key) = lang.servers.iter().map(|(a, _)| a[0]).find(|k| self.servers.contains_key(k)) {
             self.notify(key, "textDocument/didSave", json!({"textDocument": {"uri": uri(path)}}));
         }
+
         if lang.id == "php" || lang.id == "blade" {
             self.phpstan(path);
         }
@@ -150,14 +167,19 @@ impl Inspections {
     /// PHPStan (and Larastan via phpstan.neon) for the saved file, off the UI thread.
     fn phpstan(&mut self, path: &Path) {
         let bin = self.root.join("vendor/bin/phpstan");
+
         if !bin.exists() {
             return;
         }
+
         let Some(php) = which("php") else {
             self.status = "PHPStan encontrado, mas o php não está no PATH".into();
+
             return;
         };
+
         let (root, path, tx, ctx) = (self.root.clone(), path.to_path_buf(), self.tx.clone(), self.ctx.clone());
+
         std::thread::spawn(move || {
             let out = super::command(php)
                 .args([
@@ -171,8 +193,10 @@ impl Inspections {
                 .current_dir(root)
                 .stderr(Stdio::null())
                 .output();
+
             let Ok(out) = out else { return };
             let report: Value = serde_json::from_slice(&out.stdout).unwrap_or_default();
+
             let diagnostics: Vec<Value> = report["files"]
                 .as_object()
                 .into_iter()
@@ -180,11 +204,14 @@ impl Inspections {
                 .flat_map(|f| f["messages"].as_array().cloned().unwrap_or_default())
                 .map(|m| {
                     let line = m["line"].as_u64().unwrap_or(1).saturating_sub(1);
+
                     json!({"range": {"start": {"line": line, "character": 0}, "end": {"line": line, "character": 9999}},
                            "severity": 1, "message": m["message"], "source": "phpstan"})
                 })
                 .collect();
+
             let _ = tx.send(("phpstan", json!({"method": "textDocument/publishDiagnostics", "params": {"uri": uri(&path), "diagnostics": diagnostics}})));
+
             ctx.request_repaint();
         });
     }
@@ -193,14 +220,17 @@ impl Inspections {
         while let Ok((key, msg)) = self.rx.try_recv() {
             let method = msg["method"].as_str().unwrap_or("");
             let id = msg.get("id").cloned();
+
             match (id, method) {
                 (Some(id), "") if id == 0 => {
                     if let Some(s) = self.servers.get_mut(key) {
                         s.ready = true;
                         write(&mut s.stdin, &json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}));
+
                         for m in std::mem::take(&mut s.queue) {
                             write(&mut s.stdin, &m);
                         }
+
                         self.status = format!("{key} pronto");
                     }
                 }
@@ -211,6 +241,7 @@ impl Inspections {
                     } else {
                         Value::Null
                     };
+
                     if let Some(s) = self.servers.get_mut(key) {
                         write(&mut s.stdin, &json!({"jsonrpc": "2.0", "id": id, "result": result}));
                     }
@@ -228,6 +259,7 @@ impl Inspections {
     fn publish(&mut self, origin: &'static str, p: &Value) {
         let path = uri_path(p["uri"].as_str().unwrap_or(""));
         let pos = |v: &Value| (v["line"].as_u64().unwrap_or(0) as usize, v["character"].as_u64().unwrap_or(0) as usize);
+
         let list: Vec<Diag> = p["diagnostics"]
             .as_array()
             .into_iter()
@@ -235,6 +267,7 @@ impl Inspections {
             .map(|d| {
                 let (line, col) = pos(&d["range"]["start"]);
                 let (end_line, end_col) = pos(&d["range"]["end"]);
+
                 Diag {
                     line,
                     col,
@@ -246,7 +279,9 @@ impl Inspections {
                 }
             })
             .collect();
+
         let k = (path_key(&path), origin);
+
         if list.is_empty() {
             self.diags.remove(&k);
         } else {
@@ -256,6 +291,7 @@ impl Inspections {
 
     pub fn for_file(&self, path: &Path) -> Vec<&Diag> {
         let k = path_key(path);
+
         self.diags.iter().filter(|((p, _), _)| *p == k).flat_map(|(_, (_, d))| d).collect()
     }
 
@@ -275,8 +311,10 @@ mod tests {
     fn uri_roundtrip() {
         let p = if cfg!(windows) { Path::new(r"C:\Users\me\My App\ação.php") } else { Path::new("/home/me/My App/ação.php") };
         let u = uri(p);
+
         assert!(u.starts_with("file:///") && u.contains("My%20App"), "{u}");
         assert_eq!(path_key(&uri_path(&u)), path_key(p));
+
         // servers may send lowercase drive + encoded colon
         if cfg!(windows) {
             assert_eq!(path_key(&uri_path("file:///c%3A/Users/me/x.php")), "c:/users/me/x.php");

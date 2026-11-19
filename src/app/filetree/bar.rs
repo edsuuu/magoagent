@@ -23,22 +23,29 @@ pub(crate) fn buttons(ui: &mut egui::Ui, p: &Painter, bar: Rect, z: f32, spec: &
     // (key, tip when off, tip when on, lit, what a press asks, how it is drawn)
     type Draw = fn(&Painter, Pos2, f32, Stroke);
     let editor: Draw = |p, c, size, stroke| paint_g(p, G::PanelRight, c, size, stroke.color);
+
     let buttons: [(&str, &str, &str, bool, Act, Draw); 2] = [
         ("editor", "Mostrar Editor", "Ocultar Editor", spec.editor, Act::ToggleEditor, editor),
         ("changes", "Mostrar Alterações", "Ocultar Alterações", spec.changes, Act::ToggleChanges, glyph_changes),
     ];
+
     for (key, off, on, lit, act, draw) in buttons {
         let rect = Rect::from_center_size(Pos2::new(edge - 11.375 * z, bar.center().y), Vec2::new(22.75 * z, 19.5 * z));
         let r = ui.interact(rect, ui.scope_id().with(key), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+
         if r.hovered() {
             p.rect_filled(rect, cr(6.0 * z), c.hover);
         }
+
         draw(p, rect.center(), 11.375 * z, stroke(if lit { accent } else { c.muted }));
+
         if r.tip(if lit { on } else { off }).clicked() {
             acts.push(act);
             acts.push(Act::Focus);
         }
+
         edge = rect.left() - 4.875 * z;
     }
+
     edge
 }

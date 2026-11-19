@@ -53,62 +53,82 @@ impl DrawingApp {
         if !self.chat_open {
             return;
         }
+
         // the providers the empty chat offers (looked up again every 10 s)
         self.installed_agents();
         // a draft no longer shown goes: it was never talked to
         let shown = self.chat_agent.clone();
+
         self.chats.retain(|chat| !chat.draft || shown.as_deref() == Some(chat.id.as_str()));
+
         // and the session outside the app picked in the list, read from its file (`refresh_transcript_of`)
         let screen_rows = |app: &Self| {
             let outside = app.chat_agent.as_deref().and_then(|id| app.outside_row(id));
+
             app.agent_rows().into_iter().chain(app.draft_rows()).chain(outside).collect::<Vec<_>>()
         };
+
         let mut rows = screen_rows(self);
+
         if self.chat_agent.as_ref().is_none_or(|id| !rows.iter().any(|r| &r.id == id)) {
             // a chat by default, Claude's first; an agent's conversation is opened from its terminal
             // (the bar's Chat button) or from the agents panel
             let chats = self.chat_rows();
+
             self.chat_agent = chats.iter().find(|r| r.spec.command.contains("claude")).or(chats.first()).map(|r| r.id.clone());
+
             // nothing to talk to: a draft with the agent and the leave Ajustes preset, made a chat by its first message
             if self.chat_agent.is_none() && self.start_draft_chat(true) {
                 rows = screen_rows(self);
             }
         }
+
         self.refresh_transcript();
         // a picture open covers the whole chat: the conversation isn't drawn behind it
         let agent = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|r| &r.id == id)).map_or(String::new(), |r| r.spec.label().to_string());
+
         if self.image_viewer(ctx, &agent) {
             return;
         }
+
         let asked = self.asked_of();
         let (c, dark) = (self.colors(), self.dark());
         let look = Look::new(dark, &c);
         let time = ctx.input(|i| i.time);
+
         // the pulses and the dots move only while someone works or needs you
         if rows.iter().any(|r| matches!(r.state, AgentState::Working(_) | AgentState::Waiting)) && ctx.input(|i| i.viewport().visible()) != Some(false) {
             ctx.request_repaint_after(crate::app::update::AMBIENT);
         }
+
         if ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::B))) {
             self.chat_list_toggled = !self.chat_list_toggled;
         }
+
         // ⌘F: the search field in the header
         if ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::F))) {
             self.chat_search.get_or_insert_default();
             ctx.memory_mut(|m| m.request_focus(egui::Id::unique(CHAT_SEARCH)));
         }
+
         // the slash menu over the box (chat_commands.rs); with it open Esc and the arrows are its
         let slash = self.slash_entries();
+
         let menu_keys = slash.is_some()
             && ctx.memory(|m| {
                 let id = egui::Id::unique("chat_draft");
+
                 m.has_focus(id) || m.had_focus_last_frame(id)
             });
+
         let chosen = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|r| &r.id == id));
         // Esc closes the search, else stops it as in its terminal, else (no menu or dialog over the
         // chat) goes back to the canvas
         let panel_esc = self.context_esc(ctx);
+
         let esc =
             !panel_esc && !menu_keys && !egui::Popup::is_any_open(ctx) && !self.dialog_open() && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
+
         let working = chosen.is_some_and(|r| matches!(r.state, AgentState::Working(_)));
         // out of self while the header edits it
         let mut search = self.chat_search.take();
@@ -127,19 +147,26 @@ impl DrawingApp {
         let mut main = Rect::from_min_max(Pos2::new(side.right() + pad, area.top()), area.max - Vec2::splat(pad));
         // o painel Contexto: ao lado da conversa, ou por cima quando a janela é estreita
         let panel_id = self.chat_agent.clone().filter(|id| self.context_wanted(id));
+
         if let Some(id) = &panel_id {
             let open = self.prefs.chat_panel;
+
             self.context_tick(ctx, id, open);
         }
+
         let panel = panel_id.as_ref().filter(|_| self.prefs.chat_panel).map(|_| self.context_rect(area, pad, narrow));
+
         if let (Some(rect), false) = (panel, narrow) {
             main.max.x = (rect.left() - pad).max(main.min.x + 300.0);
         }
+
         let swallow = slash.as_ref().is_some_and(|entries| self.slash_keys(ctx, &mut draft, entries, draft_id));
+
         // with no menu, Tab does nothing in the box (lock_focus would type a tab)
         if slash.is_none() && ctx.memory(|m| m.has_focus(draft_id)) {
             ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab));
         }
+
         let mut slash_pick = None;
         let mut act = ListAction { canvas: leave, ..Default::default() };
         let (mut send, mut attach, mut dictate, mut pick) = (None, false, false, None);
@@ -152,15 +179,18 @@ impl DrawingApp {
         // everything running in every space, and the agent whose conversation is open (list/running.rs)
         let listed = self.running_entries();
         let (mut filter, mut show) = (std::mem::take(&mut self.chat_listing.filter), self.chat_listing.show);
+
         egui::Area::new(egui::Id::unique("chat_screen")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_min_size(area.size());
             // the bar's strip too: the chat and the bar are one piece
             ui.painter().rect_filled(area.with_min_y(0.0), 0, look.bg);
+
             if full && !narrow {
                 self.chat_list(ui, side, &listed, &look, time, &mut act, &mut filter, &mut show);
             } else {
                 self.chat_column(ui, side, &self.chat_rows(), &look, time, &mut act);
             }
+
             let Some(row) = chosen else { return };
             let transcript = self.transcripts.get(&row.id);
             // with no conversation the screen shows already, in its place
@@ -172,9 +202,12 @@ impl DrawingApp {
             let query = search.as_deref().map(|q| q.trim().to_lowercase()).filter(|q| !q.is_empty());
             // the conversation takes the screen, a gutter of 32 at each side, up to 1100 wide
             let width = (main.width() - 64.0).clamp(main.width().min(360.0), 1100.0);
+
             let column =
                 Rect::from_min_max(Pos2::new(main.center().x - width / 2.0, main.top() + head), Pos2::new(main.center().x + width / 2.0, main.bottom()));
+
             let waiting = row.state == AgentState::Waiting;
+
             // the agent's name isn't repeated here (the bar has it); waiting, what is sent waits in the queue
             // (`flush_chat_queue`)
             let hint = match (waiting && !self.person_asked(&row.id), narrow) {
@@ -182,15 +215,18 @@ impl DrawingApp {
                 (true, false) => "Escreva uma mensagem (fica na fila até você responder no terminal)".to_string(),
                 _ => "Escreva uma mensagem…".to_string(),
             };
+
             ui.scope_builder(egui::UiBuilder::new().max_rect(column), |ui| {
                 ui.set_max_width(width);
                 // waiting: the box under the conversation shows the screen already
                 // a chat (direct, or a terminal in chat mode) never shows the screen here
                 let only_chat = self.is_chat(&row.id) || row.spec.chat;
+
                 if self.chat_terminal && talks && !waiting && !only_chat {
                     ui.add_space(12.0);
                     screen_box(ui, &self.screen_of(&row.id), 14);
                 }
+
                 // the footer (band, box, hints) as tall as last frame
                 let footer_height = if self.chat_footer > 0.0 { self.chat_footer } else { 76.0 };
                 // the scroll takes the whole width, its bar at the window's right edge (not a post
@@ -198,18 +234,24 @@ impl DrawingApp {
                 // shows while scrolling or under the pointer
                 let height = ui.available_height() - footer_height;
                 let strip = Rect::from_min_max(Pos2::new(main.left(), ui.cursor().top()), Pos2::new(main.right(), ui.cursor().top() + height));
+
                 // a child that doesn't widen the column (the band and the box under it stay centered)
                 ui.add_space(height);
+
                 {
                     let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(strip));
+
                     ui.spacing_mut().scroll = crate::app::ui::scroll_style();
                     // following the newest, held still while a run or a step clicked eases (chat/follow.rs)
                     let scroll = egui::ScrollArea::vertical().auto_shrink(false).max_height(height);
+
                     follow_scroll(ui, scroll, &row.id, "chat_screen", talk_mark(transcript), |ui| {
                         let left = ui.max_rect().left() + ((ui.available_width() - width) / 2.0).max(0.0);
                         let inner = Rect::from_min_max(Pos2::new(left, ui.cursor().top()), Pos2::new(left + width, ui.max_rect().bottom()));
+
                         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
                             ui.set_width(width);
+
                             self.conversation(
                                 ui,
                                 row,
@@ -229,15 +271,20 @@ impl DrawingApp {
                         });
                     });
                 }
+
                 let top = ui.cursor().top();
+
                 ui.add_space(8.0);
+
                 if matches!(row.state, AgentState::Working(_)) {
                     interrupt |= self.work_band(ui, row, transcript, &look, narrow, time);
                     ui.add_space(8.0);
                 }
+
                 // the chat's agent asks the person to decide (chat/decide.rs)
                 if self.person_asked(&row.id) {
                     let id = row.id.clone();
+
                     self.decide_card(ui, &id, &look, time);
                     ui.add_space(8.0);
                 } else if waiting {
@@ -248,79 +295,104 @@ impl DrawingApp {
                         Some(CardClick::Pick(from, to)) => pick = Some((from, to)),
                         None => {}
                     }
+
                     ui.add_space(8.0);
                 }
+
                 // the box, a card: the words, and under them its buttons and the chat's chips
                 let hints = if narrow { Hints::Short } else { Hints::Full };
                 let card = self.composer(ui, &mut draft, draft_id, &hint, width, cap, swallow, &look, &c, hints, time);
                 let r = card.rect;
+
                 if let Some(entries) = &slash {
                     slash_pick = self.slash_menu_ui(ctx, entries, Pos2::new(r.left(), r.top() - 6.0), r.width(), &look);
                 }
+
                 composer = Some(r.height());
                 // a call that couldn't start says why over the conversation; one on is in its popup
                 let cover = Rect::from_min_max(Pos2::new(main.left(), column.top()), Pos2::new(main.right(), r.top() - 4.0));
+
                 launch_click = self.voice_stage(ui, cover, &look);
                 (voice_click, mute_click, speakers_click) = card.voice;
                 (attach, dictate, footer_act) = (card.attach, card.dictate, card.footer);
+
                 if card.send {
                     // the Enter may have added its newline to the draft: trim it off
                     send = Some(std::mem::take(&mut draft).trim_end().to_string());
                 }
+
                 footer = Some(ui.cursor().top() - top);
             });
         });
+
         if full && narrow {
             let over = Rect::from_min_size(side.min, Vec2::new(LIST, side.height()));
+
             egui::Area::new(egui::Id::unique("chat_list_over")).fixed_pos(over.min).order(egui::Order::Foreground).show(ctx, |ui| {
                 self.chat_list(ui, over, &listed, &look, time, &mut act, &mut filter, &mut show);
             });
+
             // picking one closes it
             if act.pick.is_some() {
                 self.chat_list_toggled = false;
             }
         }
+
         if let (Some(rect), Some(id)) = (panel, &panel_id) {
             self.context_panel(ctx, rect, &look, id);
         }
+
         if act.context {
             self.prefs.chat_panel = !self.prefs.chat_panel;
         }
+
         if voice_click {
             self.voice_toggle();
         }
+
         if dictate {
             self.dictate_toggle();
         }
+
         if mute_click {
             self.voice_mute();
         }
+
         if speakers_click {
             self.voice_speakers();
         }
+
         if let Some(click) = launch_click {
             self.voice_launch_click(click);
         }
+
         self.chat_draft = draft;
         self.chat_search = search;
         (self.chat_listing.filter, self.chat_listing.show) = (filter, show);
+
         // Nova conversa: a draft, made a chat by its first message
         if act.new_chat {
             self.start_draft_chat(false);
         }
+
         if let Some(id) = act.remove.take() {
             self.chat_listing.removing = Some(id);
         }
+
         self.remove_chat_dialog(ctx);
+
         if let Some((maestro, open)) = act.team.take() {
             self.set_team_open(&maestro, open);
         }
+
         if let Some(id) = act.rename.take()
             && let Some(row) = self.chat_rows().into_iter().find(|r| r.id == id)
         {
             self.chat_listing.renaming = Some((id, self.chat_title(&row)));
         }
+
         self.chat_rename_ui(ctx);
+
         // a chat's card (made now if this canvas has none); a terminal's row, its terminal
         if let Some(id) = act.on_canvas.take() {
             // a session outside the app runs in a window of its own: that one comes, as the island's "Ir ao terminal"
@@ -337,67 +409,86 @@ impl DrawingApp {
                 self.open_agent(&id);
             }
         }
+
         self.conv_apply(ctx, conv, draft_id);
+
         if let Some(name) = slash_pick {
             crate::app::chat::commands::complete_into(ctx, &mut self.chat_draft, &name, draft_id);
         }
+
         // the login error's Entrar button
         if crate::app::chat::commands::take_login_ask(ctx)
             && let Some(id) = self.chat_agent.clone().filter(|id| self.is_chat(id))
         {
             self.chat_submit(ctx, &id, "/login", "/login");
         }
+
         if crate::app::chat::commands::take_retry_ask(ctx)
             && let Some(id) = self.chat_agent.clone().filter(|id| self.is_chat(id))
         {
             self.chat_retry(ctx, &id);
         }
+
         if let (Some(height), Some(total)) = (composer, footer) {
             // it grew or shrank: the conversation takes its new room next frame
             if (total - self.chat_footer).abs() > 0.5 {
                 ctx.request_repaint();
             }
+
             (self.chat_composer, self.chat_footer) = (height, total);
         }
+
         if act.terminal {
             self.chat_terminal = !self.chat_terminal;
         }
+
         if act.toggle {
             self.chat_list_toggled = !self.chat_list_toggled;
         }
+
         if let Some(id) = act.pick {
             self.open_agent(&id);
         }
+
         if let Some((id, answer)) = act.answer.take() {
             self.answer_row(&id, answer);
         }
+
         // a session outside the app: its conversation here, read from its file, and in the island
         if let Some(id) = act.outside.take() {
             self.island_show(&id, time);
             self.chat_agent = Some(id);
             self.chat_polled = f64::MIN;
         }
+
         // the same way a dropped file goes in (`handle_canvas`)
         if let Some(act) = footer_act {
             self.chat_footer_act(act);
         }
+
         if attach {
             self.chat_attach_pick(ctx);
         }
+
         // a choice of the menu it waits on: the keys go to its terminal, as if typed there
         if let (Some((from, to)), Some(Ok(session))) = (pick, self.chat_agent.as_ref().and_then(|id| self.terminals.get(id))) {
             let handle = session.handle.clone();
+
             std::thread::spawn(move || handle.pick(from, to));
         }
+
         if interrupt {
             self.interrupt_agent();
         }
+
         // waiting on its terminal it goes in the queue; refused (its claude left): the words stay
         if let (Some(text), Some(id)) = (send, self.chat_agent.clone()) {
             self.send_from_box(ctx, &id, text);
         }
+
         if act.canvas {
             self.chat_open = false;
+
             if let Some(id) = self.chat_agent.clone() {
                 self.open_agent(&id);
             }
@@ -410,6 +501,7 @@ impl DrawingApp {
         match item {
             ChatItem::User(text) => {
                 let right = egui::Layout::right_to_left(egui::Align::TOP);
+
                 // another agent's question, its answer brought back or a task it gave: said whose, in a grey bubble
                 if let Some(who) = from {
                     let kind = match crate::app::chat::ask::asked_by(text) {
@@ -417,12 +509,15 @@ impl DrawingApp {
                         Some(_) => "Pergunta de",
                         None => "Mensagem de",
                     };
+
                     ui.with_layout(right, |ui| ui.label(egui::RichText::new(format!("{kind} {who}")).size(12.0).color(c.muted)));
                 }
+
                 let (fill, ink) = if from.is_some() { (c.surface_high, c.text) } else { (bubble_fill(self.dark(), true), Color32::WHITE) };
                 // a gutter of 48 pt on the other side
                 let words = egui::RichText::new(text).size(crate::app::chat::markdown::PROSE).color(ink);
                 let bubble = bubble::person_bubble(ui, words, width - 48.0, fill, 16, egui::Margin::symmetric(12, 7));
+
                 message_menu(&bubble, text, cite);
             }
             // what a terminal said before it restarted, above; what comes now, below; and the top of a new session (/clear)
@@ -431,6 +526,7 @@ impl DrawingApp {
                 let p = ui.painter();
                 let label = p.layout_no_wrap(text.clone(), FontId::proportional(12.0), c.muted);
                 let (half, y, line) = (label.size().x / 2.0 + 10.0, rect.center().y, Stroke::new(1.0, tint(self.dark(), 30)));
+
                 p.hline(rect.left()..=rect.center().x - half, y, line);
                 p.hline(rect.center().x + half..=rect.right(), y, line);
                 p.galley(rect.center() - label.size() / 2.0, label, c.muted);
@@ -450,11 +546,15 @@ impl DrawingApp {
             ChatItem::Error(text) if !self.chats.iter().any(|ch| Some(&ch.id) == self.chat_agent.as_ref() && !ch.agent.trim_start().starts_with("claude")) => {
                 // in the colour of the agent whose conversation it is
                 let color = self.chat_agent.as_deref().map_or(crate::app::mascot::mago::LUME, |id| self.agent_color(id));
+
                 ui.horizontal_top(|ui| {
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 42.0), Sense::hover());
+
                     paint_agent_mago(ui.painter(), "chat-error", color, rect.center(), 46.0, MagoState::Error, ui.input(|i| i.time));
+
                     ui.vertical(|ui| {
                         ui.label(egui::RichText::new(text).size(13.0).color(c.danger));
+
                         if let Some(hint) = error_hint(text) {
                             ui.label(egui::RichText::new(hint).size(13.0).color(c.muted));
                         }
@@ -463,18 +563,21 @@ impl DrawingApp {
             }
             ChatItem::Error(text) => {
                 ui.label(egui::RichText::new(text).size(13.0).color(c.danger));
+
                 if let Some(hint) = error_hint(text) {
                     ui.label(egui::RichText::new(hint).size(13.0).color(c.muted));
                 }
             }
             ChatItem::Agent(text) => {
                 let words = ui.scope(|ui| self.agent_words(ui, text, width, c)).response;
+
                 message_menu(&words, text, cite);
             }
             // in runs of steps (`tool_run`)
             ChatItem::Tool(_) => return,
             ChatItem::Image { .. } => self.chat_thumb(ui, item, c),
         }
+
         // with the 4 pt between parts of a message: about 12 pt between messages
         ui.add_space(8.0);
     }
@@ -483,9 +586,11 @@ impl DrawingApp {
     /// a second at most.
     pub(crate) fn refresh_transcript(&mut self) {
         let Some(id) = self.chat_agent.clone() else { return };
+
         if self.now - self.chat_polled < 0.5 {
             return;
         }
+
         self.chat_polled = self.now;
         self.refresh_transcript_of(&id);
     }
@@ -493,32 +598,44 @@ impl DrawingApp {
     /// `refresh_transcript` for agent `id`, whichever the chat shows (the island follows the one in focus).
     pub(crate) fn refresh_transcript_of(&mut self, id: &str) {
         let id = id.to_string();
+
         if self.is_chat(&id) {
             self.chat_refresh(&id);
+
             return;
         }
+
         // a session outside the app: the file its hooks named, once Claude Code wrote it; meanwhile its pill stays
         if id.starts_with(PILL_PREFIX) {
             self.outside_shown(&id);
             let Some(path) = self.outside_transcript(&id) else { return };
+
             if self.transcripts.get(&id).is_none_or(|transcript| transcript.path() != path) {
                 self.transcripts.insert(id.clone(), Transcript::new(path));
             }
+
             if let Some(transcript) = self.transcripts.get_mut(&id) {
                 transcript.poll();
             }
+
             return;
         }
+
         let Some(dir) = claude_dir() else { return };
+
         self.follow_transcript(&id, &dir);
+
         if let Some(transcript) = self.transcripts.get_mut(&id) {
             transcript.poll();
+
             if self.chat_agent.as_deref() != Some(id.as_str()) {
                 return;
             }
+
             // the textures of images no longer in the chat (old messages left, another agent's) go
             let shown: std::collections::HashSet<_> =
                 transcript.items.iter().filter_map(|i| if let ChatItem::Image { data, .. } = i { Some(image_key(data)) } else { None }).collect();
+
             // (0, path): a picture the agent's words name, kept (chat/media.rs)
             self.chat_images.borrow_mut().retain(|key, _| key.0 == 0 || shown.contains(key));
         }
@@ -532,30 +649,39 @@ impl DrawingApp {
         let remembered = || {
             let t = self.scene.elements.iter().find(|e| e.id == id)?.terminal.as_ref()?;
             let path = crate::transcript::transcript_path(dir, &t.claude_folder, &t.claude_session);
+
             path.is_file().then_some(path).filter(|_| !t.claude_session.is_empty())
         };
+
         let (path, earlier) = match self.agent_sessions.get(id) {
             Some(session) => (Some(session.transcript(dir)), false),
             None => (remembered(), true),
         };
+
         let Some(path) = path else {
             self.transcripts.remove(id);
+
             // the decoded pictures are the open chat's: another agent without a transcript leaves them
             if self.chat_agent.as_deref() == Some(id) {
                 self.chat_images.borrow_mut().clear();
             }
+
             return;
         };
+
         if self.transcripts.get(id).is_some_and(|t| t.path() == path) {
             return;
         }
+
         let mut transcript = Transcript::new(path);
+
         if earlier {
             transcript.poll();
             // whatever was left running there stopped with it
             transcript.running.clear();
             transcript.items.push(ChatItem::System(EARLIER.into()));
         }
+
         self.transcripts.insert(id.to_string(), transcript);
         self.chat_images.borrow_mut().clear();
     }
@@ -600,6 +726,7 @@ pub(crate) fn tint(dark: bool, alpha: u8) -> Color32 {
 fn screen_box(ui: &mut egui::Ui, screen: &str, lines: usize) {
     let all: Vec<&str> = screen.lines().collect();
     let tail = all[all.len().saturating_sub(lines)..].join("\n");
+
     egui::Frame::new().fill(TERMINAL_BG).corner_radius(8).inner_margin(10).show(ui, |ui| {
         ui.label(egui::RichText::new(tail).monospace().size(13.0).color(TERMINAL_FG));
     });
@@ -623,6 +750,7 @@ mod tests {
 /// What to do about an agent's error the person can fix: an expired login says how to sign in again.
 pub(crate) fn error_hint(error: &str) -> Option<&'static str> {
     let login = ["Failed to authenticate", "OAuth", "Invalid API key", "Please run /login", "not logged in"];
+
     login.iter().any(|w| error.contains(w)).then_some("O login do agente venceu. Clique em Entrar ou digite /login aqui.")
 }
 

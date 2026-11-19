@@ -89,11 +89,13 @@ fn doing(item: &Value) -> Option<String> {
 pub(crate) fn codex_event(line: &Value) -> Option<CodexEvent> {
     let p = &line["params"];
     let text = |v: &Value| v.as_str().map(str::to_string);
+
     match line["method"].as_str() {
         None => {
             if let Some(message) = text(&line["error"]["message"]) {
                 return Some(CodexEvent::Failed(message));
             }
+
             text(&line["result"]["thread"]["id"]).map(CodexEvent::Thread)
         }
         Some("thread/realtime/sdp") => text(&p["sdp"]).map(CodexEvent::Answer),
@@ -128,7 +130,9 @@ fn codex_app_cli() -> Option<PathBuf> {
     if cfg!(target_os = "macos") {
         return Some(PathBuf::from("/Applications/Codex.app/Contents/Resources/codex")).filter(|p| p.is_file());
     }
+
     let bin = PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("OpenAI").join("Codex").join("bin");
+
     fs::read_dir(bin)
         .ok()?
         .flatten()
@@ -158,6 +162,7 @@ impl CodexVoice {
     /// Starts `codex app-server` and opens (or resumes) the thread; the session waits for `call`.
     pub(crate) fn start(setup: &CodexSetup) -> Result<CodexVoice, String> {
         let program = codex_program().ok_or("O Codex não foi encontrado: instale o app do Codex (ou o Codex CLI) e entre com a sua conta do ChatGPT.")?;
+
         let mut child = crate::editor::command(program)
             .arg("app-server")
             .args(&setup.args)
@@ -167,9 +172,11 @@ impl CodexVoice {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|e| format!("Não foi possível rodar o codex: {e}"))?;
+
         let mut input = child.stdin.take().ok_or("codex sem entrada")?;
         let stdout = child.stdout.take().ok_or("codex sem saída")?;
         let (stdin, lines) = channel::<String>();
+
         std::thread::spawn(move || {
             for line in lines {
                 if writeln!(input, "{line}").is_err() {
@@ -177,41 +184,54 @@ impl CodexVoice {
                 }
             }
         });
+
         let (tx, events) = channel();
         let answer = stdin.clone();
+
         std::thread::spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 let Ok(value) = serde_json::from_str::<Value>(&line) else { continue };
+
                 // a request from Codex (an approval, a question): the call has no one to ask
                 if value["method"].is_string() && !value["id"].is_null() {
                     let reply = json!({ "id": value["id"], "error": { "code": -32601, "message": "não disponível na chamada de voz" } });
                     let _ = answer.send(reply.to_string());
+
                     continue;
                 }
+
                 if let Some(event) = codex_event(&value)
                     && tx.send(event).is_err()
                 {
                     break;
                 }
             }
+
             let _ = tx.send(CodexEvent::Closed(None));
         });
+
         let mut voice = CodexVoice { child, stdin, next: 0, relay: setup.relay, thread: None, events };
+
         voice.request(
             "initialize",
             json!({ "clientInfo": { "name": "magoagent", "version": env!("CARGO_PKG_VERSION") }, "capabilities": { "experimentalApi": true } }),
         );
+
         voice.send(json!({ "method": "initialized" }));
+
         let sandbox = match (setup.relay, setup.full_access) {
             (true, _) => "read-only",
             (false, true) => "danger-full-access",
             (false, false) => "workspace-write",
         };
+
         let thread = json!({ "cwd": setup.cwd, "approvalPolicy": "never", "sandbox": sandbox, "developerInstructions": setup.instructions });
+
         match &setup.resume {
             Some(id) => voice.request("thread/resume", json!({ "threadId": id, "cwd": setup.cwd, "approvalPolicy": "never", "sandbox": sandbox })),
             None => voice.request("thread/start", thread),
         }
+
         Ok(voice)
     }
 
@@ -227,12 +247,14 @@ impl CodexVoice {
     /// The realtime session, on the page's WebRTC `offer`, in `voice`; the answer comes as `Answer`.
     pub(crate) fn call(&mut self, offer: &str, voice: &str) {
         let Some(thread) = self.thread.clone() else { return };
+
         self.request("thread/realtime/start", start_params(&thread, offer, voice, self.relay));
     }
 
     /// The voice says `text` (another agent's answer, or the app's own word).
     pub(crate) fn speak(&mut self, text: &str) {
         let Some(thread) = self.thread.clone() else { return };
+
         self.request("thread/realtime/appendSpeech", json!({ "threadId": thread, "text": text }));
     }
 }
@@ -242,6 +264,7 @@ impl Drop for CodexVoice {
         if let Some(thread) = self.thread.clone() {
             self.request("thread/realtime/stop", json!({ "threadId": thread }));
         }
+
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
@@ -254,6 +277,7 @@ mod tests {
     #[test]
     fn the_session_starts_in_portuguese_as_its_first_item() {
         let params = start_params("t1", "sdp", "cove", true);
+
         assert_eq!(params["initialItems"][0]["role"], "developer");
         assert!(params["initialItems"][0]["text"].as_str().unwrap().contains("nunca em inglês"));
         assert_eq!((params["prompt"].as_str(), &params["clientManagedHandoffs"]), (Some(RELAY), &json!(true)));
@@ -263,20 +287,24 @@ mod tests {
     #[test]
     fn codex_app_server_lines_become_the_calls_events() {
         let ev = |s: &str| codex_event(&serde_json::from_str(s).unwrap());
+
         assert_eq!(ev(r#"{"id":2,"result":{"thread":{"id":"t1"}}}"#), Some(CodexEvent::Thread("t1".into())));
         assert_eq!(ev(r#"{"id":3,"error":{"message":"sem login"}}"#), Some(CodexEvent::Failed("sem login".into())));
         assert_eq!(ev(r#"{"method":"thread/realtime/sdp","params":{"threadId":"t1","sdp":"v=0"}}"#), Some(CodexEvent::Answer("v=0".into())));
         assert_eq!(ev(r#"{"method":"thread/realtime/transcript/done","params":{"role":"user","text":"Oi"}}"#), Some(CodexEvent::Heard("Oi".into())));
         assert_eq!(ev(r#"{"method":"thread/realtime/transcript/done","params":{"role":"assistant","text":"Olá"}}"#), None);
+
         assert_eq!(
             ev(r#"{"method":"item/completed","params":{"item":{"type":"agentMessage","text":"Três arquivos."}}}"#),
             Some(CodexEvent::Answered("Três arquivos.".into()))
         );
+
         assert_eq!(ev(r#"{"method":"turn/started","params":{}}"#), Some(CodexEvent::Working(true)));
         assert_eq!(ev(r#"{"method":"thread/realtime/error","params":{"message":"AVAS"}}"#), Some(CodexEvent::Failed("AVAS".into())));
         assert_eq!(ev(r#"{"method":"mcpServer/startupStatus/updated","params":{}}"#), None);
         // what Codex is doing, as the line under the call
         let started = |item: &str| ev(&format!(r#"{{"method":"item/started","params":{{"item":{item}}}}}"#));
+
         assert_eq!(started(r#"{"type":"commandExecution","command":"ls"}"#), Some(CodexEvent::Doing("Executando comando".into())));
         assert_eq!(started(r#"{"type":"fileChange","changes":[{},{}]}"#), Some(CodexEvent::Doing("Editando 2 arquivos".into())));
         assert_eq!(started(r#"{"type":"webSearch","query":"egui"}"#), Some(CodexEvent::Doing("Buscando egui na web".into())));

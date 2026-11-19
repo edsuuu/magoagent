@@ -70,15 +70,19 @@ fn frame_at(app: &mut DrawingApp, ctx: &Context, time: Option<f64>, events: Vec<
         ctx.run_ui(egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), time, events, ..Default::default() }, |ui| {
             app.screen_keys(ctx);
             app.handle_shortcuts(ctx);
+
             egui::CentralPanel::no_frame().show(ui, |ui| {
                 let (response, _) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
+
                 app.handle_canvas(&response, response.rect);
                 app.update_cursor(ctx, &response);
             });
+
             app.text_editor(ctx);
             app.note_buttons_ui(ctx);
             app.floating_controls(ctx);
         });
+
     output.textures_delta.clear();
     output.platform_output.cursor_icon
 }
@@ -119,6 +123,7 @@ fn terminal_at(app: &mut DrawingApp, ctx: &Context, at: Pos2) -> String {
     drag(app, ctx, at, at + Vec2::new(1.0, 0.0));
     // the toolbar's dialog opens on Chat: its Terminal side
     let dialog = app.terminal_dialog.as_mut().unwrap();
+
     (dialog.chat, dialog.spec.command) = (false, "claude".into());
     app.confirm_terminal_dialog();
     app.select_tool(Tool::Select);
@@ -133,10 +138,12 @@ fn key_press(key: Key) -> egui::Event {
 pub(crate) fn app_in_folder(name: &str) -> (DrawingApp, PathBuf) {
     let dir = std::env::temp_dir().join(format!("mago-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
+
     fs::create_dir_all(&dir).unwrap();
     // today's drawing already there: with none, it is a first run and there is no space yet
     fs::write(dir.join("autosave.mago"), r#"{"version":1,"elements":[]}"#).unwrap();
     let mut app = DrawingApp { autosave: Some(dir.join("autosave.mago")), ..Default::default() };
+
     app.load_spaces();
     app.load_autosave();
     (app, dir)
@@ -172,7 +179,9 @@ fn push_chat(app: &mut DrawingApp, name: &str) -> String {
 fn island_frame(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui::Event>) -> Vec<(String, Rect)> {
     let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, ISLAND_SCREEN)), time: Some(time), events, ..Default::default() };
     let mut output = ctx.run_ui(raw, |_| app.island_ui(ctx));
+
     output.textures_delta.clear();
+
     output
         .shapes
         .iter()
@@ -188,6 +197,7 @@ fn island_texts(app: &mut DrawingApp, ctx: &Context, time: f64, events: Vec<egui
 /// The island as drawn: hung from the top centre.
 fn island_rect(app: &DrawingApp) -> Rect {
     let size = app.island.size();
+
     Rect::from_min_size(Pos2::new((ISLAND_SCREEN.x / 2.0 - size.x / 2.0).round(), 0.0), size)
 }
 
@@ -199,6 +209,7 @@ const BIG_BUTTON: usize = RIGHT_BUTTONS;
 
 fn right_button(app: &DrawingApp, index: usize) -> Pos2 {
     let rect = island_rect(app);
+
     Pos2::new(rect.right() - 25.0 - index as f32 * 32.0, rect.top() + 25.0)
 }
 
@@ -206,23 +217,28 @@ fn right_button(app: &DrawingApp, index: usize) -> Pos2 {
 fn island_opened(chats: Vec<crate::app::chat::direct::Chat>) -> (DrawingApp, Context, f64) {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     app.prefs.island = true;
     app.chats = chats;
     let mut time = 1.0;
     let notch = Pos2::new(ISLAND_SCREEN.x / 2.0, 10.0);
+
     while time < 2.0 {
         island_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
         time += 0.05;
     }
+
     assert!((app.island.size().x - crate::app::island::COMPACT_W).abs() < 4.0, "compact on hover: {}", app.island.size().x);
     island_frame(&mut app, &ctx, time, vec![button(notch, true)]);
     time += 0.05;
     island_frame(&mut app, &ctx, time, vec![button(notch, false)]);
     time += 0.05;
+
     while time < 3.0 {
         island_frame(&mut app, &ctx, time, vec![egui::Event::PointerMoved(notch)]);
         time += 0.05;
     }
+
     assert!((app.island.size().x - crate::app::island::EXPANDED_W).abs() < 1.0, "clicked to open: {}", app.island.size().x);
     (app, ctx, time)
 }
@@ -231,6 +247,7 @@ fn island_opened(chats: Vec<crate::app::chat::direct::Chat>) -> (DrawingApp, Con
 fn painted(app: &DrawingApp, ctx: &Context) -> usize {
     let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
     let mut out = ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |ui| app.paint_scene(ui.painter(), ui.max_rect()));
+
     out.textures_delta.clear();
     out.shapes.len()
 }

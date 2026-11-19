@@ -24,11 +24,13 @@ pub(crate) fn turn_waits(working: &std::collections::HashSet<String>, rows: &[Ag
 pub(super) fn paint_check(painter: &Painter, luna: Pos2, size: f32) {
     let radius = (size * 0.2).max(4.0);
     let at = luna + Vec2::new(size * 0.34, -size * 0.3);
+
     painter.circle_filled(at, radius + 1.5, super::paint::BLACK);
     painter.circle_filled(at, radius, GREEN);
     // the check of the chat's lists (24 across), as wide as the seal
     let scale = radius * 1.5 / 24.0;
     let points: Vec<Pos2> = crate::app::chat::list::CHECK[0].iter().map(|&(x, y)| at + Vec2::new(x - 12.0, y - 12.0) * scale).collect();
+
     painter.add(egui::Shape::line(points, Stroke::new((radius * 0.3).max(1.2), super::paint::BLACK)));
 }
 
@@ -40,6 +42,7 @@ mod tests {
     fn a_finished_turn_is_told_apart_from_one_that_waits_on_the_person() {
         let working: std::collections::HashSet<String> = ["a".to_string()].into();
         let row = |state| AgentRow { id: "a".into(), spec: Default::default(), state, mission: None, space: String::new() };
+
         assert!(turn_done(&working, &[row(AgentState::Idle(Some(1.0)))]), "done");
         assert!(!turn_waits(&working, &[row(AgentState::Idle(Some(1.0)))]));
         assert!(turn_waits(&working, &[row(AgentState::Waiting)]), "waiting on the person");

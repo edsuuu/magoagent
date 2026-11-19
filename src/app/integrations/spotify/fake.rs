@@ -11,6 +11,7 @@ use crate::prelude::*;
 /// In a test scene that asked for it.
 pub(crate) fn active() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
     *ON.get_or_init(|| std::env::var_os("MAGOAGENT_SCENE").is_some() && std::env::var_os("MAGOAGENT_FAKE_SPOTIFY").is_some())
 }
 
@@ -45,6 +46,7 @@ pub(super) fn songs(playlist: &PlaylistItem, offset: usize) -> (Vec<QueueItem>, 
     let total = playlist.total.unwrap_or(2) as usize;
     let end = (offset + 50).min(total);
     let page = (offset..end).map(|index| song(100 + index, &format!("Faixa {} · {}", index + 1, playlist.name), "Artista de teste", 180)).collect();
+
     (page, end < total)
 }
 
@@ -56,6 +58,7 @@ pub(super) fn fill(library: &mut Library) {
         song(3, "Deixa a Vida Me Levar", "Zeca Pagodinho", 245),
         song(4, "Trem-Bala", "Ana Vilela", 197),
     ];
+
     library.playlists = ["Sertanejo Raiz", "Pagode 90", "Foco"]
         .iter()
         .enumerate()
@@ -67,5 +70,6 @@ pub(super) fn fill(library: &mut Library) {
             total: Some(40 + 20 * index as u64),
         })
         .collect();
+
     library.liked = vec![song(5, "Mentira ou Verdade", "DJ Biel do Furduncinho", 198), song(6, "Evidências", "Chitãozinho & Xororó", 278)];
 }

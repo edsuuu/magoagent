@@ -5,19 +5,24 @@ impl DrawingApp {
     pub(crate) fn context_action(&mut self, ctx: &Context, target: &Target, id: &str) {
         if let Target::Group(gid) = target {
             self.group_menu_action(gid, id);
+
             return;
         }
+
         let index = match target {
             Target::Element(eid) => self.scene.elements.iter().position(|e| &e.id == eid),
             Target::Canvas(_) | Target::Group(_) => None,
         };
+
         let at = match target {
             Target::Canvas(p) => *p,
             Target::Element(_) | Target::Group(_) => Pos2::ZERO,
         };
+
         if self.terminal_menu_action(ctx, index, id) || self.chat_menu_action(target, id) {
             return;
         }
+
         match id {
             "rename" => {
                 if let Some(i) = index {
@@ -32,6 +37,7 @@ impl DrawingApp {
             "monitor" => {
                 if let Some(i) = index.filter(|i| self.scene.elements[*i].terminal.is_some()) {
                     self.snapshot();
+
                     if let Some(t) = self.scene.elements[i].terminal.as_mut() {
                         t.quiet = !t.quiet;
                     }
@@ -54,6 +60,7 @@ impl DrawingApp {
                     && !self.unload_node(i, false)
                 {
                     let eid = self.scene.elements[i].id.clone();
+
                     if self.scene.elements[i].portal.is_some() {
                         self.portal_reload(&eid);
                     } else {
@@ -74,6 +81,7 @@ impl DrawingApp {
             "chrome" => {
                 if let Some(i) = index.filter(|i| self.scene.elements[*i].portal.is_some()) {
                     self.snapshot();
+
                     if let Some(spec) = self.scene.elements[i].portal.as_mut() {
                         spec.chrome_hidden = !spec.chrome_hidden;
                     }
@@ -158,6 +166,7 @@ impl DrawingApp {
             "add_terminal" => {
                 // Adicionar › Terminal: the dialog on Terminal, not on the toolbar's Chat
                 self.open_terminal_dialog(at, at);
+
                 if let Some(dialog) = &mut self.terminal_dialog {
                     dialog.chat = false;
                 }
@@ -172,6 +181,7 @@ impl DrawingApp {
                     self.new_terminal_at(at, &preset);
                 } else if let (Some(op), Some(i)) = (id.strip_prefix("navegador:"), index) {
                     let node = self.scene.elements[i].id.clone();
+
                     self.portal_menu(&node, op);
                 } else if let Some(page) = id.strip_prefix("stack_show:") {
                     if let Some(p) = self.scene.elements.iter().position(|e| e.id == page) {
@@ -190,9 +200,11 @@ impl DrawingApp {
                     self.align_selection(k);
                 } else if let (Some(other), Some(i)) = (id.strip_prefix("link:"), index) {
                     let node = self.scene.elements[i].id.clone();
+
                     self.toggle_link(&node, other);
                 } else if let (Some(other), Some(i)) = (id.strip_prefix("disconnect:"), index) {
                     let node = self.scene.elements[i].id.clone();
+
                     self.unlink(&node, other);
                 }
             }

@@ -6,6 +6,7 @@ impl DrawingApp {
         if comment.trim().is_empty() {
             return Err("diga o comentário".into());
         }
+
         // none named and several on the canvas: the first
         let first = || self.scene.elements.iter().find(|e| e.filetree.is_some()).map(|e| e.id.clone());
         let source = self.tree_named(name).or_else(|why| first().ok_or(why))?;
@@ -13,10 +14,13 @@ impl DrawingApp {
         let full = if Path::new(path).is_absolute() { PathBuf::from(path) } else { Path::new(&root).join(path) };
         let text = std::fs::read_to_string(&full).map_err(|e| e.to_string())?;
         let lines: Vec<&str> = text.lines().collect();
+
         if from == 0 || to < from || to > lines.len() {
             return Err("intervalo de linhas inválido".into());
         }
+
         let lang = crate::editor::highlight::detect(&full).id;
+
         let prompt = crate::app::chat::code_comment::code_comment_prompt(
             &crate::app::chat::code_comment::relative(Path::new(&root), &full),
             from,
@@ -25,6 +29,7 @@ impl DrawingApp {
             &lines[from - 1..to].join("\n"),
             comment,
         );
+
         self.queue_to_maestro(&source, &root, prompt)?;
         Ok("Comentário enviado à Luna.".into())
     }

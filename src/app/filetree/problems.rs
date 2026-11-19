@@ -58,6 +58,7 @@ pub(crate) fn counts(diags: &[Diag]) -> (usize, usize) {
 pub(crate) fn merge(lsp: Vec<Diag>, local: &[Diag]) -> Vec<Diag> {
     let flagged: HashSet<usize> = lsp.iter().filter(|d| d.severity == ERROR).map(|d| d.line).collect();
     let mut all: Vec<Diag> = lsp.into_iter().chain(local.iter().filter(|d| !flagged.contains(&d.line)).cloned()).filter(|d| d.severity <= WARNING).collect();
+
     all.sort_by_key(|d| (d.line, d.col));
     all
 }
@@ -66,6 +67,7 @@ pub(crate) fn merge(lsp: Vec<Diag>, local: &[Diag]) -> Vec<Diag> {
 /// further, as the reference's GotoNextErrorHandler.
 pub(crate) fn next_problem(diags: &[Diag], at: (usize, usize), forward: bool) -> Option<&Diag> {
     let place = |d: &&Diag| (d.line, d.col);
+
     if forward {
         diags.iter().filter(|d| place(d) > at).min_by_key(place).or_else(|| diags.iter().min_by_key(place))
     } else {
@@ -76,6 +78,7 @@ pub(crate) fn next_problem(diags: &[Diag], at: (usize, usize), forward: bool) ->
 /// The files with errors and every folder over them up to the tree's root: what the tree draws in red.
 pub(crate) fn propagate(files: &[PathBuf], root: &Path) -> HashSet<PathBuf> {
     let mut out = HashSet::new();
+
     for file in files.iter().filter(|f| f.starts_with(root)) {
         for p in file.ancestors().take_while(|p| p.starts_with(root)) {
             if !out.insert(p.to_path_buf()) {
@@ -83,6 +86,7 @@ pub(crate) fn propagate(files: &[PathBuf], root: &Path) -> HashSet<PathBuf> {
             }
         }
     }
+
     out
 }
 
@@ -124,65 +128,86 @@ impl Problems {
             *self = Problems::new(self.ctx.clone());
             self.root = root.to_path_buf();
         }
+
         // ponytail: no server under test; and none for a root that is not a folder
         if self.lsp.is_none() && !cfg!(test) && root.is_dir() {
             self.lsp = Some(Inspections::new(self.ctx.clone(), root.to_path_buf()));
         }
+
         if let Some(lsp) = &mut self.lsp {
             lsp.poll();
         }
+
         self.scanned.start(root, &self.ctx);
+
         if self.scanned.poll() {
             self.ctx.request_repaint();
         }
+
         for (path, hash, found) in self.results.1.try_iter().collect::<Vec<_>>() {
             if let Some(entry) = self.local.get_mut(&path).filter(|(current, _)| *current == hash) {
                 entry.1 = found;
                 self.ctx.request_repaint();
             }
         }
+
         let mut alive = HashSet::new();
+
         for (path, text, lang) in texts {
             alive.insert(path.to_path_buf());
             let h = hash(text, 0.0);
+
             if self.local.get(path).is_some_and(|(old, _)| *old == h) {
                 continue;
             }
+
             let first = !self.local.contains_key(path);
             // the parsed languages are read off the interface thread, after the typing rests (tests read at once)
             let parsed = syntax::handles(lang.id) && !cfg!(test);
+
             let found = if parsed {
                 let since = if first { Instant::now().checked_sub(DEBOUNCE).unwrap_or_else(Instant::now) } else { Instant::now() };
+
                 self.waiting.insert(path.to_path_buf(), (h, text.to_string(), since));
                 self.local.get(path).map(|(_, old)| old.clone()).unwrap_or_default()
             } else {
                 check(path, lang, text)
             };
+
             self.local.insert(path.to_path_buf(), (h, found));
             self.langs.insert(path.to_path_buf(), lang);
+
             if let Some(lsp) = self.lsp.as_mut().filter(|_| lang.kind == Kind::Code && !lang.servers.is_empty()) {
                 if first { lsp.open(path, lang, text) } else { lsp.change(path, lang, text) }
             }
         }
+
         let due: Vec<PathBuf> = self.waiting.iter().filter(|(_, (_, _, since))| since.elapsed() >= DEBOUNCE).map(|(path, _)| path.clone()).collect();
+
         for path in due {
             let Some((hash, text, _)) = self.waiting.remove(&path) else { continue };
             let (sender, context, lang) = (self.results.0.clone(), self.ctx.clone(), self.langs.get(&path).copied());
             let Some(lang) = lang else { continue };
+
             std::thread::spawn(move || {
                 let found = check(&path, lang, &text);
                 let _ = sender.send((path, hash, found));
+
                 context.request_repaint();
             });
         }
+
         if let Some(wait) = self.waiting.values().map(|(_, _, since)| DEBOUNCE.saturating_sub(since.elapsed())).min() {
             self.ctx.request_repaint_after(wait);
         }
+
         let gone: Vec<PathBuf> = self.local.keys().filter(|p| !alive.contains(*p)).cloned().collect();
+
         for path in gone {
             self.local.remove(&path);
             self.waiting.remove(&path);
             self.scanned.refresh(&path, &self.ctx);
+
             if let (Some(lsp), Some(lang)) = (self.lsp.as_mut(), self.langs.remove(&path)) {
                 lsp.close(&path, lang);
             }
@@ -199,12 +224,14 @@ impl Problems {
     /// The problems of `path`, by place.
     pub(crate) fn for_file(&self, path: &Path) -> Vec<Diag> {
         let lsp = self.lsp.as_ref().map(|l| l.for_file(path).into_iter().cloned().collect()).unwrap_or_default();
+
         merge(lsp, self.local.get(path).map_or_else(|| self.scanned.get(path), |(_, d)| d))
     }
 
     /// The problems of `path` as it is now: `text` (its open tab's, or what is on disk) checked right away.
     pub(crate) fn for_text(&self, path: &Path, lang: &Lang, text: &str) -> Vec<Diag> {
         let lsp = self.lsp.as_ref().map(|l| l.for_file(path).into_iter().cloned().collect()).unwrap_or_default();
+
         merge(lsp, &check(path, lang, text))
     }
 
@@ -212,6 +239,7 @@ impl Problems {
     pub(crate) fn files(&self) -> Vec<PathBuf> {
         let mut seen = HashSet::new();
         let published = self.lsp.iter().flat_map(|l| l.all().map(|(p, _)| p.clone()));
+
         self.local.keys().cloned().chain(self.scanned.files().cloned()).chain(published).filter(|p| seen.insert(p.clone())).collect()
     }
 
@@ -226,21 +254,28 @@ pub(crate) fn check(path: &Path, lang: &Lang, text: &str) -> Vec<Diag> {
     if text.len() > CHECK_MAX || !CHECKED.contains(&lang.id) || text.trim().is_empty() {
         return vec![];
     }
+
     if syntax::handles(lang.id) {
         return syntax::check(lang.id, text);
     }
+
     let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+
     if lang.id == "json" {
         // a .lock is not always JSON (Cargo.lock, yarn.lock)
         if ext == "lock" {
             return vec![];
         }
+
         let (found, comments) = Scan::run(lang, text);
+
         if comments || ext == "jsonc" {
             return found;
         }
+
         return json_error(text).into_iter().collect();
     }
+
     Scan::run(lang, text).0
 }
 
@@ -252,6 +287,7 @@ fn diag(line: usize, col: usize, end_col: usize, message: String) -> Diag {
 fn json_error(text: &str) -> Option<Diag> {
     let e = serde_json::from_str::<serde_json::Value>(text).err()?;
     let said = e.to_string();
+
     let message = [
         ("trailing comma", "Vírgula sobrando antes do fechamento"),
         ("EOF while parsing", "O JSON termina antes de fechar tudo"),
@@ -264,10 +300,12 @@ fn json_error(text: &str) -> Option<Diag> {
     .iter()
     .find(|(en, _)| said.contains(en))
     .map_or("JSON inválido", |(_, pt)| pt);
+
     let line = e.line().saturating_sub(1);
     let row = text.lines().nth(line).unwrap_or_default();
     // serde counts bytes in a line
     let col = row.char_indices().take_while(|(b, _)| *b < e.column().saturating_sub(1)).count();
+
     Some(diag(line, col, col + 1, message.into()))
 }
 
@@ -289,16 +327,20 @@ impl<'a> Scan<'a> {
         let c: Vec<char> = text.chars().collect();
         let starts: Vec<usize> = std::iter::once(0).chain(c.iter().enumerate().filter(|(_, ch)| **ch == '\n').map(|(i, _)| i + 1)).collect();
         let mut s = Scan { c, lang, starts, found: vec![], comments: false, stack: vec![] };
+
         if lang.id == "php" {
             s.php();
         } else {
             s.code(0, false);
         }
+
         for (open, at) in std::mem::take(&mut s.stack) {
             s.found.push((at, at + 1, format!("'{open}' sem o '{}' correspondente", closer(open))));
         }
+
         s.found.sort();
         let out = s.found.iter().take(CHECK_CAP).map(|(a, b, m)| s.diag(*a, *b, m)).collect();
+
         (out, s.comments)
     }
 
@@ -306,6 +348,7 @@ impl<'a> Scan<'a> {
         let line = self.starts.partition_point(|s| *s <= a) - 1;
         let col = a - self.starts[line];
         let line_end = self.starts.get(line + 1).map_or(self.c.len(), |n| n - 1);
+
         diag(line, col, (b.min(line_end) - self.starts[line]).max(col + 1), message.to_string())
     }
 
@@ -316,6 +359,7 @@ impl<'a> Scan<'a> {
     /// PHP: the text outside `<?php … ?>` is HTML, left alone.
     fn php(&mut self) {
         let mut i = 0;
+
         while i < self.c.len() {
             match (i..self.c.len()).find(|&k| self.at(k, "<?php") || self.at(k, "<?=")) {
                 Some(open) => i = self.code(open + if self.at(open, "<?=") { 3 } else { 5 }, true),
@@ -328,66 +372,87 @@ impl<'a> Scan<'a> {
     fn code(&mut self, mut i: usize, php: bool) -> usize {
         let (id, n) = (self.lang.id, self.c.len());
         let js = matches!(id, "javascript" | "javascriptreact" | "typescript" | "typescriptreact");
+
         while i < n {
             let ch = self.c[i];
+
             if php && self.at(i, "?>") {
                 return i + 2;
             }
+
             // comments (`http://` is not one, `#[` is a PHP attribute)
             if let Some(lc) =
                 self.lang.line.iter().find(|p| self.at(i, p)).filter(|p| !(**p == "//" && i > 0 && self.c[i - 1] == ':') && !(**p == "#" && self.at(i, "#[")))
             {
                 self.comments = true;
                 let _ = lc;
+
                 i = (i..n).find(|&k| self.c[k] == '\n').unwrap_or(n);
+
                 continue;
             }
+
             if let Some((open, close)) = self.lang.block.filter(|(o, _)| self.at(i, o)) {
                 self.comments = true;
                 i = self.block_comment(i, open, close);
+
                 continue;
             }
+
             if id == "php" && self.at(i, "<<<") {
                 i = self.heredoc(i);
+
                 continue;
             }
+
             if id == "rust"
                 && (ch == 'r' || (ch == 'b' && self.at(i + 1, "r")))
                 && (i == 0 || !is_ident(self.c[i - 1]))
                 && let Some(end) = self.raw_string(i)
             {
                 i = end;
+
                 continue;
             }
+
             if self.lang.quotes.contains(ch) {
                 // Rust's lifetime `'a`, and C++'s digit separator `1'000`
                 let lifetime = id == "rust" && ch == '\'' && self.c.get(i + 1).is_some_and(|c| c.is_alphabetic() || *c == '_') && {
                     let end = (i + 1..n).find(|&k| !is_ident(self.c[k])).unwrap_or(n);
+
                     self.c.get(end) != Some(&'\'')
                 };
+
                 let separator = matches!(id, "c" | "cpp") && ch == '\'' && i > 0 && self.c[i - 1].is_ascii_alphanumeric();
+
                 if lifetime || separator {
                     i += 1;
                 } else {
                     i = self.string(i, ch);
                 }
+
                 continue;
             }
+
             if js
                 && ch == '/'
                 && self.regex_allowed(i)
                 && let Some(end) = self.regex(i)
             {
                 i = end;
+
                 continue;
             }
+
             match ch {
                 '(' | '[' | '{' => self.stack.push((ch, i)),
                 ')' | ']' | '}' => self.close(ch, i),
                 _ => {}
             }
+
             i += 1;
         }
+
         n
     }
 
@@ -408,10 +473,12 @@ impl<'a> Scan<'a> {
         let n = self.c.len();
         // Rust's comments nest
         let (mut depth, mut k) = (1, i + open.len());
+
         while k < n {
             if self.at(k, close) {
                 depth -= 1;
                 k += close.len();
+
                 if depth == 0 || self.lang.id != "rust" {
                     return k;
                 }
@@ -422,6 +489,7 @@ impl<'a> Scan<'a> {
                 k += 1;
             }
         }
+
         self.found.push((i, i + open.len(), "Comentário não fechado".into()));
         n
     }
@@ -436,8 +504,10 @@ impl<'a> Scan<'a> {
         let multi = triple || q == '`' || matches!(id, "php" | "rust" | "csharp");
         let loose = matches!(id, "javascriptreact" | "typescriptreact");
         let mut k = i + if triple { 3 } else { 1 };
+
         while k < n {
             let ch = self.c[k];
+
             if ch == '\\' && !(id == "csharp" && i > 0 && self.c[i - 1] == '@') {
                 k += 2;
             } else if triple && self.at(k, &q.to_string().repeat(3)) {
@@ -450,20 +520,24 @@ impl<'a> Scan<'a> {
                 if !loose {
                     self.found.push((i, k, "Aspas não fechadas".into()));
                 }
+
                 return k;
             } else {
                 k += 1;
             }
         }
+
         if !loose {
             self.found.push((i, i + 1, if triple { "Texto de aspas triplas não fechado" } else { "Aspas não fechadas" }.into()));
         }
+
         n
     }
 
     /// Code inside a `${…}`, from after its `{`; back: after its `}`.
     fn braces(&mut self, mut k: usize) -> usize {
         let (n, mut depth) = (self.c.len(), 1);
+
         while k < n {
             match self.c[k] {
                 q if self.lang.quotes.contains(q) => k = self.string(k, q),
@@ -471,6 +545,7 @@ impl<'a> Scan<'a> {
                 '}' => {
                     depth -= 1;
                     k += 1;
+
                     if depth == 0 {
                         return k;
                     }
@@ -478,6 +553,7 @@ impl<'a> Scan<'a> {
                 _ => k += 1,
             }
         }
+
         n
     }
 
@@ -485,11 +561,15 @@ impl<'a> Scan<'a> {
     fn raw_string(&mut self, i: usize) -> Option<usize> {
         let mut k = i + if self.c[i] == 'b' { 2 } else { 1 };
         let hashes = (k..self.c.len()).take_while(|&j| self.c[j] == '#').count();
+
         k += hashes;
+
         if self.c.get(k) != Some(&'"') {
             return None;
         }
+
         let end = format!("\"{}", "#".repeat(hashes));
+
         match (k + 1..self.c.len()).find(|&j| self.at(j, &end)) {
             Some(j) => Some(j + end.len()),
             None => {
@@ -503,22 +583,30 @@ impl<'a> Scan<'a> {
     fn heredoc(&mut self, i: usize) -> usize {
         let n = self.c.len();
         let mut k = i + 3;
+
         while self.c.get(k).is_some_and(|c| *c == ' ' || *c == '\'' || *c == '"') {
             k += 1;
         }
+
         let label: String = self.c[k..].iter().take_while(|c| is_ident(**c)).collect();
+
         if label.is_empty() {
             return i + 3;
         }
+
         let from = (k..n).find(|&j| self.c[j] == '\n').unwrap_or(n);
         let mut line = from + 1;
+
         while line < n {
             let begin = (line..n).find(|&j| !matches!(self.c[j], ' ' | '\t')).unwrap_or(n);
+
             if self.at(begin, &label) && !self.c.get(begin + label.len()).is_some_and(|c| is_ident(*c)) {
                 return begin + label.len();
             }
+
             line = (line..n).find(|&j| self.c[j] == '\n').map_or(n, |j| j + 1);
         }
+
         n
     }
 
@@ -530,6 +618,7 @@ impl<'a> Scan<'a> {
     /// A regex literal at `i`: back where it ends, None when the line has no closing `/`.
     fn regex(&self, i: usize) -> Option<usize> {
         let (mut k, mut class) = (i + 1, false);
+
         while k < self.c.len() && self.c[k] != '\n' {
             match self.c[k] {
                 '\\' => k += 1,
@@ -538,8 +627,10 @@ impl<'a> Scan<'a> {
                 '/' if !class => return Some(k + 1),
                 _ => {}
             }
+
             k += 1;
         }
+
         None
     }
 }
@@ -575,30 +666,39 @@ impl DrawingApp {
     pub(crate) fn act_tree_problems(&mut self, id: &str, path: Option<PathBuf>) -> Result<String, String> {
         let root = self.ft_spec(id).map(FileTreeSpec::root_path).unwrap_or_default();
         let ed = self.filetrees.editors.get(id);
+
         let text_of = |p: &Path| match ed.and_then(|e| e.tabs.iter().find(|t| t.path == p)).map(|t| &t.body) {
             Some(crate::app::filetree::editor::Body::Text(t)) => Some(t.text.clone()),
             _ => std::fs::read_to_string(p).ok().map(|t| t.replace("\r\n", "\n")),
         };
+
         let empty = Problems::new(Context::default());
         let problems = ed.map_or(&empty, |e| &e.problems);
         let scope = path.clone().unwrap_or_else(|| root.clone());
+
         if scope.is_file() {
             let text = text_of(&scope).ok_or_else(|| format!("Não foi possível ler {}.", scope.display()))?;
             let diags = problems.for_text(&scope, highlight::detect(&scope), &text);
+
             return Ok(describe_problems(&root, &[(scope.clone(), diags)], &scope));
         }
+
         let mut files: Vec<PathBuf> = problems.files().into_iter().filter(|p| p.starts_with(&scope)).collect();
         let known: HashSet<PathBuf> = files.iter().cloned().collect();
+
         files.extend(crate::app::filetree::code::files_under(&scope, SCAN_FILES, scannable).into_iter().filter(|p| !known.contains(p)));
         files.sort();
+
         let listed: Vec<(PathBuf, Vec<Diag>)> = files
             .into_iter()
             .filter_map(|p| {
                 let text = text_of(&p)?;
+
                 Some((p.clone(), problems.for_text(&p, highlight::detect(&p), &text)))
             })
             .filter(|(_, d)| !d.is_empty())
             .collect();
+
         Ok(describe_problems(&root, &listed, &scope))
     }
 }
@@ -607,22 +707,31 @@ impl DrawingApp {
 pub(crate) fn describe_problems(root: &Path, files: &[(PathBuf, Vec<Diag>)], scope: &Path) -> String {
     let name = |p: &Path| p.strip_prefix(root).unwrap_or(p).display().to_string();
     let with: Vec<&(PathBuf, Vec<Diag>)> = files.iter().filter(|(_, d)| !d.is_empty()).collect();
+
     if with.is_empty() {
         return format!("Nenhum problema encontrado em {}.", name(scope));
     }
+
     let (mut errors, mut warnings, mut out) = (0, 0, String::new());
+
     for (path, diags) in with.iter().map(|f| (&f.0, &f.1)).take(60) {
         let (e, w) = counts(diags);
+
         (errors, warnings) = (errors + e, warnings + w);
         let plural = |n: usize, one: &str, many: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {many}") };
+
         out += &format!("{}: {}, {}\n", name(path), plural(e, "erro", "erros"), plural(w, "aviso", "avisos"));
+
         for d in diags.iter().take(40) {
             let kind = if d.severity == ERROR { "erro" } else { "aviso" };
+
             out += &format!("  {kind} {}:{} [{}] {}\n", d.line + 1, d.col + 1, d.source, d.message.lines().next().unwrap_or_default());
         }
     }
+
     if with.len() > 60 {
         out += &format!("… e mais {} arquivo(s) com problemas.\n", with.len() - 60);
     }
+
     format!("{} arquivo(s) com problemas ({errors} erro(s), {warnings} aviso(s)):\n{out}", with.len())
 }

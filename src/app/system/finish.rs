@@ -23,10 +23,13 @@ impl egui::Plugin for FinishFrames {
 pub(crate) fn finish_shape(rect: Rect) -> egui::epaint::ClippedShape {
     let finish = eframe::egui_glow::CallbackFn::new(|_, painter| {
         use eframe::glow::HasContext;
+
         // SAFETY: a plain GL call on the context eframe made current to paint this frame
         unsafe { painter.gl().finish() };
     });
+
     let callback = egui::PaintCallback { rect, callback: std::sync::Arc::new(finish) };
+
     egui::epaint::ClippedShape::new(rect, egui::Shape::Callback(callback))
 }
 
@@ -38,12 +41,16 @@ mod tests {
     #[test]
     fn every_frame_ends_waiting_for_the_gpu() {
         let ctx = Context::default();
+
         ctx.add_plugin(FinishFrames);
         let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+
         let output = ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |ui| {
             ui.label("um texto");
         });
+
         let last = output.shapes.last().expect("a shape");
+
         assert!(matches!(last.shape, egui::Shape::Callback(_)), "{:?}", last.shape);
         assert_eq!(last.clip_rect, screen);
         assert!(output.shapes.len() > 1, "and the app's own shapes before it");

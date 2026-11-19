@@ -151,6 +151,7 @@ impl Library {
     /// Something went wrong: the page says it a moment.
     pub(crate) fn fail(&mut self, message: impl Into<String>, now: i64) {
         let message = message.into();
+
         if !message.is_empty() {
             self.error = Some((message, now));
         }
@@ -168,6 +169,7 @@ impl Library {
     /// Soloist's queue, from the player's thread (None: it gave none).
     pub(super) fn take_player_queue(&mut self, queue: Option<Vec<QueueItem>>) {
         self.busy.remove("queue");
+
         if let Some(queue) = queue {
             (self.queue, self.queue_note) = (queue, None);
         }
@@ -189,19 +191,23 @@ impl Spotify {
     pub(super) fn spawn_web(&mut self, kind: &'static str, work: impl FnOnce(&Shared) -> Reply + Send + 'static) {
         // a control, a heart and a search go every time (an older search's answer is dropped); a poll once at a time
         let polled = !matches!(kind, "control" | "save" | "search" | "songs");
+
         if polled && !self.library.busy.insert(kind) {
             return;
         }
+
         #[cfg(test)]
         {
             self.library.web_asked.push(kind);
             self.library.busy.remove(kind);
             let _ = work;
         }
+
         #[cfg(not(test))]
         {
             let (generation, sender) = self.library.sender();
             let shared = self.account.shared.clone();
+
             std::thread::spawn(move || drop(sender.send((generation, work(&shared)))));
         }
     }
@@ -212,25 +218,31 @@ impl Spotify {
         let library = &self.library;
         let Some(now) = self.now.as_mut() else { return };
         let playback = &mut now.playback;
+
         let same = |web: &&WebPlayer| {
             if playback.track_uri.is_empty() { !web.title.is_empty() && web.title == now.track.title } else { web.track_uri == playback.track_uri }
         };
+
         if let Some(web) = library.web_player.as_ref().filter(same) {
             if playback.track_uri.is_empty() {
                 playback.track_uri = web.track_uri.clone();
             }
+
             playback.context = playback.context.take().or(web.context.clone());
             playback.shuffle = playback.shuffle.or(web.shuffle);
             playback.repeat = playback.repeat.or(web.repeat);
             playback.duration_ms = playback.duration_ms.or(web.duration_ms);
+
             if let Some(device) = &web.device {
                 playback.volume = playback.volume.or(device.volume);
+
                 // the name the account gives this device ("Soloist" stays: it is the one shown on the island)
                 if playback.device.is_empty() || playback.device == "Spotify" {
                     playback.device = device.name.clone();
                 }
             }
         }
+
         if let Some(context) = playback.context.as_mut()
             && context.name.is_empty()
         {
@@ -239,6 +251,7 @@ impl Spotify {
                 _ => library.context_names.get(&context.uri).cloned().unwrap_or_default(),
             };
         }
+
         if let Some(liked) = library.hearts.get(&playback.track_uri) {
             playback.liked = Some(*liked);
         } else if !self.account.linked() {
@@ -250,9 +263,11 @@ impl Spotify {
     pub(super) fn take_reply(&mut self, reply: Reply, now: i64) -> Option<Command> {
         let library = &mut self.library;
         let mut failed = None;
+
         match reply {
             Reply::Queue(result) => {
                 library.busy.remove("queue");
+
                 match result {
                     Ok(queue) => (library.queue, library.queue_note) = (queue, None),
                     Err(failure) => failed = Some(failure),
@@ -260,11 +275,13 @@ impl Spotify {
             }
             Reply::Playlists(result) => {
                 library.busy.remove("playlists");
+
                 match result {
                     Ok(playlists) => {
                         for playlist in &playlists {
                             library.context_names.insert(playlist.uri.clone(), playlist.name.clone());
                         }
+
                         library.playlists = playlists;
                     }
                     Err(failure) => failed = Some(failure),
@@ -272,11 +289,13 @@ impl Spotify {
             }
             Reply::Liked(result) => {
                 library.busy.remove("liked");
+
                 match result {
                     Ok(liked) => {
                         for item in liked.iter().filter(|item| !item.uri.is_empty()) {
                             library.hearts.insert(item.uri.clone(), true);
                         }
+
                         library.liked = liked;
                     }
                     Err(failure) => failed = Some(failure),
@@ -286,6 +305,7 @@ impl Spotify {
                 // an answer for a list closed since, or for a page already in, is dropped
                 if let Some(opened) = library.opened.as_mut().filter(|opened| opened.playlist.uri == uri && opened.songs.len() == offset) {
                     opened.loading = false;
+
                     match result {
                         Ok((songs, more)) => {
                             opened.more = more && !songs.is_empty();
@@ -300,6 +320,7 @@ impl Spotify {
             }
             Reply::Found(result) => {
                 library.busy.remove("search");
+
                 match result {
                     Ok(found) if found.query == library.query => (library.found, library.searching) = (Some(found), false),
                     Ok(_) => {}
@@ -311,6 +332,7 @@ impl Spotify {
             }
             Reply::Contains(uri, result) => {
                 library.busy.remove("contains");
+
                 match result {
                     Ok(liked) => {
                         library.hearts.insert(uri, liked);
@@ -321,6 +343,7 @@ impl Spotify {
             Reply::Saved(uri, liked, result) => match result {
                 Ok(()) => {
                     library.hearts.insert(uri.clone(), liked);
+
                     if liked {
                         library.next_lists = 0;
                     } else {
@@ -334,6 +357,7 @@ impl Spotify {
             },
             Reply::Player(result) => {
                 library.busy.remove("player");
+
                 match result {
                     Ok(player) => library.web_player = player,
                     Err(failure) => failed = Some(failure),
@@ -341,6 +365,7 @@ impl Spotify {
             }
             Reply::Devices(result) => {
                 library.busy.remove("devices");
+
                 match result {
                     Ok(devices) => library.devices = devices,
                     Err(failure) => failed = Some(failure),
@@ -353,6 +378,7 @@ impl Spotify {
             }
             Reply::Profile(result) => {
                 library.busy.remove("profile");
+
                 match result {
                     Ok(profile) => (self.account.name, self.account.user_id) = (profile.name, profile.id),
                     Err(failure) => failed = Some(failure),
@@ -363,20 +389,25 @@ impl Spotify {
                 if result.is_ok() {
                     self.soon();
                 }
+
                 failed = result.err();
             }
             Reply::Then(command) => return Some(command),
         }
+
         if let Some(failure) = failed {
             if failure.unauthorized {
                 // the refresh token was refused: no more calls until it is linked again (the keychain keeps it)
                 self.account.link = Link::Failed(failure.message.clone());
+
                 if let Ok(mut held) = self.account.shared.lock() {
                     *held = None;
                 }
             }
+
             self.library.fail(failure.message, now);
         }
+
         None
     }
 }
@@ -392,50 +423,65 @@ impl DrawingApp {
     /// is not one of Spotify's picture servers.
     pub(crate) fn spotify_thumbnail(&self, url: &str) -> Option<egui::TextureId> {
         let thumbs = &self.integrations.spotify.library.thumbs;
+
         if let Some(texture) = thumbs.ready.get(url) {
             return Some(texture.id());
         }
+
         if super::cover_allowed(url) && !thumbs.asked.contains(url) {
             let mut wanted = thumbs.wanted.borrow_mut();
+
             if !wanted.iter().any(|known| known == url) && wanted.len() < 64 {
                 wanted.push(url.to_string());
             }
         }
+
         None
     }
 
     /// The covers asked for come down a few at a time; what came becomes a texture.
     fn spotify_thumbs_tick(&mut self, ctx: &Context) {
         let thumbs = &mut self.integrations.spotify.library.thumbs;
+
         while let Some((url, bytes)) = thumbs.channel.as_ref().and_then(|(_, inbox)| inbox.try_recv().ok()) {
             thumbs.loading = thumbs.loading.saturating_sub(1);
+
             if let Some(picture) = bytes.and_then(|bytes| image::load_from_memory(&bytes).ok()) {
                 let picture = picture.thumbnail(THUMB_SIZE, THUMB_SIZE).into_rgba8();
                 let size = [picture.width() as usize, picture.height() as usize];
                 let image = egui::ColorImage::from_rgba_unmultiplied(size, &picture);
+
                 thumbs.ready.insert(url, ctx.load_texture("spotify-thumb", image, egui::TextureOptions::LINEAR));
             }
         }
+
         if thumbs.ready.len() > THUMBS_MOST {
             // ponytail: all of them go at once past the most (the page asks again what it shows); an LRU if it flickers
             thumbs.ready.clear();
             thumbs.asked.clear();
         }
+
         let wanted = std::mem::take(thumbs.wanted.get_mut());
+
         for url in wanted {
             if thumbs.loading >= THUMBS_AT_ONCE {
                 thumbs.wanted.get_mut().push(url);
+
                 continue;
             }
+
             if !thumbs.asked.insert(url.clone()) || cfg!(test) {
                 continue;
             }
+
             thumbs.loading += 1;
             let sender = thumbs.channel.get_or_insert_with(channel).0.clone();
             let ctx = ctx.clone();
+
             std::thread::spawn(move || {
                 let bytes = super::download_cover(&url);
                 let _ = sender.send((url, bytes));
+
                 ctx.request_repaint();
             });
         }
@@ -447,37 +493,47 @@ impl DrawingApp {
         let now = now_ms();
         let mut then = Vec::new();
         let spotify = &mut self.integrations.spotify;
+
         while let Some((generation, reply)) = spotify.library.channel.as_ref().and_then(|(_, inbox)| inbox.try_recv().ok()) {
             if generation == spotify.library.generation {
                 then.extend(spotify.take_reply(reply, now));
             }
         }
+
         if spotify.library.error.as_ref().is_some_and(|(_, at)| now - at > ERROR_FOR_MS) {
             spotify.library.error = None;
         }
+
         let linked = spotify.account.linked();
+
         // who the account is: once (again a minute after a failure), for Ajustes and Liked Songs' uri
         if linked && spotify.account.user_id.is_empty() && now >= spotify.library.next_profile && spotify.account.link == Link::Linked {
             spotify.library.next_profile = now + 60_000;
             spotify.spawn_web("profile", |shared| Reply::Profile(web::profile(shared)));
         }
+
         let open = spotify.library.page_open(now);
+
         if open {
             // the time moves on the page
             ctx.request_repaint_after(std::time::Duration::from_millis(500));
             spotify.library.lists_note = (!linked).then(|| LISTS_NEED_ACCOUNT.to_string());
+
             if now >= spotify.library.next_page {
                 spotify.library.next_page = now + PAGE_EVERY_MS;
                 spotify.poll_page(linked);
             }
+
             if linked && now >= spotify.library.next_lists {
                 spotify.library.next_lists = now + LISTS_EVERY_MS;
                 spotify.spawn_web("playlists", |shared| Reply::Playlists(web::playlists(shared)));
                 spotify.spawn_web("liked", |shared| Reply::Liked(web::liked(shared)));
             }
         }
+
         spotify.enrich();
         self.spotify_thumbs_tick(ctx);
+
         for command in then {
             if let Err(why) = self.spotify_do(command) {
                 self.integrations.spotify.library.fail(why, now);
@@ -493,8 +549,10 @@ impl Spotify {
         let library = &self.library;
         let liked = || PlaylistItem { uri: super::controls::LIKED_SONGS.into(), name: "Músicas curtidas".into(), ..Default::default() };
         let found = library.found.iter().flat_map(|found| &found.playlists);
+
         let playlist =
             library.playlists.iter().chain(found).find(|playlist| playlist.uri == uri).cloned().or_else(|| playback::is_liked_songs(uri).then(liked))?;
+
         self.library.opened = Some(Opened { playlist, more: true, ..Default::default() });
         self.more_songs();
         Some(())
@@ -505,21 +563,28 @@ impl Spotify {
         if let Some((asks, _)) = &self.thread {
             let _ = asks.send(Ask::Soon);
         }
+
         self.library.next_page = self.library.next_page.min(now_ms() + 700);
     }
 
     /// The opened playlist's next page of songs, unless one is on its way or none follow.
     pub(crate) fn more_songs(&mut self) {
         let Some(opened) = self.library.opened.as_mut().filter(|opened| opened.more && !opened.loading) else { return };
+
         opened.loading = true;
         let (uri, offset) = (opened.playlist.uri.clone(), opened.songs.len());
+
         if super::fake::active() {
             let page = super::fake::songs(&opened.playlist, offset);
+
             self.take_reply(Reply::Songs(uri, offset, Ok(page)), now_ms());
+
             return;
         }
+
         self.spawn_web("songs", move |shared| {
             let page = web::songs(shared, &uri, offset);
+
             Reply::Songs(uri, offset, page)
         });
     }
@@ -528,9 +593,11 @@ impl Spotify {
     /// heart of the track and the name of where it comes from.
     pub(super) fn poll_page(&mut self, linked: bool) {
         let soloist = self.now.as_ref().is_some_and(|now| now.player == Player::Soloist || now.through_soloist);
+
         if soloist {
             #[cfg(test)]
             self.library.web_asked.push("soloist queue");
+
             if self.library.busy.insert("queue") {
                 match &self.thread {
                     Some((asks, _)) => drop(asks.send(Ask::Queue(QUEUE_MOST))),
@@ -543,16 +610,21 @@ impl Spotify {
             self.library.queue.clear();
             self.library.queue_note = Some(QUEUE_NEEDS_ACCOUNT.into());
         }
+
         if !linked {
             return;
         }
+
         self.spawn_web("player", |shared| Reply::Player(web::player(shared)));
         self.spawn_web("devices", |shared| Reply::Devices(web::devices(shared)));
         let uri = self.now.as_ref().map(|now| now.playback.track_uri.clone()).unwrap_or_default();
+
         if playback::is_track(&uri) && !self.library.hearts.contains_key(&uri) {
             self.spawn_web("contains", move |shared| Reply::Contains(uri.clone(), web::contains(shared, &uri)));
         }
+
         let context = self.now.as_ref().and_then(|now| now.playback.context.clone()).or(self.library.web_player.as_ref().and_then(|web| web.context.clone()));
+
         if let Some(PlayContext { uri, .. }) = context.filter(|context| context.kind() == "playlist" && context.name.is_empty())
             && !self.library.context_names.contains_key(&uri)
         {

@@ -30,9 +30,11 @@ pub(crate) enum FileMatch {
 /// changed `lines` that has it. An empty query takes every file.
 pub(crate) fn file_match(name: &str, lines: Option<&Vec<String>>, query: &str) -> Option<FileMatch> {
     let query = query.trim().to_lowercase();
+
     if query.is_empty() || name.to_lowercase().contains(&query) {
         return Some(FileMatch::Name);
     }
+
     lines?.iter().find(|line| line.to_lowercase().contains(&query)).map(|line| FileMatch::Code(line.trim().to_string()))
 }
 
@@ -46,11 +48,14 @@ pub(crate) fn kept_lines<'a>(lines: impl Iterator<Item = &'a str>) -> Vec<String
 pub(crate) fn parse_changed_lines(root: &Path, out: &str) -> Changed {
     let mut changed = Changed::new();
     let (mut header, mut old, mut path): (bool, Option<String>, Option<String>) = (false, None, None);
+
     for line in out.lines() {
         if line.starts_with("diff --git ") {
             (header, old, path) = (true, None, None);
+
             continue;
         }
+
         if header {
             if let Some(rest) = line.strip_prefix("--- ") {
                 old = rest.strip_prefix("a/").map(String::from);
@@ -60,14 +65,18 @@ pub(crate) fn parse_changed_lines(root: &Path, out: &str) -> Changed {
             } else if line.starts_with("@@") {
                 header = false;
             }
+
             continue;
         }
+
         let (Some(file), Some(text)) = (&path, line.strip_prefix(['+', '-'])) else { continue };
         let lines = changed.entry(key(&root.join(file))).or_default();
+
         if lines.len() < KEPT_LINES {
             lines.push(text.chars().take(KEPT_CHARS).collect());
         }
     }
+
     changed
 }
 
@@ -79,12 +88,15 @@ impl DrawingApp {
     /// pressed (its tree and path).
     pub(super) fn changes_list(&mut self, ui: &mut egui::Ui, groups: &[ChangeGroup]) -> Option<(String, PathBuf)> {
         let colors = self.colors();
+
         let field = egui::TextEdit::singleline(&mut self.panes.changes.search)
             .hint_text("Buscar arquivo ou trecho de código")
             .background_color(colors.surface_low)
             .desired_width(f32::INFINITY);
+
         ui.add_sized(Vec2::new(ui.available_width(), 28.0), field);
         let query = self.panes.changes.search.clone();
+
         let shown: Vec<(&ChangeGroup, Vec<Shown>)> = groups
             .iter()
             .map(|group| {
@@ -93,27 +105,37 @@ impl DrawingApp {
                     .iter()
                     .filter_map(|(path, status)| {
                         let name = path.strip_prefix(&group.root).unwrap_or(path).to_string_lossy().replace('\\', "/");
+
                         file_match(&name, self.changed_lines(path), &query).map(|found| (path, *status, found))
                     })
                     .collect::<Vec<_>>();
+
                 (group, files)
             })
             .filter(|(_, files)| !files.is_empty())
             .collect();
+
         let found: usize = shown.iter().map(|(_, files)| files.len()).sum();
+
         if !query.trim().is_empty() {
             let total: usize = groups.iter().map(|g| g.files.len()).sum();
             let said = if found == 0 { format!("Nada com “{}” no nome nem nas mudanças.", query.trim()) } else { format!("{found} de {total} arquivos") };
+
             ui.label(egui::RichText::new(said).size(11.0).color(colors.muted));
         }
+
         let mut pressed = None;
         let tallest = LIST_ROWS as f32 * (ROW + ROW_GAP) + HEADER;
+
         egui::ScrollArea::vertical().id_salt("changes_files").max_height(tallest).auto_shrink([false, true]).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = ROW_GAP;
+
             for (group, files) in &shown {
                 let (header, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), HEADER), Sense::hover());
                 let room = header.shrink2(Vec2::new(2.0, 0.0));
+
                 ui.painter().with_clip_rect(room).text(room.left_center(), egui::Align2::LEFT_CENTER, &group.title, FontId::proportional(12.0), colors.muted);
+
                 for (path, status, found) in files {
                     if self.change_row(ui, group, path, *status, found) {
                         pressed = Some((group.tree.clone(), (*path).clone()));
@@ -121,6 +143,7 @@ impl DrawingApp {
                 }
             }
         });
+
         pressed
     }
 
@@ -128,24 +151,30 @@ impl DrawingApp {
     /// found in. True when pressed.
     fn change_row(&self, ui: &mut egui::Ui, group: &ChangeGroup, path: &Path, status: Status, found: &FileMatch) -> bool {
         let (colors, dark) = (self.colors(), self.dark());
+
         let code = match found {
             FileMatch::Code(line) => Some(line),
             FileMatch::Name => None,
         };
+
         let height = if code.is_some() { ROW + 14.0 } else { ROW };
         let selected = self.panes.changes.selected.as_ref().is_some_and(|(_, p)| p == path);
         let (row, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click());
         let line = Rect::from_min_size(row.min, Vec2::new(row.width(), ROW));
         let p = ui.painter();
+
         if selected || response.hovered() {
             p.rect_filled(row, 7, if selected { colors.selected } else { glass_ink(dark).gamma_multiply(0.06) });
         }
+
         icons::file_on(p, path, Pos2::new(line.left() + 14.0, line.center().y), 1.0, !dark);
         let font = FontId::monospace(12.0);
         // the counts once read (a binary file has none)
         let mut end = line.right() - 8.0;
+
         if let Some((added, removed)) = self.change_line_counts(path) {
             let minus = p.text(Pos2::new(end, line.center().y), egui::Align2::RIGHT_CENTER, format!("−{removed}"), font.clone(), colors.danger);
+
             let plus = p.text(
                 minus.left_center() - Vec2::new(6.0, 0.0),
                 egui::Align2::RIGHT_CENTER,
@@ -153,18 +182,25 @@ impl DrawingApp {
                 font.clone(),
                 crate::app::filetree::diff::ADDED,
             );
+
             end = plus.left();
         }
+
         let name = path.strip_prefix(&group.root).unwrap_or(path).to_string_lossy().replace('\\', "/");
         let room = Rect::from_min_max(Pos2::new(line.left() + 28.0, line.top()), Pos2::new(end - 8.0, line.bottom()));
         let color = crate::app::filetree::ui::status_color(status, dark);
+
         p.with_clip_rect(room).text(room.left_center(), egui::Align2::LEFT_CENTER, &name, font, color);
+
         if let Some(code) = code {
             let room = Rect::from_min_max(Pos2::new(line.left() + 28.0, line.bottom() - 4.0), Pos2::new(row.right() - 8.0, row.bottom()));
             let shown = format!("no código: {code}");
+
             p.with_clip_rect(room).text(room.left_center(), egui::Align2::LEFT_CENTER, shown, FontId::monospace(10.5), colors.muted);
         }
+
         let response = response.on_hover_cursor(CursorIcon::PointingHand);
+
         response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &name));
         response.clicked()
     }
@@ -177,6 +213,7 @@ mod tests {
     #[test]
     fn the_search_finds_a_file_by_its_name_or_by_a_stretch_of_its_changes() {
         let lines = vec!["    let total = soma(a, b);".to_string(), "fn velha() {}".to_string()];
+
         assert_eq!(file_match("src/main.rs", Some(&lines), ""), Some(FileMatch::Name), "an empty search takes everything");
         assert_eq!(file_match("src/main.rs", Some(&lines), "MAIN"), Some(FileMatch::Name), "any case");
         assert_eq!(file_match("src/main.rs", Some(&lines), "soma("), Some(FileMatch::Code("let total = soma(a, b);".into())), "the line, trimmed");
@@ -188,9 +225,12 @@ mod tests {
     #[test]
     fn the_changed_lines_come_by_file_from_the_diff_without_its_headers() {
         let root = Path::new("/repo");
+
         let out = "diff --git a/src/a.rs b/src/a.rs\nindex 1..2 100644\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1 +1 @@\n-velho\n+novo\n@@ -9,0 +10 @@\n+--- não é cabeçalho\n\
                    diff --git a/gone.sql b/gone.sql\ndeleted file mode 100644\n--- a/gone.sql\n+++ /dev/null\n@@ -1 +0,0 @@\n--- comentário sql\n\\ No newline at end of file\n";
+
         let changed = parse_changed_lines(root, out);
+
         assert_eq!(changed[&key(&root.join("src/a.rs"))], vec!["velho", "novo", "--- não é cabeçalho"]);
         assert_eq!(changed[&key(&root.join("gone.sql"))], vec!["-- comentário sql"], "a deleted file goes by its old name");
         assert_eq!(changed.len(), 2);

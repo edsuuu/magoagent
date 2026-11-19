@@ -4,7 +4,9 @@ fn local_loopback_base_only() {
         assert!(local_base(good).is_some(), "{good}");
         assert_eq!(local_base(good), Some(good.to_string()));
     }
+
     assert_eq!(local_base("http://127.0.0.1:3000/"), Some("http://127.0.0.1:3000".into()));
+
     for bad in [
         "https://127.0.0.1:3000",
         "http://192.168.1.10:3000",
@@ -23,6 +25,7 @@ fn local_loopback_base_only() {
 fn the_credential_is_saved_to_the_keychain_and_removed() {
     mock_keyring();
     let mut app = DrawingApp::default();
+
     assert_eq!(app.whatsapp_save_credential("user:pass"), Ok("Credencial guardada no cofre do sistema.".into()));
     app.integrations.whatsapp.load_credential();
     assert_eq!(app.integrations.whatsapp.credential.as_deref(), Some("user:pass"));
@@ -30,6 +33,7 @@ fn the_credential_is_saved_to_the_keychain_and_removed() {
     assert!(app.whatsapp_save_credential("nocolon").is_err());
     app.whatsapp_remove_credential().unwrap();
     let mut clean = DrawingApp::default();
+
     clean.integrations.whatsapp.load_credential();
     assert_eq!(clean.integrations.whatsapp.credential.as_deref(), Some(""));
 }
@@ -45,10 +49,13 @@ fn base64_encoding() {
 #[test]
 fn gowa_devices_list_is_parsed() {
     let empty = r#"{"results":[]}"#;
+
     assert_eq!(gowa_status(empty), Link::NeedsPairing);
     let needs_qr = r#"{"results":[{"id":"mago","state":"needs_qr"}]}"#;
+
     assert_eq!(gowa_status(needs_qr), Link::NeedsPairing);
     let logged_in = r#"{"results":[{"id":"mago","state":"logged_in","jid":"5511999999999@s.whatsapp.net"}]}"#;
+
     assert_eq!(gowa_status(logged_in), Link::Connected);
     assert_eq!(gowa_status("garbage"), Link::Unavailable);
     assert_eq!(gowa_status(r#"{"error":"not found"}"#), Link::Unavailable);
@@ -57,12 +64,14 @@ fn gowa_devices_list_is_parsed() {
 #[test]
 fn gateway_check_refuses_non_loopback() {
     let link = check_gateway("http://192.168.1.10:3000", "");
+
     assert_eq!(link, Link::Unavailable);
 }
 
 #[test]
 fn whatsapp_test_does_nothing_in_tests() {
     let mut app = DrawingApp::default();
+
     app.prefs.integrations.whatsapp_base = "http://127.0.0.1:3000".into();
     assert!(!app.whatsapp_test());
     assert!(!app.integrations.whatsapp.checking);
@@ -71,6 +80,7 @@ fn whatsapp_test_does_nothing_in_tests() {
 #[test]
 fn whatsapp_report_says_the_state() {
     let mut app = DrawingApp::default();
+
     assert_eq!(app.whatsapp_report(), "WhatsApp: desligado.");
     app.prefs.integrations.whatsapp = true;
     assert_eq!(app.whatsapp_report(), "WhatsApp: ainda não testado.");

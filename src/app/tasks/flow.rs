@@ -196,6 +196,7 @@ impl Flow {
     pub(crate) fn advance(&mut self, ok: bool, note: &str, agent: &str, now: i64) -> Move {
         let Some(stage) = self.current() else { return Move::Finished };
         let blocks = !ok && self.fails(self.stage) + 1 >= MAX_FAILS;
+
         if let Some(run) = self.runs.last_mut() {
             let result = if ok {
                 "ok"
@@ -204,8 +205,10 @@ impl Flow {
             } else {
                 "fail"
             };
+
             (run.ended, run.result, run.note, run.agent) = (now, result.into(), note.into(), agent.into());
         }
+
         let (mv, to) = match (ok, blocks, stage.back) {
             (true, ..) if self.stage + 1 == STAGES.len() => (Move::Finished, STAGES.len()),
             (true, ..) => (Move::Next, self.stage + 1),
@@ -213,10 +216,13 @@ impl Flow {
             (_, _, Some(back)) => (Move::Back, back),
             _ => (Move::Repeat, self.stage),
         };
+
         self.stage = to;
+
         if mv != Move::Finished {
             self.runs.push(Run { stage: to, started: now, ..Default::default() });
         }
+
         mv
     }
 
@@ -230,14 +236,17 @@ impl Flow {
 pub(crate) fn brief(index: usize, id: &str, project: &str, style_skill: &str, folder: &str) -> String {
     let stage = &STAGES[index];
     let read = if index == 0 { String::new() } else { format!(" Leia antes a nota `{id}-{}`.", STAGES[index - 1].code) };
+
     let skill = match stage.code {
         "padrao" => style_brief(style_skill),
         "ponytail" => PONYTAIL_BRIEF.to_string(),
         "review-agente" => CODE_REVIEW_BRIEF.to_string(),
         _ => String::new(),
     };
+
     let body = stage.brief.replace("{skill}", &skill).replace("{id}", id).replace("{projeto}", project).replace("{pasta}", folder);
     let wait = if stage.person { " Esta etapa espera a pessoa." } else { "" };
+
     format!(
         "Fluxo {id}, etapa {}/{}: {} ({}).{wait}{read}\n{body}\nGrave o resultado na nota `{id}-{}` do fichário (binder write; a primeira linha é `Entrada: [[{id}-<etapa anterior>]]`). Depois chame a ferramenta `flow` (action advance, id {id}, result ok e note com o resumo; se falhou, result fail e o motivo).",
         index + 1,

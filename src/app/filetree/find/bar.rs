@@ -22,11 +22,14 @@ pub(super) fn text_field(
 ) -> egui::Response {
     ui.scope(|ui| {
         let visuals = ui.visuals_mut();
+
         for widget in [&mut visuals.widgets.inactive, &mut visuals.widgets.hovered, &mut visuals.widgets.active, &mut visuals.widgets.open] {
             widget.corner_radius = egui::CornerRadius::same(8);
         }
+
         visuals.selection.stroke = Stroke::new(1.0, PRIMARY);
         let field = if multiline { egui::TextEdit::multiline(text).desired_rows(1) } else { egui::TextEdit::singleline(text) };
+
         ui.add(
             field
                 .id(id)
@@ -44,11 +47,13 @@ pub(super) fn text_field(
 /// An icon button: `paint` draws the icon inside its box, in the color it is given (lit when `on`). True when pressed.
 pub(super) fn icon_button(ui: &mut egui::Ui, tip: &str, on: bool, c: &UiColors, paint: impl FnOnce(&Painter, Rect, Color32)) -> bool {
     let (rect, response) = ui.allocate_exact_size(Vec2::new(28.0, 28.0), Sense::click());
+
     if on {
         ui.painter().rect_filled(rect, 8, PRIMARY.gamma_multiply(0.28));
     } else if response.hovered() {
         ui.painter().rect_filled(rect, 8, c.surface_low);
     }
+
     paint(
         ui.painter(),
         rect,
@@ -60,6 +65,7 @@ pub(super) fn icon_button(ui: &mut egui::Ui, tip: &str, on: bool, c: &UiColors, 
             c.muted
         },
     );
+
     response.on_hover_cursor(CursorIcon::PointingHand).tip(tip).clicked()
 }
 
@@ -75,6 +81,7 @@ pub(super) fn word_toggle(ui: &mut egui::Ui, label: &str, tip: &str, on: &mut bo
 /// The pin: the popup stays when the focus leaves it.
 pub(super) fn paint_pin(painter: &Painter, rect: Rect, color: Color32) {
     let stroke = Stroke::new(1.3, color);
+
     let body = [
         (9.0, 7.0),
         (9.0, 10.8),
@@ -95,6 +102,7 @@ pub(super) fn paint_pin(painter: &Painter, rect: Rect, color: Color32) {
         (7.0, 5.0),
         (8.0, 6.0),
     ];
+
     outline(painter, rect.center(), 16.0, &body, true, stroke);
     outline(painter, rect.center(), 16.0, &[(12.0, 17.0), (12.0, 22.0)], false, stroke);
 }
@@ -103,8 +111,10 @@ pub(super) fn paint_pin(painter: &Painter, rect: Rect, color: Color32) {
 pub(super) fn paint_wrap(painter: &Painter, rect: Rect, color: Color32) {
     let stroke = Stroke::new(1.3, color);
     let centre = rect.center();
+
     outline(painter, centre, 16.0, &[(3.0, 6.0), (21.0, 6.0)], false, stroke);
     let mut turn = vec![(3.0, 12.0), (16.0, 12.0)];
+
     turn.extend(arc(16.0, 15.0, 3.0, -90.0, 90.0));
     turn.push((13.0, 18.0));
     outline(painter, centre, 16.0, &turn, false, stroke);
@@ -116,6 +126,7 @@ pub(super) fn paint_wrap(painter: &Painter, rect: Rect, color: Color32) {
 pub(super) fn paint_lens(painter: &Painter, centre: Pos2, color: Color32) {
     let stroke = Stroke::new(1.5, color);
     let ring = centre - Vec2::splat(1.5);
+
     painter.circle_stroke(ring, 5.0, stroke);
     painter.line_segment([ring + Vec2::splat(3.7), ring + Vec2::splat(8.0)], stroke);
 }
@@ -123,6 +134,7 @@ pub(super) fn paint_lens(painter: &Painter, centre: Pos2, color: Color32) {
 /// The action button: `PRIMARY`, round corners, as the app's.
 pub(super) fn action_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
     let button = egui::Button::new(egui::RichText::new(label).size(13.0).color(Color32::WHITE)).fill(PRIMARY).corner_radius(8).min_size(Vec2::new(0.0, 28.0));
+
     ui.add(button).on_hover_cursor(CursorIcon::PointingHand)
 }
 
@@ -132,6 +144,7 @@ pub(super) fn spinner(ui: &mut egui::Ui) {
     let time = ui.input(|i| i.time) as f32;
     let start = time * 6.0;
     let points: Vec<Pos2> = (0..=14).map(|i| rect.center() + Vec2::angled(start + i as f32 * 0.28) * 6.0).collect();
+
     ui.painter().add(Shape::line(points, Stroke::new(1.8, PRIMARY)));
     ui.ctx().request_repaint();
 }

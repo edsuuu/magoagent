@@ -9,6 +9,7 @@ pub(crate) fn opaque_rgba(mut pixels: Vec<u8>) -> Vec<u8> {
         p.swap(0, 2);
         p[3] = 255;
     }
+
     pixels
 }
 
@@ -16,6 +17,7 @@ pub(crate) fn opaque_rgba(mut pixels: Vec<u8>) -> Vec<u8> {
 pub(crate) fn png(width: u32, height: u32, rgba: Vec<u8>) -> Result<Vec<u8>, String> {
     let image = image::RgbaImage::from_raw(width, height, rgba).ok_or("imagem vazia")?;
     let mut png = Vec::new();
+
     image.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).map_err(|e| e.to_string())?;
     Ok(png)
 }
@@ -46,6 +48,7 @@ fn window_pixels(hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
         colors_used: u32,
         colors_important: u32,
     }
+
     #[link(name = "user32")]
     unsafe extern "system" {
         fn GetClientRect(hwnd: isize, rect: *mut [i32; 4]) -> i32;
@@ -53,6 +56,7 @@ fn window_pixels(hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
         fn ReleaseDC(hwnd: isize, dc: isize) -> i32;
         fn PrintWindow(hwnd: isize, dc: isize, flags: u32) -> i32;
     }
+
     #[link(name = "gdi32")]
     unsafe extern "system" {
         fn CreateCompatibleDC(dc: isize) -> isize;
@@ -62,25 +66,33 @@ fn window_pixels(hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
         fn DeleteDC(dc: isize) -> i32;
         fn GetDIBits(dc: isize, bitmap: isize, start: u32, lines: u32, bits: *mut u8, info: *mut BitmapInfoHeader, usage: u32) -> i32;
     }
+
     // PW_CLIENTONLY | PW_RENDERFULLCONTENT: the page is drawn by the GPU, which a plain PrintWindow leaves black
     const FLAGS: u32 = 1 | 2;
+
     // SAFETY: plain GDI handles, made and freed here; the buffer has the size GetDIBits is told
     unsafe {
         let mut rect = [0i32; 4];
+
         if GetClientRect(hwnd, &mut rect) == 0 {
             return None;
         }
+
         let (w, h) = (rect[2] - rect[0], rect[3] - rect[1]);
+
         if w <= 0 || h <= 0 {
             return None;
         }
+
         let screen = GetDC(hwnd);
         let dc = CreateCompatibleDC(screen);
         let bitmap = CreateCompatibleBitmap(screen, w, h);
         let before = SelectObject(dc, bitmap);
         let drawn = PrintWindow(hwnd, dc, FLAGS) != 0;
+
         // GetDIBits wants the bitmap out of the device context
         SelectObject(dc, before);
+
         // top-down rows (a negative height), 32 bits a pixel, no compression
         let mut info = BitmapInfoHeader {
             size: std::mem::size_of::<BitmapInfoHeader>() as u32,
@@ -95,8 +107,10 @@ fn window_pixels(hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
             colors_used: 0,
             colors_important: 0,
         };
+
         let mut pixels = vec![0u8; w as usize * h as usize * 4];
         let read = drawn && GetDIBits(dc, bitmap, 0, h as u32, pixels.as_mut_ptr(), &mut info, 0) != 0;
+
         DeleteObject(bitmap);
         DeleteDC(dc);
         ReleaseDC(hwnd, screen);
@@ -109,6 +123,7 @@ fn window_pixels(hwnd: isize) -> Option<(u32, u32, Vec<u8>)> {
 pub(crate) fn webview_rgba(webview: &wry::WebView) -> Option<(u32, u32, Vec<u8>)> {
     use wry::WebViewExtWindows;
     let (width, height, pixels) = window_pixels(webview.hwnd().0 as isize)?;
+
     Some((width, height, opaque_rgba(pixels)))
 }
 
@@ -119,6 +134,7 @@ fn page_png(webview: &wry::WebView, done: impl FnOnce(Option<Vec<u8>>) + 'static
     let view = webview.webview();
     // the snapshot takes the rect in the page's CSS px and multiplies by the page zoom: the whole view, in points, over the zoom
     let (frame, zoom) = (view.frame(), unsafe { view.pageZoom() }.max(0.01));
+
     super::design::snapshot(webview, [0.0, 0.0, frame.size.width / zoom, frame.size.height / zoom], done);
 }
 
@@ -126,6 +142,7 @@ fn page_png(webview: &wry::WebView, done: impl FnOnce(Option<Vec<u8>>) + 'static
 #[cfg(target_os = "macos")]
 pub(crate) fn png_rgba(png: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     let image = image::load_from_memory_with_format(png, image::ImageFormat::Png).ok()?.into_rgba8();
+
     Some((image.width(), image.height(), image.into_raw()))
 }
 
@@ -143,10 +160,13 @@ impl DrawingApp {
         let Some(tab) = self.open_tab_view(id) else {
             return done(Err("a página desse navegador não está aberta".into()));
         };
+
         #[cfg(windows)]
         done(webview_rgba(&tab.webview).ok_or_else(|| NOT_SHOWN.into()));
+
         #[cfg(target_os = "linux")]
         tab.webview.picture(move |picture| done(picture.map(|(width, height, rgba, _)| (width, height, rgba)).ok_or_else(|| NOT_SHOWN.into())));
+
         #[cfg(target_os = "macos")]
         page_png(&tab.webview, move |png| done(png.as_deref().and_then(png_rgba).ok_or_else(|| NOT_SHOWN.into())));
     }
@@ -160,8 +180,10 @@ mod tests {
     fn the_systems_pixels_become_an_opaque_png() {
         // blue, green, red, alpha as GDI leaves them: two pixels
         let rgba = opaque_rgba(vec![10, 20, 30, 0, 200, 100, 50, 0]);
+
         assert_eq!(rgba, [30, 20, 10, 255, 50, 100, 200, 255]);
         let png = png_base64(2, 1, rgba).unwrap();
+
         // "iVBORw0KGgo" is a PNG's signature in base64
         assert!(png.starts_with("iVBORw0KGgo"), "{png}");
         assert!(png_base64(2, 2, vec![0; 4]).is_err(), "pixels that don't fill the size");
@@ -171,6 +193,7 @@ mod tests {
     #[test]
     fn a_png_comes_back_as_rgba_at_its_own_size() {
         let png = png(2, 1, vec![1, 2, 3, 255, 4, 5, 6, 255]).unwrap();
+
         assert_eq!(png_rgba(&png), Some((2, 1, vec![1, 2, 3, 255, 4, 5, 6, 255])));
         assert_eq!(png_rgba(b"not a png"), None);
     }

@@ -62,9 +62,11 @@ mod tests {
     #[test]
     fn the_call_bars_move_with_what_the_call_does() {
         let at = |state, mic, t| call_bars(state, mic, t);
+
         assert_ne!(at(VoiceState::Speaking, 0.0, 0.1), at(VoiceState::Speaking, 0.0, 0.3), "speaking, they wave");
         let quiet: f32 = at(VoiceState::Hearing, 0.0, 0.2).iter().sum();
         let loud: f32 = at(VoiceState::Hearing, 1.0, 0.2).iter().sum();
+
         assert!(loud > quiet + 5.0, "hearing, they follow the voice");
         assert_eq!(at(VoiceState::Muted, 1.0, 0.2), [4.0; 5]);
         assert!(at(VoiceState::Speaking, 0.0, 0.7).iter().all(|h| (4.0..=14.0).contains(h)));
@@ -74,15 +76,18 @@ mod tests {
     fn the_call_stays_in_the_chat_shown_and_a_codex_chats_words_are_kept() {
         let mut app = DrawingApp::default();
         let installed = vec![Preset::new("Claude Code", "claude")];
+
         app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: "/tmp/projeto".into(), mode: 1 }, &installed);
         // a Claude chat shown: the call stays in it
         let claude = app.chat_agent.clone();
+
         assert_eq!(app.call_chat(true).map(|c| c.agent), Some("claude".into()));
         assert_eq!((app.chats.len(), app.chat_agent.clone()), (1, claude));
         // nothing shown: a chat of the agent Ajustes presets is made and shown, on any voice
         app.chat_agent = None;
         app.chat_installed = Some((app.now, installed.clone()));
         let chat = app.call_chat(false).unwrap();
+
         assert_eq!(chat.agent, "claude");
         assert_eq!(app.chat_agent.as_deref(), Some(chat.id.as_str()));
         // no agent on the PATH: only Codex's voice gets a chat, the one its app's Codex runs
@@ -90,16 +95,20 @@ mod tests {
         app.chat_installed = Some((app.now, Vec::new()));
         assert_eq!(app.call_chat(false), None);
         let chat = app.call_chat(true).unwrap();
+
         assert_eq!(chat.agent, "codex");
         assert_eq!(app.chat_agent.as_deref(), Some(chat.id.as_str()));
         // what is said goes to its file as it was
         use crate::transcript::{ChatItem, Step};
+
         let items = vec![
             ChatItem::User("Oi".into()),
             ChatItem::Agent("Olá".into()),
             ChatItem::Tool(Step { name: "Bash".into(), what: "ls".into(), diff: Some((1, 2)), ..Default::default() }),
         ];
+
         let json = serde_json::to_string(&items).unwrap();
+
         assert_eq!(serde_json::from_str::<Vec<ChatItem>>(&json).unwrap(), items);
     }
 
@@ -121,6 +130,7 @@ mod tests {
         // what an old prefs.json had: the call on this computer (neither engine on), its Piper voice and the GPU
         let old = r#"{ "voice_codex": false, "voice_openai": false, "voice_studio": false, "voice": "pt_BR-faber-medium", "voice_gpu": true }"#;
         let prefs: Prefs = serde_json::from_str(old).unwrap();
+
         assert_eq!(call_engine(prefs.voice_codex, false, prefs.voice_openai, false), CallEngine::Studio);
     }
 
@@ -129,8 +139,10 @@ mod tests {
         let ctx = Context::default();
         let mut app = DrawingApp::default();
         let installed = vec![Preset::new("Claude Code", "claude")];
+
         app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: String::new(), mode: 0 }, &installed);
         let id = app.chat_agent.clone().unwrap();
+
         assert_eq!(app.voice_name(), "claude");
         app.voice.on = true;
         app.voice.state = VoiceState::Listening;
@@ -150,12 +162,14 @@ mod tests {
         // the conversation around isn't for it
         app.voice_heard(&ctx, "então a gente vai no mercado");
         assert!(app.voice.queue.is_empty() && app.chat_runs.is_empty());
+
         // an answer comes: held, not said
         app.transcripts
             .entry(id.clone())
             .or_insert_with(|| crate::transcript::Transcript::new(PathBuf::new()))
             .items
             .push(crate::transcript::ChatItem::Agent("Terminei os testes. Tudo passou.".into()));
+
         app.voice_tick(&ctx);
         assert_eq!(app.voice.held.len(), 2, "{:?}", app.voice.held);
         assert!(app.voice.queue.is_empty());

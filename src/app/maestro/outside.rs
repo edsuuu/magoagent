@@ -96,6 +96,7 @@ impl Outside {
     /// Pill `id` of the island ("pill:<key>").
     pub(super) fn pill(&self, id: &str) -> Option<&Pill> {
         let key = id.strip_prefix(PILL_PREFIX)?;
+
         self.pills.iter().find(|pill| pill.key == key)
     }
 }
@@ -135,6 +136,7 @@ pub(crate) struct PillView {
 /// O texto numa linha só, cortado em 90 caracteres.
 fn one_line(text: &str) -> String {
     let line = text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or_default();
+
     match line.char_indices().nth(90) {
         Some((cut, _)) => format!("{}…", &line[..cut]),
         None => line.to_string(),
@@ -145,6 +147,7 @@ fn one_line(text: &str) -> String {
 fn activity(event: &str, payload: &Value) -> Option<String> {
     let text = |key: &str| payload[key].as_str().unwrap_or_default();
     let summary = || tool_summary(text("tool_name"), &payload["tool_input"]);
+
     let line = match event {
         // o que o Claude Code injeta sozinho (lembretes, avisos de tarefa) vem em tags: não é o que a pessoa pediu
         "UserPromptSubmit" => Some(one_line(text("prompt"))).filter(|line| !line.starts_with('<')).unwrap_or_default(),
@@ -159,12 +162,14 @@ fn activity(event: &str, payload: &Value) -> Option<String> {
         "StopFailure" => "falhou".into(),
         _ => return None,
     };
+
     (!line.is_empty()).then_some(line)
 }
 
 /// Uma Notification que avisa do limite de uso do plano.
 fn rate_limited(message: &str) -> bool {
     let message = message.to_lowercase();
+
     ["rate limit", "usage limit", "limite de"].iter().any(|mark| message.contains(mark))
 }
 
@@ -181,14 +186,17 @@ struct Origin {
 /// take messages from the app (message.rs).
 fn origin(payload: &Value) -> Origin {
     let cwd = payload["cwd"].as_str().unwrap_or_default();
+
     let (prefix, program, brand) = match payload["mago_origin"].as_str().unwrap_or_default() {
         "hermes" => return Origin { key: "hermes".into(), name: "Hermes".into(), kind: "Hermes".into(), brand: Some(rgb_hex(0xc084fc)) },
         "claude-desktop" => ("desktop", "Claude Desktop", Some(rgb_hex(0xd97757))),
         "cursor" => ("cursor", "Cursor", Some(rgb_hex(0xc0c4cc))),
         _ => ("code", "Claude Code", None),
     };
+
     // the program no longer eats the room of the folder's name
     let name = if cwd.is_empty() { program.to_string() } else { short_name(&folder_label(cwd)) };
+
     Origin { key: format!("{prefix}:{cwd}"), name, kind: program.into(), brand }
 }
 
@@ -214,8 +222,10 @@ fn transcript_of(payload: &Value, session: &str) -> Option<String> {
             None => file.to_string(),
         });
     }
+
     let cwd = payload["cwd"].as_str().filter(|cwd| !cwd.is_empty() && !session.is_empty())?;
     let dir = crate::transcript::claude_dir()?;
+
     Some(crate::transcript::transcript_path(&dir, &crate::transcript::project_folder(cwd), session).display().to_string())
 }
 
@@ -224,34 +234,44 @@ impl DrawingApp {
     /// the asks waiting, and, when the hook waits (`reply`), a new ask.
     pub(crate) fn take_outside_hook(&mut self, payload: &Value, reply: Option<Sender<Result<String, String>>>) {
         crate::app::maestro::session_window::note(payload);
+
         if payload["mago_origin"] == "hermes" && !(crate::app::integrations::hermes::available() && self.prefs.integrations.hermes) {
             return;
         }
+
         let now = now_ms();
         let text = |key: &str| payload[key].as_str().unwrap_or_default().to_string();
         let (event, tool, session) = (hook_name(payload).to_string(), text("tool_name"), text("session_id"));
         let Origin { key, name, kind, brand } = origin(payload);
+
         // o relay que esperava desligou (a ponte avisa): responderam em outro lugar, e o cartão sai na hora
         if event == HOOK_GONE {
             let request = text("mago_request");
             let settled = self.settle_elsewhere(|_, source| !request.is_empty() && source.request == request);
+
             for pill in self.outside.pills.iter_mut().filter(|pill| settled.contains(&pill.key)) {
                 pill.activity = "respondido fora da ilha".into();
             }
+
             return;
         }
+
         self.outside_reach(&session, &event, payload);
+
         // a pergunta só existe pelo hook que espera: o PermissionRequest dela e o PreToolUse geral não fazem cartão nem mexem na pílula
         if tool == "AskUserQuestion" && (event == "PermissionRequest" || (event == "PreToolUse" && reply.is_none())) {
             return;
         }
+
         // asked here and answered in the terminal, or the turn went on: the card goes. A chamada que acabou tem de ser a
         // do pedido (a mesma ferramenta com a mesma entrada): a de um subagente trabalhando ao lado não conta; a resposta
         // de uma pergunta volta com a entrada mudada, então para ela basta a ferramenta
         let same_call = |ask: &PersonAsk| ask.tool == tool && (tool == "AskUserQuestion" || ask.input == payload["tool_input"]);
+
         self.settle_elsewhere(|ask, source| {
             source.session == session && (TURN_OVER.contains(&event.as_str()) || (event.starts_with("PostToolUse") && same_call(ask)))
         });
+
         if event == "SessionEnd" {
             // ponytail: a pill per program and folder, not per session: one session ending takes the pill of a sibling in its folder too until its next event
             self.outside.pills.retain(|pill| pill.key != key);
@@ -274,22 +294,30 @@ impl DrawingApp {
                     session: session.clone(),
                     transcript: String::new(),
                 };
+
                 self.outside.pills.push(pill);
                 self.outside.pills.len() - 1
             });
+
             let pill = &mut self.outside.pills[index];
+
             (pill.seen, pill.name, pill.session) = (now, name.clone(), session.clone());
+
             if let Some(file) = transcript_of(payload, &session) {
                 pill.transcript = file;
             }
+
             if let Some(line) = activity(&event, payload) {
                 pill.activity = line;
             }
+
             // the Stop hook handed the session what the person wrote (message.rs): its turn goes on
             let delivered = payload["mago_delivered"].as_u64().unwrap_or(0);
+
             if delivered > 0 {
                 pill.activity = if delivered == 1 { "mensagem entregue".into() } else { format!("{delivered} mensagens entregues") };
             }
+
             match event.as_str() {
                 "Stop" | "StopFailure" if delivered == 0 => {
                     (pill.working, pill.asking, pill.limited) = (false, false, false);
@@ -303,13 +331,16 @@ impl DrawingApp {
                 "Notification" => pill.asking |= text("message").trim_end().ends_with('?'),
                 _ => {
                     (pill.working, pill.asking, pill.limited, pill.gone) = (true, false, false, 0);
+
                     if matches!(pill.badge, Some(Badge::Finished | Badge::Error)) {
                         (pill.badge, pill.until) = (None, 0);
                     }
                 }
             }
         }
+
         let waits = event == "PermissionRequest" || (event == "PreToolUse" && tool == "AskUserQuestion");
+
         if let Some(reply) = reply.filter(|_| waits) {
             self.outside_ask(payload, (key, pill_label(&kind, &name)), session, event, reply);
         }
@@ -319,11 +350,14 @@ impl DrawingApp {
     /// seguiu) e o hook de cada um é solto sem resposta. Devolve as pílulas deles.
     fn settle_elsewhere(&mut self, settled: impl Fn(&PersonAsk, &Source) -> bool) -> Vec<String> {
         let mut pills = Vec::new();
+
         self.person_asks.get_mut().retain(|ask| {
             let elsewhere = ask.source.as_ref().filter(|source| settled(ask, source));
+
             pills.extend(elsewhere.map(|source| source.pill.clone()));
             elsewhere.is_none()
         });
+
         pills
     }
 
@@ -338,11 +372,14 @@ impl DrawingApp {
         let alerts_paused = crate::app::system::tray::alerts_paused(self.prefs.pause_alerts_until, crate::app::system::tray::unix_seconds());
         // a question while the island can't show (off, paused, the welcome still on) is the terminal's
         let hidden = !self.prefs.island || alerts_paused || self.welcome.is_some();
+
         if hidden || self.person_asks.borrow().len() >= MAX_ASKS || unanswerable || declined {
             return ask.send_terminal();
         }
+
         self.toast(format!("{label} {}", if ask.questions.is_empty() { "precisa de permissão" } else { "está perguntando" }));
         let request = payload["mago_request"].as_str().unwrap_or_default().to_string();
+
         ask.source = Some(Source { pill, label, session, event, at: now_ms(), request });
         self.person_asks.get_mut().push(ask);
     }
@@ -350,19 +387,24 @@ impl DrawingApp {
     /// With the agents' check: the asks the hook gave up on go, the badges end and the pills of turns long over leave.
     pub(crate) fn outside_tick(&mut self) {
         let now = now_ms();
+
         self.person_asks.get_mut().retain(|ask| ask.source.as_ref().is_none_or(|source| now - source.at < WAIT as i64 * 1000));
         self.outside.declined.get_mut().retain(|(_, at)| now - at < DECLINED_FOR);
         let waiting: Vec<String> = self.person_asks.get_mut().iter().filter_map(|ask| ask.source.as_ref().map(|source| source.pill.clone())).collect();
         // a session with messages waiting for its turn to end keeps its pill: the island says how many
         let queued: Vec<String> = self.bridge.as_ref().map(|bridge| locked(&bridge.shared).outbox.keys().cloned().collect()).unwrap_or_default();
+
         self.outside.pills.retain_mut(|pill| {
             if pill.until != 0 && now >= pill.until {
                 (pill.badge, pill.until) = (None, 0);
             }
+
             let kept = waiting.contains(&pill.key) || queued.contains(&pill.session) || now - pill.shown < SHOWN_FOR;
             let over = pill.gone != 0 && now >= pill.gone && !kept;
+
             !over && now - pill.seen < SILENT_FOR
         });
+
         self.outside.sessions.retain(|_, reach| now - reach.seen < SILENT_FOR);
     }
 
@@ -370,6 +412,7 @@ impl DrawingApp {
     /// turn ended, so the person can still write to it.
     pub(crate) fn outside_shown(&mut self, id: &str) {
         let Some(key) = id.strip_prefix(PILL_PREFIX) else { return };
+
         for pill in self.outside.pills.iter_mut().filter(|pill| pill.key == key) {
             pill.shown = now_ms();
         }
@@ -379,19 +422,23 @@ impl DrawingApp {
     /// Code's and Claude Desktop's) told apart by a number after the second's name.
     pub(crate) fn outside_pills(&self) -> Vec<PillView> {
         let waiting: Vec<String> = self.person_asks.borrow().iter().filter_map(|ask| ask.source.as_ref().map(|source| source.pill.clone())).collect();
+
         let mut pills: Vec<PillView> = self
             .outside
             .pills
             .iter()
             .map(|pill| {
                 let asked = waiting.contains(&pill.key);
+
                 let state = match (asked || pill.asking, pill.working) {
                     (true, _) => AgentState::Waiting,
                     (_, true) => AgentState::Working(0.0),
                     _ => AgentState::Idle(None),
                 };
+
                 let badge = if asked { Some(Badge::Approval) } else { pill.badge };
                 let id = format!("{PILL_PREFIX}{}", pill.key);
+
                 PillView {
                     color: pill.brand.unwrap_or_else(|| self.agent_color(&id)),
                     id,
@@ -407,6 +454,7 @@ impl DrawingApp {
                 }
             })
             .collect();
+
         make_distinct(&mut pills, |pill| &mut pill.name);
         pills
     }
@@ -425,20 +473,25 @@ impl DrawingApp {
     /// e a última atividade; vazio quando não há nenhuma.
     pub(crate) fn outside_report(&self) -> String {
         let mut report = String::new();
+
         for pill in self.outside_pills() {
             let state = if pill.limited { "limite de uso do plano" } else { pill.state.label() };
             let activity = if pill.activity.is_empty() { String::new() } else { format!(" — {}", pill.activity) };
+
             report += &format!("\n- {} — {state}{activity}", pill.label());
         }
+
         if report.is_empty() { report } else { format!("\n\nSessões fora do app:{report}") }
     }
 
     /// The pointer is on pill `id` of the island: what ended there is seen, its badge goes. False for any other id.
     pub(crate) fn outside_focus(&mut self, id: &str) -> bool {
         let Some(key) = id.strip_prefix(PILL_PREFIX) else { return false };
+
         for pill in self.outside.pills.iter_mut().filter(|pill| pill.key == key && matches!(pill.badge, Some(Badge::Finished | Badge::Error))) {
             (pill.badge, pill.until) = (None, 0);
         }
+
         true
     }
 
@@ -446,6 +499,7 @@ impl DrawingApp {
     pub(crate) fn outside_transcript(&self, id: &str) -> Option<PathBuf> {
         let key = id.strip_prefix(PILL_PREFIX)?;
         let pill = self.outside.pills.iter().find(|pill| pill.key == key && !pill.transcript.is_empty())?;
+
         Some(PathBuf::from(&pill.transcript)).filter(|path| path.is_file())
     }
 
@@ -453,6 +507,7 @@ impl DrawingApp {
     /// first message; Hermes and Cursor keep none the app reads.
     pub(crate) fn outside_unread(&self, id: &str) -> &'static str {
         let key = id.strip_prefix(PILL_PREFIX).unwrap_or_default();
+
         match self.outside.pills.iter().any(|pill| pill.key == key && !pill.transcript.is_empty()) {
             true => "Ainda não há mensagens nesta sessão.",
             false => "A conversa desta sessão não pode ser lida daqui.",
@@ -465,6 +520,7 @@ impl DrawingApp {
         let cwd = view.id.strip_prefix(PILL_PREFIX).and_then(|key| key.split_once(':')).map(|(_, cwd)| cwd.to_string()).unwrap_or_default();
         // chat: a conversation only, the session's terminal is not the app's
         let spec = TerminalSpec { name: view.name, cwd, command: "claude".into(), chat: true, ..Default::default() };
+
         Some(crate::app::ui::agents::AgentRow { id: view.id, spec, state: view.state, mission: None, space: crate::app::chat::list::running::OUTSIDE.into() })
     }
 
@@ -473,6 +529,7 @@ impl DrawingApp {
     pub(crate) fn outside_terminal(&self, id: &str) -> bool {
         let Some(key) = id.strip_prefix(PILL_PREFIX) else { return false };
         let Some(pill) = self.outside.pills.iter().find(|pill| pill.key == key) else { return false };
+
         crate::app::maestro::session_window::focus_session_window(&pill.session)
     }
 }
@@ -484,11 +541,14 @@ mod palette_tests {
     #[test]
     fn a_session_is_named_by_its_folder_and_its_program_goes_apart() {
         let code = origin(&json!({ "cwd": "/var/www/projects/magoagent/.claude/worktrees/agent-a47cc47699b17a639" }));
+
         assert_eq!((code.name.as_str(), code.kind.as_str(), code.brand), ("agent-a47cc47", "Claude Code", None));
         assert!(!code.name.starts_with("Claude Code"), "no program before the name");
         let desktop = origin(&json!({ "cwd": "C:/Users/eu/loja", "mago_origin": "claude-desktop" }));
+
         assert_eq!((desktop.name.as_str(), pill_label(&desktop.kind, &desktop.name).as_str()), ("loja", "Claude Desktop · loja"));
         let hermes = origin(&json!({ "mago_origin": "hermes" }));
+
         assert_eq!(pill_label(&hermes.kind, &hermes.name), "Hermes");
         assert_eq!(origin(&json!({})).name, "Claude Code", "no folder: the program's");
     }
@@ -496,13 +556,16 @@ mod palette_tests {
     #[test]
     fn a_session_in_wsl_is_read_from_windows_by_its_distro() {
         let payload = json!({ "transcript_path": "/home/eu/.claude/projects/-home-eu-loja/s1.jsonl", "wsl_distro": "Ubuntu" });
+
         let expected = if cfg!(windows) {
             r"\\wsl.localhost\Ubuntu\home\eu\.claude\projects\-home-eu-loja\s1.jsonl"
         } else {
             "/home/eu/.claude/projects/-home-eu-loja/s1.jsonl"
         };
+
         assert_eq!(transcript_of(&payload, "s1").as_deref(), Some(expected));
         let here = json!({ "transcript_path": r"C:\Users\eu\.claude\projects\C--loja\s1.jsonl", "wsl_distro": "" });
+
         assert_eq!(transcript_of(&here, "s1").as_deref(), Some(r"C:\Users\eu\.claude\projects\C--loja\s1.jsonl"));
     }
 }

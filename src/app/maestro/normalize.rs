@@ -43,48 +43,59 @@ fn non_empty_str<'a>(map: &'a serde_json::Map<String, Value>, key: &str) -> Opti
 /// Preenche `tool_name`, `tool_input`, `session_id` e `cwd` de onde o agente pôs. Um campo que o payload já tem nunca é sobrescrito.
 pub(crate) fn fields(map: &mut serde_json::Map<String, Value>, env: &dyn Fn(&str) -> Option<String>) {
     let tool_call = map.get("toolCall").and_then(Value::as_object).cloned();
+
     if !map.contains_key("tool_name") {
         let name = non_empty_str(map, "toolName")
             .or_else(|| tool_call.as_ref().and_then(|t| non_empty_str(t, "name")))
             .or_else(|| non_empty_str(map, "tool"))
             .map(str::to_string);
+
         if let Some(name) = name {
             map.insert("tool_name".into(), Value::String(name));
         }
     }
+
     if !map.contains_key("tool_input") {
         let args = match map.get("toolArgs") {
             Some(Value::Object(o)) => Some(o.clone()),
             Some(Value::String(s)) => serde_json::from_str::<Value>(s).ok().and_then(|v| v.as_object().cloned()),
             _ => None,
         };
+
         let input = args.or_else(|| {
             let mut flat = tool_call.as_ref()?.get("args")?.as_object()?.clone();
+
             for (from, to) in ARG_ALIASES {
                 if let Some(v) = flat.get(*from).cloned() {
                     flat.insert((*to).to_string(), v);
                 }
             }
+
             Some(flat)
         });
+
         if let Some(input) = input {
             map.insert("tool_input".into(), Value::Object(input));
         }
     }
+
     if non_empty_str(map, "session_id").is_none() {
         let sid = ["conversationId", "conversation_id", "sessionId", "GEMINI_SESSION_ID"]
             .iter()
             .find_map(|k| non_empty_str(map, k))
             .map(str::to_string)
             .or_else(|| env("GEMINI_SESSION_ID").filter(|s| !s.is_empty()));
+
         if let Some(sid) = sid {
             map.insert("session_id".into(), Value::String(sid));
         }
     }
+
     if non_empty_str(map, "cwd").is_none() {
         let cwd = non_empty_str(map, "workdir").map(str::to_string).or_else(|| {
             ["workspacePaths", "workspace_roots"].iter().find_map(|k| map.get(*k)?.as_array()?.first()?.as_str().filter(|s| !s.is_empty()).map(str::to_string))
         });
+
         if let Some(cwd) = cwd {
             map.insert("cwd".into(), Value::String(cwd));
         }
@@ -96,6 +107,7 @@ pub(crate) fn refine(event: &str, map: &serde_json::Map<String, Value>) -> Strin
     if event == "Stop" && map.get("status").and_then(Value::as_str) == Some("error") {
         return "StopFailure".into();
     }
+
     event.to_string()
 }
 
@@ -146,6 +158,7 @@ mod tests {
         ] {
             assert_eq!(event(raw), canonical, "{raw}");
         }
+
         for same in ["PreToolUse", "PermissionRequest", "Stop", "Interrupt", "somethingNew"] {
             assert_eq!(event(same), same);
         }
@@ -158,6 +171,7 @@ mod tests {
             "workspacePaths": ["C:\\Projects\\test"],
             "toolCall": { "name": "run_command", "args": { "CommandLine": "cargo check" } }
         }));
+
         fields(&mut m, &no_env);
         assert_eq!(m["tool_name"], "run_command");
         assert_eq!(m["tool_input"]["command"], "cargo check");
@@ -174,6 +188,7 @@ mod tests {
             "sessionId": "s-9",
             "workdir": "/home/me/app"
         }));
+
         fields(&mut m, &no_env);
         assert_eq!(m["tool_name"], "bash");
         assert_eq!(m["tool_input"]["command"], "npm test");
@@ -181,6 +196,7 @@ mod tests {
         assert_eq!(m["cwd"], "/home/me/app");
 
         let mut m = obj(json!({ "toolName": "edit", "toolArgs": { "path": "a.rs" } }));
+
         fields(&mut m, &no_env);
         assert_eq!(m["tool_input"]["path"], "a.rs");
     }
@@ -188,6 +204,7 @@ mod tests {
     #[test]
     fn cursor_conversation_and_workspace_become_session_and_cwd() {
         let mut m = obj(json!({ "conversation_id": "c-1", "workspace_roots": ["/w/proj"] }));
+
         fields(&mut m, &no_env);
         assert_eq!(m["session_id"], "c-1");
         assert_eq!(m["cwd"], "/w/proj");
@@ -201,6 +218,7 @@ mod tests {
             "toolName": "other", "toolArgs": { "command": "rm" },
             "conversationId": "no", "workdir": "/no"
         }));
+
         fields(&mut m, &|_| Some("env".into()));
         assert_eq!(m["tool_name"], "Bash");
         assert_eq!(m["tool_input"]["command"], "ls");

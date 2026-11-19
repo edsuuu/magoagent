@@ -36,13 +36,16 @@ fn build() -> Option<(tray_icon::TrayIcon, Items)> {
     let pause_until_open = MenuItem::new("Pausar avisos até reabrir", true, None);
     let quit = MenuItem::new("Sair do MagoAgent", true, None);
     let menu = Menu::new();
+
     menu.append(&show).ok()?;
     menu.append(&pause_half_hour).ok()?;
     menu.append(&pause_hour).ok()?;
     menu.append(&pause_until_open).ok()?;
     menu.append(&quit).ok()?;
+
     let icon =
         tray_icon::TrayIconBuilder::new().with_icon(icon).with_tooltip(APP_TITLE).with_menu(Box::new(menu)).with_menu_on_left_click(false).build().ok()?;
+
     let items = Items {
         show: show.id().clone(),
         quit: quit.id().clone(),
@@ -50,6 +53,7 @@ fn build() -> Option<(tray_icon::TrayIcon, Items)> {
         pause_hour: pause_hour.id().clone(),
         pause_until_open: pause_until_open.id().clone(),
     };
+
     Some((icon, items))
 }
 
@@ -87,6 +91,7 @@ impl Tray {
     #[cfg(not(target_os = "linux"))]
     pub(crate) fn new() -> Option<Self> {
         let (icon, items) = build()?;
+
         Some(Self { _icon: icon, items: Some(items) })
     }
 
@@ -97,38 +102,48 @@ impl Tray {
     #[cfg(target_os = "linux")]
     pub(crate) fn new() -> Option<Self> {
         let library = |name: &str| unsafe { libloading::Library::new(name) }.is_ok();
+
         if !library("libayatana-appindicator3.so.1") && !library("libappindicator3.so.1") {
             return None;
         }
+
         thread_local! {
             /// The icon, on GTK's thread.
             static ICON: std::cell::RefCell<Option<tray_icon::TrayIcon>> = const { std::cell::RefCell::new(None) };
         }
+
         let (made, built) = std::sync::mpsc::channel();
+
         let sent = crate::app::system::gtk::run(move || {
             let items = build().map(|(icon, items)| {
                 ICON.with(|kept| *kept.borrow_mut() = Some(icon));
                 items
             });
+
             let _ = made.send(items);
         });
+
         sent.then_some(Self { items: None, built })
     }
 
     pub(crate) fn poll(&mut self) -> Option<TrayAsk> {
         use tray_icon::{MouseButton, MouseButtonState, TrayIconEvent, menu::MenuEvent};
+
         #[cfg(target_os = "linux")]
         if self.items.is_none() {
             self.items = self.built.try_recv().ok().flatten();
         }
+
         let items = self.items.as_ref()?;
         let mut ask = None;
+
         // a click on the icon (Windows and macOS; the AppIndicator only has its menu)
         while let Ok(event) = TrayIconEvent::receiver().try_recv() {
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
                 ask = Some(TrayAsk::Show);
             }
         }
+
         while let Ok(event) = MenuEvent::receiver().try_recv() {
             match picked(items, &event.id) {
                 Some(TrayAsk::Quit) => return Some(TrayAsk::Quit),
@@ -136,6 +151,7 @@ impl Tray {
                 None => {}
             }
         }
+
         ask
     }
 }
@@ -180,19 +196,23 @@ impl DrawingApp {
             self.tray_tried = true;
             self.tray = Tray::new();
         }
+
         if ctx.input_mut(|input| input.consume_shortcut(&egui::KeyboardShortcut::new(Modifiers::COMMAND, Key::Q))) {
             self.quitting = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+
         if ctx.input(|input| input.viewport().close_requested()) && hides_on_close(self.prefs.close_to_background, self.quitting, self.script.is_some()) {
             self.save_on_exit();
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+
             if cfg!(target_os = "linux") {
                 // Wayland can't hide a window (winit ignores Visible there): it goes to the dock instead
                 ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
             }
         }
+
         match self.tray.as_mut().and_then(Tray::poll) {
             Some(TrayAsk::PauseAlerts(seconds)) => {
                 self.prefs.pause_alerts_until = if seconds == u64::MAX { Some(u64::MAX) } else { Some(unix_seconds().saturating_add(seconds)) };
@@ -206,19 +226,23 @@ impl DrawingApp {
                 if self.prefs.pause_alerts_until == Some(u64::MAX) {
                     self.prefs.pause_alerts_until = None;
                 }
+
                 self.raise_window = true;
             }
             None => {}
         }
+
         if std::mem::take(&mut self.raise_window) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
             focus_window(ctx, &crate::window_names().0);
+
             #[cfg(target_os = "linux")]
             if crate::app::island::x11::active() {
                 self.raising = Some(ctx.input(|input| input.time) + RAISE_FOR);
             }
         }
+
         #[cfg(target_os = "linux")]
         self.raise_x11(ctx);
     }
@@ -229,6 +253,7 @@ impl DrawingApp {
     #[cfg(target_os = "linux")]
     fn raise_x11(&mut self, ctx: &Context) {
         let Some(until) = self.raising else { return };
+
         match crate::app::island::x11::own_window(&crate::window_names().0) {
             Some(window) => {
                 crate::app::island::x11::activate(window);
@@ -250,7 +275,9 @@ pub(crate) fn focus_window(ctx: &Context, title: &str) {
     if crate::app::voice::popup::plain::bring_forward(title) {
         return;
     }
+
     let _ = title;
+
     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
 }
 
@@ -262,6 +289,7 @@ mod tests {
     #[test]
     fn each_item_of_the_icons_menu_asks_its_own_thing() {
         use tray_icon::menu::MenuId;
+
         let items = Items {
             show: MenuId::new("mostrar"),
             quit: MenuId::new("sair"),
@@ -269,6 +297,7 @@ mod tests {
             pause_hour: MenuId::new("60"),
             pause_until_open: MenuId::new("reabrir"),
         };
+
         assert_eq!(picked(&items, &MenuId::new("mostrar")), Some(TrayAsk::Show));
         assert_eq!(picked(&items, &MenuId::new("sair")), Some(TrayAsk::Quit));
         assert_eq!(picked(&items, &MenuId::new("30")), Some(TrayAsk::PauseAlerts(30 * 60)));
@@ -281,6 +310,7 @@ mod tests {
     fn pass(app: &mut DrawingApp, ctx: &Context, time: f64) -> Vec<egui::ViewportCommand> {
         let raw = egui::RawInput { time: Some(time), ..Default::default() };
         let mut output = ctx.run_ui(raw, |_| app.background_window(ctx));
+
         output.textures_delta.clear();
         output.viewport_output.get(&egui::ViewportId::ROOT).map(|viewport| viewport.commands.clone()).unwrap_or_default()
     }
@@ -289,13 +319,17 @@ mod tests {
     fn asked_back_the_window_is_shown_restored_and_focused_and_on_x11_brought_as_a_taskbar_would() {
         let ctx = Context::default();
         let mut app = DrawingApp::default();
+
         // the bridge's `raise` (a second launch), the icon's Mostrar, the island's Abrir: the same ask
         app.apply_agent_command(crate::mcp::bridge::UiCommand::Raise);
         let sent = pass(&mut app, &ctx, 1.0);
+
         assert!(!app.raise_window, "asked once");
+
         for wanted in [egui::ViewportCommand::Visible(true), egui::ViewportCommand::Minimized(false), egui::ViewportCommand::Focus] {
             assert!(sent.contains(&wanted), "{wanted:?} in {sent:?}");
         }
+
         #[cfg(target_os = "linux")]
         if crate::app::island::x11::active() {
             // no window of this process is the window manager's here: it is looked for a while, then given up
@@ -305,6 +339,7 @@ mod tests {
             pass(&mut app, &ctx, 1.0 + RAISE_FOR + 0.5);
             assert_eq!(app.raising, None, "given up");
         }
+
         assert!(pass(&mut app, &ctx, 9.0).is_empty(), "nothing more is asked of the window");
     }
 

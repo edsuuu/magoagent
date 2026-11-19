@@ -17,25 +17,35 @@ pub(super) fn relay_hook(request: &Value, shared: &Mutex<Shared>, sender: &mpsc:
     let wait = Duration::from_secs_f64(request["wait"].as_f64().unwrap_or(0.0).clamp(0.0, 600.0));
     let send = |payload: Value, reply| sender.send(UiCommand::Hook { from: from.into(), payload, reply }).map_err(|_| "o app fechou".to_string());
     let mut payload = request["payload"].clone();
+
     if let Some(answer) = deliver(shared, &mut payload) {
         // the messages go to Claude Code even with the app gone: the event is only for the pill
         let _ = send(payload, None);
+
         return Ok(answer);
     }
+
     if wait.is_zero() {
         send(payload, None)?;
+
         return Ok(String::new());
     }
+
     let number = new_id();
+
     if let Some(fields) = payload.as_object_mut() {
         fields.insert("mago_request".into(), number.clone().into());
     }
+
     let session = payload["session_id"].clone();
     let (reply, answers) = mpsc::channel();
+
     send(payload, Some(reply))?;
     let deadline = Instant::now() + wait;
+
     loop {
         let left = deadline.saturating_duration_since(Instant::now());
+
         match answers.recv_timeout(left.min(CLIENT_POLL)) {
             Ok(answer) => return Ok(answer.unwrap_or_default()),
             // no answer in time, or the app let it go: nothing to print
@@ -43,6 +53,7 @@ pub(super) fn relay_hook(request: &Value, shared: &Mutex<Shared>, sender: &mpsc:
             Err(mpsc::RecvTimeoutError::Timeout) if left <= CLIENT_POLL => return Ok(String::new()),
             Err(mpsc::RecvTimeoutError::Timeout) if gone() => {
                 send(json!({ "hook_event_name": HOOK_GONE, "mago_request": number, "session_id": session }), None)?;
+
                 return Ok(String::new());
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -57,8 +68,10 @@ fn deliver(shared: &Mutex<Shared>, payload: &mut Value) -> Option<String> {
     if hook_name(payload) != "Stop" {
         return None;
     }
+
     let session = payload["session_id"].as_str().filter(|session| !session.is_empty())?;
     let messages = locked(shared).outbox.remove(session).filter(|messages| !messages.is_empty())?;
+
     payload["mago_delivered"] = messages.len().into();
     Some(json!({ "decision": "block", "reason": format!("{MESSAGE_FRAME}\n{}", messages.join("\n\n")) }).to_string())
 }
@@ -68,6 +81,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     let who = request["from"].as_str().unwrap_or_default();
     let name = request["name"].as_str().unwrap_or_default();
     let text = request["text"].as_str().unwrap_or_default();
+
     // a terminal of a workspace off view sees its own drawing (as it left the screen), and only
     // reads and talks: what changes the drawing or a page waits for its workspace to be open.
     // A chat belongs to no workspace: it always works on the canvas shown
@@ -75,23 +89,27 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     let (nodes, away, chat) = {
         let shared = locked(shared);
         let chat = shared.chats.get(who).cloned();
+
         match shared.away.values().find(|(_, nodes)| chat.is_none() && !who.is_empty() && nodes.iter().any(|n| n.id == who)) {
             Some((space, nodes)) => (nodes.clone(), Some(space.clone()), chat),
             None => (shared.nodes.clone(), None, chat),
         }
     };
+
     // a chat with no card on the canvas shown speaks from outside it, as it always did
     let from = if chat.is_some() && !nodes.iter().any(|n| n.id == who) { "" } else { who };
     // what it builds (a recruit, a portal, a rope of its own) hangs from its card all the same: the
     // app puts the Maestro's card on the canvas when it is not there (app/terminal.rs)
     let builder = if chat.is_some() { who } else { from };
     let cmd = request["cmd"].as_str().unwrap_or_default();
+
     if chat.is_none()
         && nodes.iter().any(|node| node.id == from && !node.maestro)
         && matches!(cmd, "show" | "set_folder" | "screenshot" | "review" | "look" | "raise")
     {
         return Err("Só um terminal da Luna (ou um chat) pode usar esse comando.".into());
     }
+
     if let Some(space) = away
         && !matches!(cmd, "list" | "check" | "ask" | "note_read" | "notify" | "hook")
     {
@@ -101,71 +119,95 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             cmd.replace('_', " ")
         ));
     }
+
     let handle_of = |node: &Node| locked(shared).terminals.get(&node.id).cloned().ok_or("esse terminal não está rodando");
     let send = |command: UiCommand| sender.send(command).map_err(|_| "o app fechou".to_string());
     let answer = |rx: mpsc::Receiver<Result<String, String>>| rx.recv_timeout(Duration::from_secs(10)).map_err(|_| "o app não respondeu".to_string())?;
+
     // `connect` reaches the whole canvas, not only what is roped to the caller: building the team is the point
     let anywhere = |n: &str| {
         let exact = nodes.iter().find(|x| x.name == n);
+
         exact
             .or_else(|| nodes.iter().find(|x| x.name.to_lowercase() == n.trim().to_lowercase()))
             .map(|x| x.id.clone())
             .ok_or(format!("Nada chamado \"{n}\" no canvas."))
     };
+
     // a child agent builds nothing: only a Maestro recruits, opens portals and connects
     if matches!(request["cmd"].as_str(), Some("recruit" | "portal_create" | "connect")) && nodes.iter().any(|n| n.id == from && !n.maestro) {
         return Err("Só um terminal da Luna pode criar terminais, navegadores ou conexões.".into());
     }
+
     match request["cmd"].as_str().unwrap_or_default() {
         "list" => Ok(describe(&nodes, from, shared)),
         "check" => {
             let target = find(&nodes, from, name, NodeKind::Terminal)?;
+
             if target.kind == NodeKind::Chat {
                 let (reply, rx) = mpsc::channel();
+
                 send(UiCommand::CheckChat { id: target.id, reply })?;
+
                 return answer(rx);
             }
+
             Ok(handle_of(&target)?.screen_text())
         }
         "ask" => {
             let target = find(&nodes, from, name, NodeKind::Terminal)?;
+
             if target.id == who {
                 return Err("um agente não pode perguntar a si mesmo".into());
             }
+
             let to_chat = target.kind == NodeKind::Chat;
+
             if to_chat && request["raw"] == true {
                 return Err(format!("\"{}\" é um chat: não recebe teclas, só perguntas.", target.name));
             }
+
             let timeout = Duration::from_secs_f64(request["timeout"].as_f64().unwrap_or(600.0).clamp(1.0, 3600.0));
             let pair = (from.to_string(), target.id.clone());
             // a chat with no card here still asks by its name
             let asker = nodes.iter().find(|n| n.id == from).map(|n| n.name.as_str()).or(chat.as_deref()).unwrap_or("um agente fora do canvas");
+
             let transcript = {
                 let mut shared = locked(shared);
+
                 // two questions at once would mix in its typing box and in its answer
                 if let Some((asker, _)) = shared.asking.iter().find(|(_, asked)| *asked == target.id) {
                     let who = nodes.iter().find(|n| n.id == *asker).map_or("outro agente", |n| n.name.as_str());
+
                     return Err(format!("\"{}\" já está respondendo a {who}: espere essa resposta ou leia a tela com check.", target.name));
                 }
+
                 // busy with something else (or an ask that timed out): the words would queue behind
                 // it and its answer mix with that work's; keys (`raw`) still go, to interrupt it.
                 // A busy chat keeps the question in its line instead (app/chat/ask.rs)
                 if !to_chat && request["raw"] != true && matches!(shared.states.get(&target.id), Some(AgentState::Working(_) | AgentState::Active(_))) {
                     return Err(format!("\"{}\" está trabalhando: espere ou leia a tela com check.", target.name));
                 }
+
                 shared.asking.push(pair.clone());
                 shared.transcripts.get(&target.id).cloned()
             };
+
             let _asking = Asking(shared, pair.clone());
+
             // kept once typed, as the asker's for the chat and an event
             let delivered = || {
                 let mut shared = locked(shared);
+
                 shared.asked.push((target.id.clone(), text.trim().to_string(), asker.to_string()));
                 let extra = shared.asked.len().saturating_sub(50);
+
                 shared.asked.drain(..extra);
                 let what = tool_summary(if request["raw"] == true { "teclas" } else { "pergunta" }, &json!({ "prompt": text }));
+
                 shared.events.push((from.to_string(), target.id.clone(), what));
             };
+
             let answer = if to_chat {
                 chat::ask(&target, from, asker, text, timeout, sender)
             } else {
@@ -173,7 +215,9 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                     .map_err(String::from)
                     .and_then(|h| ask(&h, text, request["raw"] == true, timeout, transcript, delivered).map_err(|why| format!("\"{}\" {why}", target.name)))
             };
+
             let mut shared = locked(shared);
+
             let what = match &answer {
                 Ok((Asked::Answered, _)) => "respondeu",
                 Ok((Asked::StillWorking, _)) => "ainda trabalha na pergunta",
@@ -182,14 +226,17 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 Ok((Asked::Silent, _)) => "não reagiu à pergunta",
                 Err(_) => "não recebeu a pergunta",
             };
+
             // what went back to the asker: the answer, or why there is none
             let what = if from.is_empty() { format!("{what} (a quem perguntou de fora do canvas)") } else { what.to_string() };
+
             shared.events.push((target.id.clone(), from.to_string(), what));
             answer.map(|(_, text)| text)
         }
         "note_read" => Ok(find(&nodes, from, name, NodeKind::Note)?.text),
         "note_write" => {
             let note = find(&nodes, from, name, NodeKind::Note)?;
+
             sender.send(UiCommand::WriteNote { id: note.id, text: text.into() }).map_err(|_| "o app fechou")?;
             Ok(format!("Nota \"{}\" atualizada.", note.name))
         }
@@ -197,21 +244,26 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             if from.is_empty() {
                 return Err("crie notas de dentro de um terminal do MagoAgent".into());
             }
+
             sender.send(UiCommand::CreateNote { from: from.into(), text: text.into() }).map_err(|_| "o app fechou")?;
             Ok("Nota criada e conectada a este terminal.".into())
         }
         "portal_navigate" => {
             let portal = find(&nodes, from, name, NodeKind::Portal)?;
             let url = normalize_url(text);
+
             sender.send(UiCommand::PortalNavigate { id: portal.id, url: url.clone() }).map_err(|_| "o app fechou")?;
             Ok(format!("Navegador \"{}\" abrindo {url}.", portal.name))
         }
         "portal_history" => {
             let action = request["action"].as_str().unwrap_or_default();
+
             let Some(did) = portal_history_action(action) else {
                 return Err("ação de histórico desconhecida: use back, forward ou reload".into());
             };
+
             let portal = find(&nodes, from, name, NodeKind::Portal)?;
+
             sender.send(UiCommand::PortalHistory { id: portal.id, action: action.into() }).map_err(|_| "o app fechou")?;
             Ok(format!("Navegador \"{}\" {did}.", portal.name))
         }
@@ -223,12 +275,16 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             } else {
                 find(&nodes, from, name, NodeKind::Portal)?
             };
+
             // a picture is the app's to take, not a script's
             if cmd == "portal_shot" {
                 let (reply, picture) = mpsc::channel();
+
                 sender.send(UiCommand::PortalShot { id: portal.id, reply }).map_err(|_| "o app fechou")?;
+
                 return picture.recv_timeout(Duration::from_secs(20)).map_err(|_| "o app não respondeu")?;
             }
+
             let script = match cmd {
                 "portal_text" => "document.body ? document.body.innerText : ''".into(),
                 "portal_eval" => portal_eval_script(text),
@@ -236,8 +292,10 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 "portal_wait" => {
                     let selector = request["selector"].as_str().unwrap_or_default();
                     let timeout = Duration::from_millis(request["timeout_ms"].as_u64().unwrap_or(5000).min(30_000));
+
                     return portal_wait(selector, timeout, |script| {
                         let (reply, answer) = mpsc::channel();
+
                         sender.send(UiCommand::PortalEval { id: portal.id.clone(), script: script.into(), reply }).map_err(|_| "o app fechou".to_string())?;
                         answer.recv_timeout(Duration::from_secs(2)).map_err(|_| "a página não respondeu".to_string())?
                     });
@@ -245,16 +303,21 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 "portal_scroll" => portal_scroll_script(request["selector"].as_str(), request["dy"].as_i64()),
                 _ => {
                     let who = nodes.iter().find(|n| n.id == from).map_or("IA", |n| n.name.as_str());
+
                     cursor_script(who, request["selector"].as_str().unwrap_or_default(), matches!(cmd, "portal_fill" | "vault_fill").then_some(text))
                 }
             };
+
             let (reply, answer) = mpsc::channel();
+
             sender.send(UiCommand::PortalEval { id: portal.id, script, reply }).map_err(|_| "o app fechou")?;
             let timeout = if cmd == "portal_wait" { Duration::from_secs(35) } else { Duration::from_secs(20) };
             let json = answer.recv_timeout(timeout).map_err(|_| "a página não respondeu")??;
+
             if cmd == "portal_console" {
                 return Ok(crate::app::browser::console::format_response(&json));
             }
+
             // strings come back JSON-quoted; plain text reads better
             Ok(serde_json::from_str::<Value>(&json).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or(json))
         }
@@ -265,6 +328,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             // the model and effort the Maestro picked, as its agent's own flags (maestro/tuning.rs)
             let tuned = |key: &str| request[key].as_str().unwrap_or_default().to_string();
             let command = crate::app::maestro::tuning::with_tuning(command, &tuned("model"), &tuned("effort"));
+
             send(UiCommand::Recruit {
                 from: builder.into(),
                 command,
@@ -272,24 +336,30 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 mode: request["mode"].as_str().and_then(AgentMode::parse),
                 reply,
             })?;
+
             answer(rx)
         }
         "portal_create" => {
             let (reply, rx) = mpsc::channel();
+
             send(UiCommand::CreatePortal { from: builder.into(), url: text.into(), name: name.into(), reply })?;
             answer(rx)
         }
         "connect" => {
             let to = request["to"].as_str().unwrap_or_default();
+
             let (a, b) = match to {
                 "" if builder.is_empty() => return Err("diga as duas pontas: connect <a> <b>".into()),
                 "" => (builder.to_string(), anywhere(name)?),
                 to => (anywhere(name)?, anywhere(to)?),
             };
+
             if a == b {
                 return Err("as duas pontas são a mesma coisa".into());
             }
+
             let (reply, rx) = mpsc::channel();
+
             send(UiCommand::Connect { a, b, reply })?;
             answer(rx)
         }
@@ -307,16 +377,19 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         }
         "set_folder" => {
             let (reply, rx) = mpsc::channel();
+
             send(UiCommand::SetFolder { path: text.into(), reply })?;
             answer(rx)
         }
         "screenshot" => {
             let (reply, rx) = mpsc::channel();
+
             send(UiCommand::Screenshot { reply })?;
             answer(rx)
         }
         "review" => {
             let (reply, rx) = mpsc::channel();
+
             send(UiCommand::Review { path: text.into(), reply })?;
             answer(rx)
         }
@@ -326,6 +399,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             // agent is the Maestro, as it was before it had a token: no caller)
             let mut args = request["args"].clone();
             let action = request["action"].as_str().unwrap_or_default();
+
             // a terminal that is no Maestro reaches only the trees roped to it, its own tasks and the shared notes (memory,
             // binder: a recruit writes what it learned there, in the files the Maestro reads): what
             // changes the whole app, or acts on a name anywhere on the canvas, is for a Maestro or a chat
@@ -333,13 +407,16 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 if !matches!(action, "file_tree" | "tasks" | "memory" | "binder") {
                     return Err("Só um terminal da Luna (ou um chat) pode usar essa ação; um terminal comum só mexe nas árvores ligadas a ele.".into());
                 }
+
                 if action == "file_tree" {
                     // `aim` runs first so that a tree left unnamed means the roped one, never the app's choice
                     let object = args.as_object_mut().ok_or("args inválidos")?;
+
                     tree::aim(action, object, &nodes, from);
                     tree::confine(object, &nodes, from)?;
                 }
             }
+
             if let Some(args) = args.as_object_mut() {
                 args.insert("caller".into(), if chat.is_some() { "" } else { from }.into());
                 // who asked, chat or terminal: what an action opens for it is roped to it
@@ -347,11 +424,13 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 // `file_tree` with no `tree` is the tree roped to who asks, a chat's too
                 tree::aim(action, args, &nodes, from);
             }
+
             send(UiCommand::Act { action: action.into(), args, reply })?;
             answer(rx)
         }
         "ask_person" => {
             let (reply, rx) = mpsc::channel();
+
             send(UiCommand::AskPerson { from: who.into(), request: request["payload"].clone(), reply })?;
             // the person takes their time: an hour, then the agent hears no
             rx.recv_timeout(Duration::from_secs(3600)).map_err(|_| "a pessoa não respondeu".to_string())?
@@ -360,19 +439,24 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         "hook" => relay_hook(request, shared, sender, &|| false),
         "look" => {
             let (reply, rx) = mpsc::channel();
+
             send(UiCommand::Look { at: text.into(), zoom: request["zoom"].as_f64().map(|z| z as f32), reply })?;
             answer(rx)
         }
         // the IDE is gone: a file tree roped to the caller opens the file in its own editor pane, or searches the project
         cmd @ ("ide_open" | "ide_search") => {
             let tree = tree::named(&nodes, from, name).ok_or("Nenhuma árvore de arquivos conectada a você: ligue uma por corda (Vincular).")?;
+
             let args = if cmd == "ide_open" {
                 let path = ide_path(Path::new(&tree.text), request["path"].as_str().unwrap_or_default())?;
+
                 json!({ "action": "open", "tree": tree.id, "path": path.to_string_lossy(), "line": request["line"] })
             } else {
                 json!({ "action": "find_in_files", "tree": tree.id, "query": text })
             };
+
             let (reply, rx) = mpsc::channel();
+
             send(UiCommand::Act { action: "file_tree".into(), args, reply })?;
             answer(rx)
         }

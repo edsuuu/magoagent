@@ -94,6 +94,7 @@ impl Compare {
             jobs: [None, None],
             caret: [None; 2],
         };
+
         compare.rebuild();
         compare
     }
@@ -111,38 +112,49 @@ impl Compare {
         // the rows of each change
         let mut spans: Vec<Range<usize>> = vec![];
         let mut index = 0;
+
         while index < rows.len() {
             let end = index + rows[index..].iter().take_while(|row| row.0.kind != RowKind::Same).count();
+
             if end > index {
                 spans.push(index..end);
             }
+
             index = end.max(index + 1);
         }
+
         let keys: Vec<Option<usize>> = rows.iter().map(|(row, _)| if row.kind == RowKind::Same { row.left } else { None }).collect();
+
         self.items = [vec![], vec![]];
         self.jobs = [None, None];
         self.blocks.clear();
         let (mut next, mut started) = (0, [0, 0]);
+
         for step in visible_plan(&keys, &self.opened, self.collapse) {
             match step {
                 Plan::Fold { key, first, count } => {
                     let starts = [rows[first].0.left.unwrap_or(0), rows[first].0.right.unwrap_or(0)];
+
                     self.items[0].push(Item::Fold { key, count, starts });
+
                     if !self.unified {
                         self.items[1].push(Item::Fold { key, count, starts });
                     }
                 }
                 Plan::Show(index) => {
                     let (row, partner) = rows[index];
+
                     if spans.get(next).is_some_and(|span| span.start == index) {
                         started = [self.items[0].len(), self.items[1].len()];
                     }
+
                     if self.unified {
                         self.items[0].push(Item::Line { row, partner });
                     } else {
                         self.items[0].push(Item::Line { row: DiffRow { right: None, ..row }, partner: row.left.and(row.right) });
                         self.items[1].push(Item::Line { row: DiffRow { left: None, ..row }, partner: row.right.and(row.left) });
                     }
+
                     if spans.get(next).is_some_and(|span| span.end == index + 1) {
                         self.blocks.push(Block { rows: [started[0]..self.items[0].len(), started[1]..self.items[1].len()] });
                         next += 1;
@@ -150,6 +162,7 @@ impl Compare {
                 }
             }
         }
+
         self.cur = self.cur.min(self.blocks.len().saturating_sub(1));
     }
 
@@ -200,6 +213,7 @@ impl Compare {
     /// After column `driver` scrolled to `top` (a row): clamp it, and the other one follows (side by side the rows match).
     pub(crate) fn scroll_driver(&mut self, driver: usize, top: f32, most: [f32; 2]) {
         self.scroll[driver] = top.clamp(0.0, most[driver]);
+
         if !self.unified {
             self.scroll[1 - driver] = self.scroll[driver].clamp(0.0, most[1 - driver]);
         }
@@ -211,6 +225,7 @@ impl Compare {
             Item::Line { row, .. } if row.kind != RowKind::Same => Some(row),
             _ => None,
         });
+
         changed.fold((0, 0), |(removed, added), row| (removed + row.left.is_some() as usize, added + row.right.is_some() as usize))
     }
 }
@@ -219,6 +234,7 @@ impl Compare {
     /// The row of each line of a side-by-side column's text, and whether it shows (a hidden line sits on its marker's row).
     pub(crate) fn line_rows(&self, column: usize) -> Vec<(usize, bool)> {
         let mut rows = vec![];
+
         for (index, item) in self.items[column].iter().enumerate() {
             match item {
                 Item::Line { row, .. } if row.left.or(row.right).is_some() => rows.push((index, true)),
@@ -226,6 +242,7 @@ impl Compare {
                 Item::Line { .. } => {}
             }
         }
+
         rows
     }
 
@@ -234,10 +251,13 @@ impl Compare {
     pub(crate) fn colored(&mut self, column: usize, font: &egui::FontId, row_h: f32) -> (u64, egui::text::LayoutJob) {
         let text = if column == 0 { &self.old } else { &self.new };
         let key = crate::editor::text::hash(text, font.size);
+
         if let Some(made) = self.jobs[column].as_ref().filter(|(made, _)| *made == key) {
             return made.clone();
         }
+
         let job = highlight::layout(self.lang, text, font.clone(), row_h);
+
         self.jobs[column] = Some((key, job.clone()));
         (key, job)
     }
@@ -248,24 +268,31 @@ impl Compare {
 /// already says it).
 pub(crate) fn word_spans(text: &str, marks: Vec<Range<usize>>) -> Vec<Range<usize>> {
     let mut spans: Vec<Range<usize>> = vec![];
+
     for mark in marks {
         let (start, end) = (mark.start.min(text.len()), mark.end.min(text.len()));
         let Some(piece) = text.get(start..end) else { continue };
         let trimmed = piece.trim();
+
         if trimmed.is_empty() {
             continue;
         }
+
         let start = start + (piece.len() - piece.trim_start().len());
         let end = start + trimmed.len();
+
         match spans.last_mut() {
             Some(last) if text.get(last.end..start).is_some_and(|gap| gap.trim().is_empty()) => last.end = end,
             _ => spans.push(start..end),
         }
     }
+
     let content = text.chars().filter(|character| !character.is_whitespace()).count();
     let marked: usize = spans.iter().map(|span| text[span.clone()].chars().filter(|character| !character.is_whitespace()).count()).sum();
+
     if content == 0 || marked * 10 >= content * 7 {
         return vec![];
     }
+
     spans
 }

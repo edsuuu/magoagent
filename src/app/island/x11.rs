@@ -20,6 +20,7 @@ use x11rb::rust_connection::RustConnection;
 /// Wayland (the island then is a plain window the compositor places).
 pub(crate) fn active() -> bool {
     static ACTIVE: OnceLock<bool> = OnceLock::new();
+
     *ACTIVE.get_or_init(|| chosen(std::env::var_os("DISPLAY").as_deref(), std::env::var("MAGOAGENT_WAYLAND").ok().as_deref()) && libraries())
 }
 
@@ -27,6 +28,7 @@ pub(crate) fn active() -> bool {
 /// has Wayland (the .deb depends on it).
 fn libraries() -> bool {
     const NEEDED: [&str; 6] = ["libX11.so.6", "libX11-xcb.so.1", "libXcursor.so.1", "libXi.so.6", "libxkbcommon.so.0", "libxkbcommon-x11.so.0"];
+
     // SAFETY: system libraries opened and closed at once, as winit opens them; nothing of them is called
     NEEDED.iter().all(|name| unsafe { libloading::Library::new(name) }.is_ok())
 }
@@ -60,11 +62,14 @@ struct ResizeSync {
 
 fn link() -> &'static Mutex<Option<Link>> {
     static LINK: OnceLock<Mutex<Option<Link>>> = OnceLock::new();
+
     LINK.get_or_init(|| {
         let link = x11rb::connect(None).ok().map(|(connection, screen)| {
             let root = connection.setup().roots[screen].root;
+
             Link { connection, root, window: None, shape: None, screen, helper: None, resize: None }
         });
+
         Mutex::new(link)
     })
 }
@@ -78,19 +83,23 @@ fn atom(connection: &RustConnection, name: &str) -> Option<u32> {
 fn find(connection: &RustConnection, root: Window, title: &str) -> Option<Window> {
     let (list, name, utf8, pid) =
         (atom(connection, "_NET_CLIENT_LIST")?, atom(connection, "_NET_WM_NAME")?, atom(connection, "UTF8_STRING")?, atom(connection, "_NET_WM_PID")?);
+
     let windows: Vec<u32> = connection.get_property(false, root, list, AtomEnum::WINDOW, 0, 4096).ok()?.reply().ok()?.value32()?.collect();
     let own = std::process::id();
+
     windows.into_iter().rev().find(|&window| {
         let named = connection
             .get_property(false, window, name, utf8, 0, 256)
             .ok()
             .and_then(|cookie| cookie.reply().ok())
             .is_some_and(|reply| reply.value == title.as_bytes());
+
         let process = connection
             .get_property(false, window, pid, AtomEnum::CARDINAL, 0, 1)
             .ok()
             .and_then(|cookie| cookie.reply().ok())
             .and_then(|reply| reply.value32()?.next());
+
         named && process.is_none_or(|process| process == own)
     })
 }
@@ -101,22 +110,28 @@ pub(crate) fn input_shape(title: &str, area: Rect, scale: f32) {
     let mut guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let Some(link) = guard.as_mut() else { return };
     let shape = pixels(area, scale);
+
     if link.window.is_none() {
         link.window = find(&link.connection, link.root, title);
         link.shape = None;
     }
+
     let Some(window) = link.window else { return };
     let key = (shape.x, shape.y, shape.width, shape.height);
+
     if link.shape == Some(key) {
         return;
     }
+
     let sent = link.connection.shape_rectangles(SO::SET, SK::INPUT, ClipOrdering::UNSORTED, window, 0, 0, &[shape]).ok().and_then(|cookie| cookie.check().ok());
+
     if sent.is_some() {
         link.shape = Some(key);
     } else {
         // the window is gone (the island was turned off and on): looked for again
         link.window = None;
     }
+
     let _ = link.connection.flush();
 }
 
@@ -126,6 +141,7 @@ pub(crate) fn cut(window: u32, holes: &[Rectangle]) {
     let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let Some(link) = guard.as_ref() else { return };
     let connection = &link.connection;
+
     // a page's window that is already gone answers with an error, which is only dropped
     if holes.is_empty() {
         let _ = connection.shape_mask(SO::SET, SK::BOUNDING, window, 0, 0, x11rb::NONE);
@@ -134,6 +150,7 @@ pub(crate) fn cut(window: u32, holes: &[Rectangle]) {
         let _ = connection.shape_rectangles(SO::SET, SK::BOUNDING, ClipOrdering::UNSORTED, window, 0, 0, &[whole]);
         let _ = connection.shape_rectangles(SO::SUBTRACT, SK::BOUNDING, ClipOrdering::UNSORTED, window, 0, 0, holes);
     }
+
     let _ = connection.flush();
 }
 
@@ -163,11 +180,15 @@ pub(crate) fn give_keyboard(window: u32) {
 pub(crate) fn frame_drawn(window: u32) {
     let mut guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let Some(link) = guard.as_mut() else { return };
+
     if link.resize.as_ref().is_none_or(|(known, _)| *known != window) {
         link.resize = Some((window, resize_sync(&link.connection, window)));
     }
+
     let Some((_, Some(sync))) = link.resize.as_mut() else { return };
+
     sync.value = next_drawn(sync.value);
+
     if link.connection.sync_set_counter(sync.counter, int64(sync.value)).is_ok() {
         let _ = link.connection.flush();
     }
@@ -187,9 +208,12 @@ fn int64(value: i64) -> Int64 {
 fn resize_sync(connection: &RustConnection, window: Window) -> Option<ResizeSync> {
     connection.sync_initialize(3, 1).ok()?.reply().ok()?;
     let counter = connection.generate_id().ok()?;
+
     connection.sync_create_counter(counter, int64(0)).ok()?.check().ok()?;
+
     let (protocols, request, property) =
         (atom(connection, "WM_PROTOCOLS")?, atom(connection, "_NET_WM_SYNC_REQUEST")?, atom(connection, "_NET_WM_SYNC_REQUEST_COUNTER")?);
+
     connection.change_property(PropMode::REPLACE, window, property, AtomEnum::CARDINAL, 32, 1, &counter.to_ne_bytes()).ok()?.check().ok()?;
     connection.change_property(PropMode::APPEND, window, protocols, AtomEnum::ATOM, 32, 1, &request.to_ne_bytes()).ok()?.check().ok()?;
     Some(ResizeSync { counter, value: 0 })
@@ -199,6 +223,7 @@ fn resize_sync(connection: &RustConnection, window: Window) -> Option<ResizeSync
 pub(crate) fn own_window(title: &str) -> Option<u32> {
     let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let link = guard.as_ref()?;
+
     find(&link.connection, link.root, title)
 }
 
@@ -214,9 +239,11 @@ pub(crate) fn pixels(area: Rect, scale: f32) -> Rectangle {
     if !area.is_positive() || !area.is_finite() {
         return Rectangle { x: 0, y: 0, width: 0, height: 0 };
     }
+
     let (left, top) = ((area.left() * scale).floor().max(0.0), (area.top() * scale).floor().max(0.0));
     let (right, bottom) = ((area.right() * scale).ceil().max(left), (area.bottom() * scale).ceil().max(top));
     let clamp = |value: f32| value.min(i16::MAX as f32);
+
     Rectangle {
         x: clamp(left) as i16,
         y: clamp(top) as i16,
@@ -231,18 +258,22 @@ pub(crate) fn client_windows() -> Vec<(u32, u32, String)> {
     let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let Some(link) = guard.as_ref() else { return Vec::new() };
     let connection = &link.connection;
+
     let (Some(list), Some(name), Some(utf8), Some(pid)) =
         (atom(connection, "_NET_CLIENT_LIST"), atom(connection, "_NET_WM_NAME"), atom(connection, "UTF8_STRING"), atom(connection, "_NET_WM_PID"))
     else {
         return Vec::new();
     };
+
     let reply = connection.get_property(false, link.root, list, AtomEnum::WINDOW, 0, 4096).ok().and_then(|cookie| cookie.reply().ok());
     let windows: Vec<u32> = reply.and_then(|reply| Some(reply.value32()?.collect())).unwrap_or_default();
+
     windows
         .into_iter()
         .filter_map(|window| {
             let process = connection.get_property(false, window, pid, AtomEnum::CARDINAL, 0, 1).ok()?.reply().ok()?.value32()?.next()?;
             let title = connection.get_property(false, window, name, utf8, 0, 256).ok()?.reply().ok()?.value;
+
             Some((window, process, String::from_utf8_lossy(&title).into_owned()))
         })
         .collect()
@@ -256,6 +287,7 @@ pub(crate) fn activate(window: u32) -> bool {
     if cfg!(test) {
         return false;
     }
+
     let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let Some(link) = guard.as_ref() else { return false };
     let Some(active) = atom(&link.connection, "_NET_ACTIVE_WINDOW") else { return false };
@@ -264,6 +296,7 @@ pub(crate) fn activate(window: u32) -> bool {
     let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
     let sent = link.connection.send_event(false, link.root, mask, event).ok().and_then(|cookie| cookie.check().ok()).is_some();
     let _ = link.connection.flush();
+
     sent
 }
 
@@ -272,9 +305,11 @@ fn helper(link: &mut Link) -> Option<Window> {
     if link.helper.is_none() {
         let window = link.connection.generate_id().ok()?;
         let aux = CreateWindowAux::new().event_mask(EventMask::PROPERTY_CHANGE);
+
         link.connection.create_window(0, window, link.root, -10, -10, 1, 1, 0, WindowClass::INPUT_ONLY, 0, &aux).ok()?.check().ok()?;
         link.helper = Some(window);
     }
+
     link.helper
 }
 
@@ -283,8 +318,10 @@ fn helper(link: &mut Link) -> Option<Window> {
 fn server_time(link: &mut Link) -> Option<u32> {
     let window = helper(link)?;
     let mark = atom(&link.connection, "_MAGOAGENT_TIME")?;
+
     link.connection.change_property(PropMode::APPEND, window, mark, AtomEnum::STRING, 8, 0, &[]).ok()?;
     link.connection.flush().ok()?;
+
     for _ in 0..100 {
         match link.connection.poll_for_event().ok()? {
             Some(Event::PropertyNotify(notify)) if notify.window == window => return Some(notify.time),
@@ -292,6 +329,7 @@ fn server_time(link: &mut Link) -> Option<u32> {
             None => std::thread::sleep(std::time::Duration::from_millis(2)),
         }
     }
+
     None
 }
 
@@ -304,21 +342,27 @@ pub(crate) fn startup_message(id: &str, screen: usize) -> String {
 fn startup_send(link: &mut Link, message: &str) -> Option<()> {
     let window = helper(link)?;
     let (begin, more) = (atom(&link.connection, "_NET_STARTUP_INFO_BEGIN")?, atom(&link.connection, "_NET_STARTUP_INFO")?);
+
     for (index, piece) in startup_pieces(message).into_iter().enumerate() {
         let event = ClientMessageEvent::new(8, window, if index == 0 { begin } else { more }, piece);
+
         link.connection.send_event(false, link.root, EventMask::PROPERTY_CHANGE, event).ok()?;
     }
+
     link.connection.flush().ok()
 }
 
 /// A message in the pieces of 20 bytes the client messages carry, ended by a zero.
 pub(crate) fn startup_pieces(message: &str) -> Vec<[u8; 20]> {
     let mut bytes = message.as_bytes().to_vec();
+
     bytes.push(0);
+
     bytes
         .chunks(20)
         .map(|chunk| {
             let mut piece = [0u8; 20];
+
             piece[..chunk.len()].copy_from_slice(chunk);
             piece
         })
@@ -336,6 +380,7 @@ pub(crate) fn startup_token() -> Option<String> {
     let count = COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let id = format!("magoagent-{}-{count}_TIME{time}", std::process::id());
     let message = startup_message(&id, link.screen);
+
     startup_send(link, &message)?;
     Some(id)
 }
@@ -343,6 +388,7 @@ pub(crate) fn startup_token() -> Option<String> {
 /// The startup notification `id` is over (mutter ends it when the token is used; this one is for when it was not).
 pub(crate) fn startup_done(id: &str) {
     let mut guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
     if let Some(link) = guard.as_mut() {
         startup_send(link, &format!("remove: ID={id}"));
     }
@@ -357,6 +403,7 @@ pub(crate) fn cursor() -> Option<Pos2> {
     static XWAYLAND: OnceLock<bool> = OnceLock::new();
     let xwayland = *XWAYLAND.get_or_init(|| std::env::var_os("WAYLAND_DISPLAY").is_some_and(|display| !display.is_empty()));
     let known = known_cursor(xwayland, reply.child, reply.root_x, reply.root_y);
+
     drop(guard);
     known.or_else(super::gnome::cursor)
 }
@@ -372,12 +419,15 @@ fn known_cursor(xwayland: bool, over: u32, x: i16, y: i16) -> Option<Pos2> {
 pub(crate) fn monitor_works() -> Vec<[i32; 4]> {
     static SEEN: Mutex<Option<(std::time::Instant, Vec<[i32; 4]>)>> = Mutex::new(None);
     let mut seen = SEEN.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
     if let Some((at, works)) = seen.as_ref()
         && at.elapsed() < std::time::Duration::from_secs(2)
     {
         return works.clone();
     }
+
     let works = read_works().unwrap_or_default();
+
     *seen = Some((std::time::Instant::now(), works.clone()));
     works
 }
@@ -387,17 +437,23 @@ pub(crate) fn monitor_works() -> Vec<[i32; 4]> {
 fn read_works() -> Option<Vec<[i32; 4]>> {
     let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let link = guard.as_ref()?;
+
     let cardinals = |name: &str, most: u32| -> Option<Vec<u32>> {
         let property = atom(&link.connection, name)?;
         let reply = link.connection.get_property(false, link.root, property, AtomEnum::CARDINAL, 0, most).ok()?.reply().ok()?;
+
         Some(reply.value32()?.collect())
     };
+
     let desktop = cardinals("_NET_CURRENT_DESKTOP", 1).and_then(|values| values.first().copied()).unwrap_or(0);
     let gnome = cardinals(&format!("_GTK_WORKAREAS_D{desktop}"), 64).map(|values| rectangles(&values)).unwrap_or_default();
+
     if !gnome.is_empty() {
         return Some(gnome);
     }
+
     let desktop_work = cardinals("_NET_WORKAREA", 4).map(|values| rectangles(&values)).and_then(|works| works.first().copied());
+
     let monitors: Vec<[i32; 4]> = link
         .connection
         .randr_get_monitors(link.root, true)
@@ -405,6 +461,7 @@ fn read_works() -> Option<Vec<[i32; 4]>> {
         .and_then(|cookie| cookie.reply().ok())
         .map(|reply| reply.monitors.iter().map(|m| [m.x as i32, m.y as i32, m.x as i32 + m.width as i32, m.y as i32 + m.height as i32]).collect())
         .unwrap_or_default();
+
     Some(monitors_less_panels(&monitors, desktop_work))
 }
 
@@ -417,13 +474,16 @@ fn rectangles(values: &[u32]) -> Vec<[i32; 4]> {
 /// work area alone.
 fn monitors_less_panels(monitors: &[[i32; 4]], desktop: Option<[i32; 4]>) -> Vec<[i32; 4]> {
     let Some([left, top, right, bottom]) = desktop else { return monitors.to_vec() };
+
     if monitors.is_empty() {
         return vec![[left, top, right, bottom]];
     }
+
     monitors
         .iter()
         .map(|&[l, t, r, b]| {
             let cut = [l.max(left), t.max(top), r.min(right), b.min(bottom)];
+
             if cut[0] < cut[2] && cut[1] < cut[3] { cut } else { [l, t, r, b] }
         })
         .collect()
@@ -444,9 +504,11 @@ mod tests {
     fn each_monitor_has_its_own_work_area() {
         // GNOME on two monitors side by side: the top bar and the dock on the first only
         let gnome = rectangles(&[0, 32, 1920, 985, 1920, 0, 1920, 1080]);
+
         assert_eq!(gnome, vec![[0, 32, 1920, 1017], [1920, 0, 3840, 1080]]);
         // elsewhere: each monitor less the desktop's panels
         let monitors = [[0, 0, 1920, 1080], [1920, 0, 3840, 1080]];
+
         assert_eq!(monitors_less_panels(&monitors, Some([0, 32, 3840, 1048])), vec![[0, 32, 1920, 1048], [1920, 32, 3840, 1048]]);
         assert_eq!(monitors_less_panels(&[], Some([0, 32, 3840, 1048])), vec![[0, 32, 3840, 1048]], "no monitor known: the desktop");
         assert_eq!(monitors_less_panels(&monitors, None), monitors.to_vec());
@@ -455,6 +517,7 @@ mod tests {
     #[test]
     fn x11_is_chosen_where_there_is_an_x_server_unless_wayland_is_asked() {
         let display = std::ffi::OsStr::new(":0");
+
         assert!(chosen(Some(display), None), "an X server, XWayland included");
         assert!(chosen(Some(display), Some("0")));
         assert!(!chosen(Some(display), Some("1")), "MAGOAGENT_WAYLAND=1 stays on Wayland");
@@ -464,10 +527,13 @@ mod tests {
     #[test]
     fn a_startup_notification_goes_in_pieces_of_twenty_bytes_ended_by_a_zero() {
         let message = startup_message("magoagent-7-0_TIME1234", 0);
+
         assert_eq!(message, "new: ID=magoagent-7-0_TIME1234 NAME=MagoAgent SCREEN=0");
         let pieces = startup_pieces(&message);
+
         assert_eq!(pieces.len(), message.len() / 20 + 1);
         let joined: Vec<u8> = pieces.concat();
+
         assert_eq!(&joined[..message.len()], message.as_bytes());
         assert_eq!(joined[message.len()], 0, "the zero that ends it");
         assert_eq!(startup_pieces(&"x".repeat(20)).len(), 2, "a message of exactly 20 bytes takes another piece for its zero");
@@ -477,6 +543,7 @@ mod tests {
     fn the_input_shape_covers_the_island_in_whole_pixels() {
         let area = Rect::from_min_max(Pos2::new(215.5, -14.0), Pos2::new(504.2, 46.0));
         let tuple = |shape: Rectangle| (shape.x, shape.y, shape.width, shape.height);
+
         assert_eq!(tuple(pixels(area, 1.0)), (215, 0, 290, 46), "outwards, never above the window");
         assert_eq!(tuple(pixels(area, 2.0)), (431, 0, 578, 92));
         assert_eq!(pixels(Rect::NOTHING, 1.0).width, 0, "nothing takes the clicks");
@@ -486,12 +553,16 @@ mod tests {
     fn the_resize_counter_stays_ahead_of_what_the_window_manager_waits_for() {
         // Mutter asks for its last value + 1 + 240 and waits until the counter gets there
         let mut value = 0;
+
         for _ in 0..3 {
             let waits_for = value + 1 + 240;
+
             value = next_drawn(value);
             assert!(value >= waits_for);
         }
+
         let halves = int64(5_000_000_000);
+
         assert_eq!((halves.hi, halves.lo), (1, 705_032_704), "split in two halves for the protocol");
     }
 }

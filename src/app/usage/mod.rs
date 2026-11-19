@@ -56,12 +56,14 @@ fn seconds(value: &Value) -> Option<i64> {
 /// no answer from the API yet in that session).
 pub(crate) fn plan_of_status(status: &Value) -> Plan {
     let window = |node: &Value| Some(Window { used: node["used_percentage"].as_f64()?, resets_at: seconds(&node["resets_at"])? });
+
     Plan { five_hour: window(&status["rate_limits"]["five_hour"]), seven_day: window(&status["rate_limits"]["seven_day"]) }
 }
 
 /// The session's model, context and cost in a status line's input.
 pub(crate) fn agent_of_status(status: &Value) -> AgentUsage {
     let model = status["model"]["display_name"].as_str().or_else(|| status["model"]["id"].as_str());
+
     AgentUsage {
         model: model.unwrap_or_default().to_string(),
         context: status["context_window"]["used_percentage"].as_f64(),
@@ -77,9 +79,11 @@ pub(crate) fn plan_of_event(line: &Value) -> Plan {
     let info = field(line, ["rate_limit_info", "rateLimitInfo"]);
     let window = |node: &Value| Some(Window { used: node["utilization"].as_f64()? * 100.0, resets_at: seconds(field(node, ["resets_at", "resetsAt"]))? });
     let unified = field(info, ["unified_windows", "unifiedWindows"]);
+
     if unified.is_object() {
         return Plan { five_hour: window(field(unified, ["five_hour", "fiveHour"])), seven_day: window(field(unified, ["seven_day", "sevenDay"])) };
     }
+
     match field(info, ["rate_limit_type", "rateLimitType"]).as_str() {
         Some("five_hour") => Plan { five_hour: window(info), seven_day: None },
         Some("seven_day") => Plan { five_hour: None, seven_day: window(info) },
@@ -106,6 +110,7 @@ impl Plan {
         let five = self.five_hour.map(|window| format!("5 h em {:.0}% (reinicia às {})", window.used, clock(window.resets_at)));
         let week = self.seven_day.map(|window| format!("semana em {:.0}%", window.used));
         let parts: Vec<String> = [five, week].into_iter().flatten().collect();
+
         (!parts.is_empty()).then(|| parts.join(" · "))
     }
 }
@@ -115,6 +120,7 @@ impl AgentUsage {
     pub(crate) fn line(&self) -> String {
         let context = self.context.map(|percent| format!("contexto {percent:.0}%"));
         let cost = self.cost.map(|amount| format!("US$ {}", format!("{amount:.2}").replace('.', ",")));
+
         [Some(self.model.clone()).filter(|model| !model.is_empty()), context, cost].into_iter().flatten().collect::<Vec<_>>().join(" · ")
     }
 }
@@ -127,7 +133,9 @@ pub(crate) fn recruit_block(running: usize, max_agents: usize, plan: &Plan, stop
             "Já há {running} agentes rodando e o teto é {max_agents} (Ajustes › Agentes). Espere um terminar ou feche um antes de recrutar outro."
         ));
     }
+
     let window = plan.five_hour.filter(|window| stop_at > 0 && window.used >= stop_at as f64)?;
+
     Some(format!(
         "A janela de 5 h do plano está em {:.0}% (reinicia às {}) e o app não recruta a partir de {stop_at}% (Ajustes › Agentes). \
          Faça você mesmo, espere o reinício ou avise a pessoa.",
@@ -141,9 +149,11 @@ pub(crate) fn recruit_command(command: &str, model: &str) -> String {
     let command = command.trim();
     let mut words = command.split_whitespace();
     let claude = words.next() == Some("claude");
+
     if model.is_empty() || !claude || words.any(|word| word == "--model" || word.starts_with("--model=")) {
         return command.to_string();
     }
+
     // right after the program, where the Maestro's own flags are and where they are read back (maestro/tuning.rs)
     format!("claude --model {model}{}", &command["claude".len()..])
 }
@@ -151,6 +161,7 @@ pub(crate) fn recruit_command(command: &str, model: &str) -> String {
 /// The line under the prompt of a session the app started: its model, its context and the plan.
 pub(crate) fn status_text(status: &Value, clock: impl Fn(i64) -> String) -> String {
     let agent = AgentUsage { cost: None, ..agent_of_status(status) };
+
     [Some(agent.line()).filter(|line| !line.is_empty()), plan_of_status(status).line(clock)].into_iter().flatten().collect::<Vec<_>>().join(" · ")
 }
 
@@ -161,6 +172,7 @@ pub(crate) fn local_clock(seconds: i64) -> String {
 /// The local weekday of `seconds` since 1970, short ("sex").
 pub(crate) fn local_day(seconds: i64) -> &'static str {
     let local = seconds + super::chat::viewer::local_offset(seconds * 1000);
+
     // 1970-01-01 was a Thursday
     ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][(local.div_euclid(86_400) + 4).rem_euclid(7) as usize]
 }
@@ -172,8 +184,10 @@ pub(crate) fn statusline_cli() -> i32 {
     let mut input = String::new();
     let _ = std::io::stdin().read_to_string(&mut input);
     let Ok(mut status) = serde_json::from_str::<Value>(&input) else { return 0 };
+
     println!("{}", status_text(&status, local_clock));
     let env = |key: &str| std::env::var(key).ok().filter(|value| !value.is_empty());
+
     if let (Some(address), Some(token), Some(from)) =
         (env("MAGOAGENT_BRIDGE"), env("MAGOAGENT_TOKEN"), env("MAGOAGENT_TERMINAL_ID").or_else(|| env("MAGOAGENT_CHAT_ID")))
     {
@@ -181,6 +195,7 @@ pub(crate) fn statusline_cli() -> i32 {
         status["hook_event_name"] = STATUS_LINE.into();
         let _ = request_to(&address, &token, &from, json!({ "cmd": "hook", "payload": status, "wait": 0 }), std::time::Duration::from_secs(2));
     }
+
     0
 }
 
@@ -193,17 +208,23 @@ impl DrawingApp {
     /// whose time passed while the app was closed is not brought back.
     pub(crate) fn usage_tick(&mut self) {
         let Some(path) = self.autosave.as_ref().map(|base| base.with_file_name("consumo.json")) else { return };
+
         if !self.usage.loaded {
             self.usage.loaded = true;
+
             if let Some(kept) = read_json::<Plan>(&path) {
                 // what a session told since the app opened wins over what the file kept
                 let told = std::mem::replace(&mut self.usage.plan, kept);
+
                 self.usage.plan.merge(told, now_ms() / 1000);
             }
+
             self.usage.saved = self.usage.plan.clone();
         }
+
         if self.usage.plan != self.usage.saved {
             self.usage.saved = self.usage.plan.clone();
+
             if let Ok(text) = serde_json::to_string(&self.usage.plan) {
                 let _ = write_atomic(&path, text);
             }
@@ -221,13 +242,16 @@ impl DrawingApp {
     // ponytail: the turns of the direct chats don't count; add them if the ceiling should hold those too
     pub(crate) fn running_agents(&self) -> usize {
         let alive = |id: &str| self.terminals.get(id).is_none_or(|session| session.as_ref().is_ok_and(|session| !session.exited()));
+
         let here = self.scene.elements.iter().filter(|element| {
             element.terminal.as_ref().is_some_and(|terminal| !terminal.unloaded && !terminal.command.trim().is_empty()) && alive(&element.id)
         });
+
         // the ones whose workspace is off view run too
         let away = self.away.iter().filter(|(id, (_, spec))| !spec.command.trim().is_empty() && alive(id));
         // a recruit chat weighs while its card is on the canvas (and while it answers, if the card went away)
         let chats = self.chats.iter().filter(|chat| chat.recruit && (self.chat_runs.contains_key(&chat.id) || self.chat_node(&chat.id).is_some())).count();
+
         here.count() + away.count() + chats
     }
 
@@ -242,6 +266,7 @@ impl DrawingApp {
     pub(crate) fn usage_demand(&self) -> Option<Demand> {
         let stop = self.prefs.usage_stop;
         let window = self.usage.plan.five_hour.filter(|window| stop > 0 && window.used >= stop as f64 && window.resets_at > now_ms() / 1000)?;
+
         Some(Demand {
             id: String::new(),
             name: "Plano".into(),
@@ -263,8 +288,10 @@ impl DrawingApp {
     /// The agents that told their use and still exist, by name: (name, "Opus · contexto 23% · US$ 1,20").
     pub(crate) fn agent_usage_lines(&self) -> Vec<(String, String)> {
         let there = |id: &String| self.scene.elements.iter().any(|element| &element.id == id) || self.chats.iter().any(|chat| &chat.id == id);
+
         let mut lines: Vec<(String, String)> =
             self.usage.agents.iter().filter(|(id, _)| there(id)).map(|(id, agent_usage)| (self.agent_label(id), agent_usage.line())).collect();
+
         lines.sort();
         lines
     }
@@ -275,17 +302,22 @@ impl DrawingApp {
             0 => "sem teto".to_string(),
             max => format!("teto de {max}"),
         };
+
         let mut out = format!("Plano: {}.\nAgentes rodando: {} ({ceiling}).", self.plan_line(), self.running_agents());
+
         if self.prefs.usage_stop > 0 {
             out += &format!("\nO app não recruta com a janela de 5 h em {}% ou mais.", self.prefs.usage_stop);
         }
+
         // the plans as the CLIs themselves read them (the sidebar's foot)
         for line in self.usage_ui.probe.lines(now_ms() / 1000) {
             out += &format!("\nPlano lido pela CLI, {line}.");
         }
+
         for (name, line) in self.agent_usage_lines() {
             out += &format!("\n{name}: {line}");
         }
+
         Ok(out)
     }
 }
@@ -303,6 +335,7 @@ mod tests {
         let timestamp = 1_794_295_200;
         let days: Vec<&str> = (0..7).map(|day| local_day(timestamp + day * 86_400)).collect();
         let mut seen = days.clone();
+
         seen.sort();
         seen.dedup();
         assert_eq!(seen.len(), 7, "{days:?}");
@@ -316,7 +349,9 @@ mod tests {
             "cost": { "total_cost_usd": 1.2 },
             "rate_limits": { "five_hour": { "used_percentage": 41.2, "resets_at": 500 }, "seven_day": { "used_percentage": 48.0, "resets_at": 9000.0 } },
         });
+
         let plan = plan_of_status(&status);
+
         assert_eq!(plan, Plan { five_hour: Some(Window { used: 41.2, resets_at: 500 }), seven_day: Some(Window { used: 48.0, resets_at: 9000 }) });
         assert_eq!(plan.line(clock).unwrap(), "5 h em 41% (reinicia às t500) · semana em 48%");
         assert_eq!((plan.short(499), plan.short(500)), (Some("5 h 41%".to_string()), None), "the bar's text, until the window starts over");
@@ -324,34 +359,42 @@ mod tests {
         assert_eq!(status_text(&status, clock), "Opus · contexto 23% · 5 h em 41% (reinicia às t500) · semana em 48%");
         // before the first answer, or without a subscription: nothing about the plan, and nothing made up
         let bare = json!({ "model": { "id": "claude-sonnet" } });
+
         assert_eq!(plan_of_status(&bare), Plan::default());
         assert_eq!(plan_of_status(&bare).line(clock), None);
         assert_eq!(status_text(&bare, clock), "claude-sonnet");
         assert_eq!(status_text(&json!({}), clock), "");
         // one window alone
         let week = plan_of_status(&json!({ "rate_limits": { "seven_day": { "used_percentage": 7, "resets_at": 1 } } }));
+
         assert_eq!(week.line(clock).unwrap(), "semana em 7%");
     }
 
     #[test]
     fn a_window_stays_until_its_time_and_a_chats_event_counts() {
         let mut plan = Plan::default();
+
         plan.merge(plan_of_status(&json!({ "rate_limits": { "five_hour": { "used_percentage": 30, "resets_at": 100 } } })), 10);
         // a session that says nothing of the plan changes nothing
         plan.merge(Plan::default(), 20);
         assert_eq!(plan.five_hour, Some(Window { used: 30.0, resets_at: 100 }));
+
         // the chat's stream, under either spelling
         plan.merge(
             plan_of_event(&json!({ "type": "rate_limit_event", "rate_limit_info": { "rate_limit_type": "seven_day", "utilization": 0.5, "resets_at": 900 } })),
             20,
         );
+
         plan.merge(plan_of_event(&json!({ "rateLimitInfo": { "rateLimitType": "five_hour", "utilization": 0.86, "resetsAt": 100 } })), 20);
         assert_eq!(plan.line(clock).unwrap(), "5 h em 86% (reinicia às t100) · semana em 50%");
         assert_eq!(plan_of_event(&json!({ "type": "assistant" })), Plan::default());
+
         // the event as Claude Code 2.1.321 writes it: both windows at once
         let real = json!({ "type": "rate_limit_event", "rate_limit_info": { "status": "allowed", "resetsAt": 1794295200, "rateLimitType": "five_hour", "isUsingOverage": false,
             "unifiedWindows": { "five_hour": { "utilization": 0.5, "resetsAt": 1794295200, "status": "allowed" }, "seven_day": { "utilization": 0.55, "resetsAt": 1794286800, "status": "allowed" } } } });
+
         let read = plan_of_event(&real);
+
         assert_eq!(read.five_hour, Some(Window { used: 50.0, resets_at: 1794295200 }));
         assert_eq!(read.seven_day.map(|window| (window.used.round(), window.resets_at)), Some((55.0, 1794286800)));
         assert_eq!(plan_of_event(&json!({ "rate_limit_info": { "rate_limit_type": "overage", "utilization": 1.0, "resets_at": 5 } })), Plan::default());
@@ -363,10 +406,12 @@ mod tests {
     #[test]
     fn the_maestro_is_held_by_the_ceiling_and_by_the_limit() {
         let plan = |used: f64| Plan { five_hour: Some(Window { used, resets_at: 7 }), seven_day: None };
+
         assert_eq!(recruit_block(2, 6, &plan(50.0), 90, clock), None);
         assert!(recruit_block(6, 6, &plan(50.0), 90, clock).unwrap().starts_with("Já há 6 agentes rodando e o teto é 6"));
         assert_eq!(recruit_block(40, 0, &plan(50.0), 90, clock), None, "no ceiling");
         let near = recruit_block(1, 6, &plan(90.0), 90, clock).unwrap();
+
         assert!(near.contains("está em 90% (reinicia às t7)") && near.contains("a partir de 90%"), "{near}");
         assert_eq!(recruit_block(1, 6, &plan(99.0), 0, clock), None, "never stops");
         assert_eq!(recruit_block(1, 6, &Plan::default(), 90, clock), None, "nothing read holds nothing");
@@ -383,47 +428,62 @@ mod tests {
     #[test]
     fn the_app_keeps_what_the_sessions_tell_and_refuses_a_recruit_over_the_ceiling() {
         let mut app = DrawingApp::default();
+
         let add = |app: &mut DrawingApp, name: &str, command: &str| {
             let mut element = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 400.0, height: 300.0 });
+
             element.terminal = Some(TerminalSpec { name: name.into(), command: command.into(), ..Default::default() });
             let id = element.id.clone();
+
             app.scene.elements.push(element);
             id
         };
+
         let maestro = add(&mut app, "Luna", "claude");
+
         add(&mut app, "Shell", "");
         assert_eq!(app.running_agents(), 1, "a plain shell is no agent");
         let reset = now_ms() / 1000 + 3600;
+
         let status = json!({ "hook_event_name": STATUS_LINE, "model": { "display_name": "Opus" }, "context_window": { "used_percentage": 12 },
             "rate_limits": { "five_hour": { "used_percentage": 95, "resets_at": reset } } });
+
         app.take_hook(&maestro, &status, None);
         assert!(app.agent_events.is_empty(), "a status line is no event");
         let said = app.act("usage", &json!({})).unwrap();
+
         assert!(
             said.starts_with("Plano: 5 h em 95% (reinicia às ")
                 && said.contains("Agentes rodando: 1 (teto de 6).")
                 && said.contains("Luna: Opus · contexto 12%"),
             "{said}"
         );
+
         // near the limit the Maestro recruits nobody; with the rule off, or under the mark, it does
         let recruit = |app: &mut DrawingApp| {
             let (reply, answer) = std::sync::mpsc::channel();
+
             app.recruit(&maestro, "claude", reply);
             answer.try_recv().unwrap()
         };
+
         assert!(recruit(&mut app).unwrap_err().contains("janela de 5 h"));
         assert_eq!(app.running_agents(), 1);
         // and it is a demand the Maestro brings, with what follows from it
         let demand = app.demands().into_iter().find(|candidate| candidate.kind == DemandKind::Limit).unwrap();
+
         assert!(
             demand.name == "Plano" && demand.what.starts_with("a janela de 5 h está em 95%") && demand.points == ["o app não recruta agentes até o reinício"]
         );
+
         assert!(app.demand_line().unwrap().contains("Plano a janela de 5 h está em 95%"), "{:?}", app.demand_line());
         app.prefs.usage_stop = 0;
         app.prefs.recruit_model = "sonnet".into();
         assert!(recruit(&mut app).is_ok());
+
         let recruited =
             app.scene.elements.iter().filter_map(|element| element.terminal.as_ref()).find(|terminal| terminal.command.contains("--model")).unwrap();
+
         assert_eq!(recruited.command, crate::app::maestro::temp_folder::with_temp_rule("claude --model sonnet", &app.prefs));
         app.prefs.max_agents = 2;
         assert!(recruit(&mut app).unwrap_err().starts_with("Já há 2 agentes rodando"));
@@ -437,23 +497,29 @@ mod tests {
     #[test]
     fn the_plan_last_read_comes_back_when_the_app_opens_again() {
         let directory = std::env::temp_dir().join(format!("mago-consumo-{}", new_id()));
+
         fs::create_dir_all(&directory).unwrap();
         let open = || DrawingApp { autosave: Some(directory.join("teste.mago")), ..Default::default() };
         let later = now_ms() / 1000 + 3600;
         let mut app = open();
+
         app.usage_tick();
         assert!(!directory.join("consumo.json").exists(), "nothing read, nothing written");
+
         app.take_status(
             "t1",
             &json!({ "rate_limits": { "five_hour": { "used_percentage": 61, "resets_at": later }, "seven_day": { "used_percentage": 40, "resets_at": 1 } } }),
         );
+
         app.usage_tick();
         // another run of the app: the window still running is there, the one whose time passed is not
         let mut again = open();
+
         again.usage_tick();
         assert_eq!(again.usage.plan, Plan { five_hour: Some(Window { used: 61.0, resets_at: later }), seven_day: None });
         // what a session tells before the file is read is not lost to it
         let mut early = open();
+
         early.take_status("t1", &json!({ "rate_limits": { "five_hour": { "used_percentage": 70, "resets_at": later } } }));
         early.usage_tick();
         assert_eq!(early.usage.plan.five_hour.map(|window| window.used), Some(70.0));

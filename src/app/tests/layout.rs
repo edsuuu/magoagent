@@ -15,6 +15,7 @@ fn tied_to(id: &str) -> Option<Binding> {
 fn align_deltas_line_up_edges_and_spread_evenly() {
     let r = |x: f32, w: f32| Rect::from_min_size(Pos2::new(x, 0.0), Vec2::new(w, 10.0));
     let boxes = [r(0.0, 10.0), r(50.0, 10.0), r(12.0, 10.0)];
+
     assert_eq!(align_deltas(&boxes, 2).unwrap(), [Vec2::new(50.0, 0.0), Vec2::ZERO, Vec2::new(38.0, 0.0)]);
     // spread across: 0..60 holds 30 of boxes, so two gaps of 15, in the order they lie
     assert_eq!(align_deltas(&boxes, 6).unwrap(), [Vec2::ZERO, Vec2::ZERO, Vec2::new(13.0, 0.0)]);
@@ -26,19 +27,23 @@ fn aligning_moves_a_group_whole_and_skips_ropes_and_locks() {
     let mut app = DrawingApp::default();
     let mut a = rect(&app, 0.0, 0.0, 100.0, 50.0);
     let mut b = rect(&app, 150.0, 100.0, 50.0, 50.0);
+
     a.group_id = Some("g".into());
     b.group_id = Some("g".into());
     let c = rect(&app, 400.0, 300.0, 80.0, 40.0);
     let mut locked = rect(&app, 600.0, 500.0, 60.0, 60.0);
+
     locked.locked = true;
     // a rope reaching far right: counted, it would set the right edge
     let mut rope = app.new_element(ElementKind::Line { points: vec![[0.0, 0.0], [900.0, 300.0]], arrow: false });
+
     rope.rope = true;
     (rope.ends.start, rope.ends.end) = (tied_to(&a.id), tied_to(&c.id));
     app.scene.elements = vec![a, b, c, locked, rope];
     app.selected = (0..5).collect();
     app.align_selection(2);
     let x = |app: &DrawingApp, i: usize| element_bounds(&app.scene.elements[i]).min.x;
+
     // the right edge is c's (480): the group's box (0..200) goes 280 right, in one piece
     assert_eq!((x(&app, 0), x(&app, 1), x(&app, 2)), (280.0, 430.0, 400.0));
     assert_eq!(x(&app, 3), 600.0, "the locked box stays");
@@ -49,6 +54,7 @@ fn tidy_deltas_make_a_grid_then_a_row_then_a_column() {
     let boxes = [(0.0, 0.0), (500.0, 10.0), (30.0, 300.0), (700.0, 400.0)].map(|(x, y)| Rect::from_min_size(Pos2::new(x, y), Vec2::new(100.0, 50.0)));
     let place = |layout| boxes.iter().zip(tidy_deltas(&boxes, layout).unwrap()).map(|(b, d)| b.min + d).collect::<Vec<_>>();
     let at = |list: [(f32, f32); 4]| list.map(|(x, y)| Pos2::new(x, y)).to_vec();
+
     assert_eq!(place(0), at([(0.0, 0.0), (120.0, 0.0), (0.0, 70.0), (120.0, 70.0)]));
     assert_eq!(place(1), at([(0.0, 0.0), (120.0, 0.0), (240.0, 0.0), (360.0, 0.0)]));
     assert_eq!(place(2), at([(0.0, 0.0), (0.0, 70.0), (0.0, 140.0), (0.0, 210.0)]));
@@ -59,9 +65,11 @@ fn tidy_deltas_make_a_grid_then_a_row_then_a_column() {
 fn organizing_again_switches_the_layout() {
     use crate::app::ui::context::Target;
     let mut app = DrawingApp::default();
+
     app.scene.elements = vec![rect(&app, 0.0, 0.0, 100.0, 50.0), rect(&app, 500.0, 10.0, 100.0, 50.0), rect(&app, 30.0, 300.0, 100.0, 50.0)];
     app.selected = vec![0, 1, 2];
     let ctx = Context::default();
+
     app.context_action(&ctx, &Target::Element(app.scene.elements[0].id.clone()), "tidy");
     assert_eq!(local_bounds(&app.scene.elements[2]).min, Pos2::new(0.0, 70.0), "a grid of two columns");
     app.tidy_selection();
@@ -72,9 +80,11 @@ fn organizing_again_switches_the_layout() {
 #[test]
 fn the_mcp_organizes_the_elements_it_names() {
     let mut app = DrawingApp::default();
+
     app.scene.elements = vec![rect(&app, 0.0, 0.0, 100.0, 50.0), rect(&app, 500.0, 10.0, 100.0, 50.0), rect(&app, 30.0, 300.0, 100.0, 50.0)];
     let ids: Vec<String> = app.scene.elements.iter().map(|element| element.id.clone()).collect();
     let tidy = serde_json::json!({ "action": "tidy", "elements": ids });
+
     assert_eq!(app.act_canvas_group(&tidy).unwrap(), "Organizados em grade.");
     assert_eq!(local_bounds(&app.scene.elements[2]).min, Pos2::new(0.0, 70.0));
     assert_eq!(app.act_canvas_group(&tidy).unwrap(), "Organizados em linha.", "again on the same ones");
@@ -85,33 +95,42 @@ fn the_mcp_organizes_the_elements_it_names() {
 fn a_window_stops_at_its_smallest_and_never_turns_inside_out() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     frame(&mut app, &ctx, vec![]);
     let mut terminal = rect(&app, 60.0, 150.0, 300.0, 200.0);
+
     terminal.terminal = Some(TerminalSpec { name: "t".into(), ..Default::default() });
     let mut ide = rect(&app, 420.0, 150.0, 320.0, 380.0);
+
     ide.filetree = Some(FileTreeSpec { root: "/nonexistent-magoagent".into(), ..Default::default() });
     app.scene.elements = vec![terminal, ide];
     frame(&mut app, &ctx, vec![]);
     // the corner dragged past the opposite one: the terminal keeps its corner and its minimum
     let corner = app.to_screen(Pos2::new(360.0, 350.0));
     let past = app.to_screen(Pos2::new(10.0, 20.0));
+
     drag(&mut app, &ctx, corner, past);
     let b = local_bounds(&app.scene.elements[0]);
+
     assert!(b.min == Pos2::new(60.0, 150.0) && (b.size() - TERMINAL_MIN).length() < 1e-3, "{b:?}");
     // the tree's right edge pulled far left, and above its top: only the width moves, down to its floor
     let edge = app.to_screen(Pos2::new(740.0, 340.0));
     let far = app.to_screen(Pos2::new(380.0, 60.0));
+
     drag(&mut app, &ctx, edge, far);
     assert_eq!(local_bounds(&app.scene.elements[1]), Rect::from_min_size(Pos2::new(420.0, 150.0), Vec2::new(FILETREE_MIN.x, 380.0)));
     // one already under its floor (an older build, an AI): an edge leaves the other axis alone
     let mut short = rect(&app, 60.0, 150.0, 300.0, 90.0);
+
     short.terminal = Some(TerminalSpec { name: "t".into(), ..Default::default() });
     app.scene.elements[0] = short;
     let (edge, right) = (app.to_screen(Pos2::new(360.0, 195.0)), app.to_screen(Pos2::new(500.0, 195.0)));
+
     drag(&mut app, &ctx, edge, right);
     assert_eq!(local_bounds(&app.scene.elements[0]), Rect::from_min_size(Pos2::new(60.0, 150.0), Vec2::new(440.0, 90.0)));
     // the other floors: a note 250×100
     let [note, _] = app.new_note(Rect::from_min_size(Pos2::ZERO, Vec2::splat(300.0)), String::new());
+
     assert_eq!(note.min_size(), Some(Vec2::new(250.0, 100.0)));
 }
 
@@ -119,12 +138,15 @@ fn a_window_stops_at_its_smallest_and_never_turns_inside_out() {
 fn a_note_never_turns() {
     let mut app = DrawingApp::default();
     let [mut note, label] = app.new_note(Rect::from_min_size(Pos2::ZERO, Vec2::splat(160.0)), "oi".into());
+
     assert!(!note.rotatable());
     // turned with a group, it goes round the pivot upright
     let pivot = Pos2::new(500.0, 500.0);
+
     note.rotate_around(pivot, 0.5);
     assert_eq!(note.angle, 0.0);
     let center = pivot + rot(Pos2::new(80.0, 80.0) - pivot, 0.5);
+
     assert!((note.center() - center).length() < 0.01, "{:?}", note.center());
     // no handle for it, with its text or alone
     app.scene.elements = vec![note.clone(), label];
@@ -140,23 +162,29 @@ fn a_note_never_turns() {
 #[test]
 fn ctrl_drag_tiles_windows_against_each_other() {
     let mut app = DrawingApp::default();
+
     let window = |app: &DrawingApp, x: f32, w: f32| {
         let mut e = rect(app, x, 0.0, w, 200.0);
+
         e.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
         e
     };
+
     app.scene.elements = vec![window(&app, 0.0, 300.0), window(&app, 700.0, 300.0), window(&app, 2000.0, 200.0)];
     app.selected = vec![2];
     app.mods.command = true;
     // just past the first one: one grid step after it, its top in line
     let near = Rect::from_min_size(Pos2::new(330.0, 10.0), Vec2::new(200.0, 200.0));
+
     assert_eq!(app.tile_box(near).0, Vec2::new(-10.0, -10.0));
     assert_eq!(app.snap_box(near).0, Vec2::new(-10.0, -10.0));
     // in the middle of the gap between the two: centered in it
     let gap = Rect::from_min_size(Pos2::new(395.0, 0.0), Vec2::new(200.0, 200.0));
+
     assert_eq!(app.tile_box(gap).0, Vec2::new(5.0, 0.0));
     // far from all of them: free
     let far = Rect::from_min_size(Pos2::new(395.0, 900.0), Vec2::new(200.0, 200.0));
+
     assert_eq!(app.tile_box(far).0, Vec2::ZERO);
     // a drawing: Ctrl lets it go free
     app.scene.elements[2].portal = None;
@@ -169,18 +197,22 @@ fn ctrl_drag_tiles_windows_against_each_other() {
 fn an_enlarged_window_docks_at_a_side_and_leaves_the_canvas_usable() {
     let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0)), ..DrawingApp::default() };
     let mut portal = rect(&app, 0.0, 0.0, 400.0, 300.0);
+
     portal.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
     let id = portal.id.clone();
+
     app.scene.elements = vec![portal];
     app.set_elevated(Some(id.clone()));
     app.now = 10.0;
     let e = app.scene.elements[0].clone();
+
     // the zone is the column's width + 12, at most a third of the screen (400 here)
     assert_eq!(app.dock_side(100.0, &e), Some((false, 520.0)));
     assert_eq!(app.dock_side(1150.0, &e), Some((true, 520.0)));
     assert_eq!(app.dock_side(600.0, &e), None);
     app.dock = app.dock_side(1150.0, &e);
     let r = app.elevated_rect();
+
     assert_eq!((r.right(), r.width()), (1192.0, 520.0));
     // the corner buttons on that side step past it
     assert_eq!(app.corner_inset(), (0.0, 528.0));
@@ -193,6 +225,7 @@ fn an_enlarged_window_docks_at_a_side_and_leaves_the_canvas_usable() {
     // the canvas around it is the person's: no window holds the top, a press beside it keeps it up
     assert_eq!(app.focused_window(), None);
     let beside = Pos2::new(5.0, 400.0);
+
     app.press_select(beside, app.to_world(beside), Modifiers::NONE);
     assert_eq!(app.terminal_elevated.as_ref(), Some(&id));
     // in the middle, the same press puts it back

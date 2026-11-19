@@ -79,6 +79,7 @@ impl PlayContext {
         if is_liked_songs(&self.uri) {
             return "collection";
         }
+
         self.uri.split(':').nth(1).unwrap_or_default()
     }
 
@@ -125,6 +126,7 @@ impl Now {
         let playback = &self.playback;
         let position = playback.position_ms?;
         let gone = if self.playing && playback.read_at_ms > 0 { (now_ms - playback.read_at_ms).max(0) as u64 } else { 0 };
+
         Some(playback.duration_ms.map_or(position + gone, |duration| (position + gone).min(duration)))
     }
 }
@@ -133,12 +135,15 @@ impl Now {
 /// then (a seek, a stall). A song playing on says nothing new, so the app is not woken every poll.
 pub(crate) fn differs(older: Option<&Option<Now>>, newer: &Option<Now>) -> bool {
     let Some(older) = older else { return true };
+
     match (older, newer) {
         (Some(older), Some(newer)) => {
             let still = |now: &Now| Now { playback: Playback { position_ms: None, read_at_ms: 0, ..now.playback.clone() }, ..now.clone() };
+
             if still(older) != still(newer) {
                 return true;
             }
+
             match (older.position_at(newer.playback.read_at_ms), newer.playback.position_ms) {
                 (Some(expected), Some(position)) => expected.abs_diff(position) > 2_000,
                 (expected, position) => expected.is_some() != position.is_some(),
@@ -154,17 +159,20 @@ pub(crate) fn differs(older: Option<&Option<Now>>, newer: &Option<Now>) -> bool 
 pub(crate) fn spotify_uri(text: &str) -> Option<String> {
     let text = text.trim();
     let id_ok = |id: &str| !id.is_empty() && id.len() <= 64 && id.chars().all(|letter| letter.is_ascii_alphanumeric());
+
     let (kind, id) = if let Some(rest) = text.strip_prefix("spotify:") {
         rest.split_once(':')?
     } else if let Some(rest) = text.strip_prefix("https://open.spotify.com/") {
         // a page may carry a locale first (intl-pt) and a query after
         let rest = rest.split(['?', '#']).next().unwrap_or_default();
         let rest = if rest.starts_with("intl-") { rest.split_once('/')?.1 } else { rest };
+
         rest.split_once('/')?
     } else {
         // the Spotify app's MPRIS track id
         text.strip_prefix("/com/spotify/")?.split_once('/')?
     };
+
     (matches!(kind, "track" | "episode") && id_ok(id)).then(|| format!("spotify:{kind}:{id}"))
 }
 
@@ -172,6 +180,7 @@ pub(crate) fn spotify_uri(text: &str) -> Option<String> {
 pub(crate) fn uri_allowed(uri: &str) -> bool {
     let id_ok = |id: &str| !id.is_empty() && id.len() <= 64 && id.chars().all(|letter| letter.is_ascii_alphanumeric());
     let parts: Vec<&str> = uri.split(':').collect();
+
     match parts[..] {
         ["spotify", "track" | "episode" | "album" | "playlist" | "artist" | "show", id] => id_ok(id),
         ["spotify", "user", user, "collection"] => !user.is_empty() && user.len() <= 64 && user.chars().all(|letter| letter.is_ascii_graphic()),
@@ -188,6 +197,7 @@ pub(crate) fn is_track(uri: &str) -> bool {
 #[cfg(any(not(any(windows, target_os = "macos")), test))]
 fn whole(value: Option<&Value>) -> Option<u64> {
     let number = value?.as_f64()?;
+
     (number.is_finite() && number >= 0.0).then_some(number as u64)
 }
 
@@ -199,6 +209,7 @@ pub(crate) fn mpris_playback(properties: &Value, metadata: &Value, now_ms: i64) 
     let meta = |name: &str| metadata.get(name).and_then(|value| value.get("data"));
     let position_ms = whole(property("Position")).map(|micros| micros / 1000);
     let track_uri = [meta("xesam:url"), meta("mpris:trackid")].into_iter().flatten().filter_map(Value::as_str).find_map(spotify_uri);
+
     Playback {
         track_uri: track_uri.unwrap_or_default(),
         shuffle: property("Shuffle").and_then(Value::as_bool),
@@ -224,13 +235,17 @@ pub(crate) fn soloist_playback(root: &Value, now_ms: i64) -> Playback {
     let position_ms = whole(position.and_then(|position| position.get("position_ms")).or(root.get("position_ms")));
     // the server's clock, when it is near ours (else ours: the time then only runs from this poll)
     let stamped = whole(position.and_then(|position| position.get("timestamp_ms"))).map(|at| at as i64).filter(|at| (at - now_ms).abs() < 600_000);
+
     let context = root.get("context").filter(|context| context.is_object()).and_then(|context| {
         let uri = context.get("uri").and_then(Value::as_str).unwrap_or_default().trim().to_string();
         let name = context["decorations"]["identity"]["name"].as_str().or(context.get("name").and_then(Value::as_str)).unwrap_or_default();
         let name: String = name.chars().filter(|letter| !letter.is_control()).take(200).collect();
+
         (!uri.is_empty() || !name.trim().is_empty()).then(|| PlayContext { uri, name: name.trim().to_string() })
     });
+
     let volume = whole(root.get("volume")).map(|volume| (volume.min(100) as f32) / 100.0);
+
     Playback {
         track_uri: item.get("uri").and_then(Value::as_str).filter(|uri| uri_allowed(uri)).unwrap_or_default().to_string(),
         shuffle: options.get("shuffle").and_then(Value::as_bool),
@@ -283,14 +298,18 @@ pub(crate) const CLOSED: &str = "O Spotify não está aberto neste computador (e
 pub(crate) fn route(system: System, player: Option<Player>, through_soloist: bool, linked: bool, command: &Command) -> Route {
     let web_or = |why: &'static str| if linked { Route::Web } else { Route::No(why) };
     let Some(player) = player else { return web_or(CLOSED) };
+
     // Liked Songs is the account's own context: only the Web API knows it as one
     if linked && matches!(command, Command::PlayUri(uri) if is_liked_songs(uri)) {
         return Route::Web;
     }
+
     if player == Player::Soloist || (player == Player::Spotifast && through_soloist) {
         return Route::Player;
     }
+
     let basic = matches!(command, Command::PlayPause | Command::Next | Command::Previous);
+
     match command {
         _ if basic => Route::Player,
         Command::Enqueue(_) => web_or(NEEDS_ACCOUNT_QUEUE),

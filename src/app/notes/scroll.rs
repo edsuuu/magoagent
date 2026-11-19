@@ -23,8 +23,10 @@ impl DrawingApp {
     pub(crate) fn note_painted(&self, note: &Element, end: f32) {
         let overflow = end - note_text_box(note).max.y;
         let mut scrolls = self.note_scroll.borrow_mut();
+
         if overflow > 0.5 {
             let scroll = scrolls.entry(note.id.clone()).or_default();
+
             (scroll.overflow, scroll.offset) = (overflow, scroll.offset.min(overflow));
         } else {
             scrolls.remove(&note.id);
@@ -36,18 +38,23 @@ impl DrawingApp {
     pub(crate) fn note_wheel(&mut self, ctx: &Context) -> bool {
         let (delta, command, pointer) = ctx.input(|input| (input.smooth_scroll_delta.y, input.modifiers.command, input.pointer.hover_pos()));
         let Some(pointer) = pointer.filter(|_| delta != 0.0 && !command) else { return false };
+
         // over the window enlarged in the middle, nothing of the canvas behind it scrolls
         if self.elevated_index().is_some_and(|index| self.terminal_frame(&self.scene.elements[index]).0.contains(pointer)) {
             return false;
         }
+
         let world = self.to_world(pointer);
         let Some(index) = self.hit(world).filter(|index| self.scene.elements[*index].created.is_some()) else { return false };
+
         if !self.on_note_text(index, world) {
             return false;
         }
+
         let (id, zoom) = (self.scene.elements[index].id.clone(), self.terminal_frame(&self.scene.elements[index]).1);
         let mut scrolls = self.note_scroll.borrow_mut();
         let Some(scroll) = scrolls.get_mut(&id).filter(|scroll| scroll.overflow > 0.0) else { return false };
+
         scroll.offset = (scroll.offset - delta / zoom).clamp(0.0, scroll.overflow);
         true
     }

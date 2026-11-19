@@ -3,13 +3,16 @@ use super::*;
 /// Bytes a key sends; printable text arrives on its own as `Event::Text`.
 pub(crate) fn key_bytes(key: Key, m: Modifiers, app_cursor: bool) -> Option<Vec<u8>> {
     let code = 1 + m.shift as u8 + 2 * m.alt as u8 + 4 * m.ctrl as u8;
+
     let cursor = |c: char| match (code, app_cursor) {
         (1, true) => format!("\x1bO{c}"),
         (1, false) => format!("\x1b[{c}"),
         _ => format!("\x1b[1;{code}{c}"),
     };
+
     let tilde = |n: u8| if code > 1 { format!("\x1b[{n};{code}~") } else { format!("\x1b[{n}~") };
     let word = m.alt && !m.ctrl && !m.shift;
+
     let text = match key {
         // macOS line editing: Cmd+←/→ to the line's start/end, Cmd+⌫ clears it, Option+←/→ by word
         Key::ArrowLeft if m.mac_cmd => "\x01".into(),
@@ -61,10 +64,12 @@ pub(crate) fn key_bytes(key: Key, m: Modifiers, app_cursor: bool) -> Option<Vec<
                     _ => return None,
                 },
             };
+
             return Some(vec![byte]);
         }
         _ => return None,
     };
+
     Some(text.into_bytes())
 }
 
@@ -72,6 +77,7 @@ pub(crate) fn key_bytes(key: Key, m: Modifiers, app_cursor: bool) -> Option<Vec<
 /// for them (shells then insert it instead of running each line).
 pub(crate) fn paste_bytes(text: &str, bracketed: bool) -> Vec<u8> {
     let text = text.replace("\r\n", "\r").replace('\n', "\r");
+
     if bracketed {
         // an ESC inside could end the paste early and run the rest as typed keys
         format!("\x1b[200~{}\x1b[201~", text.replace('\x1b', "")).into_bytes()
@@ -88,7 +94,9 @@ pub(crate) fn wheel_bytes(lines: i32, mode: TermMode, (col, row): (usize, usize)
     if shift || lines == 0 {
         return None;
     }
+
     let (button, arrow) = if lines > 0 { (64, b'A') } else { (65, b'B') };
+
     let event = if mode.intersects(TermMode::MOUSE_MODE) && mode.contains(TermMode::SGR_MOUSE) {
         format!("\x1b[<{button};{};{}M", col + 1, row + 1).into_bytes()
     } else if mode.intersects(TermMode::MOUSE_MODE) {
@@ -99,5 +107,6 @@ pub(crate) fn wheel_bytes(lines: i32, mode: TermMode, (col, row): (usize, usize)
     } else {
         return None;
     };
+
     Some(event.repeat(lines.unsigned_abs() as usize))
 }

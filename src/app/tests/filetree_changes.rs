@@ -9,8 +9,10 @@ fn the_changes_panel_lists_modified_new_and_deleted_files_and_opens_their_diff()
     if crate::editor::command("git").arg("--version").output().is_err() {
         return;
     }
+
     let ctx = Context::default();
     let dir = temp("changes");
+
     git(&dir, &["init", "-q"]);
     git(&dir, &["config", "user.email", "t@example.com"]);
     git(&dir, &["config", "user.name", "t"]);
@@ -24,35 +26,45 @@ fn the_changes_panel_lists_modified_new_and_deleted_files_and_opens_their_diff()
     fs::remove_file(dir.join("gone.txt")).unwrap();
     fs::write(dir.join("pkg/novo.txt"), "novo\n").unwrap();
     let mut app = DrawingApp::default();
+
     tree_frame(&mut app, &ctx, 0.0, vec![]);
     let id = tree_on(&mut app, &dir);
     let listed = app.act_file_tree(&json!({ "action": "changes" })).unwrap();
+
     assert_eq!(listed, "3 arquivos alterados:\nD gone.txt\nM kept.txt\nU pkg/novo.txt");
     // the panel draws over the rows
     app.act_file_tree(&json!({ "action": "changes", "show": true })).unwrap();
     assert!(app.ft_spec(&id).unwrap().changes);
+
     for t in [1.0, 1.5, 2.0] {
         tree_frame(&mut app, &ctx, t, vec![]);
     }
+
     assert_eq!(app.filetrees.views[&id].git.files.len(), 3, "the panel's files come from the tree's git read");
     assert!(ctx.memory(|m| m.area_rect(egui::Id::unique(("ft_changes", id.as_str())))).is_some(), "the panel is over the rows");
+
     // a press on each: a modified file, a new one (against nothing) and a deleted one (against the HEAD) open a compare tab
     for name in ["kept.txt", "pkg/novo.txt", "gone.txt"] {
         app.ft_open_change(&id, &dir.join(name));
         let ed = &app.filetrees.editors[&id];
         let last = name.rsplit('/').next().unwrap();
+
         assert!(ed.tabs.iter().any(|t| matches!(&t.body, Body::Compare(_)) && t.path.to_string_lossy().contains(&format!("HEAD ↔ {last}"))), "{name}");
     }
+
     app.ft_show_changes(&id, false);
     assert!(!app.ft_spec(&id).unwrap().changes);
     // outside a repository there is nothing to compare with
     let plain = temp("changes-plain");
+
     if !plain.ancestors().any(|a| a.join(".git").exists()) {
         let mut other = DrawingApp::default();
+
         tree_frame(&mut other, &ctx, 0.0, vec![]);
         tree_on(&mut other, &plain);
         assert!(other.act_file_tree(&json!({ "action": "changes" })).unwrap_err().contains("git"));
     }
+
     let _ = fs::remove_dir_all(&dir);
     let _ = fs::remove_dir_all(&plain);
 }
@@ -63,15 +75,20 @@ fn the_changes_panel_does_not_fade_in_again_when_shown_again() {
     let ctx = Context::default();
     let dir = temp("changes-blink");
     let mut app = DrawingApp::default();
+
     tree_frame(&mut app, &ctx, 0.0, vec![]);
     let id = tree_on(&mut app, &dir);
+
     app.ft_show_changes(&id, true);
+
     for step in 1..=10 {
         tree_frame(&mut app, &ctx, step as f64 * 0.1, vec![]);
     }
+
     app.ft_show_changes(&id, false);
     tree_frame(&mut app, &ctx, 2.0, vec![]);
     app.ft_show_changes(&id, true);
+
     let output = ctx.run_ui(
         egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))), time: Some(2.005), ..Default::default() },
         |ui| {
@@ -80,7 +97,9 @@ fn the_changes_panel_does_not_fade_in_again_when_shown_again() {
             app.filetree_overlay(&ctx);
         },
     );
+
     let panel = ctx.memory(|memory| memory.area_rect(egui::Id::unique(("ft_changes", id.as_str())))).expect("the panel is over the rows");
+
     let background = output
         .shapes
         .iter()
@@ -89,5 +108,6 @@ fn the_changes_panel_does_not_fade_in_again_when_shown_again() {
             _ => None,
         })
         .expect("the panel's background is painted");
+
     assert_eq!(background.a(), 255, "the panel is opaque the frame it is shown again, with no fade-in");
 }

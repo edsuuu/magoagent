@@ -6,6 +6,7 @@ impl DrawingApp {
     pub(super) fn act_dictionary(&mut self, args: &Value) -> Result<String, String> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
         let dictionary = &mut self.prefs.dictionary;
+
         match text("action").as_str() {
             "" | "list" => Ok(dictionary.summary()),
             "add_word" if dictionary.add_word(&text("word")) => Ok(format!("{} entrou no dicionário.", text("word"))),
@@ -30,6 +31,7 @@ mod tests {
     #[test]
     fn the_maestro_edits_the_dictionary() {
         let mut app = DrawingApp::default();
+
         app.act_dictionary(&json!({ "action": "add_word", "word": "Supabase" })).unwrap();
         app.act_dictionary(&json!({ "action": "add_replacement", "heard": "cloud code", "written": "Claude Code" })).unwrap();
         assert_eq!(app.prefs.dictionary.apply("o cloud code e o supabase"), "o Claude Code e o Supabase");

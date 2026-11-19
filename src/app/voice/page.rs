@@ -63,16 +63,21 @@ pub(crate) enum PageNote {
 
 pub(crate) fn page_note(message: &str) -> Option<PageNote> {
     let v: Value = serde_json::from_str(message).ok()?;
+
     if let Some(sdp) = v["offer"].as_str() {
         return Some(PageNote::Offer(sdp.into()));
     }
+
     if let Some(note) = v["note"].as_str() {
         return Some(PageNote::Note(note.into()));
     }
+
     if let Some(error) = v["error"].as_str() {
         let why = if error.contains("NotAllowed") || error.contains("Permission") { crate::voice::MIC_DENIED } else { error };
+
         return Some(PageNote::Failed(why.into()));
     }
+
     Some(PageNote::Levels { mic: v["mic"].as_f64()? as f32, out: v["out"].as_f64()? as f32 })
 }
 
@@ -88,6 +93,7 @@ fn open_page(window: &impl wry::raw_window_handle::HasWindowHandle, ctx: &Contex
     let (tx, notes) = std::sync::mpsc::channel();
     let ctx = ctx.clone();
     let url = if cfg!(windows) { "http://magovoz.localhost/" } else { "magovoz://localhost/" };
+
     let webview = wry::WebViewBuilder::new()
         .with_custom_protocol("magovoz".into(), |_, _| {
             wry::http::Response::builder().header("Content-Type", "text/html; charset=utf-8").body(std::borrow::Cow::Borrowed(PAGE.as_bytes())).unwrap()
@@ -104,9 +110,11 @@ fn open_page(window: &impl wry::raw_window_handle::HasWindowHandle, ctx: &Contex
         .with_bounds(wry::Rect { position: wry::dpi::LogicalPosition::new(-10.0, -10.0).into(), size: wry::dpi::LogicalSize::new(1.0, 1.0).into() })
         .with_ipc_handler(move |request| {
             let _ = tx.send(request.into_body());
+
             ctx.request_repaint();
         })
         .build_as_child(window)?;
+
     Ok(VoicePage { webview, notes, muted: false, speakers_off: false })
 }
 
@@ -116,15 +124,19 @@ impl DrawingApp {
     pub(crate) fn sync_voice_page(&mut self, window: &impl wry::raw_window_handle::HasWindowHandle, ctx: &Context) {
         if !(self.voice.on && self.voice.codex.is_some()) {
             self.voice_page = None;
+
             return;
         }
+
         if self.voice_page.is_none() {
             match open_page(window, ctx) {
                 Ok(page) => self.voice_page = Some(page),
                 Err(e) => return self.voice_fail(format!("Não foi possível iniciar o chat por voz: {e}")),
             }
         }
+
         let notes: Vec<PageNote> = self.voice_page.as_ref().map(|p| p.notes.try_iter().filter_map(|m| page_note(&m)).collect()).unwrap_or_default();
+
         for note in notes {
             match note {
                 PageNote::Offer(sdp) => self.voice.offer = Some(sdp),
@@ -136,19 +148,25 @@ impl DrawingApp {
                 PageNote::Failed(why) => {
                     self.voice_fail(why);
                     self.voice_page = None;
+
                     return;
                 }
             }
         }
+
         let Some(page) = self.voice_page.as_mut() else { return };
+
         if let Some(sdp) = self.voice.answer.take() {
             let _ = page.webview.evaluate_script(&format!("answer({})", json!(sdp)));
         }
+
         let muted = self.voice.shared.muted.load(Ordering::Relaxed);
+
         if muted != page.muted {
             page.muted = muted;
             let _ = page.webview.evaluate_script(&format!("mute({muted})"));
         }
+
         if self.voice.speakers_off != page.speakers_off {
             page.speakers_off = self.voice.speakers_off;
             let _ = page.webview.evaluate_script(&format!("speakers({})", page.speakers_off));
@@ -164,10 +182,12 @@ mod tests {
     fn the_pages_notes() {
         assert_eq!(page_note(r#"{"offer":"v=0"}"#), Some(PageNote::Offer("v=0".into())));
         assert_eq!(page_note(r#"{"mic":0.5,"out":0}"#), Some(PageNote::Levels { mic: 0.5, out: 0.0 }));
+
         assert_eq!(
             page_note(r#"{"error":"NotAllowedError: Permission denied"}"#),
             Some(PageNote::Failed("O acesso ao microfone é necessário para iniciar o chat por voz".into()))
         );
+
         assert_eq!(page_note(r#"{"note":"Unknown parameter"}"#), Some(PageNote::Note("Unknown parameter".into())));
         assert_eq!(page_note("lixo"), None);
     }

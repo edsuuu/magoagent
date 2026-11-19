@@ -19,20 +19,25 @@ pub(crate) fn unfold<R>(ui: &mut egui::Ui, id: egui::Id, openness: f32, add: imp
     if openness <= 0.0 {
         return None;
     }
+
     let key = id.with("unfold_height");
     let gap = ui.spacing().item_spacing.y;
     // as tall as it was laid out last frame (in its first, nothing of it shows yet)
     let full = ui.data(|data| data.get_temp::<f32>(key)).unwrap_or(0.0);
     let shown = if openness < 1.0 { openness * (full + gap) - gap } else { f32::INFINITY };
+
     if shown < 0.0 {
         ui.add_space(shown);
     }
+
     let mut body = ui.new_child(egui::UiBuilder::new().id_salt(id).max_rect(ui.available_rect_before_wrap()));
     let mut clip = body.clip_rect();
+
     clip.max.y = clip.max.y.min(body.max_rect().top() + shown.max(0.0));
     body.set_clip_rect(clip);
     let inner = add(&mut body);
     let laid = body.min_rect();
+
     ui.data_mut(|data| data.insert_temp(key, laid.height()));
     ui.advance_cursor_after_rect(laid.with_max_y(laid.top() + laid.height().min(shown.max(0.0))));
     Some(inner)
@@ -46,6 +51,7 @@ pub(crate) fn chevron(p: &Painter, at: Pos2, size: f32, width: f32, color: Color
 /// `RIGHT` (the design's 24-unit drawing) turned a quarter turn clockwise as it opens: `DOWN` when open.
 fn chevron_points(at: Pos2, size: f32, openness: f32) -> Vec<Pos2> {
     let turn = egui::emath::Rot2::from_angle(openness.clamp(0.0, 1.0) * std::f32::consts::FRAC_PI_2);
+
     RIGHT[0].iter().map(|&(x, y)| at + turn * (Vec2::new(x - 12.0, y - 12.0) * size / 24.0)).collect()
 }
 
@@ -58,10 +64,13 @@ mod tests {
     fn the_chevron_turns_from_right_to_down() {
         let points = |openness: f32| super::chevron_points(Pos2::new(12.0, 12.0), 24.0, openness);
         let near = |a: &[Pos2], b: &[(f32, f32)]| a.iter().zip(b).all(|(a, &(x, y))| (*a - Pos2::new(x, y)).length() < 1e-3);
+
         assert!(near(&points(0.0), RIGHT[0]), "shut: ›");
         let down: Vec<(f32, f32)> = DOWN[0].iter().rev().copied().collect();
+
         assert!(near(&points(1.0), &down), "open: ⌄ {:?}", points(1.0));
         let half = points(0.5);
+
         assert!(!near(&half, RIGHT[0]) && !near(&half, &down), "between them halfway");
     }
 }

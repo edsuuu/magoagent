@@ -3,22 +3,27 @@ use super::*;
 impl DrawingApp {
     pub(crate) fn terminal_env(&self, id: &str, name: &str) -> Vec<(String, String)> {
         let mut env = vec![("MAGOAGENT_TERMINAL_ID".to_string(), id.to_string()), ("MAGOAGENT_TERMINAL_NAME".into(), name.into())];
+
         if let Some(bridge) = &self.bridge {
             env.push(("MAGOAGENT_BRIDGE".into(), bridge.address.clone()));
             // its own token, which says who it is (mcp/bridge/mod.rs `authorize`): a new shell takes the old one's place
             env.push(("MAGOAGENT_TOKEN".into(), locked(&bridge.shared).terminal_token(id)));
         }
+
         // `magoagent list|ask|…` works in every terminal: this app's folder first on PATH
         env.extend(crate::app::chat::node::app_path());
+
         // and in a WSL one (system/wsl.rs): the bridge's variables cross into the distro
         if cfg!(windows) {
             env.push(("WSLENV".into(), wslenv(std::env::var("WSLENV").ok().as_deref())));
         }
+
         // the MCP in it draws in this drawing, its workspace's, even once another one is on screen
         // (absolute: the shell may change folder)
         if let Some(scene) = &self.autosave {
             env.push(("MAGOAGENT_SCENE".into(), scene.to_string_lossy().into()));
         }
+
         env
     }
 
@@ -26,21 +31,25 @@ impl DrawingApp {
     /// Also tells when an agent finishes and keeps the bridge's view of the canvas current.
     pub(crate) fn sync_terminals(&mut self, ctx: &Context) {
         let elevated = self.elevated_rect();
+
         let live: Vec<(String, TerminalSpec, Vec2)> = self
             .scene
             .elements
             .iter()
             .filter_map(|e| {
                 let size = if self.terminal_elevated.as_ref() == Some(&e.id) { elevated.size() } else { local_bounds(e).size() };
+
                 Some((e.id.clone(), e.terminal.clone().filter(|t| !t.unloaded)?, size))
             })
             .collect();
+
         // an undo that took the terminal away keeps its shell while a redo can bring it back; Delete
         // and the MCP take a snapshot, which clears the redo, so they still end it now. An unloaded
         // one is still drawn: it ends now
         // ponytail: scans the redo once per orphan per frame; index the ids if the redo grows large
         // A shell whose workspace is off view (`away`) is not orphaned: it keeps running
         let drawn = |id: &str| self.scene.elements.iter().any(|e| e.id == id);
+
         let gone: Vec<String> = self
             .terminals
             .keys()
@@ -51,17 +60,22 @@ impl DrawingApp {
             })
             .cloned()
             .collect();
+
         for id in gone {
             self.terminals.remove(&id);
         }
+
         // a terminal's token is good while its shell runs: closed, restarting, ended or never started, it goes;
         // a chat's, while its agent answers
         if let Some(bridge) = &self.bridge {
             let running = |id: &String| self.terminals.get(id).is_some_and(|s| s.as_ref().is_ok_and(|s| !s.exited())) || self.chat_runs.contains_key(id);
+
             locked(&bridge.shared).keep_tokens(running);
         }
+
         // what shows now (with the chat open, only its agent): the others' output waits for the idle repaint
         let shown = if self.chat_open { Rect::NOTHING } else { self.canvas_rect };
+
         let seen: std::collections::HashSet<String> = self
             .scene
             .elements
@@ -70,9 +84,11 @@ impl DrawingApp {
             .map(|e| e.id.clone())
             .chain(self.chat_agent.clone().filter(|_| self.chat_open))
             .collect();
+
         for (id, spec, size) in &live {
             let (theme, font, shell) = self.prefs.terminal.resolve(&spec.look);
             let (look, shell, grid) = (Look::of(theme, self.dark()), shell.to_string(), grid_size_at(*size, font));
+
             match self.terminals.get_mut(id) {
                 Some(Ok(session)) => {
                     session.resize(grid);
@@ -91,54 +107,69 @@ impl DrawingApp {
                     let mcp = if cfg!(test) { None } else { crate::app::chat::tools::mcp_config(&self.prefs, wsl) };
                     let command = crate::app::maestro::events::with_mcp(command, mcp.as_deref());
                     let command = if wsl { wsl_quoted_paths(&command) } else { command };
+
                     let session =
                         TerminalSession::spawn_shell(&shell, &spec.cwd, &command, grid, Some(ctx.clone()), env, None, self.prefs.terminal_history, look);
+
                     self.terminals.insert(id.clone(), session.map_err(|e| e.to_string()));
                 }
             }
         }
+
         // a shell an undo took (kept for the redo) shows nowhere; with the window hidden, none does
         let window = ctx.input(|i| i.viewport().visible()) != Some(false);
+
         for (id, session) in &self.terminals {
             if let Ok(session) = session {
                 session.set_visible(window && seen.contains(id));
             }
         }
+
         if self.leaving.as_ref().is_some_and(|(_, since)| self.now - since > 0.2) {
             self.leaving = None;
         }
+
         if self.terminal_focus.as_ref().is_some_and(|id| !live.iter().any(|(l, ..)| l == id)) {
             self.terminal_focus = None;
         }
+
         // a tree is enlarged the same way and has no shell
         if self.terminal_elevated.as_ref().is_some_and(|id| !self.scene.elements.iter().any(|e| &e.id == id)) {
             self.terminal_elevated = None;
         }
+
         // "Monitorar atividade": an agent that worked a while and went quiet gets a toast (off view too)
         let watched: Vec<(String, TerminalSpec)> =
             live.iter().map(|(id, spec, _)| (id.clone(), spec.clone())).chain(self.away.iter().map(|(id, (_, spec))| (id.clone(), spec.clone()))).collect();
+
         for (id, spec) in watched.iter().filter(|(_, spec)| !spec.command.trim().is_empty() && !spec.quiet) {
             let busy = matches!(self.terminals.get(id), Some(Ok(s)) if s.handle.busy());
+
             if busy {
                 self.terminal_busy.entry(id.clone()).or_insert(self.now);
             } else if let Some(since) = self.terminal_busy.remove(id) {
                 self.terminal_idle.insert(id.clone(), self.now);
+
                 if self.now - since > 3.0 && self.terminal_focus.as_ref() != Some(id) {
                     self.toast(format!("{} terminou", if spec.name.is_empty() { "O terminal" } else { &spec.name }));
                     self.terminal_unread.insert(id.clone());
                 }
             }
         }
+
         if let Some(id) = &self.terminal_focus {
             self.terminal_unread.remove(id);
         }
+
         let Some(bridge) = &self.bridge else { return };
         let terminals = self.terminals.iter().filter_map(|(id, s)| Some((id.clone(), s.as_ref().ok()?.handle.clone()))).collect();
         let mut shared = locked(&bridge.shared);
+
         (shared.nodes, shared.terminals) = (self.agent_nodes(), terminals);
         shared.chats = self.chats.iter().map(|c| (c.id.clone(), self.maestro_name(&c.name))).collect();
         drop(shared);
         let commands: Vec<UiCommand> = bridge.commands.try_iter().collect();
+
         for command in commands {
             self.apply_agent_command(command);
         }
@@ -152,7 +183,9 @@ impl DrawingApp {
             UiCommand::PortalShot { id, reply } => self.portal_shot(&id, reply),
             UiCommand::WriteNote { id, text } => {
                 let label_id = format!("{id}-label");
+
                 self.snapshot();
+
                 for e in &mut self.scene.elements {
                     if let (true, ElementKind::Text { value, .. }) = (e.id == label_id, &mut e.kind) {
                         *value = text.clone();
@@ -165,6 +198,7 @@ impl DrawingApp {
                 let b = local_bounds(terminal);
                 let note = self.new_note(Rect::from_min_size(Pos2::new(b.min.x - 290.0, b.min.y), Vec2::splat(250.0)), text);
                 let note_id = note[0].id.clone();
+
                 self.snapshot();
                 self.scene.elements.extend(note);
                 // one Cmd+Z takes back the note and its rope together

@@ -7,11 +7,14 @@ use crate::app::notes::rename_note_text;
 fn paper_named(color: &str) -> Result<[u8; 4], String> {
     const ENGLISH: [&str; 10] = ["yellow", "pink", "blue", "green", "orange", "purple", "white", "charcoal", "slate", "midnight"];
     let lower = color.trim().to_lowercase();
+
     if let Some(k) = NOTE_PAPERS.iter().position(|(_, name)| name.to_lowercase() == lower).or_else(|| ENGLISH.iter().position(|n| *n == lower)) {
         return Ok(NOTE_PAPERS[k].0);
     }
+
     parse_hex(&json!(color)).map(nearest_paper).ok_or_else(|| {
         let names: Vec<&str> = NOTE_PAPERS.iter().map(|(_, n)| *n).collect();
+
         format!("cor `{color}` desconhecida: use um nome ({}) ou um hex", names.join(", "))
     })
 }
@@ -23,12 +26,15 @@ fn buttons_from(list: &Value) -> Result<Vec<NoteButton>, String> {
         .iter()
         .map(|item| {
             let (label, action) = (item["label"].as_str().unwrap_or_default().trim(), item["action"].as_str().unwrap_or_default().trim());
+
             if label.is_empty() {
                 return Err("todo botão precisa de `label`".to_string());
             }
+
             if !app_tools::is_action(action) {
                 return Err(format!("`{action}` não é uma ação do app (veja as ferramentas do app, como chat_new, open_path, ide_folder)"));
             }
+
             Ok(NoteButton { label: label.into(), action: action.into(), args: item["args"].clone() })
         })
         .collect()
@@ -39,6 +45,7 @@ fn buttons_from(list: &Value) -> Result<Vec<NoteButton>, String> {
 pub(crate) fn note_call(scene: &mut Scene, args: &Value) -> Result<Value, String> {
     let paper = args["color"].as_str().map(paper_named).transpose()?;
     let buttons = args.get("buttons").filter(|b| !b.is_null()).map(buttons_from).transpose()?;
+
     let id = match args["id"].as_str() {
         Some(id) => id.to_string(),
         None => {
@@ -47,29 +54,38 @@ pub(crate) fn note_call(scene: &mut Scene, args: &Value) -> Result<Value, String
             let x = args["x"].as_f64().unwrap_or(if scene.elements.is_empty() { 0.0 } else { right as f64 + 40.0 });
             let id = new_id();
             let item = json!({ "type": "stickynote", "id": id, "x": x, "y": args["y"].as_f64().unwrap_or(0.0), "backgroundColor": "#fff9c4" });
+
             add_elements(scene, &[item])?;
             id
         }
     };
+
     let index = scene.elements.iter().position(|e| e.id == id && e.created.is_some()).ok_or_else(|| format!("`{id}` não é uma nota"))?;
+
     if let ElementKind::Rectangle { x, y, width, height } = &mut scene.elements[index].kind {
         let num = |key: &str, now: f32| args[key].as_f64().map_or(now, |v| v as f32);
+
         (*x, *y) = (num("x", *x), num("y", *y));
         (*width, *height) = (num("width", *width).max(NOTE_MIN.x), num("height", *height).max(NOTE_MIN.y));
     }
+
     if let Some(paper) = paper {
         scene.elements[index].style.fill = Some(paper);
     }
+
     if let Some(buttons) = buttons {
         scene.elements[index].note.buttons = buttons;
     }
+
     // the text is the note's label element
     let label = note_label(&scene.elements, index);
+
     if args["text"].is_string() || args["title"].is_string() || label.is_none() {
         let current = label.and_then(|l| match &scene.elements[l].kind {
             ElementKind::Text { value, .. } => Some(value.clone()),
             _ => None,
         });
+
         // a title with a new text heads it; a title alone renames the first line the note has
         let text = match (args["text"].as_str(), args["title"].as_str()) {
             (Some(text), Some(title)) => format!(
@@ -81,6 +97,7 @@ pub(crate) fn note_call(scene: &mut Scene, args: &Value) -> Result<Value, String
             (None, Some(title)) => rename_note_text(&current.unwrap_or_default(), title),
             (None, None) => current.unwrap_or_default(),
         };
+
         match label {
             Some(l) => {
                 if let ElementKind::Text { value, .. } = &mut scene.elements[l].kind {
@@ -92,8 +109,10 @@ pub(crate) fn note_call(scene: &mut Scene, args: &Value) -> Result<Value, String
             }
         }
     }
+
     let note = &scene.elements[index];
     let color = NOTE_PAPERS.iter().find(|(p, _)| Some(*p) == note.style.fill).map(|(_, n)| *n);
+
     Ok(json!({ "id": id, "color": color, "buttons": note.note.buttons.len() }))
 }
 

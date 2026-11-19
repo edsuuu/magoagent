@@ -60,19 +60,25 @@ impl Loudness {
     pub(crate) fn hear(&mut self, decibels: f32, step: f32) {
         let decibels = if decibels.is_finite() { decibels.clamp(-120.0, 20.0) } else { -120.0 };
         let power = 10f32.powf(decibels / 10.0);
+
         if !self.heard && decibels > SILENCE {
             (self.powers, self.long, self.peak, self.heard) = ([power; 3], decibels, decibels, true);
         }
+
         for (average, span) in self.powers.iter_mut().zip([0.1, 1.0, 0.3]) {
             *average = ease(*average, power, span, step);
         }
+
         let [fast, short, smooth] = self.powers.map(|average| 10.0 * average.max(1e-12).log10());
+
         (self.fast, self.short, self.smooth) = (fast, short, smooth);
+
         if !self.silent() {
             self.heard_for += step;
             self.long = ease(self.long, self.short, self.heard_for.clamp(1.0, LONG), step);
             self.peak = (self.peak - PEAK_FALL * step).max(self.smooth);
         }
+
         self.energy = if self.silent() { 0.0 } else { ((self.smooth - (self.peak - ENERGY_RANGE)) / ENERGY_RANGE).clamp(0.0, 1.0) };
     }
 
@@ -97,11 +103,13 @@ impl ChorusWatch {
         } else if short < long + CHORUS_FALL {
             (self.above, self.below) = (0.0, self.below + step);
         }
+
         if !self.on && self.above >= CHORUS_AFTER {
             self.on = true;
         } else if self.on && self.below >= CHORUS_UNTIL {
             self.on = false;
         }
+
         self.on
     }
 }
@@ -118,19 +126,26 @@ impl DropWatch {
     pub(crate) fn hear(&mut self, fast: f32, long: f32, step: f32) -> bool {
         if fast < long - DROP_DIP {
             (self.quiet, self.left) = (self.quiet + step, 0.0);
+
             return false;
         }
+
         if self.quiet >= DROP_QUIET {
             self.left = DROP_WITHIN;
         }
+
         self.quiet = 0.0;
+
         if self.left > 0.0 {
             self.left -= step;
+
             if fast >= long - DROP_BACK {
                 self.left = 0.0;
+
                 return true;
             }
         }
+
         false
     }
 }
@@ -164,7 +179,9 @@ impl Chooser {
     pub(crate) fn choose(&mut self, cues: &Cues, beat: f64) -> Dance {
         let wanted = self.wanted(cues);
         let first = cues.bpm.is_some() && !self.heard;
+
         self.heard |= cues.bpm.is_some();
+
         if cues.silent {
             self.set(Dance::Nap, beat);
         } else if cues.drop && self.dance != Dance::Spin {
@@ -178,6 +195,7 @@ impl Chooser {
         } else if self.dance == Dance::Nap || first || (wanted != self.dance && beat - self.since >= DWELL) {
             self.set(wanted, beat);
         }
+
         self.dance
     }
 
@@ -193,14 +211,19 @@ impl Chooser {
         if cues.chorus {
             return Dance::Wave;
         }
+
         let Some(bpm) = cues.bpm else { return Dance::Sway };
+
         if bpm > 135.0 || (cues.bass >= BASS_STRONG && cues.energy >= ENERGY_HIGH) {
             return Dance::Bang;
         }
+
         let ranges = [(Dance::Sway, 0.0, 90.0), (Dance::Step, 90.0, 110.0), (Dance::Clap, 100.0, 120.0), (Dance::Pump, 115.0, 135.0)];
+
         if ranges.iter().any(|&(dance, low, high)| dance == self.dance && (low..=high).contains(&bpm)) {
             return self.dance;
         }
+
         match bpm {
             bpm if bpm < 90.0 => Dance::Sway,
             bpm if bpm < 105.0 => Dance::Step,

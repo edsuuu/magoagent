@@ -105,12 +105,14 @@ impl Groove {
     /// Timed by the clock at `seconds`, at `bpm`.
     pub(crate) fn clock(seconds: f64, bpm: f32, dance: Dance) -> Groove {
         let beat = seconds * f64::from(bpm) / 60.0;
+
         Groove { bpm, phase: beat.fract() as f32, energy: 0.5, bass: 0.0, bands: None, dance, beat, since: 0.0 }
     }
 
     /// The same, `seconds` later.
     pub(crate) fn later(self, seconds: f64) -> Groove {
         let beat = self.beat + seconds.max(0.0) * f64::from(self.bpm) / 60.0;
+
         Groove { beat, phase: beat.fract() as f32, ..self }
     }
 }
@@ -118,6 +120,7 @@ impl Groove {
 /// How many beats a move of about `seconds` takes at `bpm`: the nearest power of two (1 to 8), so it starts on a beat.
 pub(crate) fn cycle_beats(seconds: f32, bpm: f32) -> f64 {
     let beats = f64::from(seconds * bpm.max(1.0) / 60.0);
+
     beats.log2().round().exp2().clamp(1.0, 8.0)
 }
 
@@ -129,6 +132,7 @@ pub(crate) fn spin_beats(bpm: f32) -> f64 {
 /// Seconds since the app started: the clock of the demand and of the sway with no beat.
 fn clock() -> f64 {
     static START: OnceLock<Instant> = OnceLock::new();
+
     START.get_or_init(Instant::now).elapsed().as_secs_f64()
 }
 
@@ -166,6 +170,7 @@ impl Shared {
     /// Whether the thread should go on: not stopped, and a dancer drawn within `LINGER`.
     fn wanted(&self) -> bool {
         let asked = self.asked.load(Ordering::Relaxed);
+
         !self.stop.load(Ordering::Relaxed) && asked != 0 && stamp().saturating_sub(asked) <= LINGER.as_millis() as u64
     }
 
@@ -207,6 +212,7 @@ impl Dancer {
     /// How long ago a dancer was drawn.
     fn asked_ago(&self) -> Option<Duration> {
         let asked = self.asked.load(Ordering::Relaxed);
+
         (asked != 0).then(|| Duration::from_millis(stamp().saturating_sub(asked)))
     }
 
@@ -237,34 +243,45 @@ impl Dancer {
     pub(crate) fn tick(&mut self, on: bool, playing: bool) {
         if !should_listen(on, playing, self.asked_ago()) {
             self.stop();
+
             return;
         }
+
         if let Some(shared) = &self.listening {
             if !shared.ended.load(Ordering::Relaxed) {
                 return;
             }
+
             if shared.failed.load(Ordering::Relaxed) {
                 self.failed_at = Some(Instant::now());
             }
+
             self.listening = None;
         }
+
         if self.failed_at.is_some_and(|at| at.elapsed() < RETRY) {
             return;
         }
+
         let shared = Arc::new(Shared::new(self.asked.clone()));
+
         #[cfg(test)]
         {
             self.starts += 1;
         }
+
         // never the real sound in a test
         if !cfg!(test) {
             let thread_shared = shared.clone();
             let spawned = std::thread::Builder::new().name("luna-batida".into()).spawn(move || capture::listen(thread_shared));
+
             if spawned.is_err() {
                 self.failed_at = Some(Instant::now());
+
                 return;
             }
         }
+
         self.listening = Some(shared);
     }
 
@@ -272,6 +289,7 @@ impl Dancer {
     #[cfg(test)]
     pub(crate) fn hear(&mut self, groove: Groove) {
         let asked = &self.asked;
+
         self.listening.get_or_insert_with(|| Arc::new(Shared::new(asked.clone()))).publish(groove);
     }
 
@@ -312,8 +330,10 @@ impl Ear {
         if !playing {
             return Groove::clock(clock(), NAP_BPM, Dance::Nap);
         }
+
         let heard =
             self.listening.as_ref().filter(|shared| !shared.ended.load(Ordering::Relaxed)).map(|shared| shared.latest.lock().ok().and_then(|latest| *latest));
+
         match heard {
             Some(Some((groove, at))) if at.elapsed() < STALE && groove.dance != Dance::Nap => groove.later(at.elapsed().as_secs_f64() + LEAD),
             Some(Some(_)) => Groove::clock(clock(), NAP_BPM, Dance::Nap),
@@ -329,6 +349,7 @@ impl DrawingApp {
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn luna_groove(&self) -> Option<Groove> {
         let now = self.integrations.spotify.now.as_ref()?;
+
         self.prefs.integrations.luna_dances.then(|| self.integrations.spotify.dancer.groove(now.playing))
     }
 
@@ -349,16 +370,19 @@ impl DrawingApp {
         let state = if self.prefs.integrations.luna_dances { "ligado" } else { "desligado" };
         let how = if cfg!(target_os = "macos") { " (no macOS ela balança no ritmo do relógio: o app não ouve o som do sistema)" } else { "" };
         let mut report = format!("A Luna dança com a música: {state}{how}.");
+
         if self.prefs.integrations.luna_dances
             && let Some(now) = &spotify.now
         {
             let groove = spotify.dancer.peek(now.playing);
+
             if spotify.dancer.listening() && groove.dance != Dance::Nap {
                 report.push_str(&format!(" Agora: {}, a {:.0} BPM.", groove.dance.name(), groove.bpm));
             } else {
                 report.push_str(&format!(" Agora: {}.", groove.dance.name()));
             }
         }
+
         report
     }
 }

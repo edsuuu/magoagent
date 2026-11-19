@@ -15,8 +15,10 @@ pub(crate) fn marquee_offset(overflow: f32, elapsed: f64) -> f32 {
     if overflow <= 0.0 || elapsed <= 0.0 {
         return 0.0;
     }
+
     let travel = overflow as f64 / SPEED;
     let at = elapsed % (2.0 * (PAUSE + travel));
+
     let offset = if at < PAUSE {
         0.0
     } else if at < PAUSE + travel {
@@ -26,6 +28,7 @@ pub(crate) fn marquee_offset(overflow: f32, elapsed: f64) -> f32 {
     } else {
         overflow as f64 - (at - 2.0 * PAUSE - travel) * SPEED
     };
+
     offset.clamp(0.0, overflow as f64) as f32
 }
 
@@ -36,6 +39,7 @@ pub(crate) fn marquee(ui: &egui::Ui, id: egui::Id, text: &str, font: FontId, col
     let whole = ui.painter().layout_no_wrap(text.to_string(), font.clone(), color);
     let overflow = whole.size().x - width;
     let time = ui.input(|input| input.time);
+
     let since = ui.ctx().data_mut(|data| {
         if hovered && overflow > 0.0 {
             Some(*data.get_temp_mut_or_insert_with(id, || time))
@@ -44,15 +48,20 @@ pub(crate) fn marquee(ui: &egui::Ui, id: egui::Id, text: &str, font: FontId, col
             None
         }
     });
+
     let Some(since) = since else {
         let cut = clipped(ui.painter(), text.to_string(), font, color, width);
         let taken = cut.size().x;
+
         ui.painter().galley(Pos2::new(left, center_y - cut.size().y / 2.0), cut, color);
+
         return taken;
     };
+
     let offset = marquee_offset(overflow, time - since);
     let room = Rect::from_min_max(Pos2::new(left, center_y - whole.size().y), Pos2::new(left + width, center_y + whole.size().y));
     let height = whole.size().y;
+
     ui.painter().with_clip_rect(room.intersect(ui.clip_rect())).galley(Pos2::new(left - offset, center_y - height / 2.0), whole, color);
     ui.ctx().request_repaint();
     width
@@ -66,17 +75,22 @@ mod tests {
     fn a_long_name_rests_scrolls_to_its_end_rests_and_comes_back() {
         let overflow = 64.0;
         let travel = overflow as f64 / SPEED;
+
         assert_eq!(marquee_offset(overflow, 0.0), 0.0);
         assert_eq!(marquee_offset(overflow, PAUSE * 0.9), 0.0, "a pause at the start");
         assert!((marquee_offset(overflow, PAUSE + travel / 2.0) - overflow / 2.0).abs() < 0.01, "half way there");
         assert_eq!(marquee_offset(overflow, PAUSE + travel + PAUSE * 0.5), overflow, "a pause at the end");
         let back = marquee_offset(overflow, 2.0 * PAUSE + travel + travel / 4.0);
+
         assert!((back - overflow * 0.75).abs() < 0.01, "on its way back: {back}");
         assert!(marquee_offset(overflow, 2.0 * (PAUSE + travel) + PAUSE * 0.5) < 0.01, "and round again from the start");
+
         for step in 0..400 {
             let offset = marquee_offset(overflow, step as f64 * 0.025);
+
             assert!((0.0..=overflow).contains(&offset), "never past either end: {offset}");
         }
+
         assert_eq!(marquee_offset(0.0, 3.0), 0.0, "a name that fits never moves");
         assert_eq!(marquee_offset(-10.0, 3.0), 0.0);
     }

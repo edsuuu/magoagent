@@ -8,6 +8,7 @@ use std::sync::OnceLock;
 /// on the screen in points and the screen's scale: where the eyes look, however far it is.
 pub(crate) fn eye_target(cursor: Pos2, scale: f32, window: Pos2) -> Option<Pos2> {
     let local = Pos2::new(cursor.x / scale - window.x, cursor.y / scale - window.y);
+
     (local.x.is_finite() && local.y.is_finite()).then_some(local)
 }
 
@@ -29,6 +30,7 @@ pub(crate) fn takes_click(read: impl Fn() -> Option<Pos2>, scale: f32, origin: P
 /// "x,y" as a place on the screen, in pixels.
 pub(crate) fn parse_cursor(text: &str) -> Option<Pos2> {
     let (x, y) = text.split_once(',')?;
+
     Some(Pos2::new(x.trim().parse().ok()?, y.trim().parse().ok()?))
 }
 
@@ -46,12 +48,14 @@ pub(crate) fn eye_cursor() -> Option<Pos2> {
     if crate::app::island::x11::active() {
         return screen_cursor_fake().or_else(crate::app::island::x11::cursor);
     }
+
     screen_cursor()
 }
 
 /// The cursor a test puts in the real one's place (`MAGOAGENT_FAKE_CURSOR`, in a test scene).
 fn screen_cursor_fake() -> Option<Pos2> {
     static FAKE: OnceLock<Option<Pos2>> = OnceLock::new();
+
     *FAKE.get_or_init(|| std::env::var_os("MAGOAGENT_SCENE").and_then(|_| std::env::var("MAGOAGENT_FAKE_CURSOR").ok()).and_then(|text| parse_cursor(&text)))
 }
 
@@ -61,7 +65,9 @@ fn system_cursor() -> Option<Pos2> {
     unsafe extern "system" {
         fn GetCursorPos(point: *mut [i32; 2]) -> i32;
     }
+
     let mut point = [0i32; 2];
+
     // SAFETY: a POINT (two i32) to fill in
     (unsafe { GetCursorPos(&mut point) } != 0).then(|| Pos2::new(point[0] as f32, point[1] as f32))
 }
@@ -79,6 +85,7 @@ pub(crate) fn set_scale(scale: f32) {
 #[cfg(target_os = "macos")]
 fn system_cursor() -> Option<Pos2> {
     let scale = f32::from_bits(SCALE.load(std::sync::atomic::Ordering::Relaxed));
+
     super::macos::cursor().map(|at| at * scale)
 }
 
@@ -95,23 +102,29 @@ fn system_cursor() -> Option<Pos2> {
 pub(crate) fn watch(ctx: &Context) -> std::sync::Arc<std::sync::Mutex<Option<Rect>>> {
     let room: std::sync::Arc<std::sync::Mutex<Option<Rect>>> = Default::default();
     let (shared, ctx) = (room.clone(), ctx.clone());
+
     std::thread::spawn(move || {
         let mut inside = false;
+
         loop {
             std::thread::sleep(std::time::Duration::from_millis(16));
             let Some(room) = *shared.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) else { continue };
             let now = system_cursor().is_some_and(|at| room.contains(at));
+
             if now != inside {
                 inside = now;
+
                 // macOS takes the click-through off on the main thread, the frame this wakes
                 #[cfg(windows)]
                 if now {
                     crate::app::voice::popup::plain::click_through(super::window::TITLE, false);
                 }
+
                 ctx.request_repaint();
             }
         }
     });
+
     room
 }
 
@@ -121,6 +134,7 @@ mod tests {
     #[test]
     fn the_click_goes_through_outside_the_island_and_is_taken_on_it() {
         let island = Rect::from_min_size(Pos2::new(180.0, 1.0), Vec2::new(288.0, 32.0));
+
         assert!(captures(Some(Pos2::new(300.0, 20.0)), island, false), "on it");
         assert!(captures(Some(Pos2::new(300.0, 40.0)), island, false), "in the margin around it");
         assert!(!captures(Some(Pos2::new(300.0, 120.0)), island, false), "under it: through");
@@ -136,6 +150,7 @@ mod tests {
         let (scale, origin) = (1.0, Pos2::new(1000.0, 0.0));
         let cursor = std::cell::Cell::new(Some(Pos2::new(1900.0, 600.0)));
         let read = || cursor.get();
+
         assert!(!takes_click(read, scale, origin, island, false), "start of the frame: far from the island");
         // the thread saw it come in and took the click-through off; the end of the frame must not put it back
         cursor.set(Some(Pos2::new(1300.0, 20.0)));

@@ -11,19 +11,24 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
     let mut created = Vec::new();
     let is_line = |item: &&Value| matches!(item["type"].as_str(), Some("arrow" | "line"));
     let ordered: Vec<&Value> = items.iter().filter(|item| !is_line(item)).chain(items.iter().filter(is_line)).collect();
+
     for item in ordered {
         let mut v = item.as_object().cloned().ok_or("cada elemento precisa ser um objeto")?;
         let kind = v.get("type").and_then(Value::as_str).ok_or("elemento sem `type`")?.to_string();
         let id = v.get("id").and_then(Value::as_str).map(String::from).unwrap_or_else(new_id);
+
         if scene.elements.iter().any(|e| e.id == id) {
             return Err(format!("já existe um elemento com id `{id}`"));
         }
+
         v.insert("id".into(), id.clone().into());
         let mut label = v.remove("label");
+
         match kind.as_str() {
             "rectangle" | "diamond" | "ellipse" => {
                 v.entry("width").or_insert(json!(160.0));
                 v.entry("height").or_insert(json!(80.0));
+
                 if kind != "ellipse" {
                     // the app draws rounded corners by default
                     v.entry("roundness").or_insert(json!({ "type": 3 }));
@@ -34,6 +39,7 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
                 if let Some(text) = v.remove("text").filter(|text| label.is_none() && text.is_string()) {
                     label = Some(json!({ "text": text, "fontSize": 20 }));
                 }
+
                 v.entry("width").or_insert(json!(NOTE_SIZE.x));
                 v.entry("height").or_insert(json!(NOTE_SIZE.y));
                 v.entry("created").or_insert(json!(now_ms()));
@@ -46,34 +52,43 @@ pub(crate) fn add_elements(scene: &mut Scene, items: &[Value]) -> Result<Vec<Val
                     "ide" | "filetree" => FILETREE_SIZE,
                     _ => Vec2::new(960.0, 640.0),
                 };
+
                 v.entry("width").or_insert(json!(size.x));
                 v.entry("height").or_insert(json!(size.y));
                 // dark box for exports and view; the app paints the live terminal, page or IDE
                 v.entry("backgroundColor").or_insert(json!("#181818"));
                 v.entry("strokeColor").or_insert(json!("#3a3a3a"));
                 v.entry("roughness").or_insert(json!(0));
+
                 // a terminal an agent makes starts with Maestro off; only the person turns it on
                 if kind == "terminal" {
                     v.insert("maestro".into(), false.into());
                 }
+
                 v.entry("roundness").or_insert(json!({ "type": 3 }));
             }
             _ => {}
         }
+
         let element = from_interop_elements(&json!([Value::Object(v)])).pop().ok_or_else(|| format!("tipo não suportado: {kind}"))?;
+
         // a frame drawn after its contents still goes behind them, or its fill would hide them
         let at = if element.frame.is_some() {
             let area = element_bounds(&element);
+
             scene.elements.iter().position(|e| area.contains_rect(element_bounds(e))).unwrap_or(scene.elements.len())
         } else {
             scene.elements.len()
         };
+
         scene.elements.insert(at, element);
         created.push(json!({ "id": id, "type": kind }));
+
         if let Some(label) = label.filter(|l| !l.is_null()) {
             created.push(add_label(scene, at, &label)?);
         }
     }
+
     resolve_bindings(&mut scene.elements);
     Ok(created)
 }
@@ -87,19 +102,24 @@ pub(crate) fn tie_to_caller(scene: &mut Scene, caller: Option<&str>, created: &[
     let Some(caller) = caller.filter(|caller| scene.elements.iter().any(|e| e.id == *caller)) else { return Ok(Vec::new()) };
     let window = |id: &str| scene.elements.iter().any(|e| e.id == id && e.id != caller && e.is_node());
     let windows: Vec<String> = created.iter().filter_map(|c| c["id"].as_str()).filter(|id| window(id)).map(String::from).collect();
+
     for id in windows.iter().map(String::as_str) {
         // a line it bound to both already connects them
         let ends = |e: &Element| [&e.ends.start, &e.ends.end].map(|end| end.as_ref().map(|b| b.element_id.clone()));
+
         if scene.elements.iter().any(|e| matches!(ends(e), [Some(a), Some(b)] if (a == caller && b == id) || (a == id && b == caller))) {
             continue;
         }
+
         // the app's own rope (`rope_between`): dashed, grey, no heads
         let rope = json!({
             "type": "arrow", "rope": true, "start": { "id": caller }, "end": { "id": id }, "startArrowhead": null, "endArrowhead": null,
             "strokeColor": "#8a8a8a", "strokeWidth": 2, "strokeStyle": "dashed", "roughness": 0, "roundness": { "type": 2 },
         });
+
         add_elements(scene, &[rope])?;
     }
+
     Ok(windows)
 }
 
@@ -108,6 +128,7 @@ pub(crate) fn tie_to_caller(scene: &mut Scene, caller: Option<&str>, created: &[
 pub(crate) fn make_room(scene: &mut Scene, caller: Option<&str>, created: &[Value]) {
     let around = caller.and_then(|id| scene.elements.iter().find(|e| e.id == id)).map(element_bounds);
     let ids: Vec<&str> = created.iter().filter_map(|c| c["id"].as_str()).collect();
+
     for (index_of, id) in ids.iter().copied().enumerate() {
         let Some(index) = scene.elements.iter().position(|e| e.id == id && e.is_node()) else { continue };
         let at = element_bounds(&scene.elements[index]);
@@ -115,13 +136,16 @@ pub(crate) fn make_room(scene: &mut Scene, caller: Option<&str>, created: &[Valu
         let later = &ids[index_of..];
         let spot = free_spot_among(scene.elements.iter().filter(|e| !later.contains(&e.id.as_str())), at, around.unwrap_or(at));
         let delta = spot.min - at.min;
+
         if delta != Vec2::ZERO {
             let label = format!("{id}-label");
+
             for element in scene.elements.iter_mut().filter(|e| e.id == id || e.id == label) {
                 element.move_by(delta);
             }
         }
     }
+
     resolve_bindings(&mut scene.elements);
 }
 
@@ -139,15 +163,20 @@ fn end_target(value: &Value) -> Option<String> {
 /// naming no element is an error: dropped without a word, the arrow was drawn right and only one end was tied.
 pub(crate) fn prepare_line(scene: &Scene, v: &mut Map<String, Value>) -> Result<(), String> {
     let mut ends = [None, None];
+
     for (k, key) in ["start", "end"].into_iter().enumerate() {
         let binding = format!("{key}Binding");
+
         let named = match v.remove(key) {
             None | Some(Value::Null) => None,
             Some(value) => Some(end_target(&value).ok_or_else(|| format!("`{key}` precisa do id de um elemento: {{\"id\": \"…\"}}"))?),
         };
+
         let named = named.or_else(|| v.get(&binding).filter(|value| value.is_string()).and_then(end_target));
+
         if let Some(target) = named {
             let center = center_of(scene, &target)?;
+
             v.insert(binding, json!({ "elementId": target, "fixedPoint": [0.5, 0.5], "mode": "orbit" }));
             ends[k] = Some(center);
         } else if let Some(target) = v.get(&binding).and_then(|value| value["elementId"].as_str()) {
@@ -155,20 +184,25 @@ pub(crate) fn prepare_line(scene: &Scene, v: &mut Map<String, Value>) -> Result<
             ends[k] = Some(center_of(scene, target).map_err(|_| format!("`{binding}` aponta para `{target}`, que não existe"))?);
         }
     }
+
     if v.get("points").is_none() {
         let x = v.get("x").and_then(Value::as_f64).map(|x| x as f32);
         let y = v.get("y").and_then(Value::as_f64).map(|y| y as f32);
         let start = ends[0].or(x.zip(y).map(|(x, y)| Pos2::new(x, y))).unwrap_or(Pos2::ZERO);
         let kept_end = v.get("_end").and_then(Value::as_array).map(|p| Pos2::new(p[0].as_f64().unwrap_or(0.0) as f32, p[1].as_f64().unwrap_or(0.0) as f32));
+
         let end = ends[1].or(kept_end).unwrap_or_else(|| {
             let w = v.get("width").and_then(Value::as_f64).unwrap_or(100.0) as f32;
             let h = v.get("height").and_then(Value::as_f64).unwrap_or(0.0) as f32;
+
             start + Vec2::new(w, h)
         });
+
         v.insert("x".into(), start.x.into());
         v.insert("y".into(), start.y.into());
         v.insert("points".into(), json!([[0.0, 0.0], [end.x - start.x, end.y - start.y]]));
     }
+
     v.remove("_end");
     Ok(())
 }
@@ -180,12 +214,15 @@ pub(crate) fn add_label(scene: &mut Scene, owner: usize, label: &Value) -> Resul
     let center = element_bounds(&scene.elements[owner]).center();
     let Vec2 { x: width, y: height } = text_size(content, size);
     let group = scene.elements[owner].group_id.clone().unwrap_or_else(new_id);
+
     scene.elements[owner].group_id = Some(group.clone());
     // the id ties the label to its owner, so it stays centered when the owner moves
     let owner_id = scene.elements[owner].id.clone();
     let id = format!("{owner_id}-label");
+
     scene.elements.retain(|e| e.id != id);
     let owner = scene.elements.iter().position(|e| e.id == owner_id).ok_or("dono do rótulo sumiu")?;
+
     let mut text = from_interop_elements(&json!([{
         "id": id,
         "type": "text",
@@ -197,6 +234,7 @@ pub(crate) fn add_label(scene: &mut Scene, owner: usize, label: &Value) -> Resul
     }]))
     .pop()
     .ok_or("não foi possível criar o rótulo")?;
+
     text.group_id = Some(group);
     scene.elements.push(text);
     Ok(json!({ "id": id, "type": "text", "labelOf": scene.elements[owner].id }))
@@ -209,60 +247,78 @@ pub(crate) fn add_label(scene: &mut Scene, owner: usize, label: &Value) -> Resul
 // file by hand. Enforce on the app's merge if that ever matters.
 pub(crate) fn may_build(scene: &Scene, caller: Option<&str>, items: &[Value]) -> Result<(), String> {
     let me = caller.and_then(|id| scene.elements.iter().find(|e| e.id == id)).and_then(|e| e.terminal.as_ref());
+
     if me.is_none_or(|t| t.maestro) {
         return Ok(());
     }
+
     let is_terminal = |id: &Value| id.as_str().is_some_and(|id| scene.elements.iter().any(|e| e.id == id && e.terminal.is_some()));
     // `start: {id}` or the file format's `startBinding: {elementId}`, which goes in as it is
     let links = |i: &Value| [&i["start"]["id"], &i["end"]["id"], &i["startBinding"]["elementId"], &i["endBinding"]["elementId"]].into_iter().any(is_terminal);
+
     if items.iter().any(|i| i["type"] == "terminal") {
         return Err("Só um terminal da Luna pode criar terminais".into());
     }
+
     if items.iter().any(links) {
         return Err("Só um terminal da Luna pode conectar".into());
     }
+
     Ok(())
 }
 
 /// Patches go through the element JSON round trip, so every field the format knows can change.
 pub(crate) fn update_elements(scene: &mut Scene, patches: &[Value]) -> Result<Vec<String>, String> {
     let mut updated = Vec::new();
+
     for patch in patches {
         let id = patch["id"].as_str().ok_or("cada alteração precisa de `id`")?;
         let index = scene.elements.iter().position(|e| e.id == id).ok_or_else(|| format!("elemento `{id}` não existe"))?;
         let mut v = interop_elements(&scene.elements[index..=index]).remove(0);
         let object = v.as_object_mut().ok_or("formato interno inválido")?;
         let mut patch = patch.as_object().cloned().unwrap_or_default();
+
         // Maestro is the person's switch: no agent turns it on or off through a patch
         patch.remove("maestro");
         let mut combined = object.clone();
+
         combined.extend(patch.clone());
+
         if let ElementKind::Line { points, .. } = &scene.elements[index].kind {
             let rebinding = patch.contains_key("start") || patch.contains_key("end");
+
             if rebinding && !patch.contains_key("points") {
                 // re-aim only the ends being re-bound; the other end stays where it was
                 let (first, last) = (points[0], points[points.len() - 1]);
+
                 combined.remove("points");
+
                 if !patch.contains_key("x") && !patch.contains_key("y") {
                     combined.insert("x".into(), json!(first[0]));
                     combined.insert("y".into(), json!(first[1]));
                 }
+
                 combined.insert("_end".into(), json!(last));
             }
+
             for key in ["start", "end"] {
                 if patch.get(key).is_some_and(Value::is_null) {
                     combined.remove(key);
                     combined.insert(format!("{key}Binding"), Value::Null);
                 }
             }
+
             prepare_line(scene, &mut combined)?;
         }
+
         *object = combined;
         let mut element = from_interop_elements(&json!([v])).pop().ok_or("alteração inválida")?;
+
         element.group_id = scene.elements[index].group_id.clone();
         scene.elements[index] = element;
         updated.push(id.to_string());
     }
+
     resolve_bindings(&mut scene.elements);
     Ok(updated)
 }

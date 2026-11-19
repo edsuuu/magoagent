@@ -103,12 +103,14 @@ impl PullRequest {
     /// Ver checks: the run of the first failed check that is a page of GitHub, else the pull request's checks.
     pub(crate) fn checks_page(&self) -> String {
         let run = self.failing.iter().filter_map(|check| check.url.as_deref()).find(|url| crate::app::integrations::page_allowed(url));
+
         run.map_or_else(|| format!("{}/checks", self.url), str::to_string)
     }
 
     /// "checks passaram · aprovado · rascunho".
     pub(crate) fn state_words(&self) -> String {
         let words = [self.ci.label().1, self.review, if self.draft { "rascunho" } else { "" }];
+
         words.iter().filter(|word| !word.is_empty()).copied().collect::<Vec<_>>().join(" · ")
     }
 
@@ -135,26 +137,35 @@ impl PullRequest {
     pub(crate) fn line(&self, now: i64) -> String {
         let state = if self.draft && self.is_open() { "rascunho" } else { self.state.label() };
         let mut parts = vec![self.id.clone(), state.to_string(), self.title.clone()];
+
         if !self.head_ref.is_empty() && !self.base_ref.is_empty() {
             parts.push(format!("{} → {}", self.head_ref, self.base_ref));
         }
+
         parts.push(ago(self.updated_at, now));
+
         if self.ci != CiState::Unknown {
             parts.push(self.ci.label().1.to_string());
         }
+
         if !self.failing.is_empty() {
             parts.push(format!("falhou: {}", self.failing.iter().map(|check| check.name.as_str()).collect::<Vec<_>>().join(", ")));
         }
+
         parts.push(self.review.to_string());
+
         if self.conflicts() {
             parts.push("conflito".into());
         }
+
         if self.review_requested_of_me {
             parts.push("pedem a sua revisão".into());
         }
+
         if self.needs_you() {
             parts.push("precisa de você".into());
         }
+
         parts.push(self.url.clone());
         parts.retain(|part| !part.is_empty());
         parts.join(" · ")
@@ -176,9 +187,11 @@ impl PullRequest {
     /// A row's second line: "ana/loja #42 · feat/frete → main · há 4 min" (what GitHub did not say left out).
     pub(crate) fn subtitle(&self, now: i64) -> String {
         let mut parts = vec![format!("{} #{}", self.repo(), self.number())];
+
         if !self.head_ref.is_empty() && !self.base_ref.is_empty() {
             parts.push(format!("{} → {}", self.head_ref, self.base_ref));
         }
+
         parts.push(ago(self.updated_at, now));
         parts.retain(|part| !part.is_empty());
         parts.join(" · ")
@@ -244,6 +257,7 @@ impl Pulse {
     /// ones `filter` keeps.
     pub(crate) fn listed(&self, filter: PrFilter) -> Vec<&PullRequest> {
         let mut list: Vec<&PullRequest> = self.mine.iter().collect();
+
         list.extend(self.to_review.iter().filter(|request| !self.mine.iter().any(|known| known.id == request.id)));
         list.retain(|request| filter.keeps(request));
         list.sort_by_key(|request| std::cmp::Reverse(request.updated_at));
@@ -260,23 +274,31 @@ impl Pulse {
 /// status by its state. A page that is not https is dropped.
 pub(super) fn failing_checks(rollup: Option<&Value>) -> Vec<Check> {
     let mut found: Vec<Check> = Vec::new();
+
     for context in nodes(rollup.and_then(|rollup| rollup.get("contexts"))) {
         let status = context.get("context").is_some();
+
         let (name, state, page) = match status {
             true => (text_at(context, "context", 120), context.get("state"), "targetUrl"),
             false => (text_at(context, "name", 120), context.get("conclusion"), "detailsUrl"),
         };
+
         let failed = context_failed(status, state.and_then(Value::as_str));
         let Some(name) = name.filter(|_| failed) else { continue };
+
         if found.iter().any(|check| check.name == name) {
             continue;
         }
+
         let url = text_at(context, page, 400).filter(|url| url.starts_with("https://") && !url.contains(' '));
+
         found.push(Check { name, url });
+
         if found.len() == FAILING_MOST {
             break;
         }
     }
+
     found
 }
 
@@ -293,16 +315,21 @@ pub(super) fn pull_request(node: &Value) -> Option<PullRequest> {
     let number = node.get("number")?.as_i64().filter(|number| *number > 0)?;
     let repository = text_at(node.get("repository")?, "nameWithOwner", 140)?;
     let url = text_at(node, "url", 400).filter(|url| url.starts_with("https://github.com/"))?;
+
     let commit =
         node.get("commits").and_then(|commits| commits.get("nodes")).and_then(Value::as_array).and_then(|list| list.last()).and_then(|last| last.get("commit"));
+
     let rollup = commit.and_then(|commit| commit.get("statusCheckRollup"));
+
     let review = match node.get("reviewDecision").and_then(Value::as_str) {
         Some("APPROVED") => "aprovado",
         Some("CHANGES_REQUESTED") => CHANGES_REQUESTED,
         Some("REVIEW_REQUIRED") => "aguarda revisão",
         _ => "",
     };
+
     let raw = |key: &str| node.get(key).and_then(Value::as_str);
+
     Some(PullRequest {
         id: format!("{repository}#{number}"),
         title: text_at(node, "title", 200)?,

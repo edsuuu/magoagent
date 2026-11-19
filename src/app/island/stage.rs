@@ -75,11 +75,14 @@ impl DrawingApp {
     pub(super) fn island_stage(&mut self, focus: Option<&str>, activity: Option<&Activity>, time: f64) -> (f32, Vec<(usize, String)>) {
         let island = &mut self.island;
         let key = activity.map(|a| format!("{}|{:?}|{}|{}|{}", focus.unwrap_or_default(), a.phase, a.verb, a.target, a.place.0)).unwrap_or_default();
+
         if key != island.stage_key {
             island.stage_key = key;
             island.stage_since = time;
         }
+
         let wanted = activity.filter(|a| a.phase == Phase::Working && a.verb == "Read").and_then(|a| Some(resolve(a.file.as_ref()?, a.folder.as_deref())));
+
         match wanted {
             Some(path) if island.glimpse_for.as_ref() != Some(&path) => {
                 island.glimpse = glimpse(&path, 3);
@@ -88,6 +91,7 @@ impl DrawingApp {
             Some(_) => {}
             None => (island.glimpse_for, island.glimpse) = (None, Vec::new()),
         }
+
         ((time - island.stage_since) as f32, island.glimpse.clone())
     }
 }
@@ -99,6 +103,7 @@ fn verb(step: &Step) -> String {
 
 fn last_lines(text: &str, count: usize) -> Vec<String> {
     let lines: Vec<&str> = text.lines().map(str::trim_end).filter(|line| !line.trim().is_empty()).collect();
+
     lines[lines.len().saturating_sub(count)..].iter().map(|line| line.to_string()).collect()
 }
 
@@ -108,28 +113,34 @@ pub(crate) fn activity(items: &[ChatItem], working: bool, just_ended: bool) -> O
     if !working && !just_ended {
         return None;
     }
+
     let start = items.iter().rposition(|item| matches!(item, ChatItem::User(_))).map_or(0, |at| at + 1);
     let turn = &items[start..];
     let steps: Vec<&Step> = turn.iter().filter_map(|item| if let ChatItem::Tool(step) = item { Some(step) } else { None }).collect();
     let last = steps.last().copied();
     let after_last_step_is_error = turn.iter().rev().take_while(|item| !matches!(item, ChatItem::Tool(_))).any(|item| matches!(item, ChatItem::Error(_)));
     let failed = last.is_some_and(|step| step.failed) || after_last_step_is_error;
+
     let phase = match (failed, working) {
         (true, _) => Phase::Failed,
         (false, false) => Phase::Done,
         (false, true) if last.is_some_and(|step| writes(&step.name)) => Phase::Editing,
         (false, true) => Phase::Working,
     };
+
     let headline = turn.iter().rev().find_map(|item| match item {
         ChatItem::Agent(text) => text.lines().map(str::trim).find(|line| !line.is_empty()).map(|line| line.to_string()),
         _ => None,
     });
+
     // the command whose output tells how it went: the last Bash of the turn (a failed one first)
     let command = steps.iter().rev().find(|step| step.name == "Bash");
+
     let shown = match phase {
         Phase::Done | Phase::Failed => command.copied().or(last),
         _ => last,
     };
+
     let moves = steps
         .iter()
         .rev()
@@ -137,6 +148,7 @@ pub(crate) fn activity(items: &[ChatItem], working: bool, just_ended: bool) -> O
         .rev()
         .map(|step| Move { verb: verb(step), running: working && step.ended.is_none() && !step.failed, failed: step.failed })
         .collect();
+
     let output = shown
         .map(|step| match (&step.error, step.log.is_empty()) {
             (Some(error), _) if step.failed => last_lines(error, 3),
@@ -144,7 +156,9 @@ pub(crate) fn activity(items: &[ChatItem], working: bool, just_ended: bool) -> O
             _ => step.output.iter().cloned().collect(),
         })
         .unwrap_or_default();
+
     let file = shown.and_then(|step| step.files.first().cloned());
+
     Some(Activity {
         phase,
         verb: shown.map(verb).unwrap_or_default(),
@@ -164,6 +178,7 @@ pub(crate) fn activity(items: &[ChatItem], working: bool, just_ended: bool) -> O
 /// Where a file the step names is: as given, or under the folder it ran in.
 pub(crate) fn resolve(file: &str, folder: Option<&str>) -> std::path::PathBuf {
     let path = std::path::Path::new(file);
+
     match folder {
         Some(folder) if path.is_relative() => std::path::Path::new(folder).join(path),
         _ => path.to_path_buf(),
@@ -175,9 +190,11 @@ pub(crate) fn glimpse(path: &std::path::Path, count: usize) -> Vec<(usize, Strin
     use std::io::Read;
     let mut head = Vec::new();
     let Ok(file) = std::fs::File::open(path) else { return Vec::new() };
+
     if file.take(8192).read_to_end(&mut head).is_err() {
         return Vec::new();
     }
+
     String::from_utf8_lossy(&head)
         .lines()
         .enumerate()
@@ -209,12 +226,15 @@ mod tests {
     fn a_read_in_progress_is_working_and_an_edit_is_editing_with_its_change() {
         let items = vec![ChatItem::User("conserta".into()), done(tool("Read", "src/invoice.ts")), ChatItem::Tool(tool("Bash", "ls"))];
         let now = activity(&items, true, false).unwrap();
+
         assert_eq!((now.phase, now.verb.as_str(), now.target.as_str(), now.place), (Phase::Working, "Bash", "ls", (2, 2)));
         assert_eq!(now.moves.iter().map(|m| (m.verb.as_str(), m.running)).collect::<Vec<_>>(), vec![("Read", false), ("Bash", true)]);
         let mut edit = tool("Edit", "src/invoice.ts");
+
         (edit.diff, edit.patch, edit.patch_line) = (Some((1, 1)), vec!["-a".into(), "+b".into()], 12);
         let items = vec![ChatItem::User("conserta".into()), done(tool("Read", "src/invoice.ts")), done(edit)];
         let now = activity(&items, true, false).unwrap();
+
         assert_eq!((now.phase, now.file.as_deref(), now.diff, now.patch_line), (Phase::Editing, Some("src/invoice.ts"), Some((1, 1)), 12));
         assert_eq!(now.patch, vec!["-a", "+b"]);
     }
@@ -222,9 +242,11 @@ mod tests {
     #[test]
     fn a_turn_that_just_ended_says_how_the_command_went_and_the_agents_last_words() {
         let mut bash = tool("Bash", "npm test");
+
         bash.log = "PASS tests/invoice.test.ts\nTests: 48 passed, 48 total\n".into();
         let items = vec![ChatItem::User("testa".into()), done(bash), ChatItem::Agent("48 testes passaram.\nTudo certo.".into())];
         let end = activity(&items, false, true).unwrap();
+
         assert_eq!((end.phase, end.target.as_str(), end.headline.as_deref()), (Phase::Done, "npm test", Some("48 testes passaram.")));
         assert_eq!(end.output, vec!["PASS tests/invoice.test.ts", "Tests: 48 passed, 48 total"]);
     }
@@ -232,14 +254,18 @@ mod tests {
     #[test]
     fn a_failed_tool_or_an_error_ending_the_turn_is_a_failure_with_the_reason() {
         let mut bash = tool("Bash", "npm test");
+
         (bash.failed, bash.error) = (true, Some("exit 1\nboom".into()));
         let items = vec![ChatItem::User("testa".into()), done(bash)];
         let fail = activity(&items, false, true).unwrap();
+
         assert_eq!((fail.phase, fail.output), (Phase::Failed, vec!["exit 1".to_string(), "boom".to_string()]));
         let items = vec![ChatItem::User("x".into()), done(tool("Read", "a.ts")), ChatItem::Error("API: 529".into())];
+
         assert_eq!(activity(&items, true, false).unwrap().phase, Phase::Failed);
         // an error before the last tool is old news
         let items = vec![ChatItem::User("x".into()), ChatItem::Error("API: 529".into()), done(tool("Read", "a.ts"))];
+
         assert_eq!(activity(&items, true, false).unwrap().phase, Phase::Working);
     }
 
@@ -248,9 +274,11 @@ mod tests {
         assert_eq!(resolve("src/a.ts", Some("/p")), std::path::Path::new("/p").join("src/a.ts"));
         assert_eq!(resolve("/x/a.ts", Some("/p")), std::path::PathBuf::from("/x/a.ts"));
         let file = std::env::temp_dir().join(format!("ilha-glimpse-{}.ts", std::process::id()));
+
         std::fs::write(&file, "\nimport x\n\nexport const y = 1\nmais\n").unwrap();
         assert_eq!(glimpse(&file, 2), vec![(2, "import x".to_string()), (4, "export const y = 1".to_string())]);
         let _ = std::fs::remove_file(file);
+
         assert!(glimpse(std::path::Path::new("nao/existe.ts"), 2).is_empty());
     }
 }

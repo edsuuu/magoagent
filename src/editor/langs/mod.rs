@@ -105,13 +105,17 @@ pub static TEXT: Lang = lang!("Plain text", "plaintext", Plain, &[], None, "", &
 
 pub fn detect(path: &Path) -> &'static Lang {
     let name = path.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+
     if name.ends_with(".blade.php") {
         return &BLADE;
     }
+
     if name == "dockerfile" || name == "makefile" || name.starts_with(".env") {
         return &SH;
     }
+
     let ext = name.rsplit_once('.').map(|(_, e)| e).unwrap_or("");
+
     match ext {
         "php" | "phtml" => &PHP,
         "html" | "htm" | "vue" | "svelte" => &HTML,

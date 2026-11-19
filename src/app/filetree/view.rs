@@ -41,6 +41,7 @@ pub(crate) fn list_dir(path: &Path) -> Listing {
         Ok(read) => read,
         Err(e) => return Listing::Failed(e.to_string()),
     };
+
     Listing::Ready(
         read.flatten()
             .map(|e| {
@@ -49,6 +50,7 @@ pub(crate) fn list_dir(path: &Path) -> Listing {
                 // a link to a folder is a folder
                 let dir = kind.is_some_and(|k| k.is_dir() || (k.is_symlink() && path.is_dir()));
                 let meta = e.metadata().ok();
+
                 TreeEntry {
                     name: e.file_name().to_string_lossy().into_owned(),
                     dir,
@@ -65,6 +67,7 @@ pub(crate) fn list_dir(path: &Path) -> Listing {
 /// "file2" before "file10", letters without regard to case.
 fn natural(a: &str, b: &str) -> Ordering {
     let (mut a, mut b) = (a.chars().peekable(), b.chars().peekable());
+
     loop {
         match (a.peek().copied(), b.peek().copied()) {
             (None, None) => return Ordering::Equal,
@@ -73,12 +76,16 @@ fn natural(a: &str, b: &str) -> Ordering {
             (Some(x), Some(y)) if x.is_ascii_digit() && y.is_ascii_digit() => {
                 let number = |it: &mut std::iter::Peekable<std::str::Chars<'_>>| {
                     let mut n = String::new();
+
                     while let Some(d) = it.next_if(char::is_ascii_digit) {
                         n.push(d);
                     }
+
                     let n = n.trim_start_matches('0').to_string();
+
                     (n.len(), n)
                 };
+
                 match number(&mut a).cmp(&number(&mut b)) {
                     Ordering::Equal => {}
                     other => return other,
@@ -89,6 +96,7 @@ fn natural(a: &str, b: &str) -> Ordering {
                     Ordering::Equal => {}
                     other => return other,
                 }
+
                 a.next();
                 b.next();
             }
@@ -105,7 +113,9 @@ fn order(a: &TreeEntry, b: &TreeEntry, spec: &FileTreeSpec) -> Ordering {
     if a.dir != b.dir {
         return b.dir.cmp(&a.dir);
     }
+
     let by_name = natural(&a.name, &b.name);
+
     let up = match spec.sort {
         SortBy::Name => by_name,
         SortBy::Kind => extension(&a.name).cmp(&extension(&b.name)).then(by_name),
@@ -114,6 +124,7 @@ fn order(a: &TreeEntry, b: &TreeEntry, spec: &FileTreeSpec) -> Ordering {
         SortBy::DateCreated => b.created.or(b.modified).cmp(&a.created.or(a.modified)).then(by_name),
         SortBy::Size => b.size.cmp(&a.size).then(by_name),
     };
+
     if spec.reversed { up.reverse() } else { up }
 }
 
@@ -122,8 +133,10 @@ fn order(a: &TreeEntry, b: &TreeEntry, spec: &FileTreeSpec) -> Ordering {
 fn visible<'a>(entries: &'a [TreeEntry], spec: &FileTreeSpec, kept: &str) -> (Vec<&'a TreeEntry>, usize) {
     let kept = |name: &str| kept.split(',').any(|k| k.trim() == name);
     let mut shown: Vec<&TreeEntry> = entries.iter().filter(|e| !(spec.hide_hidden && e.name.starts_with('.') && !kept(&e.name))).collect();
+
     shown.sort_by(|a, b| order(a, b, spec));
     let cut = shown.len().saturating_sub(MAX_ENTRIES);
+
     shown.truncate(MAX_ENTRIES);
     (shown, cut)
 }
@@ -164,13 +177,16 @@ impl TreeGit {
         // where `root` sits in its repository: git's paths are all from the repository's top
         let Ok(prefix) = git(root, &["rev-parse", "--show-prefix"]) else { return TreeGit::default() };
         let prefix = prefix.trim().to_string();
+
         let branch = git(root, &["symbolic-ref", "--short", "-q", "HEAD"])
             .or_else(|_| git(root, &["rev-parse", "--short", "HEAD"]))
             .map_or(String::new(), |b| b.trim().to_string());
+
         // every untracked file on its own, as the reference app counts: a new folder is its files
         // and what it ignores, a folder as one line (`matching`; a git before 2.16 has no such mode, and grays nothing)
         let status = ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"];
         let out = git(root, &[&status[..], &["--ignored=matching"]].concat()).or_else(|_| git(root, &status)).unwrap_or_default();
+
         // the ignored come last (`!! path`), and are not changes
         // ponytail: a rename from a file named "!! …" would cut the list there; walk the entries if that ever shows
         let (out, ignored) = match out.find("\0!! ") {
@@ -178,32 +194,44 @@ impl TreeGit {
             None if out.starts_with("!! ") => ("", out.as_str()),
             None => (out.as_str(), ""),
         };
+
         let root_key = path_key(root);
         let mut info = TreeGit { repo: true, branch, ..Default::default() };
         let inside = |e: &str| Path::new(e).strip_prefix(&prefix).ok().map(|p| path_key(&root.join(p)).trim_end_matches('/').to_string());
+
         info.ignored = ignored.split('\0').filter_map(|e| e.strip_prefix("!! ")).filter_map(inside).collect();
+
         for change in parse_status(Path::new(""), out) {
             let Ok(inside) = change.path.strip_prefix(&prefix) else { continue };
             let full = root.join(inside);
             let key = path_key(&full).trim_end_matches('/').to_string();
+
             if path_key(&change.path).ends_with('/') {
                 info.untracked.insert(key.clone());
             }
+
             let mut up = full.parent();
+
             while let Some(dir) = up {
                 let dir_key = path_key(dir);
+
                 if !dir_key.starts_with(&root_key) || dir_key.len() < root_key.len() {
                     break;
                 }
+
                 let best = info.folders.entry(dir_key).or_insert(change.status);
+
                 if rank(change.status) < rank(*best) {
                     *best = change.status;
                 }
+
                 up = dir.parent();
             }
+
             info.files.push((full, change.status));
             info.statuses.insert(key, change.status);
         }
+
         info.changes = info.statuses.len();
         info
     }
@@ -213,20 +241,27 @@ impl TreeGit {
         if !self.repo {
             return None;
         }
+
         let key = path_key(path);
+
         if let Some(s) = self.statuses.get(&key) {
             return Some((*s, false));
         }
+
         if let Some(s) = self.folders.get(&key).filter(|_| dir) {
             return Some((*s, true));
         }
+
         let mut up = path.parent();
+
         while let Some(parent) = up {
             if self.untracked.contains(&path_key(parent)) {
                 return Some((Status::Untracked, dir));
             }
+
             up = parent.parent();
         }
+
         None
     }
 
@@ -301,6 +336,7 @@ pub(crate) struct TreeView {
 impl TreeView {
     pub(crate) fn new() -> Self {
         let (tx, rx) = channel();
+
         TreeView {
             listings: HashMap::new(),
             expanded: BTreeSet::new(),
@@ -334,19 +370,26 @@ impl TreeView {
     fn refresh(&mut self, spec: &FileTreeSpec, ctx: &Context) {
         let shown = spec.shown();
         let mut dirs: Vec<PathBuf> = vec![shown.clone()];
+
         dirs.extend(self.expanded.iter().filter(|p| p.starts_with(&shown)).cloned());
+
         for dir in &dirs {
             self.listings.entry(dir.clone()).or_insert(Listing::Loading);
         }
+
         (self.busy, self.stale) = (true, false);
         let (tx, ctx, root) = (self.tx.clone(), ctx.clone(), spec.root_path());
+
         std::thread::spawn(move || {
             for dir in dirs {
                 let _ = tx.send(Msg::Dir(dir.clone(), list_dir(&dir)));
+
                 ctx.request_repaint();
             }
+
             let _ = tx.send(Msg::Git(TreeGit::read(&root)));
             let _ = tx.send(Msg::Done);
+
             ctx.request_repaint();
         });
     }
@@ -355,6 +398,7 @@ impl TreeView {
     pub(crate) fn drain(&mut self) {
         while let Ok(msg) = self.rx.try_recv() {
             self.dirty = true;
+
             match msg {
                 Msg::Dir(path, listing) => {
                     self.listings.insert(path, listing);
@@ -370,20 +414,25 @@ impl TreeView {
     /// starts reading again.
     pub(crate) fn poll(&mut self, spec: &FileTreeSpec, ctx: &Context, now: f64) {
         self.drain();
+
         if !self.busy && (self.stale || now - self.last_poll >= POLL) {
             self.last_poll = now;
             self.refresh(spec, ctx);
         }
+
         // the filename search wants the files under the folder shown
         let shown = spec.shown();
+
         if self.filter.trim().is_empty() {
             self.index = None;
         } else if !self.indexing && self.index.as_ref().is_none_or(|(base, _)| *base != shown) {
             self.indexing = true;
             let (tx, ctx) = (self.tx.clone(), ctx.clone());
+
             std::thread::spawn(move || {
                 let files = crate::editor::tree::list_files(&shown);
                 let _ = tx.send(Msg::Files(shown, files));
+
                 ctx.request_repaint();
             });
         }
@@ -409,30 +458,41 @@ impl TreeView {
         let shown = spec.shown();
         let query = self.filter.trim().to_lowercase();
         let (mut tree, mut dropped) = (Vec::new(), 0);
+
         self.walk(&shown, 0, spec, &mut tree, &mut dropped);
         self.tree_rows = tree.len();
         self.hits_cut = false;
+
         if !query.is_empty() {
             let files = self.index.iter().flat_map(|(_, files)| files);
             let mut hits = files.filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().to_lowercase().contains(&query)));
+
             for path in hits.by_ref().take(MAX_HITS) {
                 let hint = path.parent().and_then(|p| p.strip_prefix(&shown).ok()).map_or(String::new(), |p| p.to_string_lossy().replace('\\', "/"));
                 let name = path.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned());
+
                 self.rows.push(TreeRow { path: path.clone(), name, dir: false, depth: 0, open: false, hint });
             }
+
             self.hits_cut = hits.next().is_some();
+
             return;
         }
+
         (self.rows, self.dropped) = (tree, dropped);
     }
 
     fn walk(&self, dir: &Path, depth: usize, spec: &FileTreeSpec, rows: &mut Vec<TreeRow>, dropped: &mut usize) {
         let Some(Listing::Ready(entries)) = self.listings.get(dir) else { return };
         let (shown, cut) = visible(entries, spec, &self.kept);
+
         *dropped += cut;
+
         for e in shown {
             let open = e.dir && self.expanded.contains(&e.path);
+
             rows.push(TreeRow { path: e.path.clone(), name: e.name.clone(), dir: e.dir, depth, open, hint: String::new() });
+
             if open {
                 self.walk(&e.path, depth + 1, spec, rows, dropped);
             }
@@ -444,9 +504,11 @@ impl TreeView {
         if !self.rows.is_empty() {
             return None;
         }
+
         if !self.filter.trim().is_empty() {
             return Some(if self.index.is_none() { "Buscando...".into() } else { "Nenhuma correspondência".into() });
         }
+
         Some(match self.listings.get(&spec.shown()) {
             Some(Listing::Failed(why)) => format!("Não foi possível ler esta pasta. {why}"),
             Some(Listing::Ready(_)) => "Esta pasta está vazia.".into(),
@@ -465,6 +527,7 @@ mod tests {
         let entries = [entry(".git"), entry(".claude"), entry(".idea"), entry("src")];
         let names = |spec: &FileTreeSpec, kept: &str| visible(&entries, spec, kept).0.iter().map(|e| e.name.clone()).collect::<Vec<_>>();
         let hiding = FileTreeSpec { hide_hidden: true, ..Default::default() };
+
         assert_eq!(names(&hiding, ".claude, .idea"), [".claude", ".idea", "src"]);
         assert_eq!(names(&hiding, ""), ["src"]);
         assert_eq!(names(&FileTreeSpec::default(), ""), [".claude", ".git", ".idea", "src"], "showing them all");

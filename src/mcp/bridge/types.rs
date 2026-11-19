@@ -209,13 +209,16 @@ impl Bridge {
         let shared = Arc::new(Mutex::new(Shared::default()));
         let (sender, commands) = mpsc::channel();
         let (thread_shared, thread_token) = (shared.clone(), token.clone());
+
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
                 let (shared, token, sender, ctx) = (thread_shared.clone(), thread_token.clone(), sender.clone(), ctx.clone());
+
                 // one thread per request: an ask can wait minutes for an agent
                 std::thread::spawn(move || serve(stream, &shared, &token, &sender, ctx.as_ref()));
             }
         });
+
         Ok(Self { address, token, shared, commands })
     }
 
@@ -225,9 +228,11 @@ impl Bridge {
     pub(crate) fn write_endpoint(&self) {
         let json = json!({ "address": self.address, "token": self.token, "pid": std::process::id() }).to_string();
         let fixed = hook_endpoint_path().filter(|_| takes_hooks());
+
         for path in endpoint_home().into_iter().chain(fixed) {
             write_private(&path, &json);
         }
+
         // the install folder's `data` may be readable by every account: a token left there by an older build goes
         if cfg!(windows)
             && std::env::var_os("MAGOAGENT_SCENE").is_none()
@@ -243,14 +248,19 @@ fn write_private(path: &Path, json: &str) {
     if let Some(folder) = path.parent() {
         let _ = fs::create_dir_all(folder);
     }
+
     let mut options = fs::OpenOptions::new();
+
     options.write(true).create(true).truncate(true);
+
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+
     if let Ok(mut file) = options.open(path) {
         // `mode` only applies to a new file: an older one keeps the permissions it had
         #[cfg(unix)]
         let _ = file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600));
+
         let _ = file.write_all(json.as_bytes());
     }
 }
@@ -276,11 +286,14 @@ pub(crate) fn remove_hook_endpoint() {
     if !takes_hooks() {
         return;
     }
+
     let Some(path) = hook_endpoint_path() else { return };
+
     let ours = fs::read_to_string(&path)
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
         .is_some_and(|endpoint| endpoint["pid"].as_u64() == Some(u64::from(std::process::id())));
+
     if ours {
         let _ = fs::remove_file(path);
     }
@@ -290,6 +303,7 @@ pub(crate) fn remove_hook_endpoint() {
 pub(crate) fn note_name(text: &str) -> String {
     // emphasis wraps both ends ("**negrito**"), the block marks only start the line
     let first = text.lines().map(|l| l.trim().trim_start_matches(['#', '-', '>', ' ']).trim_matches(['*', '_', '~', '`', ' '])).find(|l| !l.is_empty());
+
     first.map_or("Nota".into(), |l| l.chars().take(40).collect::<String>().trim().to_string())
 }
 
@@ -299,6 +313,7 @@ fn endpoint_home() -> Option<PathBuf> {
     if cfg!(windows) && std::env::var_os("MAGOAGENT_SCENE").is_none() {
         return crate::file::legacy_data_dir().map(|dir| dir.join("bridge.json"));
     }
+
     autosave_path().map(|p| p.with_file_name("bridge.json"))
 }
 
@@ -307,9 +322,11 @@ fn endpoint_home() -> Option<PathBuf> {
 pub(crate) fn endpoint_path() -> Option<PathBuf> {
     let home = endpoint_home();
     let in_data_folder = autosave_path().and_then(|scene| scene.parent().map(Path::to_path_buf)) == crate::file::data_dir();
+
     if cfg!(windows) && in_data_folder && !home.as_ref().is_some_and(|path| path.exists()) {
         return crate::file::legacy_data_dir().map(|dir| dir.join("bridge.json")).or(home);
     }
+
     home
 }
 
@@ -319,5 +336,6 @@ pub(crate) fn endpoint_path() -> Option<PathBuf> {
 pub(crate) fn app_open(endpoint: &Path) -> bool {
     let saved = read_json::<Value>(endpoint);
     let address = saved.and_then(|s| s["address"].as_str()?.parse::<std::net::SocketAddr>().ok());
+
     address.is_some_and(|a| TcpStream::connect_timeout(&a, Duration::from_millis(500)).is_ok())
 }

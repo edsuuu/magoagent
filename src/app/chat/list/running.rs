@@ -35,6 +35,7 @@ impl Show {
     /// The MCP's name for it (`chats_view`), or the chip's own.
     pub(crate) fn named(name: &str) -> Option<Show> {
         let name = name.trim().to_lowercase();
+
         Show::ALL.into_iter().find(|show| show.label().to_lowercase() == name || show.key() == name)
     }
 
@@ -90,6 +91,7 @@ pub(crate) struct Entry {
 /// `entries` the chip `show` and the search `query` (lowercase) keep.
 pub(crate) fn kept<'a>(entries: &'a [Entry], show: Show, query: &str) -> Vec<&'a Entry> {
     let says = |entry: &Entry| query.is_empty() || format!("{} {}", entry.name, entry.last).to_lowercase().contains(query);
+
     entries.iter().filter(|entry| show.keeps(&entry.state) && says(entry)).collect()
 }
 
@@ -115,14 +117,18 @@ pub(crate) fn space_groups(entries: &[&Entry], order: &[String]) -> Vec<(String,
         "" => order.len(),
         space => order.iter().position(|id| id == space).unwrap_or(order.len()),
     };
+
     let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
+
     for (index, entry) in entries.iter().enumerate() {
         let key = if rank(&entry.space) == order.len() { "" } else { entry.space.as_str() };
+
         match groups.iter_mut().find(|(space, _)| space == key) {
             Some((_, members)) => members.push(index),
             None => groups.push((key.to_string(), vec![index])),
         }
     }
+
     groups.sort_by_key(|(space, _)| rank(space));
     groups
 }
@@ -147,6 +153,7 @@ impl DrawingApp {
     /// A terminal running an agent: Claude Code or Codex by its command, its session, or the title Claude gives it.
     fn runs_agent(&self, row: &AgentRow) -> bool {
         let title = self.terminals.get(&row.id).and_then(|s| s.as_ref().ok()).and_then(|s| s.title()).unwrap_or_default();
+
         crate::app::chat::header::program(&row.spec, self.agent_sessions.contains_key(&row.id)).is_some() || crate::app::ui::agents::claude_title(&title)
     }
 
@@ -154,6 +161,7 @@ impl DrawingApp {
     /// open) while they run, in every space, and the sessions outside the app.
     pub(crate) fn running_entries(&self) -> Vec<Entry> {
         let open = self.chat_agent.as_deref();
+
         let mut entries: Vec<Entry> = self
             .agent_rows()
             .into_iter()
@@ -170,9 +178,12 @@ impl DrawingApp {
                 asleep: false,
             })
             .collect();
+
         let now = now_ms();
+
         entries.extend(self.outside_pills().into_iter().map(|pill| {
             let last = self.waiting_line(&pill.id).unwrap_or(if pill.activity.is_empty() { "Sem atividade ainda".to_string() } else { pill.activity });
+
             Entry {
                 // the name is the folder's; a program other than Claude Code, the group's usual one, says itself before
                 // what it does
@@ -187,6 +198,7 @@ impl DrawingApp {
                 asleep: pill.asleep,
             }
         }));
+
         // no two by the same name: the first keeps it, the next take a number
         crate::app::mascot::identity::make_distinct(&mut entries, |entry| &mut entry.name);
         entries
@@ -200,6 +212,7 @@ impl DrawingApp {
             true => String::new(),
             false => row.space.clone(),
         };
+
         key.split('#').next().unwrap_or_default().to_string()
     }
 
@@ -207,12 +220,14 @@ impl DrawingApp {
     pub(crate) fn chats_counts(&self) -> (usize, usize) {
         let open = self.chat_agent.as_deref();
         let rows = self.agent_rows().into_iter().filter(|row| self.is_chat(&row.id) || open == Some(row.id.as_str()) || self.runs_agent(row));
+
         running_counts(rows.map(|row| row.state).chain(self.outside_pills().into_iter().map(|pill| pill.state)))
     }
 
     /// The space's name and colour of a group: grey for none and for the sessions outside the app.
     pub(crate) fn group_look(&self, space: &str) -> (String, Color32) {
         let grey = Color32::from_gray(0x8e);
+
         match self.spaces.list.iter().find(|workspace| workspace.id == space) {
             Some(workspace) => (workspace.name.clone(), Color32::from_rgb(workspace.color[0], workspace.color[1], workspace.color[2])),
             None if space == OUTSIDE => ("Fora do app".into(), grey),
@@ -226,11 +241,14 @@ impl DrawingApp {
         if let Some(asked) = self.waiting_line(&row.id) {
             return asked;
         }
+
         let items = self.transcripts.get(&row.id).map(|transcript| transcript.items.as_slice()).unwrap_or_default();
+
         let said = items.iter().rev().find_map(|item| match item {
             ChatItem::User(text) | ChatItem::Agent(text) | ChatItem::Error(text) => text.lines().map(str::trim).rfind(|line| !line.is_empty()),
             _ => None,
         });
+
         // nothing said since /clear: the new session's line ("Nova sessão · 14:32")
         let said = said.or_else(|| {
             items.iter().rev().find_map(|item| match item {
@@ -238,7 +256,9 @@ impl DrawingApp {
                 _ => None,
             })
         });
+
         let quiet = || if self.is_chat(&row.id) { "Nenhuma mensagem ainda".to_string() } else { self.list_note(row, None) };
+
         said.map(str::to_string).or_else(|| row.mission.clone()).unwrap_or_else(quiet)
     }
 
@@ -250,13 +270,16 @@ impl DrawingApp {
                 None => format!("Permissão: {}", ask.summary()),
             });
         }
+
         let menu = self.terminal_menu(id)?;
+
         Some(if menu.question.is_empty() { "Escolha uma opção".into() } else { menu.question.join(" ") })
     }
 
     /// The menu a waiting terminal shows.
     fn terminal_menu(&self, id: &str) -> Option<crate::terminal::Menu> {
         let session = self.terminals.get(id)?.as_ref().ok().filter(|_| self.terminal_waiting.contains(id) || self.waiting_secs(id).is_some())?;
+
         crate::terminal::menu_choices(&session.handle.screen_text())
     }
 
@@ -267,6 +290,7 @@ impl DrawingApp {
             AgentState::Waiting => self.waiting_secs(&row.id),
             _ => None,
         };
+
         since.or_else(|| self.chat_when(&row.id).map(|when| (now_ms() / 1000 - when).max(0) as f64))
     }
 
@@ -276,17 +300,23 @@ impl DrawingApp {
     pub(crate) fn row_answers(&self, id: &str, time: f64) -> (Vec<(String, bool, Answer)>, bool) {
         if let Some(ask) = self.person_asks.borrow_mut().iter_mut().find(|ask| asks_for(ask, id)) {
             let guarded = ask.guarded(time);
+
             let Some(question) = ask.questions.get(ask.step) else {
                 return (vec![("Permitir".into(), true, Answer::Allow(true)), ("Negar".into(), false, Answer::Allow(false))], guarded);
             };
+
             if question.multiple {
                 return (Vec::new(), false);
             }
+
             let options = question.options.iter().enumerate().map(|(index, (label, _))| (label.clone(), index == 0, Answer::Pick(index)));
+
             return (options.collect(), guarded);
         }
+
         let Some(menu) = self.terminal_menu(id) else { return (Vec::new(), false) };
         let choices = menu.choices.into_iter().enumerate().map(|(index, choice)| (choice, index == menu.marked, Answer::Menu(menu.marked, index)));
+
         (choices.collect(), false)
     }
 
@@ -295,17 +325,22 @@ impl DrawingApp {
         if let Answer::Menu(from, to) = answer {
             if let Some(Ok(session)) = self.terminals.get(id) {
                 let handle = session.handle.clone();
+
                 std::thread::spawn(move || handle.pick(from, to));
             }
+
             return;
         }
+
         let mut asks = self.person_asks.borrow_mut();
         let Some(index) = asks.iter().position(|ask| asks_for(ask, id)) else { return };
+
         let send = match answer {
             Answer::Allow(allow) => Some(allow),
             Answer::Pick(option) => asks[index].pick(option).then_some(true),
             Answer::Menu(..) => None,
         };
+
         if let Some(allow) = send {
             asks.remove(index).send(allow);
         }
@@ -333,9 +368,11 @@ mod tests {
             entry("c", AgentState::Idle(None), ""),
             entry("d", AgentState::Active(0.0), ""),
         ];
+
         entries[2].last = "Testes passaram".into();
         assert_eq!(counts(&entries), [4, 2, 1, 1]);
         let ids = |show: Show, query: &str| kept(&entries, show, query).iter().map(|entry| entry.id.clone()).collect::<Vec<_>>();
+
         assert_eq!(ids(Show::Working, ""), ["a", "d"]);
         assert_eq!(ids(Show::Waiting, ""), ["b"]);
         assert_eq!(ids(Show::Ready, ""), ["c"]);
@@ -355,8 +392,10 @@ mod tests {
             entry("a2", AgentState::Waiting, "s1"),
             entry("z", AgentState::Waiting, "gone"),
         ];
+
         let refs: Vec<&Entry> = entries.iter().collect();
         let groups = space_groups(&refs, &["s1".into(), "s2".into()]);
+
         // a space no longer listed goes with the ones of none
         assert_eq!(groups, [("s1".to_string(), vec![3, 4]), ("s2".into(), vec![1]), ("".into(), vec![2, 5]), (OUTSIDE.into(), vec![0])]);
     }

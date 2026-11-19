@@ -46,6 +46,7 @@ pub fn color(s: St) -> Color32 {
 /// The highlighted text as one LayoutJob, every line `line_height` high.
 pub fn layout(lang: &Lang, src: &str, font: FontId, line_height: f32) -> LayoutJob {
     let mut job = LayoutJob::default();
+
     let fmt = |s: St| TextFormat {
         font_id: font.clone(),
         color: color(s),
@@ -54,15 +55,19 @@ pub fn layout(lang: &Lang, src: &str, font: FontId, line_height: f32) -> LayoutJ
         valign: eframe::egui::Align::Center,
         ..Default::default()
     };
+
     let push = |job: &mut LayoutJob, text: &str, s: St| job.append(text, 0.0, fmt(s));
     let mut at = 0;
+
     for (a, b, s) in tokens(lang, src) {
         if a > at {
             push(&mut job, &src[at..a], St::Text);
         }
+
         push(&mut job, &src[a..b], s);
         at = b;
     }
+
     push(&mut job, &src[at..], St::Text);
     job
 }
@@ -78,6 +83,7 @@ pub fn pair(lang: &Lang, src: &str, at: usize) -> Option<(Range<usize>, St, Opti
     let (kind, open) = bracket_kind(&src[a..b]);
     let same = |t: &&Tok| t.2 == st && bracket_kind(&src[t.0..t.1]) == (kind, !open);
     let other = if open { toks[k + 1..].iter().find(|t| same(t)) } else { toks[..k].iter().rev().find(|t| same(t)) };
+
     Some((a..b, st, other.map(|t| t.0..t.1)))
 }
 
@@ -97,11 +103,13 @@ fn bracket_kind(text: &str) -> (u8, bool) {
 
 pub fn tokens(lang: &Lang, s: &str) -> Vec<Tok> {
     let mut out = vec![];
+
     match lang.kind {
         Kind::Code => code(lang, s, 0, s.len(), &mut out),
         Kind::Markup => markup(lang, s, &mut out),
         Kind::Plain => {}
     }
+
     out
 }
 
@@ -112,22 +120,27 @@ fn is_ident(b: u8) -> bool {
 /// Index of the matching `close` for an `open` at `i` (balanced), or `end`.
 fn balanced(b: &[u8], mut i: usize, end: usize, open: u8, close: u8) -> usize {
     let mut depth = 0;
+
     while i < end {
         if b[i] == open {
             depth += 1;
         } else if b[i] == close {
             depth -= 1;
+
             if depth == 0 {
                 return i + 1;
             }
         }
+
         i += 1;
     }
+
     end
 }
 
 fn string_end(b: &[u8], mut i: usize, end: usize, q: u8) -> usize {
     i += 1;
+
     while i < end {
         match b[i] {
             b'\\' => i += 2,
@@ -136,6 +149,7 @@ fn string_end(b: &[u8], mut i: usize, end: usize, q: u8) -> usize {
             _ => i += 1,
         }
     }
+
     end
 }
 
@@ -147,88 +161,121 @@ fn code(lang: &Lang, s: &str, start: usize, end: usize, out: &mut Vec<Tok>) {
     let mut css_depth = 0;
     let mut open: Vec<u8> = vec![]; // brackets not closed yet; a bracket's depth is its place here
     let mut line_start = true; // only whitespace seen since the last newline
+
     while i < end {
         let c = b[i];
         let rest = &s[i..end];
+
         if c == b'\n' {
             line_start = true;
             i += 1;
+
             continue;
         }
+
         if c.is_ascii_whitespace() {
             i += 1;
+
             continue;
         }
+
         let was_line_start = std::mem::replace(&mut line_start, false);
 
         // attributes: Rust/PHP `#[...]`
         if (id == "rust" || id == "php") && rest.starts_with("#[") || (id == "rust" && rest.starts_with("#![")) {
             let e = balanced(b, i, end, b'[', b']');
+
             out.push((i, e, St::Meta));
             i = e;
+
             continue;
         }
+
         // C preprocessor: `#include` as keyword
         if matches!(id, "c" | "cpp" | "csharp") && c == b'#' && was_line_start {
             let mut e = i + 1;
+
             while e < end && is_ident(b[e]) {
                 e += 1;
             }
+
             out.push((i, e, St::Keyword));
             i = e;
+
             continue;
         }
+
         if let Some((open, close)) = lang.block
             && rest.starts_with(open)
         {
             let e = s[i + open.len()..end].find(close).map_or(end, |p| i + open.len() + p + close.len());
             let doc = rest.starts_with("/**") && !rest.starts_with("/**/");
+
             out.push((i, e, if doc { St::Doc } else { St::Comment }));
             i = e;
+
             continue;
         }
+
         if let Some(lc) = lang.line.iter().find(|p| rest.starts_with(**p)) {
             let e = s[i..end].find('\n').map_or(end, |p| i + p);
             let doc = id == "rust" && (rest.starts_with("///") || rest.starts_with("//!"));
+
             out.push((i, e, if doc { St::Doc } else { St::Comment }));
             let _ = lc;
+
             i = e;
+
             continue;
         }
+
         if lang.quotes.as_bytes().contains(&c) {
             // Rust lifetime `'a` (no closing quote right after the identifier)
             if id == "rust" && c == b'\'' {
                 let mut e = i + 1;
+
                 while e < end && is_ident(b[e]) {
                     e += 1;
                 }
+
                 if e > i + 1 && (e >= end || b[e] != b'\'') {
                     out.push((i, e, St::Keyword));
                     i = e;
+
                     continue;
                 }
             }
+
             let e = string_end(b, i, end, c);
             let key = matches!(id, "json" | "yaml") && s[e..end].trim_start().starts_with(':');
+
             out.push((i, e, if key { St::Field } else { St::Str }));
             i = e;
+
             continue;
         }
+
         if c.is_ascii_digit() || (c == b'#' && id == "css") {
             let mut e = i + 1;
+
             while e < end && (is_ident(b[e]) || b[e] == b'.' && e + 1 < end && b[e + 1].is_ascii_digit()) {
                 e += 1;
             }
+
             if id == "css" {
                 while e < end && (b[e] == b'%' || b[e].is_ascii_alphabetic()) {
                     e += 1;
                 }
             }
+
             let st = if c == b'#' && css_depth == 0 { St::Tag } else { St::Number };
+
             out.push((i, e, st));
             i = e;
+
             continue;
         }
+
         if id == "css" {
             match c {
                 b'{' => css_depth += 1,
@@ -236,32 +283,43 @@ fn code(lang: &Lang, s: &str, start: usize, end: usize, out: &mut Vec<Tok>) {
                 _ => {}
             }
         }
+
         let sigil = matches!(c, b'$' | b'@') || (c == b'.' && id == "asm") || (c == b'%' && id == "asm");
+
         if is_ident(c) || (sigil && i + 1 < end && is_ident(b[i + 1])) {
             let mut e = i + 1;
+
             while e < end && (is_ident(b[e]) || (id == "css" && b[e] == b'-')) {
                 e += 1;
             }
+
             let w = &s[i..e];
             let after = s[e..end].trim_start();
             let before = s[start..i].trim_end();
             let call = after.starts_with('(');
             let st = token_style(lang, w, prev_word, before, after, call, was_line_start, css_depth);
+
             if let Some(st) = st {
                 out.push((i, e, st));
             }
+
             prev_word = w;
             i = e;
+
             continue;
         }
+
         // PHP tags pair like brackets: `<?php` and `<?=` open, `?>` closes (`<` marks them in `open`)
         if id == "php" && (rest.starts_with("<?php") || rest.starts_with("<?=")) {
             let n = if rest.starts_with("<?php") { 5 } else { 3 };
+
             out.push((i, i + n, St::Bracket(level(&open, b'<'))));
             open.push(b'<');
             i += n;
+
             continue;
         }
+
         if id == "php"
             && rest.starts_with("?>")
             && let Some(p) = open.iter().rposition(|&o| o == b'<')
@@ -270,8 +328,10 @@ fn code(lang: &Lang, s: &str, start: usize, end: usize, out: &mut Vec<Tok>) {
             // only the tag closes: a `{` opened in one island can close in the next, as PHP's own pairs do
             open.remove(p);
             i += 2;
+
             continue;
         }
+
         // brackets outside strings and comments (those are consumed above). Each kind counts its own
         // levels; a closer takes its opener's level, and a stray closer stays plain.
         // ponytail: regex literals and #[...] attributes are not bracket-counted; find/diff rows are laid out
@@ -287,16 +347,19 @@ fn code(lang: &Lang, s: &str, start: usize, end: usize, out: &mut Vec<Tok>) {
                     b']' => b'[',
                     _ => b'{',
                 };
+
                 // a missing closer is closed by the next one of its kind, taking the brackets inside it along
                 // (PHP tags inside it stay open for their `?>`)
                 if let Some(p) = open.iter().rposition(|&o| o == want) {
                     out.push((i, i + 1, St::Bracket(level(&open[..p], want))));
                     let tags: Vec<u8> = open.drain(p..).skip(1).filter(|&o| o == b'<').collect();
+
                     open.extend(tags);
                 }
             }
             _ => {}
         }
+
         i += 1;
     }
 }
@@ -310,12 +373,15 @@ fn level(open: &[u8], kind: u8) -> u8 {
 fn token_style(lang: &Lang, w: &str, prev: &str, before: &str, after: &str, call: bool, first: bool, css_depth: i32) -> Option<St> {
     let id = lang.id;
     let first_ch = w.as_bytes()[0];
+
     if first_ch == b'$' {
         return (id == "php" && w == "$this").then_some(St::Keyword);
     }
+
     if first_ch == b'@' {
         return Some(if matches!(id, "css" | "blade") { St::Keyword } else { St::Meta });
     }
+
     match id {
         "css" if css_depth > 0 && after.starts_with(':') => return Some(St::Field),
         "css" if css_depth == 0 => return Some(St::Tag),
@@ -323,35 +389,47 @@ fn token_style(lang: &Lang, w: &str, prev: &str, before: &str, after: &str, call
             if after.starts_with(':') {
                 return Some(St::Function);
             }
+
             if matches!(first_ch, b'.' | b'%') || lang.kw.contains(&w.to_ascii_lowercase().as_str()) {
                 return Some(St::Meta);
             }
+
             if is_register(w) {
                 return Some(St::Field);
             }
+
             return first.then_some(St::Keyword);
         }
         "yaml" | "toml" if first && (after.starts_with(':') || after.starts_with('=')) => return Some(St::Field),
         _ => {}
     }
+
     let kw = if id == "sql" { lang.kw.contains(&w.to_ascii_lowercase().as_str()) } else { lang.kw.contains(&w) };
+
     if kw {
         return Some(St::Keyword);
     }
+
     if matches!(prev, "fn" | "function" | "def" | "func") {
         return Some(St::Function);
     }
+
     let member = before.ends_with("->") || before.ends_with('.') && !before.ends_with("..");
+
     if member {
         return Some(if call { St::Method } else { St::Field });
     }
+
     if before.ends_with("::") && call {
         return Some(St::Method);
     }
+
     if id == "rust" && after.starts_with('!') && !after.starts_with("!=") {
         return Some(St::Function); // macro
     }
+
     let upper = w.len() > 1 && w.bytes().all(|b| b.is_ascii_uppercase() || b == b'_' || b.is_ascii_digit()) && w.bytes().any(|b| b.is_ascii_uppercase());
+
     upper.then_some(St::Constant)
 }
 
@@ -360,8 +438,10 @@ fn is_register(w: &str) -> bool {
         "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp", "rip", "eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp", "eip", "ax", "bx", "cx", "dx",
         "si", "di", "bp", "sp", "al", "ah", "bl", "bh", "cl", "ch", "dl", "dh", "cs", "ds", "es", "fs", "gs", "ss", "lr", "pc", "xzr", "wzr",
     ];
+
     let w = w.to_ascii_lowercase();
     let numbered = |p: &str| w.strip_prefix(p).is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit() || b"dwb".contains(&b)));
+
     REGS.contains(&w.as_str()) || ["r", "x", "w", "xmm", "ymm", "zmm"].iter().any(|p| numbered(p))
 }
 
@@ -370,26 +450,34 @@ fn markup(lang: &Lang, s: &str, out: &mut Vec<Tok>) {
     let b = s.as_bytes();
     let blade = lang.id == "blade";
     let mut i = 0;
+
     while i < b.len() {
         let rest = &s[i..];
         let (open, close) = lang.block.unwrap();
+
         if rest.starts_with(open) || (blade && rest.starts_with("<!--")) {
             let close = if rest.starts_with("<!--") { "-->" } else { close };
             let e = rest.find(close).map_or(s.len(), |p| i + p + close.len());
+
             out.push((i, e, St::Comment));
             i = e;
+
             continue;
         }
+
         // Blade's `@@foreach` is the text `@foreach`, no directive
         if let Some(escaped) = rest.strip_prefix("@@").filter(|_| blade) {
             i += 2 + escaped.bytes().take_while(|byte| is_ident(*byte)).count();
+
             continue;
         }
+
         // `@php(...)` is one line of PHP (a directive with its parenthesis, below); a bare `@php` runs to `@endphp`
         let php_block = blade
             && rest.starts_with("@php")
             && !rest[4..].trim_start_matches([' ', '\t']).starts_with('(')
             && !rest[4..].starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_');
+
         if rest.starts_with("<?php") || (blade && (rest.starts_with("{{") || rest.starts_with("{!!"))) || php_block {
             let (o, c) = if rest.starts_with("<?php") {
                 ("<?php", "?>")
@@ -400,45 +488,63 @@ fn markup(lang: &Lang, s: &str, out: &mut Vec<Tok>) {
             } else {
                 ("{{", "}}")
             };
+
             let inner = i + o.len();
             let e = s[inner..].find(c).map_or(s.len(), |p| inner + p);
             // a `<?php` island pairs like a bracket at level 0 (islands don't nest)
             let st = if o == "<?php" { St::Bracket(0) } else { St::Keyword };
+
             out.push((i, inner, st));
             code(&PHP, s, inner, e, out);
+
             if e < s.len() {
                 out.push((e, e + c.len(), st));
             }
+
             i = (e + c.len()).min(s.len());
+
             continue;
         }
+
         // a directive: `@` not after a letter (an address like `a@b.com` is text, as Blade has it)
         if blade && b[i] == b'@' && i + 1 < b.len() && b[i + 1].is_ascii_alphabetic() && (i == 0 || !is_ident(b[i - 1])) {
             let mut e = i + 1;
+
             while e < b.len() && is_ident(b[e]) {
                 e += 1;
             }
+
             out.push((i, e, St::Keyword));
+
             if b.get(e) == Some(&b'(') {
                 let pe = balanced(b, e, b.len(), b'(', b')');
+
                 code(&PHP, s, e, pe, out);
                 e = pe;
             }
+
             i = e;
+
             continue;
         }
+
         if b[i] == b'<' && i + 1 < b.len() && (b[i + 1].is_ascii_alphabetic() || b[i + 1] == b'/' || b[i + 1] == b'!') {
             let mut e = i + 1 + (b[i + 1] == b'/') as usize;
             let name_start = e;
+
             while e < b.len() && (is_ident(b[e]) || b"-:.!".contains(&b[e])) {
                 e += 1;
             }
+
             let name = s[name_start..e].to_ascii_lowercase();
+
             out.push((name_start, e, St::Tag));
+
             // attributes until '>'
             while e < b.len() && b[e] != b'>' {
                 if b[e] == b'"' || b[e] == b'\'' {
                     let se = string_end(b, e, b.len(), b[e]);
+
                     out.push((e, se, St::Str));
                     e = se;
                 } else if blade && b[e] == b'{' && s[e..].starts_with("{{") {
@@ -447,16 +553,22 @@ fn markup(lang: &Lang, s: &str, out: &mut Vec<Tok>) {
                     e += 1;
                 }
             }
+
             i = if e < b.len() && b[e] == b'>' { e + 1 } else { e };
+
             if b[name_start - 1] != b'/' && (name == "script" || name == "style") {
                 let close = format!("</{name}");
                 let ce = s[i..].to_ascii_lowercase().find(&close).map_or(s.len(), |p| i + p);
+
                 code(if name == "script" { &JS } else { &CSS }, s, i, ce, out);
                 i = ce;
             }
+
             continue;
         }
+
         i += s[i..].chars().next().map_or(1, char::len_utf8);
     }
+
     out.sort_by_key(|t| t.0);
 }

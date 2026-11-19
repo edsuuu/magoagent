@@ -4,6 +4,7 @@ use super::*;
 fn click_click_creates_multi_point_arrow() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     app.tool = Tool::Arrow;
     frame(&mut app, &ctx, vec![]);
     // below the toolbar's drawing row, which an arrow tool opens
@@ -23,6 +24,7 @@ fn click_click_creates_multi_point_arrow() {
 fn line_points_drag_insert_and_delete() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     app.scene.elements = vec![app.new_element(ElementKind::Line { points: vec![[400.0, 300.0], [600.0, 300.0]], arrow: false })];
     app.selected = vec![0];
     frame(&mut app, &ctx, vec![]);
@@ -40,9 +42,11 @@ fn line_points_drag_insert_and_delete() {
 fn a_prompt_that_never_reached_its_terminal_comes_back_to_its_box() {
     use crate::app::ui::nodes::Returned;
     let mut app = DrawingApp::default();
+
     two_boxes(&mut app);
     let id = app.scene.elements[0].id.clone();
     let back = |id: &str, text: &str| Returned { id: id.into(), text: text.into(), why: "O terminal não respondeu.".into() };
+
     app.returned_prompts.0.send(back(&id, "revise o login")).unwrap();
     app.returned_prompts(&Context::default());
     assert_eq!(app.composer, Some((id.clone(), "revise o login".into())));
@@ -56,6 +60,7 @@ fn a_prompt_that_never_reached_its_terminal_comes_back_to_its_box() {
     assert!(app.composer.as_ref().is_some_and(|(_, text)| !text.contains('x')));
     // typed after all (sent again): its words leave the box, which closes once empty
     let typed = |text: &str| Returned { id: id.clone(), text: text.into(), why: String::new() };
+
     app.returned_prompts.0.send(typed("revise o login")).unwrap();
     app.returned_prompts(&Context::default());
     assert_eq!(app.composer, Some((id.clone(), "e o cadastro".into())));
@@ -68,22 +73,26 @@ fn a_prompt_that_never_reached_its_terminal_comes_back_to_its_box() {
 fn arrow_binds_to_shapes_and_follows_them() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     two_boxes(&mut app);
     app.tool = Tool::Arrow;
     frame(&mut app, &ctx, vec![]);
     // released near the edges -> orbit
     drag(&mut app, &ctx, Pos2::new(395.0, 250.0), Pos2::new(605.0, 250.0));
     let arrow = &app.scene.elements[2];
+
     assert!(!arrow.ends.start.as_ref().unwrap().inside && !arrow.ends.end.as_ref().unwrap().inside);
     assert_eq!(arrow.ends.start.as_ref().map(|b| &b.element_id), Some(&app.scene.elements[0].id));
     assert_eq!(arrow.ends.end.as_ref().map(|b| &b.element_id), Some(&app.scene.elements[1].id));
     // orbit: endpoints stop on the outline + gap (5 + stroke 2 / 2)
     let pts = app.line_points(2).to_vec();
+
     assert!((pts[0][0] - 406.0).abs() < 0.5 && (pts[1][0] - 594.0).abs() < 0.5, "{pts:?}");
     // move the right box down: the arrow end follows it
     app.selected = vec![1];
     drag(&mut app, &ctx, Pos2::new(650.0, 250.0), Pos2::new(650.0, 350.0));
     let end = app.line_points(2)[1];
+
     assert!(end[1] > 280.0 && end[0] < 600.0, "{end:?}");
     assert!(app.scene.elements[2].ends.end.is_some(), "moving the shape keeps the binding");
     // moving the arrow alone detaches it
@@ -95,9 +104,11 @@ fn arrow_binds_to_shapes_and_follows_them() {
 #[test]
 fn deep_inside_binds_to_the_exact_point() {
     let mut app = DrawingApp::default();
+
     two_boxes(&mut app);
     app.tool = Tool::Arrow;
     let arrow = app.bind_new_arrow(app.new_element(ElementKind::Line { points: vec![[350.0, 250.0], [650.0, 250.0]], arrow: true }));
+
     assert!(arrow.ends.start.as_ref().unwrap().inside && arrow.ends.end.as_ref().unwrap().inside);
     assert_eq!(arrow.kind, ElementKind::Line { points: vec![[350.0, 250.0], [650.0, 250.0]], arrow: true });
 }
@@ -106,10 +117,12 @@ fn deep_inside_binds_to_the_exact_point() {
 fn command_disables_binding_and_deleting_target_unbinds() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     two_boxes(&mut app);
     app.tool = Tool::Arrow;
     app.mods = Modifiers::COMMAND;
     let arrow = app.bind_new_arrow(app.new_element(ElementKind::Line { points: vec![[350.0, 250.0], [650.0, 250.0]], arrow: true }));
+
     assert!(arrow.ends.start.is_none() && arrow.ends.end.is_none());
     app.mods = Modifiers::NONE;
     frame(&mut app, &ctx, vec![]);
@@ -123,13 +136,17 @@ fn command_disables_binding_and_deleting_target_unbinds() {
 #[test]
 fn copies_keep_bindings_only_with_their_targets() {
     let mut app = DrawingApp::default();
+
     two_boxes(&mut app);
     app.tool = Tool::Arrow;
     let arrow = app.bind_new_arrow(app.new_element(ElementKind::Line { points: vec![[350.0, 250.0], [650.0, 250.0]], arrow: true }));
+
     app.scene.elements.push(arrow);
     let both = DrawingApp::fresh_copies_in(&app.scene.elements, Vec2::ZERO, &[]).0;
+
     assert_eq!(both[2].ends.start.as_ref().unwrap().element_id, both[0].id);
     let alone = DrawingApp::fresh_copies_in(&app.scene.elements[2..], Vec2::ZERO, &[]).0;
+
     assert!(alone[0].ends.start.is_none());
 }
 
@@ -138,8 +155,10 @@ fn copies_keep_bindings_only_with_their_targets() {
 fn windows_stay_over_the_drawings() {
     let app = &mut DrawingApp::default();
     let mut portal = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 300.0, height: 200.0 });
+
     portal.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
     let mut shape = app.new_element(ElementKind::Rectangle { x: 100.0, y: 100.0, width: 300.0, height: 200.0 });
+
     shape.style.fill = Some([128, 128, 128, 255]);
     app.scene.elements = vec![portal, shape];
     assert_eq!(app.hit(Pos2::new(150.0, 150.0)), Some(0));
@@ -150,6 +169,7 @@ fn windows_stay_over_the_drawings() {
 fn box_selection_contain_vs_overlap() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     two_boxes(&mut app); // 300..400 and 600..700, y 200..300
     frame(&mut app, &ctx, vec![]);
     // marquee over the whole first box and half of the second
@@ -165,26 +185,31 @@ fn box_selection_contain_vs_overlap() {
 fn snapping_to_the_grid() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     two_boxes(&mut app);
     frame(&mut app, &ctx, vec![]);
     app.prefs.grid = true;
     app.tool = Tool::Rectangle;
     drag(&mut app, &ctx, Pos2::new(452.0, 407.0), Pos2::new(538.0, 489.0));
     let drawn = element_bounds(app.scene.elements.last().unwrap());
+
     assert_eq!((drawn.min, drawn.max), (Pos2::new(460.0, 400.0), Pos2::new(540.0, 480.0)), "grid snaps to 20px");
 }
 
 #[test]
 fn an_arrow_always_binds_and_snaps_to_a_sides_middle_unless_cmd_is_held() {
     let mut app = DrawingApp::default();
+
     two_boxes(&mut app);
     app.tool = Tool::Arrow;
     // released near the right side's middle: snaps the anchor to [1, 0.5]
     let arrow = app.bind_new_arrow(app.new_element(ElementKind::Line { points: vec![[395.0, 262.0], [605.0, 250.0]], arrow: true }));
+
     assert_eq!(arrow.ends.start.as_ref().unwrap().fixed, [1.0, 0.5]);
     assert!(arrow.ends.end.is_some());
     app.mods.command = true;
     let free = app.bind_new_arrow(app.new_element(ElementKind::Line { points: vec![[395.0, 262.0], [605.0, 250.0]], arrow: true }));
+
     assert!(free.ends.start.is_none() && free.ends.end.is_none());
 }
 
@@ -192,16 +217,21 @@ fn an_arrow_always_binds_and_snaps_to_a_sides_middle_unless_cmd_is_held() {
 fn an_arrow_tip_reaching_a_shape_pulses_it_once() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     two_boxes(&mut app);
     app.tool = Tool::Arrow;
     frame(&mut app, &ctx, vec![]);
     let start = Pos2::new(500.0, 100.0);
+
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(start), button(start, true)]);
+
     let pulse = |app: &DrawingApp| {
         let p = app.bind_pulse.take();
+
         app.bind_pulse.set(p.clone());
         p
     };
+
     frame(&mut app, &ctx, vec![egui::Event::PointerMoved(Pos2::new(520.0, 120.0))]);
     painted(&app, &ctx);
     assert_eq!(pulse(&app), None, "far from both boxes");
@@ -209,6 +239,7 @@ fn an_arrow_tip_reaching_a_shape_pulses_it_once() {
     app.now = 1.0;
     painted(&app, &ctx);
     let target = app.scene.elements[1].id.clone();
+
     assert_eq!(pulse(&app), Some((target.clone(), 1.0)), "the tip reached the right box: it pulses from now");
     app.now = 1.2;
     painted(&app, &ctx);
@@ -219,6 +250,7 @@ fn an_arrow_tip_reaching_a_shape_pulses_it_once() {
 fn frame_carries_its_contents() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
+
     app.tool = Tool::Frame;
     frame(&mut app, &ctx, vec![]);
     drag(&mut app, &ctx, Pos2::new(250.0, 150.0), Pos2::new(750.0, 400.0));
@@ -234,5 +266,6 @@ fn frame_carries_its_contents() {
     assert_eq!(element_bounds(&app.scene.elements[1]).min, Pos2::new(300.0, 250.0));
     assert_eq!(element_bounds(&app.scene.elements[2]).min, Pos2::new(900.0, 200.0));
     let back = crate::tests::round_trip(&app.scene.elements);
+
     assert_eq!(back[0].frame.as_deref(), Some("Frame"));
 }

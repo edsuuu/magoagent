@@ -78,6 +78,7 @@ pub(crate) fn version_of(program: &Path, runner: &dyn Runner) -> Program {
     if !program.is_file() {
         return Program::Missing;
     }
+
     match runner.run(program, &["--version"]) {
         Ok(ran) if ran.code == Some(0) => Program::Ready(ran.output.lines().next().unwrap_or_default().trim().to_string()),
         Ok(ran) if ran.code == Some(EXPIRED) => Program::Expired,
@@ -89,6 +90,7 @@ pub(crate) fn version_of(program: &Path, runner: &dyn Runner) -> Program {
 /// The key's file by its metadata alone: it is never opened.
 pub(crate) fn key_file(path: &Path) -> KeyFile {
     let Ok(meta) = fs::metadata(path) else { return KeyFile::Missing };
+
     match super::install::mode_of(&meta) {
         Some(mode) if mode & 0o077 != 0 => KeyFile::Open(mode),
         _ => KeyFile::Private,
@@ -102,12 +104,15 @@ pub(crate) fn login(program: &Path, data: &Path, runner: &dyn Runner) -> Login {
     let said = |what: &str| runner.run(program, &["ctl", what, "-D", data]).ok();
     let now = said("now");
     let refused = |text: &str| text.to_lowercase().contains("not logged in");
+
     match &now {
         Some(ran) if refused(&ran.output) => return Login::Waiting,
         Some(ran) if ran.code == Some(0) => return Login::In,
         _ => {}
     }
+
     let status = said("status").map(|ran| ran.output.to_lowercase()).unwrap_or_default();
+
     if status.contains("logged in: yes") {
         Login::In
     } else if status.contains("logged in: no") {
@@ -120,10 +125,13 @@ pub(crate) fn login(program: &Path, data: &Path, runner: &dyn Runner) -> Login {
 /// The tunnels that are up in `net` (`/sys/class/net`): a VPN may keep the phone from finding this computer.
 pub(crate) fn tunnels(net: &Path) -> Vec<String> {
     const KINDS: [&str; 7] = ["tun", "wg", "tap", "ppp", "tailscale", "proton", "nordlynx"];
+
     let up = |name: &str| {
         let flags = fs::read_to_string(net.join(name).join("flags")).unwrap_or_default();
+
         u32::from_str_radix(flags.trim().trim_start_matches("0x"), 16).is_ok_and(|flags| flags & 1 == 1)
     };
+
     let mut found: Vec<String> = fs::read_dir(net)
         .into_iter()
         .flatten()
@@ -131,6 +139,7 @@ pub(crate) fn tunnels(net: &Path) -> Vec<String> {
         .map(|entry| entry.file_name().to_string_lossy().to_string())
         .filter(|name| KINDS.iter().any(|kind| name.starts_with(kind)) && up(name))
         .collect();
+
     found.sort();
     found
 }
@@ -138,12 +147,16 @@ pub(crate) fn tunnels(net: &Path) -> Vec<String> {
 /// The whole setup, looked at: `arch` this computer's, `net` where the network's interfaces are listed.
 pub(crate) fn detect(paths: &super::Paths, runner: &dyn Runner, arch: &str, net: &Path) -> Status {
     let program = version_of(&paths.program, runner);
+
     let systemctl = |what: &str| {
         let ran = runner.run(Path::new("systemctl"), &["--user", what, SERVICE]).ok();
+
         ran.map(|ran| ran.output.lines().next().unwrap_or_default().trim().to_string()).unwrap_or_default()
     };
+
     let unit = fs::symlink_metadata(&paths.unit).is_ok();
     let login = if matches!(program, Program::Ready(_)) { login(&paths.program, &paths.data, runner) } else { Login::Off };
+
     Status {
         foreign: arch_ok(arch).err().map(|_| arch.to_string()),
         program,

@@ -7,32 +7,43 @@ impl DrawingApp {
         let b = local_bounds(element);
         let (rect, zoom) = self.terminal_frame(element);
         let radius = (8.0 * zoom).min(255.0) as u8;
+
         painter.rect(rect, radius, Color32::from_gray(0x24), Stroke::new(1.0, Color32::from_gray(0x3a)), StrokeKind::Inside);
         let painter = painter.with_clip_rect(rect.shrink(1.0).intersect(painter.clip_rect()));
         let spec = element.portal.clone().unwrap_or_default();
         let (muted, light) = (Color32::from_gray(0x8a), Color32::from_gray(0xd0));
         let chrome = if spec.chrome_hidden { 0.0 } else { PORTAL_CHROME * zoom };
+
         if !spec.chrome_hidden {
             let header = Rect::from_min_size(rect.min, Vec2::new(rect.width(), PORTAL_HEADER * zoom));
+
             paint_icon_scaled(&painter, Icon::Tool(Tool::Portal), header.left_center() + Vec2::new(18.0 * zoom, 0.0), muted, 0.75 * zoom, 0.0);
             let name = if spec.name.is_empty() { "Navegador" } else { &spec.name };
+
             painter.text(header.left_center() + Vec2::new(32.0 * zoom, 0.0), egui::Align2::LEFT_CENTER, name, FontId::proportional(12.0 * zoom), light);
             // the size only while this portal is being resized
             let mut right = header.right() - 12.0 * zoom;
+
             if self.size_shown(element) {
                 let size = crate::app::browser::extras::size_text(b.width(), b.height());
                 let galley = painter.text(Pos2::new(right, header.center().y), egui::Align2::RIGHT_CENTER, size, FontId::monospace(11.0 * zoom), muted);
+
                 right -= galley.width() + 8.0 * zoom;
             }
+
             if spec.muted {
                 crate::app::browser::extras::paint_muted(&painter, Pos2::new(right - 6.0 * zoom, header.center().y), zoom, muted);
             }
         }
+
         let page = Rect::from_min_max(Pos2::new(rect.left(), rect.top() + chrome), rect.max);
+
         #[cfg(target_os = "linux")]
         let closed = !pages_open();
+
         #[cfg(not(target_os = "linux"))]
         let closed = false;
+
         let note = if spec.unloaded {
             "Descarregado"
         } else if closed {
@@ -40,7 +51,9 @@ impl DrawingApp {
         } else {
             "Carregando…"
         };
+
         painter.text(page.center(), egui::Align2::CENTER_CENTER, note, FontId::proportional(13.0 * zoom), muted);
+
         if spec.unloaded {
             // ponytail: no Recarregar button on the page; the bar's and the menu's bring it back
             painter.text(
@@ -51,14 +64,18 @@ impl DrawingApp {
                 muted,
             );
         }
+
         // while the canvas moves, the page's picture moves with the card (`sync_portals`): from the very frame the card
         // moves on Linux, whose picture is taken standing still (`portal_snaps`), before the page is cut away
         let page_rect = self.portal_page_rect(element);
+
         if let Some(r) = page_rect {
             self.portal_painted.borrow_mut().insert(element.id.clone(), r);
         }
+
         let moved_now = self.portal_motion.get(&element.id).is_some_and(|(at, _)| page_rect != Some(*at));
         let snap = self.portal_snaps.get(&element.id).and_then(|snap| snap.1.as_ref()).filter(|_| moved_now);
+
         if let (Some(still), Some(r)) = (self.portal_stills.get(&element.id).or(snap), page_rect) {
             painter.image(still.id(), r, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
         }
@@ -85,6 +102,7 @@ impl DrawingApp {
     pub(crate) fn chrome_live(&self, element: &Element) -> bool {
         // at the scale it is shown: an enlarged portal is at 100% whatever the canvas zoom
         let zoom = self.terminal_frame(element).1;
+
         zoom >= 0.45 && local_bounds(element).width() * zoom >= 200.0
     }
 
@@ -95,6 +113,7 @@ impl DrawingApp {
         let chrome = if element.portal.as_ref()?.chrome_hidden { 0.0 } else { PORTAL_CHROME * zoom };
         let rect = Rect::from_min_max(frame.min + Vec2::new(0.0, chrome), frame.max).shrink(1.0);
         let visible = rect.intersect(self.canvas_rect);
+
         (!self.portals_covered() && !self.lifted_other(element) && visible.width() > 4.0 && visible.height() > 4.0 && rect.height() > 20.0).then_some(rect)
     }
 
@@ -102,10 +121,13 @@ impl DrawingApp {
     /// drawn over its card, and its page leaves them uncovered (`page_holes`).
     pub(crate) fn cards_in_front(&self, index: usize) -> Vec<Rect> {
         let (elements, lifted) = (&self.scene.elements, self.lift_index());
+
         if lifted == Some(index) {
             return Vec::new();
         }
+
         let later = elements.iter().skip(index + 1).filter(|other| other.is_card() && !hidden_page(elements, other));
+
         later.chain(lifted.filter(|&lifted| lifted < index).map(|lifted| &elements[lifted])).map(|card| self.terminal_frame(card).0).collect()
     }
 
@@ -117,6 +139,7 @@ impl DrawingApp {
     pub(crate) fn page_holes(ctx: &Context, page: Rect, cards: &[egui::Id], fronts: &[Rect]) -> Vec<Rect> {
         // on macOS a hole hides the whole page: a tooltip of its own bar would blink it away
         let tooltips = !cfg!(target_os = "macos");
+
         let mut holes: Vec<Rect> = ctx.memory(|m| {
             m.areas()
                 .visible_layer_ids()
@@ -128,12 +151,14 @@ impl DrawingApp {
                 .filter(|r| r.width() >= 1.0 && r.height() >= 1.0)
                 .collect()
         });
+
         // ponytail: on macOS a hole hides the whole page (sync.rs), with no still picture to stand in for it: a card in
         // front of a page leaves it whole, over the card, as before. Upgrade: a mask on the NSView's layer, or a picture
         // of the page standing still there too
         if !cfg!(target_os = "macos") {
             holes.extend(fronts.iter().map(|front| front.intersect(page)).filter(|r| r.width() >= 1.0 && r.height() >= 1.0));
         }
+
         holes.sort_by(|a, b| [a.min.x, a.min.y, a.max.x, a.max.y].partial_cmp(&[b.min.x, b.min.y, b.max.x, b.max.y]).unwrap_or(std::cmp::Ordering::Equal));
         holes.dedup();
         holes
