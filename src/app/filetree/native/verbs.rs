@@ -34,6 +34,12 @@ impl DrawingApp {
                 }
                 done("")
             }
+            // the "Voltar" button the link left on the tree: back to where it came from, or only let it go
+            "link_back" => self.link_go_back(),
+            "link_dismiss" => {
+                self.filetrees.link_back = None;
+                done("")
+            }
             "select" => {
                 if let Some(view) = self.filetrees.views.get_mut(&id) {
                     (view.selected, view.kb) = (Some(path.clone()), false);

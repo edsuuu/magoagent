@@ -47,20 +47,23 @@ struct FTTreeColumn: View {
     @State private var clicked: String?
     @FocusState private var focused: Bool
 
+    private var pal: FTPalette { FTPalette(dark: state.dark) }
+
     var body: some View {
         VStack(spacing: 0) {
             FTHeader(state: state)
-            Divider()
+            FTRule(color: pal.border).padding(.horizontal, 1).allowsHitTesting(false)
             ZStack {
                 rows
                 if state.changesOpen { FTChangesPanel(state: state) }
             }
-            Divider()
+            FTRule(color: pal.border).padding(.horizontal, 1)
             FTSearchBar(state: state)
             if state.dropped > 0 {
+                FTRule(color: pal.border).padding(.horizontal, 1)
                 Text("Exibindo um número limitado de itens. Mais \(state.dropped) não estão listados.")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8).padding(.vertical, 4)
+                    .font(.app(11)).foregroundStyle(Color(pal.muted)).lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8.125).frame(height: 23)
             }
         }
         .sheet(item: $ask) { item in FTNameSheet(treeId: state.id, ask: item) }
@@ -85,33 +88,34 @@ struct FTTreeColumn: View {
                 LazyVStack(spacing: 0) {
                     if state.searching && !state.rows.isEmpty {
                         Text(state.rows.count == 1 ? "1 ocorrência" : "\(state.rows.count) ocorrências")
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8).padding(.vertical, 5)
-                        Divider()
+                            .font(.app(11)).foregroundStyle(Color(pal.muted))
+                            .frame(maxWidth: .infinity, minHeight: 23, alignment: .leading).padding(.horizontal, 8.125)
+                        FTRule(color: pal.border)
                     }
                     ForEach(state.rows) { row in
-                        FTRowView(state: state, row: row, searching: state.searching, selected: state.selected == row.path) { action in
+                        FTRowView(state: state, row: row, searching: state.searching, selected: state.selected == row.path, ring: focused && clicked == nil) { action in
                             handle(action, row)
                         }
                         .id(row.path)
                     }
                     if state.searching && state.hitsCut {
-                        Divider()
+                        FTRule(color: pal.border)
                         Text("Parou em \(state.rows.count) ocorrências. Existem mais.")
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(8)
+                            .font(.app(11)).foregroundStyle(Color(pal.muted))
+                            .frame(maxWidth: .infinity, minHeight: 23, alignment: .leading).padding(.horizontal, 8.125)
                     }
                     if let note = state.emptyNote {
                         Text(note)
-                            .font(.system(size: state.searching ? 13 : 12)).foregroundStyle(.secondary)
+                            .font(.app(state.searching ? 13 : 12)).foregroundStyle(Color(pal.muted))
+                            .multilineTextAlignment(state.searching ? .center : .leading)
                             .frame(maxWidth: .infinity, alignment: state.searching ? .center : .leading)
-                            .padding(.horizontal, 10).padding(.top, state.searching ? 40 : 6)
+                            .padding(.horizontal, 9.75).padding(.top, state.searching ? 40 : 6.5)
                     }
                     // empty space: the menu of the folder shown
                     Color.clear.frame(height: 40).contentShape(Rectangle())
                         .contextMenu { folderMenu(dir: state.shown) }
                 }
-                .padding(4)
+                .padding(.horizontal, 4)
             }
             .focusable()
             .focused($focused)
@@ -242,18 +246,20 @@ struct FTRowView: View {
     let row: FTRow
     let searching: Bool
     let selected: Bool
+    let ring: Bool
     let act: (FTRowAction) -> Void
     @State private var hover = false
+    @State private var overChevron = false
+
+    private var pal: FTPalette { FTPalette(dark: state.dark) }
 
     var body: some View {
         HStack(spacing: 0) {
             if searching { hit } else { tree }
         }
         .frame(height: searching ? 38 : 24)
-        .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(selected ? Color.accentColor.opacity(0.22) : (hover ? Color.primary.opacity(0.06) : Color.clear))
-        )
+        .background(RoundedRectangle(cornerRadius: 4).fill(selected || (searching && hover) ? Color(pal.hover) : Color.clear))
+        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color(pal.ring), lineWidth: 2).opacity(selected && ring ? 1 : 0))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture(count: 2) { act(.activate) }
@@ -262,37 +268,39 @@ struct FTRowView: View {
         .help(row.path)
     }
 
-    private var nameColor: Color { row.color.map { Color(hex: $0) } ?? .primary }
+    private var nameColor: Color { row.color.map { Color(hex: $0) } ?? Color(pal.fg) }
 
     private var tree: some View {
         HStack(spacing: 0) {
             // a line down from each folder above, under its chevron
             ForEach(0..<row.depth, id: \.self) { _ in
-                Rectangle().fill(Color.primary.opacity(0.1)).frame(width: 1).padding(.leading, 6).padding(.trailing, 9)
+                Rectangle().fill(Color(pal.border)).frame(width: 1).padding(.leading, 6).padding(.trailing, 9)
             }
-            Group {
+            ZStack {
                 if row.dir {
-                    Image(systemName: row.open ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
-                        .frame(width: 16, height: 24)
-                        .contentShape(Rectangle())
-                        .onTapGesture { act(.toggle) }
-                } else {
-                    Color.clear.frame(width: 16)
+                    RoundedRectangle(cornerRadius: 2).fill(Color(pal.fg).opacity(overChevron ? 0.1 : 0))
+                    FTGlyph(name: row.open ? "chevron-down" : "chevron-right", size: 9.75, color: pal.muted)
                 }
             }
-            FTIcon(icon: row.icon, dark: state.dark).padding(.trailing, 5)
+            .frame(width: 13, height: 13)
+            .contentShape(Rectangle())
+            .onHover { overChevron = $0 }
+            .onTapGesture { if row.dir { act(.toggle) } }
+            FTIcon(icon: row.icon, dark: state.dark).padding(.leading, 4.875).padding(.trailing, 3.375)
             Text(row.name)
-                .font(.system(size: 13))
+                .font(.app(13))
                 .foregroundStyle(nameColor)
                 .underline(row.problem, pattern: .dot, color: nameColor)
                 .lineLimit(1).truncationMode(.middle)
             if !row.hint.isEmpty {
-                Text(row.hint).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).padding(.leading, 6)
+                Text(row.hint).font(.app(11)).foregroundStyle(Color(pal.muted)).lineLimit(1).padding(.leading, 6)
             }
             Spacer(minLength: 4)
             if let letter = row.letter, let color = row.letterColor {
-                Text(letter).font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(Color(hex: color)).padding(.trailing, 6)
+                // the app's mono is wider than the reference's: 8.4 points, struck twice for the weight
+                Text(letter).font(.custom("Hack", size: 8.4)).foregroundStyle(Color(hex: color))
+                    .overlay(Text(letter).font(.custom("Hack", size: 8.4)).foregroundStyle(Color(hex: color)).offset(x: 0.35))
+                    .frame(width: 16.25).padding(.trailing, 6.5)
             }
         }
         .padding(.leading, 4)
@@ -300,15 +308,15 @@ struct FTRowView: View {
 
     /// A filename search's hit: the icon, the name and, under it, the folder it is in.
     private var hit: some View {
-        HStack(spacing: 6) {
-            FTIcon(icon: row.icon, dark: state.dark, size: 14)
+        HStack(spacing: 6.5) {
+            FTIcon(icon: row.icon, dark: state.dark, size: 13)
             VStack(alignment: .leading, spacing: 1) {
-                Text(row.name).font(.system(size: 12)).foregroundStyle(nameColor).lineLimit(1)
-                if !row.hint.isEmpty { Text(row.hint).font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1) }
+                Text(row.name).font(.app(12)).foregroundStyle(nameColor).lineLimit(1)
+                if !row.hint.isEmpty { Text(row.hint).font(.app(10.5)).foregroundStyle(Color(pal.muted)).lineLimit(1) }
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 8.125)
     }
 
     @ViewBuilder
@@ -334,146 +342,22 @@ struct FTRowView: View {
     }
 }
 
-/// The header: back and forward, the folder's name, the view options and the branch.
-struct FTHeader: View {
-    let state: FTState
-
-    var body: some View {
-        HStack(spacing: 6) {
-            HStack(spacing: 0) {
-                navButton("chevron.left", on: state.canBack, tip: "Voltar") { FT.send("back", state.id) }
-                navButton("chevron.right", on: state.canForward, tip: "Avançar") { FT.send("forward", state.id) }
-            }
-            .background(Capsule().stroke(Color.primary.opacity(0.12)))
-            Text(state.name).font(.system(size: 13, weight: .medium)).lineLimit(1).truncationMode(.middle)
-            Spacer(minLength: 4)
-            viewMenu
-            if state.git.repo { branch }
-        }
-        .padding(.horizontal, 6.5)
-        .frame(height: 32.5)
-        // the bare part of the header picks the node on the canvas, as the egui tree's title
-        .contentShape(Rectangle())
-        .onTapGesture { FT.send("focus", state.id) }
-    }
-
-    private func navButton(_ symbol: String, on: Bool, tip: String, _ action: @escaping () -> Void) -> some View {
-        Button {
-            guard on else { return }
-            FT.send("focus", state.id)
-            action()
-        } label: {
-            Image(systemName: symbol).font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(on ? Color.primary : Color.primary.opacity(0.3))
-                .frame(width: 20, height: 20)
-        }
-        .buttonStyle(.plain).help(tip)
-    }
-
-    private var viewMenu: some View {
-        Menu {
-            Button(state.editorOpen ? "Ocultar Editor" : "Mostrar Editor") { FT.send("editor", state.id) }
-            Divider()
-            Button(state.hideHidden ? "Mostrar Arquivos Ocultos" : "Ocultar Arquivos Ocultos") { FT.send("hidden", state.id) }
-            Divider()
-            Menu("Ordenar por") {
-                ForEach(state.sorts, id: \.key) { sort in
-                    Toggle(sort.label, isOn: Binding(get: { state.sort == sort.key }, set: { _ in FT.send("sort", state.id, ["by": sort.key]) }))
-                }
-                Divider()
-                Toggle("Inverter Ordem", isOn: Binding(get: { state.reversed }, set: { _ in FT.send("reverse", state.id) }))
-            }
-            Divider()
-            Button("Recolher Tudo") { FT.send("collapse_all", state.id) }.disabled(!state.rows.contains { $0.dir && $0.open })
-        } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "list.bullet").font(.system(size: 11))
-                Image(systemName: "chevron.up.chevron.down").font(.system(size: 7, weight: .semibold)).foregroundStyle(.secondary)
-            }
-        }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-        .help("Opções de Exibição")
-    }
-
-    private var branch: some View {
-        Menu {
-            ForEach(state.branches, id: \.self) { name in
-                Button { Task { await FT.act("checkout", state.id, ["branch": name]) } } label: {
-                    if name == state.git.branch { Label(name, systemImage: "checkmark") } else { Text(name) }
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "arrow.triangle.branch").font(.system(size: 10)).foregroundStyle(.secondary)
-                Text(state.git.branch.isEmpty ? "HEAD" : state.git.branch).font(.system(size: 11)).lineLimit(1).frame(maxWidth: 78)
-                if state.git.changes > 0 { Text("\(state.git.changes)").font(.system(size: 11)).foregroundStyle(.secondary) }
-            }
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .overlay(Capsule().stroke(Color.primary.opacity(0.18)))
-        }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-        .help("Branch \(state.git.branch), \(state.git.changes) arquivo\(state.git.changes == 1 ? "" : "s") alterado\(state.git.changes == 1 ? "" : "s"); clique para trocar")
-        .onAppear { FT.send("branches", state.id) }
-        .onChange(of: state.git.branch) { FT.send("branches", state.id) }
-    }
-}
-
-/// The search bar under the rows, and at its end the editor and Alterações buttons.
-struct FTSearchBar: View {
-    let state: FTState
-    @State private var query = ""
-
-    var body: some View {
-        HStack(spacing: 6) {
-            HStack(spacing: 5) {
-                Image(systemName: "magnifyingglass").font(.system(size: 10)).foregroundStyle(.secondary)
-                TextField("Buscar", text: $query).textFieldStyle(.plain).font(.system(size: 12))
-                if !query.isEmpty {
-                    Button { query = "" } label: { Image(systemName: "xmark").font(.system(size: 8, weight: .semibold)).foregroundStyle(.secondary) }
-                        .buttonStyle(.plain).help("Limpar filtro")
-                }
-            }
-            .padding(.horizontal, 8).frame(height: 20)
-            .background(Capsule().fill(Color.primary.opacity(0.06)))
-            if state.searching { Text("\(state.treeRows) exibidos").font(.system(size: 11)).foregroundStyle(.secondary) }
-            toggle("sidebar.right", on: state.editorOpen, tip: state.editorOpen ? "Ocultar Editor" : "Mostrar Editor") { FT.send("editor", state.id) }
-            toggle("arrow.triangle.pull", on: state.changesOpen, tip: state.changesOpen ? "Ocultar Alterações" : "Mostrar Alterações") {
-                FT.send("changes", state.id)
-            }
-        }
-        .padding(.horizontal, 6.5)
-        .frame(height: 32.5)
-        .onAppear { query = state.filter }
-        .onChange(of: query) { _, text in if text != state.filter { FT.send("filter", state.id, ["text": text]) } }
-        .onChange(of: state.filter) { _, text in if text != query { query = text } }
-    }
-
-    private func toggle(_ symbol: String, on: Bool, tip: String, _ action: @escaping () -> Void) -> some View {
-        Button {
-            FT.send("focus", state.id)
-            action()
-        } label: {
-            Image(systemName: symbol).font(.system(size: 11)).foregroundStyle(on ? Color.accentColor : Color.secondary).frame(width: 23, height: 20)
-        }
-        .buttonStyle(.plain).help(tip)
-    }
-}
-
 /// The Alterações panel over the rows: the files changed against the HEAD, each with its git letter and color.
 struct FTChangesPanel: View {
     let state: FTState
+    private var pal: FTPalette { FTPalette(dark: state.dark) }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Alterações").font(.system(size: 13))
+                Text("Alterações").font(.app(13))
                 Spacer()
-                Text(state.changes.count == 1 ? "1 arquivo alterado" : "\(state.changes.count) arquivos alterados").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(state.changes.count == 1 ? "1 arquivo alterado" : "\(state.changes.count) arquivos alterados").font(.app(11)).foregroundStyle(Color(pal.muted))
             }
             .padding(.horizontal, 8).frame(height: 26)
-            Divider()
+            FTRule(color: pal.border)
             if state.changes.isEmpty {
-                Text("Nenhuma alteração contra o HEAD.").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("Nenhuma alteração contra o HEAD.").font(.app(12)).foregroundStyle(Color(pal.muted))
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).padding(.top, 6)
                 Spacer()
             } else {
@@ -485,25 +369,26 @@ struct FTChangesPanel: View {
                 }
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color(pal.bg))
     }
 }
 
 struct FTChangeRow: View {
     let state: FTState
+    private var pal: FTPalette { FTPalette(dark: state.dark) }
     let change: FTChange
     @State private var hover = false
 
     var body: some View {
         HStack(spacing: 6) {
-            Text(change.letter).font(.system(size: 10, weight: .semibold, design: .monospaced)).foregroundStyle(Color(hex: change.color)).frame(width: 20)
+            Text(change.letter).font(.custom("Hack", size: 10)).foregroundStyle(Color(hex: change.color)).frame(width: 20)
             FTIcon(icon: change.icon, dark: state.dark)
-            Text(change.name).font(.system(size: 13)).foregroundStyle(Color(hex: change.color)).lineLimit(1)
-            if !change.dir.isEmpty { Text(change.dir).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head) }
+            Text(change.name).font(.app(13)).foregroundStyle(Color(hex: change.color)).lineLimit(1)
+            if !change.dir.isEmpty { Text(change.dir).font(.app(11)).foregroundStyle(Color(pal.muted)).lineLimit(1).truncationMode(.head) }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 4).frame(height: 24)
-        .background(RoundedRectangle(cornerRadius: 4).fill(hover ? Color.primary.opacity(0.06) : Color.clear))
+        .background(RoundedRectangle(cornerRadius: 4).fill(hover ? Color(pal.hover) : Color.clear))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture {
@@ -537,7 +422,7 @@ struct FTNameSheet: View {
             Text(title).font(.headline)
             TextField(ask.kind == .newFile ? "Nome do novo arquivo" : ask.kind == .newFolder ? "Nome da nova pasta" : "Novo nome", text: $text)
                 .textFieldStyle(.roundedBorder).focused($focused).onSubmit(commit)
-            if let problem { Text(problem).font(.system(size: 11)).foregroundStyle(.red) }
+            if let problem { Text(problem).font(.app(11)).foregroundStyle(.red) }
             HStack {
                 Spacer()
                 Button("Cancelar", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)

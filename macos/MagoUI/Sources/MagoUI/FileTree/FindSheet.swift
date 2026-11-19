@@ -24,7 +24,7 @@ struct FTFindSheet: View {
             scopes(find)
             Divider()
             if let error = find?.error {
-                Text(error).font(.system(size: 12)).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                Text(error).font(.app(12)).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading).padding(10)
             }
             FTHitList(
                 treeId: treeId, hits: find?.hits ?? [], selected: find?.selected,
@@ -34,7 +34,7 @@ struct FTFindSheet: View {
                 })
             Divider()
             HStack {
-                Text("Enter abre a ocorrência; Cmd+Enter guarda a lista numa aba.").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("Enter abre a ocorrência; Cmd+Enter guarda a lista numa aba.").font(.app(11)).foregroundStyle(.secondary)
                 Spacer()
                 Button("Abrir na janela de busca") { FT.send("find_tab", treeId) }.disabled(find?.hits.isEmpty ?? true)
                 Button("Fechar") { FT.send("find_close", treeId) }.keyboardShortcut(.cancelAction)
@@ -57,8 +57,8 @@ struct FTFindSheet: View {
 
     private func header(_ find: FTFind?) -> some View {
         HStack(spacing: 8) {
-            Text("Localizar nos Arquivos").font(.system(size: 15, weight: .medium))
-            Text(find?.countNote ?? "").font(.system(size: 13)).foregroundStyle(.secondary)
+            Text("Localizar nos Arquivos").font(.app(15))
+            Text(find?.countNote ?? "").font(.app(13)).foregroundStyle(.secondary)
             if find?.searching == true { ProgressView().controlSize(.small) }
             Spacer()
             Toggle("Máscara de arquivo", isOn: Binding(get: { find?.maskOn ?? false }, set: { FT.send("find_set", treeId, ["maskOn": $0]) }))
@@ -73,7 +73,7 @@ struct FTFindSheet: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             TextField("Texto a localizar", text: $query)
-                .textFieldStyle(.plain).font(.system(size: 14)).focused($focused)
+                .textFieldStyle(.plain).font(.app(14)).focused($focused)
                 .onChange(of: query) { _, text in FT.send("find_set", treeId, ["query": text]) }
                 .onSubmit { if let find, !find.hits.isEmpty { FT.send("find_pick", treeId, ["index": find.selected, "open": true]) } }
             chip("Cc", "Diferenciar maiúsculas de minúsculas", find?.case ?? false, "case")
@@ -89,14 +89,14 @@ struct FTFindSheet: View {
             Toggle("Diretório", isOn: Binding(get: { find?.inDir ?? false }, set: { FT.send("find_set", treeId, ["inDir": $0]) })).toggleStyle(.checkbox)
             TextField("Pasta (a partir da raiz)", text: $folder).textFieldStyle(.roundedBorder).disabled(!(find?.inDir ?? false))
                 .onSubmit { FT.send("find_set", treeId, ["folder": folder]) }
-            if find?.inDir != true { Text("A busca cobre a raiz inteira.").font(.system(size: 11)).foregroundStyle(.secondary) }
+            if find?.inDir != true { Text("A busca cobre a raiz inteira.").font(.app(11)).foregroundStyle(.secondary) }
         }
         .controlSize(.small).padding(.horizontal, 14).frame(height: 40)
     }
 
     private func chip(_ label: String, _ tip: String, _ on: Bool, _ key: String) -> some View {
         Button { FT.send("find_set", treeId, [key: !on]) } label: {
-            Text(label).font(.system(size: 12, weight: .semibold, design: .monospaced))
+            Text(label).font(.custom("Hack", size: 12))
                 .frame(width: 28, height: 22)
                 .background(RoundedRectangle(cornerRadius: 5).fill(on ? Color.accentColor.opacity(0.3) : Color.clear))
                 .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.primary.opacity(on ? 0.35 : 0.12)))

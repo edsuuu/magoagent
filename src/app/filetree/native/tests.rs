@@ -138,3 +138,25 @@ fn the_compare_rows_pair_the_lines_and_mark_the_changed_words() {
     assert_eq!(out["blocks"], json!([1, 3]));
     assert_eq!((out["removed"].as_u64(), out["added"].as_u64()), (Some(1), Some(2)));
 }
+
+#[test]
+fn the_link_back_button_is_published_on_its_tree_and_both_verbs_take_it_away() {
+    let dir = temp("link-back");
+    fs::write(dir.join("a.txt"), "um\n").unwrap();
+    let mut app = DrawingApp::default();
+    let id = tree_on(&mut app, &dir);
+    let words = |app: &DrawingApp| serde_json::to_value(app.native_tree_state(&id, false, &Default::default()).unwrap()).unwrap()["linkBack"].clone();
+    assert!(words(&app).is_null());
+    let back = |chat_open| link::LinkReturn { chat_open, chat_agent: None, pan: Vec2::ZERO, zoom: 1.0, elevated: None, card_focus: None, tree: id.clone() };
+    app.filetrees.link_back = Some(back(true));
+    assert_eq!(words(&app), "Voltar ao chat");
+    act(&mut app, "link_back", json!({}), &id).unwrap();
+    assert!(app.filetrees.link_back.is_none() && words(&app).is_null());
+    // going back to the chat opens it: the button has no place there
+    app.chat_open = false;
+    app.filetrees.link_back = Some(back(false));
+    assert_eq!(words(&app), "Voltar");
+    act(&mut app, "link_dismiss", json!({}), &id).unwrap();
+    assert!(app.filetrees.link_back.is_none());
+    let _ = fs::remove_dir_all(&dir);
+}

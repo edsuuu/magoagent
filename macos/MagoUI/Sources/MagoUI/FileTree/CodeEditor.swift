@@ -100,7 +100,7 @@ final class FTCodeCoordinator: NSObject, @preconcurrency NSTextStorageDelegate, 
     init(treeId: String) { self.treeId = treeId }
 
     static func codeFont() -> NSFont {
-        NSFont(name: "JetBrainsMono-Regular", size: 13) ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        NSFont(name: "JetBrainsMono-Regular", size: 13) ?? NSFont(name: "Hack", size: 13) ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
     }
 
     private var baseAttributes: [NSAttributedString.Key: Any] {
@@ -601,7 +601,7 @@ struct FTHunkPopover: View {
             HStack(spacing: 6) {
                 Button { go(index - 1) } label: { Image(systemName: "chevron.up") }.disabled(index == 0).help("Anterior")
                 Button { go(index + 1) } label: { Image(systemName: "chevron.down") }.disabled(index + 1 >= count).help("Próxima")
-                Text("\(index + 1) de \(count)").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("\(index + 1) de \(count)").font(.app(11)).foregroundStyle(.secondary)
                 Spacer()
                 Button("Reverter", action: revert)
                 Button("Copiar", action: copy)
@@ -611,7 +611,7 @@ struct FTHunkPopover: View {
             if hunk.kind != "added" && !hunk.old.isEmpty {
                 ScrollView([.vertical, .horizontal]) {
                     Text(hunk.old.hasSuffix("\n") ? String(hunk.old.dropLast()) : hunk.old)
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.custom("Hack", size: 12))
                         .foregroundStyle(Color(hex: theme.text))
                         .padding(6)
                         .frame(maxWidth: .infinity, alignment: .leading)

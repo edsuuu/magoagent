@@ -305,6 +305,8 @@ pub(super) struct TreeOut {
     problems: Vec<ProblemFileOut>,
     error_count: usize,
     warning_count: usize,
+    /// The words of the "Voltar" button while a link opened a file in this tree (`link_back_ui`); None: no button.
+    link_back: Option<&'static str>,
 }
 
 pub(super) fn tab_kind(body: &crate::app::filetree::editor::Body) -> &'static str {
@@ -430,6 +432,12 @@ impl DrawingApp {
             problems: if problems_open { problems.files.clone() } else { vec![] },
             error_count: problems.errors,
             warning_count: problems.warnings,
+            link_back: self
+                .filetrees
+                .link_back
+                .as_ref()
+                .filter(|back| back.tree == id && !self.chat_open)
+                .map(|back| if back.chat_open { "Voltar ao chat" } else { "Voltar" }),
         })
     }
 }

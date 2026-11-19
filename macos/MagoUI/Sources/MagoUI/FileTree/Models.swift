@@ -110,6 +110,7 @@ struct FTState: Codable {
     var problems: [FTProblemFile]
     var errorCount: Int
     var warningCount: Int
+    var linkBack: String?
 }
 
 struct FTCompareRow: Codable, Hashable {
