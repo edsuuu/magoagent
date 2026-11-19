@@ -130,13 +130,6 @@ impl Machine {
         }
     }
 
-    /// Work started or ended somewhere: the hidden island shows compact for a while.
-    pub(crate) fn reveal(&mut self, time: f64) {
-        if self.stage == Stage::Hidden {
-            self.enter(Stage::Petit, time);
-        }
-    }
-
     /// A question, or an explicit request (an agent opened in it): open at once.
     pub(crate) fn force_home(&mut self, time: f64) {
         self.by_hover = false;
@@ -392,18 +385,5 @@ mod tests {
         run(&mut machine, 0.0, 1.0, true, false);
         run(&mut machine, 1.0, 1.1, false, false);
         assert_eq!(machine.stage(), Stage::Petit);
-    }
-
-    #[test]
-    fn work_somewhere_shows_the_compact_island_for_a_minute() {
-        let mut machine = Machine::default();
-
-        machine.step(0.0, false, false, 15.0, false);
-        machine.reveal(0.0);
-        assert_eq!(machine.stage(), Stage::Petit);
-        run(&mut machine, 0.0, 59.0, false, false);
-        assert_eq!(machine.stage(), Stage::Petit);
-        run(&mut machine, 59.0, 61.0, false, false);
-        assert_eq!(machine.stage(), Stage::Hidden);
     }
 }

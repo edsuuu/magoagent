@@ -153,6 +153,8 @@ pub(crate) struct DrawingApp {
     pub(crate) tray: Option<crate::app::system::tray::Tray>,
     pub(crate) tray_tried: bool,
     pub(crate) raise_window: bool,
+    /// When the window last got the keys back from another program (`WINDOW_BACK`).
+    pub(crate) window_back: f64,
     /// Linux on X11: the window asked back, until when it is looked for to be brought as a taskbar would (`tray.rs`).
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     pub(crate) raising: Option<f64>,
@@ -164,6 +166,10 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_popup: bool,
     /// The last press on the title bar's empty stretch, for a second one to maximize.
     pub(crate) caption_press: Option<(f64, Pos2)>,
+    /// A press on the bar's empty stretch still held and not a move yet: where it was and where the pointer is now.
+    pub(crate) caption_held: Option<(Pos2, Pos2)>,
+    /// The bar as the main window's last frame drew it (ui/titlebar.rs::CaptionMap).
+    pub(crate) caption_map: crate::app::ui::titlebar::CaptionMap,
     /// The top-left buttons as the title bar last drew them: their presses are not the window's drag.
     pub(crate) title_buttons: Rect,
     /// What the sidebar's Filtrar holds: the spaces listed are the ones with it in their name.
@@ -383,6 +389,8 @@ pub(crate) struct DrawingApp {
     pub(crate) avatar: maestro::avatar::Avatar,
     /// The tasks (tasks.rs) and the agents panel's tabs.
     pub(crate) tasks: tasks::TaskBoard,
+    /// The questions the agents left for the person (doubts/), answered in the Dúvidas panel.
+    pub(crate) doubts: doubts::DoubtBoard,
     /// The panels on the window's right (panes/): which is open and what each keeps.
     pub(crate) panes: panes::Panes,
     /// The workspaces (workspaces.rs): the list, the shells whose space is off view (terminal id →

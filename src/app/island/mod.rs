@@ -35,6 +35,7 @@ pub(crate) mod music;
 pub(crate) mod paint;
 pub(crate) mod picture;
 pub(crate) mod pill;
+pub(crate) mod plan;
 mod prompt;
 pub(crate) mod replay;
 mod session;
@@ -495,9 +496,8 @@ pub(crate) struct Island {
     /// The entrance (`entry.rs`) started at this time; played once, when the island first shows.
     greeting: Option<f64>,
     greeted: bool,
-    /// How many pokes of the wizard and failures were counted, for their sounds; the page is tall (an edit is on).
+    /// How many pokes of the wizard were counted, for their sound; the page is tall (an edit is on).
     pokes: u32,
-    failures: usize,
     tall: bool,
     /// The edge of its monitor it is on (`window::Dock`), and the camera notch it hangs around there (its size).
     dock: window::Dock,
@@ -575,6 +575,12 @@ impl Island {
     #[cfg(test)]
     pub(crate) fn hang_from(&mut self, anchor: [f32; 2]) {
         self.anchor = Some(anchor);
+    }
+
+    /// Compact at `time`, as the pointer coming onto the closed notch leaves it.
+    #[cfg(test)]
+    pub(crate) fn peek(&mut self, time: f64) {
+        self.machine.force_petit(time);
     }
 
     /// Its window draws it again by itself between the app's frames (`replay.rs`): that window is cleared see-through.
@@ -699,17 +705,9 @@ impl DrawingApp {
 
         self.island.cap = window_cap(chat, chat_most(work), self.island.resizing);
 
-        // GitHub's alerts, as the reference sounds them: a review asked for and checks that passed (a failure is the error of
-        // its red wizard, below); one that waited more than a few seconds (the island was off) is dropped
-        if let Some((alert, at)) = self.integrations.github.ring.take()
-            && now_ms() - at < 10_000
-        {
-            match alert {
-                crate::app::integrations::github::Alert::ReviewRequested(_) => tones.push(sounds::ASK),
-                crate::app::integrations::github::Alert::CheckPassed(_) => tones.push(sounds::FINISH),
-                _ => {}
-            }
-        }
+        // GitHub's alerts (a review asked for, checks that passed) come quietly, as everything the person did not do: the
+        // tones of every answer and every check were a noise all day long
+        self.integrations.github.ring = None;
 
         let close_after = self.prefs.island_close_after as f64;
         // a page whose integration was turned off (Spotify's, GitHub's) gives its place to Início
@@ -725,10 +723,8 @@ impl DrawingApp {
 
         let busy = matches!(mood, Mood::Needs(_) | Mood::Working(_));
 
-        if busy && !island.was_busy {
-            island.machine.reveal(time);
-        }
-
+        // work starting or ending no longer shows the compact island: it was a notice on every answer, over whatever the
+        // person was doing. The closed notch's wizard still works, and Luna's check marks what finished.
         // the end is celebrated quietly: no chime
         if island.was_busy && mood == Mood::Ready {
             island.celebrate_until = time + 6.0;
@@ -746,8 +742,11 @@ impl DrawingApp {
 
         island.working = rows.iter().filter(|row| matches!(row.state, AgentState::Working(_))).map(|row| row.id.clone()).collect();
         let asked_before = std::mem::replace(&mut island.asked, asks.len());
+        // the island sounds only for what the person does on it (the pointer, a click, typing): a question arriving, an
+        // answer, a fold by the clock or a failure are seen, not heard
+        let by_person = island.hovered || island.holding || island.typing;
 
-        if asks.len() < asked_before {
+        if asks.len() < asked_before && by_person {
             tones.push(sounds::APPROVE);
         }
 
@@ -780,10 +779,10 @@ impl DrawingApp {
         };
 
         match (island.last_shape.replace(shape), shape) {
+            _ if !by_person => {}
             (Some(Shape::Closed), Shape::Compact) => tones.push(sounds::PEEK),
             (Some(Shape::Open), Shape::Compact | Shape::Closed) => tones.push(sounds::CLOSE),
-            (Some(Shape::Closed | Shape::Compact), Shape::Open) => tones.push(if asks.len() > asked_before { sounds::ASK } else { sounds::OPEN }),
-            (Some(Shape::Open), Shape::Open) if asks.len() > asked_before => tones.push(sounds::ASK),
+            (Some(Shape::Closed | Shape::Compact), Shape::Open) => tones.push(sounds::OPEN),
             _ => {}
         }
 
@@ -819,10 +818,6 @@ impl DrawingApp {
         let island = &mut self.island;
 
         island.tall = home::tall(view.activity.as_ref());
-
-        if view.failures > std::mem::replace(&mut island.failures, view.failures) {
-            tones.push(sounds::ERROR);
-        }
 
         if view.pokes > std::mem::replace(&mut island.pokes, view.pokes) {
             tones.push(if view.dizzy { sounds::DIZZY } else { sounds::POKE });

@@ -400,11 +400,11 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             let mut args = request["args"].clone();
             let action = request["action"].as_str().unwrap_or_default();
 
-            // a terminal that is no Maestro reaches only the trees roped to it, its own tasks and the shared notes (memory,
+            // a terminal that is no Maestro reaches only the trees roped to it, its own tasks and questions (doubts) and the shared notes (memory,
             // binder: a recruit writes what it learned there, in the files the Maestro reads): what
             // changes the whole app, or acts on a name anywhere on the canvas, is for a Maestro or a chat
             if chat.is_none() && nodes.iter().any(|n| n.id == from && !n.maestro) {
-                if !matches!(action, "file_tree" | "tasks" | "memory" | "binder") {
+                if !matches!(action, "file_tree" | "tasks" | "doubts" | "memory" | "binder") {
                     return Err("Só um terminal da Luna (ou um chat) pode usar essa ação; um terminal comum só mexe nas árvores ligadas a ele.".into());
                 }
 

@@ -9,7 +9,7 @@ pub(crate) struct Entry {
 }
 
 /// (name, argument, what it does, Codex has it too)
-pub(super) const DEFS: [(&str, &str, &str, bool); 10] = [
+pub(super) const DEFS: [(&str, &str, &str, bool); 13] = [
     ("login", "[console|sso]", "Entrar na sua conta (abre o navegador)", true),
     ("logout", "", "Sair da conta", true),
     ("status", "", "Mostra quem está logado e os ajustes do chat", true),
@@ -20,6 +20,9 @@ pub(super) const DEFS: [(&str, &str, &str, bool); 10] = [
     ("model", "<nome>", "Troca o modelo do agente", true),
     ("effort", "<nível>", "Troca o esforço do agente", true),
     ("help", "", "Lista os comandos", true),
+    ("btw", "<pergunta>", "Pergunta à parte, mesmo com o agente trabalhando; não entra na conversa", false),
+    ("usage", "", "Mostra o consumo do plano: 5 horas e 7 dias", true),
+    ("context", "", "Abre o painel Contexto", false),
 ];
 
 /// The commands the chat answers itself, for `agent`; /compact is the agent's own.
@@ -46,6 +49,10 @@ pub(crate) enum Local {
     Model(String),
     Effort(String),
     Help,
+    /// A question on the side: answered from the conversation so far, without entering it.
+    Btw(String),
+    Usage,
+    Context,
 }
 
 /// What the box's text means: None, it goes to the agent as a message; Some(Err), a local command
@@ -66,14 +73,26 @@ pub(crate) fn parse(text: &str, agent: &str) -> Option<Result<Local, String>> {
         "model" => Local::Model(arg),
         "effort" => Local::Effort(arg),
         "help" => Local::Help,
+        "btw" => Local::Btw(arg),
+        "usage" => Local::Usage,
+        "context" => Local::Context,
         _ => return None,
     };
 
-    if agent == "codex" && matches!(local, Local::Doctor | Local::Update) {
+    if agent == "codex" && matches!(local, Local::Doctor | Local::Update | Local::Btw(_) | Local::Context) {
         return Some(Err(format!("/{word} só existe no Claude Code.")));
     }
 
     Some(Ok(local))
+}
+
+/// What `/btw` asks the agent: the question, answered short from what the conversation already has, without tools and
+/// without changing anything.
+pub(crate) fn btw_prompt(question: &str) -> String {
+    format!(
+        "Pergunta à parte, fora da tarefa em andamento: responda curto, só com o que já está nesta conversa, sem usar \
+         ferramentas e sem mudar nada.\n\n{question}"
+    )
 }
 
 /// The agent CLI's arguments for a command that runs it.

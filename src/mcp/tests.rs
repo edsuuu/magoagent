@@ -318,6 +318,7 @@ fn every_app_action_is_a_tool_once() {
         "outside_message",
         "connection_history",
         "tasks",
+        "doubts",
         "flow",
         "binder",
         "minimap",
@@ -418,6 +419,7 @@ fn the_note_tool_creates_and_changes_a_note_and_sets_its_buttons() {
     let made = note_call(
         &mut scene,
         &json!({ "text": "- um", "title": "Plano", "color": "Azul", "buttons": [{ "label": "Abrir", "action": "open_path", "args": { "path": "/tmp" } }] }),
+        None,
     )
     .unwrap();
 
@@ -441,7 +443,7 @@ fn the_note_tool_creates_and_changes_a_note_and_sets_its_buttons() {
 
     assert_eq!(text_of(&scene), "# Plano\n- um");
     // the text, the title and the color change; a hex turns into the nearest paper; the size keeps its floor
-    note_call(&mut scene, &json!({ "id": id, "title": "Novo", "color": "#b0f0b0", "width": 10 })).unwrap();
+    note_call(&mut scene, &json!({ "id": id, "title": "Novo", "color": "#b0f0b0", "width": 10 }), None).unwrap();
 
     assert_eq!(
         text_of(&scene),
@@ -453,16 +455,52 @@ fn the_note_tool_creates_and_changes_a_note_and_sets_its_buttons() {
     assert_eq!(local_bounds(&scene.elements[index]).width(), NOTE_MIN.x);
     assert_eq!(scene.elements[index].note.buttons.len(), 1, "buttons stay when not mentioned");
     // an action the app doesn't have is refused at once, and nothing is changed
-    let refused = note_call(&mut scene, &json!({ "id": id, "buttons": [{ "label": "X", "action": "apagar_tudo" }] })).unwrap_err();
+    let refused = note_call(&mut scene, &json!({ "id": id, "buttons": [{ "label": "X", "action": "apagar_tudo" }] }), None).unwrap_err();
 
     assert!(refused.contains("apagar_tudo"), "{refused}");
     assert_eq!(scene.elements[index].note.buttons.len(), 1);
-    note_call(&mut scene, &json!({ "id": id, "buttons": [] })).unwrap();
+    note_call(&mut scene, &json!({ "id": id, "buttons": [] }), None).unwrap();
     assert!(scene.elements[index].note.buttons.is_empty());
-    assert!(note_call(&mut scene, &json!({ "id": "nada", "text": "x" })).is_err());
+    assert!(note_call(&mut scene, &json!({ "id": "nada", "text": "x" }), None).is_err());
     // the file format's own sticky note still comes in, with the default size
     add_elements(&mut scene, &[json!({ "type": "stickynote", "id": "velha", "x": 0, "y": 0, "backgroundColor": "#ffdf6b" })]).unwrap();
     assert_eq!(local_bounds(by_id(&scene, "velha")).size(), NOTE_SIZE);
+}
+
+/// An agent's note: beside it, over nothing on the canvas, tied to it by a rope; the same title again changes that note
+/// instead of opening a copy.
+#[test]
+fn an_agents_note_is_tied_to_it_beside_it_and_never_twice() {
+    let mut scene = Scene::default();
+
+    let items = json!([
+        { "type": "terminal", "id": "luna", "x": 0, "y": 0, "width": 600, "height": 400, "name": "Luna" },
+        // a drawing right where the note would go
+        { "type": "rectangle", "id": "desenho", "x": 660, "y": 0, "width": 300, "height": 300 },
+    ]);
+
+    add_elements(&mut scene, items.as_array().unwrap()).unwrap();
+    let first = note_call(&mut scene, &json!({ "title": "Plano", "text": "- um" }), Some("luna")).unwrap();
+    let id = first["id"].as_str().unwrap().to_string();
+    let note = element_bounds(by_id(&scene, &id));
+
+    for taken in ["desenho", "luna"] {
+        assert!(!note.intersects(element_bounds(by_id(&scene, taken))), "over {taken}: {note:?}");
+    }
+
+    let ends = |e: &Element| [&e.ends.start, &e.ends.end].map(|end| end.as_ref().map(|b| b.element_id.clone()));
+
+    assert!(scene.elements.iter().any(|e| e.rope && ends(e) == [Some("luna".into()), Some(id.clone())]), "tied to the agent");
+    // the same title (in the text's heading, any case): the same note, with the new text
+    let again = note_call(&mut scene, &json!({ "text": "# plano\n- dois" }), Some("luna")).unwrap();
+
+    assert_eq!(again["id"], first["id"]);
+    assert_eq!(scene.elements.iter().filter(|e| e.created.is_some()).count(), 1);
+    // another title: another note
+    let other = note_call(&mut scene, &json!({ "title": "Riscos" }), Some("luna")).unwrap();
+
+    assert_ne!(other["id"], first["id"]);
+    assert_eq!(scene.elements.iter().filter(|e| e.created.is_some()).count(), 2);
 }
 
 #[test]

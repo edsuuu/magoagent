@@ -12,6 +12,7 @@ mod chat_queue;
 mod chats_view;
 mod conflicts;
 mod dialogs;
+mod doubts;
 mod drops;
 mod file_links;
 mod filetree;
@@ -57,6 +58,7 @@ mod terminals;
 mod tools;
 mod tour;
 mod typing;
+mod usage_glance;
 mod windows;
 mod zoom;
 

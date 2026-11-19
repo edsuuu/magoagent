@@ -12,11 +12,16 @@ use crate::app::ui::agents::AgentState;
 use crate::prelude::*;
 
 impl DrawingApp {
-    /// What was written to an agent while it waited on its terminal: it goes when it doesn't.
+    /// What was written to an agent while it was busy: it goes when it isn't. A chat gets each as a message of its own,
+    /// in order (`chat_nodes_tick` sends one, and the next waits for its turn); a terminal gets the person's words
+    /// together, one prompt. An agent's answer brought to it (ask.rs) is never joined to them: the person's words went
+    /// inside the answer's message, in its bubble.
     pub(crate) fn queue_message(&mut self, id: &str, text: String) {
-        match self.chat_queue.iter_mut().find(|(to, _)| to == id) {
-            Some((_, queued)) => *queued = format!("{queued}\n\n{text}"),
-            None => self.chat_queue.push((id.to_string(), text)),
+        let joins = !self.is_chat(id) && crate::app::chat::ask::asked_by(&text).is_none();
+
+        match self.chat_queue.iter_mut().rfind(|(to, _)| to == id) {
+            Some((_, queued)) if joins && crate::app::chat::ask::asked_by(queued).is_none() => *queued = format!("{queued}\n\n{text}"),
+            _ => self.chat_queue.push((id.to_string(), text)),
         }
     }
 

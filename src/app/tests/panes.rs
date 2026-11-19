@@ -123,11 +123,11 @@ fn each_button_opens_its_panel_and_closes_it_one_at_a_time() {
     pane_frame(&mut app, &ctx, vec![key_press(Key::Escape)]);
     assert_eq!(app.panes.open, None, "Esc closes it first");
     assert_eq!(app.selected, vec![0], "and only it");
-    // over the chat the buttons and the panel are hidden
+    // over the chat the canvas's panels and their buttons are hidden: only Dúvidas' shows (tests/doubts.rs)
     app.set_pane(Some(Pane::Changes));
     app.chat_open = true;
     pane_frame(&mut app, &ctx, vec![]);
-    assert_eq!((app.panes.buttons, app.pane_width()), (None, 0.0));
+    assert_eq!((app.panes.buttons, app.pane_width()), (Some(app.pane_button(SCREEN.x, PANES.len() - 1)), 0.0));
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -170,10 +170,10 @@ fn on_the_welcome_the_panel_buttons_hide_and_the_top_moves_the_window() {
     assert_eq!(raw.events.len(), 1, "the press in the middle of the top moves the window");
 }
 
-/// Only Alterações and Nota rápida have a button; the tasks still reach the agents.
+/// Only Alterações, Nota rápida and Dúvidas have a button; the tasks still reach the agents.
 #[test]
 fn the_tasks_panel_is_gone_and_the_tasks_stay() {
-    assert_eq!(PANES.map(|pane| pane.2), ["Alterações", "Nota rápida"]);
+    assert_eq!(PANES.map(|pane| pane.2), ["Alterações", "Nota rápida", "Dúvidas"]);
     let ctx = Context::default();
     let mut app = DrawingApp::default();
 

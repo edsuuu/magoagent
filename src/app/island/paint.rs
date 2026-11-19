@@ -75,8 +75,7 @@ pub(super) struct View {
     pub(super) activity: Option<Activity>,
     pub(super) since: f32,
     pub(super) glimpse: Vec<(usize, String)>,
-    /// How many agents failed now, how many times the wizard was poked, and whether it is dizzy from it.
-    pub(super) failures: usize,
+    /// How many times the wizard was poked, and whether it is dizzy from it.
     pub(super) pokes: u32,
     pub(super) dizzy: bool,
     /// Seconds into the entrance, while it plays.
@@ -95,6 +94,8 @@ pub(super) struct View {
     pub(super) bot: Option<(Vec2, f32)>,
     pub(super) aim: std::cell::Cell<Option<Aim>>,
     pub(super) origin: std::cell::Cell<Pos2>,
+    /// The plan's windows of the agent read first, in short (`usage::foot::glance`): the header shows them.
+    pub(super) plan: Vec<(&'static str, f64)>,
 }
 
 /// Where a page wants the island's one mascot: from the island's top left, how big and in which
@@ -268,9 +269,9 @@ impl DrawingApp {
 
         let chat_row = self.chat_agent.as_ref().and_then(|id| rows.iter().find(|row| &row.id == id)).cloned();
         let activity = focus.as_ref().and_then(|id| activities.remove(id));
-        let failures = lines.iter().filter(|line| line.mago == MagoState::Error).count();
         let (pokes, dizzy) = mago_pokes("island-main", time);
         let (since, glimpse) = self.island_stage(focus.as_deref(), activity.as_ref(), time);
+        let plan = self.usage_readings().first().map(|(_, reading)| crate::app::usage::foot::glance(reading)).unwrap_or_default();
         let island = &self.island;
 
         View {
@@ -299,7 +300,6 @@ impl DrawingApp {
             activity,
             since,
             glimpse,
-            failures,
             pokes,
             dizzy,
             dock: island.dock,
@@ -311,6 +311,7 @@ impl DrawingApp {
             bot: island.bot_placed.then(|| (Vec2::new(island.bot[0].value, island.bot[1].value), island.bot[2].value)),
             aim: Default::default(),
             origin: Default::default(),
+            plan,
         }
     }
 
@@ -712,6 +713,15 @@ impl DrawingApp {
             }
 
             out.voice = response.clicked();
+        }
+
+        // the plan's use between the tabs and the buttons (past the camera, around a notch); the call's note has the
+        // room while it talks
+        if view.voice_note.is_empty() {
+            let tabs_end = rect.left() + 14.0 + count as f32 * 35.0 + 10.0;
+            let left = view.notch.map_or(tabs_end, |notch| tabs_end.max(rect.center().x + notch.x / 2.0 + 8.0));
+
+            super::plan::paint_plan(ui.painter(), &view.plan, left, x + 32.0 - 12.0 - 10.0, center_y);
         }
     }
 

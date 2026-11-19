@@ -101,7 +101,7 @@ impl Pen<'_> {
 
         match self {
             Pen::Measure(painter) => {
-                let galley = painter.layout_job(markdown::job(spans, size, ink, wrap, false));
+                let galley = painter.layout_job(markdown::job(spans, size, ink, wrap, &crate::app::ui::note_bold(painter.ctx())));
                 let mut at_char = 0;
                 let mut broke = Vec::new();
 
@@ -119,18 +119,14 @@ impl Pen<'_> {
                 let spans = broken(spans, breaks);
                 let scale = zoom / text_zoom;
                 let pos = place(at);
-                let galley = painter.layout_job(markdown::job(&spans, size * text_zoom, ink, f32::INFINITY, false));
+                let galley = painter.layout_job(markdown::job(&spans, size * text_zoom, ink, f32::INFINITY, &crate::app::ui::note_bold(painter.ctx())));
+
+                // inline code's boxes behind it (a turned note keeps the text alone)
+                if *angle == 0.0 {
+                    painter.extend(markdown::code_shapes(&markdown::code_boxes(&galley, &markdown::code_chars(&spans)), pos, scale, ink));
+                }
 
                 painter.add(egui::epaint::TextShape::new(pos, scaled_galley(&galley, scale), ink).with_angle(*angle));
-
-                if spans.iter().any(|span| span.bold) {
-                    // egui has no bold face: the bold spans are drawn again half a point to the right
-                    let bold = scaled_galley(&painter.layout_job(markdown::job(&spans, size * text_zoom, ink, f32::INFINITY, true)), scale);
-
-                    for dx in [0.0, 0.5 * zoom] {
-                        painter.add(egui::epaint::TextShape::new(pos + Vec2::new(dx, 0.0), bold.clone(), ink).with_angle(*angle));
-                    }
-                }
 
                 ((breaks.len() + 1) as f32 * least, Vec::new())
             }

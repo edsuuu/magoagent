@@ -138,7 +138,9 @@ impl DrawingApp {
         // a fixed id: the box keeps its focus from one frame to the next
         let draft_id = egui::Id::unique("chat_draft");
         // under the title bar off the Mac, which stays over it
-        let area = Rect::from_min_max(Pos2::new(0.0, TOP_ROW.max(TITLE_BAR)), ctx.content_rect().max);
+        // the Dúvidas panel open over the chat takes the right, as on the canvas
+        let doubts = if self.panes.open.is_some_and(crate::app::panes::Pane::over_chat) { self.panel_width() } else { 0.0 };
+        let area = Rect::from_min_max(Pos2::new(0.0, TOP_ROW.max(TITLE_BAR)), ctx.content_rect().max - Vec2::new(doubts, 0.0));
         // narrow, the list starts closed and Ctrl+B opens it over the conversation
         let narrow = area.width() < NARROW;
         let full = narrow == self.chat_list_toggled;
@@ -183,7 +185,7 @@ impl DrawingApp {
         egui::Area::new(egui::Id::unique("chat_screen")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_min_size(area.size());
             // the bar's strip too: the chat and the bar are one piece
-            ui.painter().rect_filled(area.with_min_y(0.0), 0, look.bg);
+            ui.painter().rect_filled(area.with_min_y(0.0).with_max_x(ctx.content_rect().right()), 0, look.bg);
 
             if full && !narrow {
                 self.chat_list(ui, side, &listed, &look, time, &mut act, &mut filter, &mut show);

@@ -149,3 +149,44 @@ fn a_failed_message_is_kept_to_be_sent_again_after_the_login() {
     app.chat_retry(&Context::default(), "c");
     assert!(!app.slash.retry.contains("c"));
 }
+
+/// /btw asks on the side (Claude Code only, after the conversation began), /usage says the plan's 5 hours and 7 days,
+/// /context opens its panel.
+#[test]
+fn btw_usage_and_context_are_the_chats_own() {
+    assert_eq!(parse("/btw o que falta?", "claude"), Some(Ok(Local::Btw("o que falta?".into()))));
+    assert!(matches!(parse("/btw x", "codex"), Some(Err(_))));
+    assert!(matches!(parse("/context", "codex"), Some(Err(_))));
+    assert_eq!(parse("/usage", "codex"), Some(Ok(Local::Usage)));
+    assert!(btw_prompt("o que falta?").ends_with("o que falta?"));
+    let mut app = DrawingApp::default();
+    let ctx = Context::default();
+    let installed = [Preset::new("Claude Code", "claude")];
+
+    app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &installed);
+    let id = app.chat_agent.clone().unwrap();
+
+    let last = |app: &DrawingApp| match app.transcripts[&id].items.last() {
+        Some(ChatItem::System(note)) => note.clone(),
+        other => panic!("{other:?}"),
+    };
+
+    assert!(app.chat_submit(&ctx, &id, "/btw o que falta?", "/btw o que falta?"));
+    assert!(last(&app).contains("ainda não começou"), "{}", last(&app));
+    assert!(!app.chat_cmds.contains_key(&id));
+    // the plan not read yet: a read now
+    app.usage_ui.probe.next = 99.0;
+    assert!(app.chat_submit(&ctx, &id, "/usage", "/usage"));
+    assert!(last(&app).contains("ainda não foi lido") && app.usage_ui.probe.next == 0.0);
+
+    app.usage_ui.probe.slots[0].reading = Some(crate::app::usage::probe::Reading {
+        plan: None,
+        meters: vec![crate::app::usage::probe::Meter { title: "Sessão".into(), used: 0.16, resets_at: None }],
+    });
+
+    assert!(app.chat_submit(&ctx, &id, "/usage", "/usage"));
+    assert_eq!(last(&app), "Consumo do plano\nClaude Code · 5 h 16%");
+    app.prefs.chat_panel = false;
+    assert!(app.chat_submit(&ctx, &id, "/context", "/context"));
+    assert!(app.prefs.chat_panel);
+}

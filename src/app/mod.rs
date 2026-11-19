@@ -5,6 +5,7 @@ use crate::prelude::*;
 pub(crate) mod browser;
 pub(crate) mod canvas;
 pub(crate) mod chat;
+pub(crate) mod doubts;
 pub(crate) mod filetree;
 pub(crate) mod floors;
 pub(crate) mod groups;

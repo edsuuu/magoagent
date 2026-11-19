@@ -18,7 +18,8 @@ impl DrawingApp {
             let inside = self.terminal_frame(&self.scene.elements[index]).0.contains(pos);
 
             if inside || self.dock.is_none() {
-                if !inside {
+                // the press that brought the window back from another program keeps it as the person left it
+                if !inside && !self.coming_back() {
                     self.set_elevated(None);
                     self.terminal_focus = None;
                 }

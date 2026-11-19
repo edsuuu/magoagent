@@ -56,6 +56,12 @@ impl DrawingApp {
                         continue;
                     }
 
+                    // the press that brought the window back from another program, wherever the pointer was: the note
+                    // being typed (or the window in focus) stays as the person left it
+                    if self.coming_back() && (self.editing.is_some() || self.terminal_elevated.is_some()) {
+                        continue;
+                    }
+
                     self.context = None;
                     // any press on the canvas dismisses the unlock button (its own clicks never get here)
                     self.active_locked = None;

@@ -72,6 +72,8 @@ pub(crate) enum Icon {
     PaintPalette,
     /// The right panel's button: Alterações.
     Diff,
+    /// A question mark in a circle: Dúvidas.
+    Question,
 }
 
 /// How far a corner of an icon's stroke curves away from its point (or half the shorter side, when less).
@@ -433,6 +435,11 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             line(&[(-7.0, -3.5), (-1.0, -3.5)]);
             line(&[(1.0, 4.0), (7.0, 4.0)]);
             line(&[(-6.0, 6.5), (6.0, -6.5)]);
+        }
+        Icon::Question => {
+            p.circle_stroke(at(0.0, 0.0), 7.0, s);
+            line(&[(-2.4, -2.2), (-1.9, -3.7), (0.0, -4.4), (1.9, -3.7), (2.4, -2.2), (1.6, -0.9), (0.0, 0.0), (0.0, 1.4)]);
+            p.circle_filled(at(0.0, 3.9), 0.9, color);
         }
         Icon::Todo => {
             rect(-6.5, -6.5, 5.0, 5.0, 1);

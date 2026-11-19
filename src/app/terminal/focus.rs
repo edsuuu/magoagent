@@ -1,5 +1,9 @@
 use super::*;
 
+/// How long after the window got the keys back a press still counts as the one that brought it (s): the press and the
+/// focus come a frame or two apart.
+const WINDOW_BACK: f64 = 0.5;
+
 impl DrawingApp {
     /// Click: an 80×24 terminal centered there; drag: that box. Asks for its shell first.
     pub(crate) fn open_terminal_dialog(&mut self, start: Pos2, end: Pos2) {
@@ -123,6 +127,12 @@ impl DrawingApp {
         }
 
         self.focus_terminal(index);
+    }
+
+    /// Whether a press now is the one that brought the window back from another program: it lands wherever the pointer
+    /// was, and an enlarged window (a note in focus) stays as the person left it instead of going back to the canvas.
+    pub(crate) fn coming_back(&self) -> bool {
+        self.now - self.window_back < WINDOW_BACK
     }
 
     /// Enlarges a terminal (None puts it back), with a short zoom animation either way.

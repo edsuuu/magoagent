@@ -845,3 +845,85 @@ fn remover_chat_asks_first_and_only_remover_deletes_it() {
     assert!(app.chats.iter().all(|chat| chat.id != "a"), "Remover removes it");
     assert_eq!(app.chat_draft, "não envia");
 }
+
+/// The context band's words before its amount shorten in a narrow panel instead of running into the Compactar button.
+#[test]
+fn the_compact_band_says_less_in_a_narrow_panel() {
+    use crate::app::chat::context_view::band_words;
+
+    // seven points a letter
+    let width = |words: &str| words.chars().count() as f32 * 7.0;
+
+    assert_eq!(band_words(200.0, width), Some("Compacta sozinho em "));
+    assert_eq!(band_words(100.0, width), Some("Sozinho em "));
+    assert_eq!(band_words(30.0, width), Some("Em "));
+    assert_eq!(band_words(10.0, width), None);
+}
+
+/// While the agent works its band says, as Claude Code's status line, how long the turn runs, the tokens written and
+/// the effort the chat thinks with.
+#[test]
+fn the_work_band_says_the_turns_time_tokens_and_effort() {
+    use crate::app::ui::agents::{AgentRow, AgentState};
+
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = push_chat(&mut app, "Luna");
+
+    app.chats[0].effort = "xhigh".into();
+    app.now = 300.0;
+    let spec = TerminalSpec { name: "Luna".into(), command: "claude".into(), ..Default::default() };
+    let row = AgentRow { id: id.clone(), spec, state: AgentState::Working(300.0 - 262.0), mission: None, space: String::new() };
+    let dir = std::env::temp_dir().join(format!("magoagent-band-{}", std::process::id()));
+
+    fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("t.jsonl");
+    let said = json!({"type": "assistant", "message": {"id": "m", "content": [{"type": "text", "text": "ok"}], "usage": {"output_tokens": 23_040}}});
+
+    fs::write(&file, format!("{}\n{said}\n", json!({"type": "user", "message": {"content": "faz"}}))).unwrap();
+    let mut transcript = crate::transcript::Transcript::new(file);
+
+    transcript.poll();
+    let look = crate::app::chat::list::Look::new(true, &app.colors());
+    let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(1000.0, 200.0));
+
+    let output = ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |ui| {
+        app.work_band(ui, &row, Some(&transcript), &look, false, 0.0);
+    });
+
+    let texts: Vec<String> =
+        output.shapes.iter().filter_map(|shape| if let egui::Shape::Text(text) = &shape.shape { Some(text.galley.text().to_string()) } else { None }).collect();
+
+    assert!(texts.iter().any(|text| text == "4m 22s · 23k tokens · esforço Extra"), "{texts:?}");
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// An agent's answer waits in a chat's queue while the chat still answers, and the person writes: the person's words
+/// go as a message of their own, after it, not inside the answer's bubble. A terminal joins only the person's words.
+#[test]
+fn the_persons_message_never_goes_inside_an_agents_answer() {
+    use crate::app::chat::ask::answer_message;
+
+    let mut app = DrawingApp::default();
+    let chat = push_chat(&mut app, "Luna");
+    let answer = answer_message("Revisor", "os testes passaram");
+
+    app.queue_message(&chat, answer.clone());
+    app.queue_message(&chat, "agora sobe a versão".into());
+    app.queue_message(&chat, "e o changelog".into());
+
+    assert_eq!(
+        app.chat_queue,
+        [(chat.clone(), answer.clone()), (chat.clone(), "agora sobe a versão".into()), (chat.clone(), "e o changelog".into())],
+        "a chat sends each as its own message"
+    );
+
+    assert!(app.act("chat_queue", &json!({ "agent": "Luna" })).unwrap().contains("e o changelog"), "the MCP lists them all");
+    // a terminal: the person's words together, an agent's answer apart
+    app.chat_queue.clear();
+    app.queue_message("terminal", "oi".into());
+    app.queue_message("terminal", "e o lint".into());
+    app.queue_message("terminal", answer.clone());
+    app.queue_message("terminal", "valeu".into());
+    assert_eq!(app.chat_queue, [("terminal".to_string(), "oi\n\ne o lint".to_string()), ("terminal".into(), answer), ("terminal".into(), "valeu".into())]);
+}

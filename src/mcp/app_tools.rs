@@ -321,7 +321,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "chat_command",
-            "description": "Roda um comando com barra do chat, como se a pessoa o digitasse na caixa: login (abre o navegador; console ou sso depois), logout, status, mcp, doctor, update, clear (conversa nova no mesmo chat; a anterior fica na lista Conversas, com o título dela, para ler e continuar), model e effort (com o nome ou nível), help. A saída aparece no chat, sem ir ao modelo. Outros /comandos (compact, os de .claude/commands) são mensagens ao agente: use chat_send.",
+            "description": "Roda um comando com barra do chat, como se a pessoa o digitasse na caixa: login (abre o navegador; console ou sso depois), logout, status, mcp, doctor, update, clear (conversa nova no mesmo chat; a anterior fica na lista Conversas, com o título dela, para ler e continuar), model e effort (com o nome ou nível), help, btw <pergunta> (pergunta à parte ao Claude Code, mesmo trabalhando, sem entrar na conversa), usage (o consumo do plano: 5 horas e 7 dias), context (abre o painel Contexto). A saída aparece no chat, sem ir ao modelo. Outros /comandos (compact, os de .claude/commands) são mensagens ao agente: use chat_send.",
             "inputSchema": { "type": "object", "properties": { "chat": chat, "command": { "type": "string", "description": "Ex.: \"status\", \"/model opus\", \"login sso\"" } }, "required": ["command"] },
         }),
         json!({
@@ -433,9 +433,9 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "panel",
-            "description": "O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão) ou note (Nota rápida: texto simples da pessoa; o texto em si fica na ferramenta quick_note), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.",
+            "description": "O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão) ou note (Nota rápida: texto simples da pessoa; o texto em si fica na ferramenta quick_note), ao lado do canvas, ou doubts (Dúvidas: as perguntas dos agentes, também por cima do modo chat; as perguntas em si ficam na ferramenta doubts). As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.",
             "inputSchema": { "type": "object", "properties": {
-                "name": { "type": "string", "enum": ["changes", "note"] },
+                "name": { "type": "string", "enum": ["changes", "note", "doubts"] },
                 "open": { "type": "boolean" },
                 "width": { "type": "number", "description": "a largura do painel em pixels (de 300 até deixar 360 ao canvas); 0 volta à padrão" },
                 "worktree": name("Alterações: o worktree a mostrar (nome da pasta, ramo ou caminho); todos: as Árvores do canvas"),
@@ -492,6 +492,22 @@ pub(crate) fn app_tools() -> Vec<Value> {
                 "reverse": { "type": "boolean", "description": "sort: ordem invertida" },
                 "side": { "type": "string", "enum": ["mine", "theirs"], "description": "resolve: o arquivo inteiro fica com a minha versão ou com a deles" },
                 "picks": { "type": "array", "items": { "type": "string", "enum": ["mine", "theirs", "both", "both_theirs_first", "base"] }, "description": "resolve: uma escolha por conflito do arquivo, na ordem em que conflicts os lista" },
+            }, "required": ["action"] },
+        }),
+        json!({
+            "name": "doubts",
+            "description": "A tela Dúvidas: as perguntas que você deixa para a pessoa enquanto trabalha, sem parar (para uma pergunta que trava o trabalho, use ask_person). add acrescenta `questions` (textos, ou {question, options} com respostas sugeridas) e abre o painel, no canvas e no modo chat; a pessoa responde lá e as respostas chegam a você numa mensagem, só as respondidas ou todas (as sem resposta ficam para você decidir). list mostra as suas com o que já foi respondido; remove tira as que não precisa mais (ids, ou todas). answer (id, answer) e send (agent, all) são o que a pessoa faz no painel. Quando a pessoa pedir um .md de dúvidas, use esta tela.",
+            "inputSchema": { "type": "object", "properties": {
+                "action": { "type": "string", "enum": ["add", "list", "answer", "send", "remove"] },
+                "questions": { "type": "array", "items": { "anyOf": [
+                    { "type": "string" },
+                    { "type": "object", "properties": { "question": { "type": "string" }, "options": { "type": "array", "items": { "type": "string" } } }, "required": ["question"] },
+                ] }, "description": "add: as perguntas" },
+                "ids": { "type": "array", "items": { "type": "integer" }, "description": "remove: quais (vazio: todas as suas)" },
+                "id": { "type": "integer", "description": "answer: a dúvida respondida" },
+                "answer": { "type": "string", "description": "answer: a resposta" },
+                "agent": name("send, list: o nome do agente (vazio: você)"),
+                "all": { "type": "boolean", "description": "send: true manda todas (as sem resposta como decisão do agente); false, só as respondidas" },
             }, "required": ["action"] },
         }),
         json!({

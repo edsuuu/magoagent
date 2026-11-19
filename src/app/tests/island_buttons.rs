@@ -346,9 +346,9 @@ fn spotify_has_its_tab_and_chats_only_the_agents() {
     assert_eq!((app.island.tab(), app.island.focus()), (Tab::Chats, Some("a")), "Chats: the agents, not the tool");
 }
 
-/// GitHub's alerts sound on the island as the reference's: checks that passed, a review asked for (a failure is its red wizard's error).
+/// GitHub's alerts (checks that passed, a review asked for) come quietly: the island sounds only for the person.
 #[test]
-fn checks_that_passed_and_a_review_asked_for_sound_on_the_island() {
+fn checks_that_passed_and_a_review_asked_for_make_no_sound_on_the_island() {
     use crate::app::integrations::github::{CiState, GitHub, PullRequest, Pulse};
     let (mut app, ctx, mut time) = opened();
 
@@ -374,8 +374,8 @@ fn checks_that_passed_and_a_review_asked_for_sound_on_the_island() {
         app.integrations.github.take_pulse(next, now_ms());
         step(&mut app, &ctx, time, vec![]);
         time += 0.05;
-        assert!(app.island.chimes() > before, "{what}: a sound");
-        assert_eq!(app.integrations.github.ring, None, "{what}: sounded once");
+        assert_eq!(app.island.chimes(), before, "{what}: no sound");
+        assert_eq!(app.integrations.github.ring, None, "{what}: taken once");
     }
 }
 

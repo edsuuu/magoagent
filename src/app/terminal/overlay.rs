@@ -1,5 +1,15 @@
 use super::*;
 
+/// The note in focus's width until the person pulls its sides (`Prefs::note_lift_width`), and the least they leave it.
+const NOTE_LIFT_WIDTH: f32 = 720.0;
+const NOTE_LIFT_LEAST: f32 = 320.0;
+
+/// The note in focus's width when its sides are pulled to `wanted` in `room` (the canvas's width): from the least to
+/// the room, less the margin that keeps the blurred canvas in sight around it.
+pub(crate) fn note_lift_width(wanted: f32, room: f32) -> f32 {
+    wanted.clamp(NOTE_LIFT_LEAST, (room - 96.0).max(NOTE_LIFT_LEAST))
+}
+
 impl DrawingApp {
     /// 0 → 1 over the enlarge animation that started at `since`, eased.
     pub(crate) fn elevate_progress(&self, since: f64) -> f32 {
@@ -43,10 +53,16 @@ impl DrawingApp {
     /// Where a lifted note goes, as in the reference app: 28 under the toolbar, at most 720 wide and 72 shorter
     /// than the room left, centered in it.
     fn note_lift_rect(&self) -> Rect {
-        let room = Rect::from_min_max(Pos2::new(self.canvas_rect.left(), self.toolbar_bottom + 28.0), self.canvas_rect.max);
-        let size = Vec2::new((room.width() - 96.0).min(720.0), room.height() - 72.0).max(Vec2::splat(240.0));
+        let room = self.note_lift_room();
+        let wide = self.prefs.note_lift_width.unwrap_or(NOTE_LIFT_WIDTH);
+        let size = Vec2::new((room.width() - 96.0).min(wide), room.height() - 72.0).max(Vec2::splat(240.0));
 
         Rect::from_center_size(room.center(), size)
+    }
+
+    /// Where the note in focus has its place: under the toolbar, the canvas's width.
+    pub(crate) fn note_lift_room(&self) -> Rect {
+        Rect::from_min_max(Pos2::new(self.canvas_rect.left(), self.toolbar_bottom + 28.0), self.canvas_rect.max)
     }
 
     /// A note as it shows: lifted, or on its way up or back, its box is the frame's at the frame's zoom (its
@@ -146,7 +162,12 @@ impl DrawingApp {
         });
 
         if on_canvas && enlarged && self.dock.is_none() {
-            // a click on the margin goes back to the canvas
+            // a click on the margin goes back to the canvas; the one that brought the window back from another program
+            // only brings it
+            if self.coming_back() {
+                return;
+            }
+
             self.set_elevated(None);
             self.terminal_focus = None;
 

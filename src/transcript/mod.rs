@@ -176,6 +176,14 @@ const FIRST_ITEMS: usize = 50;
 const FIRST_READ_MAX: u64 = 32 << 20;
 /// What MagoAgent's view says under its print of the canvas.
 pub(crate) const VIEW_MARK: &str = "imagem com 10px de margem";
+/// What Claude Code writes as the agent's when a message asked for no answer (a local command, a note it added; its model
+/// `<synthetic>`), and what the agent itself says to a message that only informs: nothing the person needs to read.
+const NO_RESPONSE: &str = "No response requested.";
+
+/// Whether an agent's `words` are only Claude Code's `NO_RESPONSE`: nothing said.
+pub(crate) fn said_nothing(words: &str) -> bool {
+    words.trim() == NO_RESPONSE
+}
 
 pub(crate) fn claude_dir() -> Option<PathBuf> {
     std::env::var_os("CLAUDE_CONFIG_DIR").map(PathBuf::from).or_else(|| std::env::home_dir().map(|h| h.join(".claude")))
@@ -355,6 +363,9 @@ pub(crate) struct Transcript {
     /// The person's messages shown the moment they were sent, before the agent wrote them down:
     /// the file's copy of each, when it comes, is not shown twice.
     pub(crate) echoes: usize,
+    /// The tokens the agent wrote since the person's last message, by its messages (each line of a message says the
+    /// same usage, or a part of it on its first blocks: the largest counts).
+    turn: std::collections::HashMap<String, u64>,
 }
 
 impl Transcript {
@@ -369,7 +380,16 @@ impl Transcript {
             running: Vec::new(),
             first_read: FIRST_READ,
             echoes: 0,
+            turn: std::collections::HashMap::new(),
         }
+    }
+
+    /// The tokens the agent wrote in this turn (since the person's last message), as Claude Code's status line counts
+    /// them: what the chat's band shows while it works.
+    // ponytail: grows at each block the file gets (thinking, text, a tool), not at each token as the terminal's
+    // estimate does; a live count would estimate from the stream's text deltas (`--include-partial-messages`).
+    pub(crate) fn turn_tokens(&self) -> u64 {
+        self.turn.values().sum()
     }
 
     /// Reads only what is appended from now on (an ask over the bridge waits for its answer).
@@ -453,6 +473,15 @@ impl Transcript {
                 // killed mid-call) is over
                 if said.iter().any(|item| matches!(item, ChatItem::User(_))) {
                     self.running.clear();
+                    self.turn.clear();
+                }
+
+                if let (Some(message), Some(written)) = (value["message"]["id"].as_str(), value["message"]["usage"]["output_tokens"].as_u64())
+                    && value["type"] == "assistant"
+                {
+                    let counted = self.turn.entry(message.to_string()).or_default();
+
+                    *counted = (*counted).max(written);
                 }
 
                 for item in said {
@@ -597,6 +626,10 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
 
         if user && text.starts_with("[Request interrupted by user") {
             return Some(ChatItem::System("Interrompido pela pessoa.".into()));
+        }
+
+        if !user && said_nothing(text) {
+            return None;
         }
 
         (!text.is_empty()).then(|| if user { ChatItem::User(text.into()) } else { ChatItem::Agent(text.into()) })

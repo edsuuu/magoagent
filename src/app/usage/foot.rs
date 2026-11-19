@@ -2,6 +2,7 @@
 //! 5-hour session, amber from 80%; a click opens what each one read (the session, the week, the special limit and when
 //! they renew) and the Maestro's ceiling, as wide as the sidebar.
 
+use crate::app::chat::list::Look;
 use crate::app::ui::agents::AMBER;
 use crate::app::ui::menu_look::{MenuColors, MenuIcon, menu_colors, paint_menu_icon_sized};
 use crate::app::ui::sidebar::Tones;
@@ -18,7 +19,10 @@ pub(crate) struct UsageCard {
 /// One agent's line in the foot.
 const LINE: f32 = 34.0;
 /// From here a bar is amber: the plan is near its end.
-const HOT: f64 = 0.8;
+pub(crate) const HOT: f64 = 0.8;
+/// The chat list's foot: an agent's name, and a row per window.
+const GLANCE_HEAD: f32 = 20.0;
+const GLANCE_ROW: f32 = 18.0;
 
 /// How tall the foot's lines are for `count` agents (none without a reading).
 pub(crate) fn usage_height(count: usize) -> f32 {
@@ -35,8 +39,128 @@ fn meter_name(meter: &Meter) -> &str {
     }
 }
 
+/// A reading's windows in short, for the chat screen and the island: the 5-hour session ("5 h"), the week ("7 dias")
+/// and Codex Go's month ("30 dias"); a special limit stays in the sidebar's popover.
+pub(crate) fn glance(reading: &Reading) -> Vec<(&'static str, f64)> {
+    reading
+        .meters
+        .iter()
+        .filter_map(|meter| {
+            let name = match meter.title.as_str() {
+                "Sessão" => "5 h",
+                "Semanal" => "7 dias",
+                "Mensal" => "30 dias",
+                _ => return None,
+            };
+
+            Some((name, meter.used))
+        })
+        .collect()
+}
+
+/// "Claude Code · 5 h 14% · 7 dias 32%" and when they renew: what the pointer over a glance reads.
+pub(crate) fn glance_tip(agent: Agent, reading: &Reading, now: i64) -> String {
+    let windows: Vec<String> = glance(reading).into_iter().map(|(name, used)| format!("{name} {:.0}%", used * 100.0)).collect();
+    let head = std::iter::once(agent.name().to_string()).chain(windows).collect::<Vec<_>>().join(" · ");
+
+    match renew_text(reading, now) {
+        Some(renew) => format!("{head}\n{renew}"),
+        None => head,
+    }
+}
+
+/// How tall the chat list's foot is for these readings (none without one).
+pub(crate) fn glance_height(shown: &[(Agent, Reading)]) -> f32 {
+    let rows: usize = shown.iter().map(|(_, reading)| glance(reading).len()).sum();
+
+    if rows == 0 { 0.0 } else { 10.0 + shown.len() as f32 * GLANCE_HEAD + rows as f32 * GLANCE_ROW }
+}
+
+/// The plans' use at the foot of the chat list (`rect`, `glance_height` tall): per agent its name and plan, then a bar
+/// per window with how much is used; the pointer over an agent reads when its windows renew. The chat screen hides the
+/// sidebar, whose foot says it on the canvas.
+pub(crate) fn glance_block(ui: &mut egui::Ui, rect: Rect, shown: &[(Agent, Reading)], look: &Look, now: i64) {
+    let painter = ui.painter().clone();
+    let mut top = rect.top() + 10.0;
+
+    painter.hline(rect.x_range(), rect.top() + 0.5, Stroke::new(1.0, look.line));
+
+    for (agent, reading) in shown {
+        let windows = glance(reading);
+
+        if windows.is_empty() {
+            continue;
+        }
+
+        let block = Rect::from_min_max(Pos2::new(rect.left(), top), Pos2::new(rect.right(), top + GLANCE_HEAD + windows.len() as f32 * GLANCE_ROW));
+
+        ui.interact(block, egui::Id::unique(("chat_usage", agent.name())), Sense::hover()).tip(glance_tip(*agent, reading, now));
+        let head = Pos2::new(block.left() + 8.0, top + GLANCE_HEAD / 2.0 - 1.0);
+
+        painter.text(head, egui::Align2::LEFT_CENTER, agent.name(), FontId::proportional(12.0), look.text);
+
+        if let Some(plan) = &reading.plan {
+            painter.text(Pos2::new(block.right() - 8.0, head.y), egui::Align2::RIGHT_CENTER, plan, FontId::proportional(11.0), look.muted);
+        }
+
+        for (index, (name, used)) in windows.into_iter().enumerate() {
+            let middle = top + GLANCE_HEAD + index as f32 * GLANCE_ROW + GLANCE_ROW / 2.0 - 2.0;
+
+            painter.text(Pos2::new(block.left() + 8.0, middle), egui::Align2::LEFT_CENTER, name, FontId::proportional(11.0), look.muted);
+
+            painter.text(
+                Pos2::new(block.right() - 8.0, middle),
+                egui::Align2::RIGHT_CENTER,
+                format!("{:.0}%", used * 100.0),
+                FontId::proportional(11.0),
+                look.soft,
+            );
+
+            let bar = Rect::from_min_max(Pos2::new(block.left() + 58.0, middle - 2.0), Pos2::new(block.right() - 44.0, middle + 2.0));
+
+            paint_bar(&painter, bar, used, look.hover, glass_accent(look.dark));
+        }
+
+        top = block.bottom();
+    }
+}
+
+/// The folded chat column's glance (`rect`, about 44 wide): the first agent's windows, each its short name and how
+/// much is used over a bar; the rest under the pointer.
+pub(crate) fn glance_column(ui: &mut egui::Ui, rect: Rect, shown: &[(Agent, Reading)], look: &Look, now: i64) {
+    let Some((agent, reading)) = shown.first() else { return };
+    let tips: Vec<String> = shown.iter().map(|(agent, reading)| glance_tip(*agent, reading, now)).collect();
+
+    ui.interact(rect, egui::Id::unique(("chat_usage_column", agent.name())), Sense::hover()).tip(tips.join("\n\n"));
+    let painter = ui.painter();
+
+    for (index, (name, used)) in glance(reading).into_iter().enumerate() {
+        let top = rect.top() + index as f32 * 22.0;
+        let short = name.replace(" dias", "d").replace(' ', "");
+
+        painter.text(Pos2::new(rect.left() + 4.0, top + 6.0), egui::Align2::LEFT_CENTER, short, FontId::proportional(10.0), look.muted);
+
+        painter.text(
+            Pos2::new(rect.right() - 4.0, top + 6.0),
+            egui::Align2::RIGHT_CENTER,
+            format!("{:.0}%", used * 100.0),
+            FontId::proportional(10.0),
+            look.soft,
+        );
+
+        let bar = Rect::from_center_size(Pos2::new(rect.center().x, top + 16.0), Vec2::new(rect.width() - 8.0, 3.0));
+
+        paint_bar(painter, bar, used, look.hover, glass_accent(look.dark));
+    }
+}
+
+/// How tall the folded column's glance is (none without a reading).
+pub(crate) fn glance_column_height(shown: &[(Agent, Reading)]) -> f32 {
+    shown.first().map_or(0.0, |(_, reading)| glance(reading).len() as f32 * 22.0)
+}
+
 /// A bar `used` (0 to 1) full in `rect`: the accent, amber near the end.
-fn paint_bar(painter: &Painter, rect: Rect, used: f64, ground: Color32, accent: Color32) {
+pub(crate) fn paint_bar(painter: &Painter, rect: Rect, used: f64, ground: Color32, accent: Color32) {
     painter.rect_filled(rect, 2, ground);
     let fill = Rect::from_min_size(rect.min, Vec2::new(rect.width() * used.clamp(0.0, 1.0) as f32, rect.height()));
 

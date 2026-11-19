@@ -18,6 +18,11 @@ fn the_chat_reads_claude_code_files() {
     let bash = crate::transcript::Step { name: "Bash".into(), what: "ls -la".into(), input: "ls -la\npwd".into(), ..Default::default() };
 
     assert_eq!(line(reply), vec![ChatItem::Agent("Feito.".into()), ChatItem::Tool(bash)]);
+    // Claude Code's "No response requested." (a message that asked for no answer) is not the agent speaking
+    let synthetic = json!({"type": "assistant", "message": {"model": "<synthetic>", "content": [{"type": "text", "text": "No response requested."}]}});
+
+    assert!(line(synthetic).is_empty() && crate::transcript::said_nothing(" No response requested.\n") && !crate::transcript::said_nothing("Feito."));
+    assert_eq!(line(json!({"type": "user", "message": {"content": "No response requested."}})), vec![ChatItem::User("No response requested.".into())]);
     // tool results, side conversations and bookkeeping lines stay out
     assert!(line(json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": "ok"}]}})).is_empty());
     // but an image a tool gave back (a PNG read, a page's print) is the agent showing it
@@ -467,4 +472,31 @@ fn a_tool_that_fails_says_why_on_its_step_and_in_json_by_its_message_whole_after
     assert_eq!(failure_note("\n Exit code 2\nmais"), "saiu com o código 2");
     assert_eq!(failed("<tool_use_error>Cancelled: parallel tool call Bash(ls) errored</tool_use_error>").0, "cancelada: outra ferramenta chamada junto falhou");
     assert_eq!(failed("<tool_use_error>String to replace not found in file.</tool_use_error>").0, "String to replace not found in file.");
+}
+
+/// The band's tokens: what the agent wrote since the person's last message, each message once (its lines repeat the
+/// usage, partial on its first blocks), counted again from a new message of the person.
+#[test]
+fn the_turn_counts_the_tokens_the_agent_wrote_since_the_last_message() {
+    use crate::transcript::Transcript;
+
+    let dir = std::env::temp_dir().join(format!("magoagent-turn-{}", std::process::id()));
+
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("t.jsonl");
+    let said = |id: &str, written: u64| json!({"type": "assistant", "message": {"id": id, "content": [{"type": "text", "text": "ok"}], "usage": {"output_tokens": written}}});
+    let person = |text: &str| json!({"type": "user", "message": {"content": text}});
+    let write = |lines: &[Value]| std::fs::write(&file, lines.iter().map(|v| format!("{v}\n")).collect::<String>()).unwrap();
+
+    write(&[said("old", 9000), person("faz"), said("a", 10), said("a", 1200), said("b", 300)]);
+    let mut transcript = Transcript::new(file.clone());
+
+    transcript.poll();
+    assert_eq!(transcript.turn_tokens(), 1500);
+    let mut more = std::fs::OpenOptions::new().append(true).open(&file).unwrap();
+
+    std::io::Write::write_all(&mut more, format!("{}\n{}\n", person("e agora"), said("c", 42)).as_bytes()).unwrap();
+    transcript.poll();
+    assert_eq!(transcript.turn_tokens(), 42, "a new turn");
+    let _ = std::fs::remove_dir_all(dir);
 }

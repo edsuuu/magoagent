@@ -560,6 +560,14 @@ const SYSTEM_FACES: &[(&str, &str)] = &[
 pub(crate) const SYSTEM_FONT: &str = "system-ui";
 pub(crate) const SYSTEM_SEMIBOLD: &str = "system-ui-semibold";
 
+/// The family the notes write bold in: `NOTE_BOLD` once `install_fonts` bound it to `ctx`, else the plain code font (a
+/// test's context): a layout never asks egui for a family it doesn't have.
+pub(crate) fn note_bold(ctx: &Context) -> egui::FontFamily {
+    let family = egui::FontFamily::Name(NOTE_BOLD.into());
+
+    if ctx.fonts(|fonts| fonts.definitions().families.contains_key(&family)) { family } else { egui::FontFamily::Monospace }
+}
+
 /// The app's fonts; `ligatures` keeps the code font's (=>, !=, ::) joined.
 pub(crate) fn install_fonts(ctx: &Context, ligatures: bool) {
     let mut fonts = egui::FontDefinitions::default();
@@ -582,6 +590,12 @@ pub(crate) fn install_fonts(ctx: &Context, ligatures: bool) {
         }
     }
 
+    // the notes' bold over the code font's own fallbacks (the symbols, the emoji)
+    let mut bold = vec![NOTE_BOLD.to_string()];
+
+    fonts.font_data.insert(NOTE_BOLD.into(), egui::FontData::from_static(NOTE_BOLD_FACE).into());
+    bold.extend(fonts.families[&egui::FontFamily::Monospace].iter().cloned());
+    fonts.families.insert(egui::FontFamily::Name(NOTE_BOLD.into()), bold);
     let proportional = fonts.families[&egui::FontFamily::Proportional].clone();
     let faces = SYSTEM_FACES.iter().find_map(|(regular, semibold)| Some((fs::read(regular).ok()?, fs::read(semibold).ok()?)));
 

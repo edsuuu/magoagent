@@ -105,7 +105,9 @@ impl DrawingApp {
         if PAGE_KINDS.contains(&ext.as_str()) {
             let url = format!("file:///{}", full.to_string_lossy().replace('\\', "/").trim_start_matches('/'));
             let name = full.file_name().map_or(String::new(), |n| n.to_string_lossy().to_string());
-            let at = self.free_spot(Rect::from_center_size(self.to_world(self.canvas_rect.center()), Vec2::new(720.0, 860.0)));
+            // a document stands up; a page opens as a notebook shows it
+            let size = if matches!(ext.as_str(), "html" | "htm") { PORTAL_SIZE } else { Vec2::new(720.0, 860.0) };
+            let at = self.free_spot(Rect::from_center_size(self.to_world(self.canvas_rect.center()), size));
             let mut portal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
 
             portal.style = node_style(portal.style);

@@ -124,13 +124,6 @@ fn tool_icon(p: &Painter, name: &str, at: Pos2, color: Color32) {
     paint_icon_scaled(p, icon, at, color, 0.75, 0.0);
 }
 
-/// "0:08".
-fn clock(seconds: f64) -> String {
-    let s = seconds.max(0.0) as u64;
-
-    format!("{}:{:02}", s / 60, s % 60)
-}
-
 impl DrawingApp {
     /// A run of tool steps one after another. Two or more with something said after them fold
     /// into a line that opens on a click (`fold` gets the run's key); the latest stay open.
@@ -203,7 +196,7 @@ impl DrawingApp {
     }
 
     /// The band over the box while the agent works: dots, the tool and its command, a bar when its
-    /// output counts ("14 / 23"), how long it runs and Interromper. True: Interromper clicked.
+    /// output counts ("14 / 23"), the turn's time, tokens and effort, and Interromper. True: Interromper clicked.
     pub(crate) fn work_band(&self, ui: &mut egui::Ui, row: &AgentRow, transcript: Option<&Transcript>, look: &Look, narrow: bool, t: f64) -> bool {
         let AgentState::Working(since) = row.state else { return false };
         let running = transcript.and_then(running_step);
@@ -247,11 +240,14 @@ impl DrawingApp {
                 }
 
                 let mut right = button.left() - gap;
-                let started = running.as_ref().and_then(|(s, _)| s.started);
-                let seconds = started.map_or(self.now - since, |s| now_ms() as f64 / 1000.0 - s);
 
+                // the turn as Claude Code's status line says it: its time, the tokens written, the effort (narrow: none)
                 if !narrow {
-                    let g = p.layout_no_wrap(clock(seconds), small.clone(), look.muted);
+                    let effort =
+                        self.chats.iter().find(|chat| chat.id == row.id).map(|chat| crate::app::chat::footer::tuning_names(chat, "").1).unwrap_or_default();
+
+                    let stats = crate::app::chat::thinking::turn_stats(self.now - since, transcript.map_or(0, Transcript::turn_tokens), &effort);
+                    let g = p.layout_no_wrap(stats, small.clone(), look.muted);
 
                     right -= g.size().x;
                     p.galley(Pos2::new(right, cy - g.size().y / 2.0), g, look.muted);
