@@ -1,5 +1,5 @@
 //! The list of Alterações: a field that looks for a file by its name or for a stretch of code in its changes (the
-//! lines added and removed, read with the counts), then the files of each folder in a box ten rows tall that scrolls
+//! lines added and removed, read with the counts), then the files of each folder in a box six rows tall that scrolls
 //! for the rest. A file found by its code shows the line that has it.
 
 use super::{ChangeGroup, Changed, key};
@@ -12,7 +12,7 @@ const ROW: f32 = 26.0;
 const ROW_GAP: f32 = 2.0;
 const HEADER: f32 = 20.0;
 /// The rows the list shows before it scrolls.
-pub(crate) const LIST_ROWS: usize = 10;
+pub(crate) const LIST_ROWS: usize = 6;
 /// The changed lines kept of a file, and the characters of each: enough to find a stretch, not a copy of the repository.
 // ponytail: a stretch past a file's first 2000 changed lines (or a line's 300th character) is not found; to evolve, ask
 // `git diff -G<text>` for the files when the search finds nothing in what is kept.

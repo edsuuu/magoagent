@@ -249,6 +249,11 @@ impl DrawingApp {
                 if ui.button("Abrir na Árvore").clicked() && live(ui) {
                     self.open_change_in_tree(&tree, root.as_deref(), &path);
                 }
+
+                // the diff closed: the list alone again (as a second click on the file)
+                if ui.button("Fechar diff").clicked() && live(ui) {
+                    self.select_change(&tree, &path);
+                }
             });
         }
 

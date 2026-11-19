@@ -312,6 +312,9 @@ impl DrawingApp {
         let doing = clipped(painter, doing, font(12.0), DIM, (page.right() - 40.0 - x).max(0.0));
 
         painter.galley(Pos2::new(x, top + 7.5 - doing.size().y / 2.0), doing, DIM);
+        // the list scrolls in `left..page.right() - 12`, its bar's room kept at the right: as wide as the rest, the
+        // options' right edges were cut
+        let width = (page.right() - 12.0 - left - crate::app::ui::scroll_style().floating_allocated_width).min(width);
         // what the card holds, measured first: its height is the island's
         let text = ui.painter().layout(question.text.clone(), semi(15.0), INK, width);
         let hint = question.multiple.then(|| ui.painter().layout_no_wrap("Escolha uma ou mais".to_string(), font(11.0), DIM));

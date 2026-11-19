@@ -124,11 +124,11 @@ Abre ou fecha o minimapa do canvas (o painel no canto de baixo à direita). Sem 
 
 ### `sidebar`
 
-A lateral dos espaços, como a pessoa a usa: `next` vai ao próximo agente que precisa dela (o botão "Ir para o próximo" do cartão Precisa de você, o mesmo que Ctrl+Shift+A: troca de espaço se preciso e centraliza o cartão dele); `agents_open` e `agents_close` abrem ou recolhem a seção Agentes deste espaço (fica salvo); `notice_hide` e `notice_show` ocultam ou trazem de volta o aviso verde "Nada esperando por você" (o × dele; fica salvo, e o cartão de quem espera aparece mesmo assim); `usage_open` e `usage_close` abrem ou fecham o detalhe do uso dos planos no rodapé; `team_open` e `team_close` abrem ou recolhem, sob o Maestro `team` (o nome dele na lista, ou all), os agentes que ele recrutou (a linha "3 agentes" com a seta, fechada até ser aberta; fica salvo e vale também para a lista de Chats); `status` diz quantos agentes precisam da pessoa (em todos os espaços) e lista os agentes deste espaço com o estado. Para centralizar um agente da lista, use `focus_canvas`.
+A lateral dos espaços, como a pessoa a usa: `next` vai ao próximo agente que precisa dela (o botão "Ir para o próximo" do cartão Precisa de você, o mesmo que Ctrl+Shift+A: troca de espaço se preciso e centraliza o cartão dele); `agents_open` e `agents_close` abrem ou recolhem a seção Agentes deste espaço (fica salvo); `usage_open` e `usage_close` abrem ou fecham o detalhe do uso dos planos no rodapé; `team_open` e `team_close` abrem ou recolhem, sob o Maestro `team` (o nome dele na lista, ou all), os agentes que ele recrutou (a linha "3 agentes" com a seta, fechada até ser aberta; fica salvo e vale também para a lista de Chats); `status` diz quantos agentes precisam da pessoa (em todos os espaços) e lista os agentes deste espaço com o estado. Para centralizar um agente da lista, use `focus_canvas`.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `action` (obrigatório) | string: `status`, `next`, `agents_open`, `agents_close`, `notice_hide`, `notice_show`, `usage_open`, `usage_close`, `team_open`, `team_close` |  |
+| `action` (obrigatório) | string: `status`, `next`, `agents_open`, `agents_close`, `usage_open`, `usage_close`, `team_open`, `team_close` |  |
 | `team` | string | team_open e team_close: o Maestro (o nome dele na lista) ou all |
 
 ### `panel`

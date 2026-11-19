@@ -57,7 +57,7 @@ struct Island {
 }
 
 impl Island {
-    fn open(full: bool) -> Island {
+    fn open() -> Island {
         let ctx = Context::default();
 
         install_fonts(&ctx, false);
@@ -65,7 +65,6 @@ impl Island {
         let (luna, agents) = luna_with_two(&mut app);
 
         app.island_show_page(Tab::Chat);
-        app.island.chat_full = full;
         let mut island = Island { app, ctx, time: 1.0, luna, agents };
 
         island.rest(Pos2::new(ISLAND_SCREEN.x / 2.0, 100.0), 2.5);
@@ -116,51 +115,49 @@ impl Island {
     }
 }
 
-/// In the island's conversation, compact or whole, the Agentes button sits in a room of its own, over no word of the
+/// In the island's conversation the Agentes button sits in a room of its own, over no word of the
 /// conversation; an agent picked in it shows in the island itself, and no mini chat opens over the screen; the way back to
 /// Luna does the same.
 #[test]
 fn the_agents_button_has_its_own_room_and_shows_an_agent_in_the_island_not_in_a_window() {
-    for full in [false, true] {
-        let mut island = Island::open(full);
-        let frame = island.rest(Pos2::new(ISLAND_SCREEN.x / 2.0, 100.0), 0.2);
-        let button = frame.place_of("Agentes").unwrap_or_else(|| panic!("the button says what it is ({full}): {:?}", frame.texts));
+    let mut island = Island::open();
+    let frame = island.rest(Pos2::new(ISLAND_SCREEN.x / 2.0, 100.0), 0.2);
+    let button = frame.place_of("Agentes").unwrap_or_else(|| panic!("the button says what it is: {:?}", frame.texts));
 
-        assert!(frame.place_of("2").is_some_and(|count| (count.center().y - button.center().y).abs() < 2.0), "and how many");
-        // the conversation's words are under the button's row, never under the button
-        let said = frame.place_of("Pronto: recrutei dois agentes.").expect("Luna's answer");
+    assert!(frame.place_of("2").is_some_and(|count| (count.center().y - button.center().y).abs() < 2.0), "and how many");
+    // the conversation's words are under the button's row, never under the button
+    let said = frame.place_of("Pronto: recrutei dois agentes.").expect("Luna's answer");
 
-        assert!(said.top() > button.bottom(), "{full}: the log starts under the button's row ({said:?} under {button:?})");
+    assert!(said.top() > button.bottom(), "the log starts under the button's row ({said:?} under {button:?})");
 
-        for (text, at) in &frame.texts {
-            assert!(text == "Agentes" || text == "2" || !at.intersects(button.expand(4.0)), "{full}: {text:?} at {at:?} under the button {button:?}");
-        }
-
-        // its menu names each agent and what it does; one picked shows here
-        let menu = island.click(button.center());
-        let first = island.name(&island.agents[0]);
-        let row = menu.texts.iter().find(|(text, _)| text.starts_with(&format!("{first} · "))).map(|(_, at)| *at);
-        let row = row.unwrap_or_else(|| panic!("{full}: the menu names {first}: {:?}", menu.texts));
-        let shown = island.click(row.center());
-
-        assert_eq!(island.app.chat_agent.as_deref(), Some(island.agents[0].as_str()), "{full}: the agent in the conversation");
-        assert_eq!(island.app.island.tab(), Tab::Chat, "{full}: still the island's conversation");
-        assert!(!island.app.mini.open, "{full}: no mini chat opened over the screen for it");
-        assert!(shown.says(&first), "{full}: its name shows: {:?}", shown.texts);
-        // the way back, by Luna's name
-        let back = shown.place_of("Luna").unwrap_or_else(|| panic!("{full}: the way back says Luna: {:?}", shown.texts));
-
-        island.click(back.center());
-        assert_eq!(island.app.chat_agent.as_deref(), Some(island.luna.as_str()), "{full}: back to Luna");
-        assert!(!island.app.mini.open, "{full}: still no mini chat over the screen");
+    for (text, at) in &frame.texts {
+        assert!(text == "Agentes" || text == "2" || !at.intersects(button.expand(4.0)), "{text:?} at {at:?} under the button {button:?}");
     }
+
+    // its menu names each agent and what it does; one picked shows here
+    let menu = island.click(button.center());
+    let first = island.name(&island.agents[0]);
+    let row = menu.texts.iter().find(|(text, _)| text.starts_with(&format!("{first} · "))).map(|(_, at)| *at);
+    let row = row.unwrap_or_else(|| panic!("the menu names {first}: {:?}", menu.texts));
+    let shown = island.click(row.center());
+
+    assert_eq!(island.app.chat_agent.as_deref(), Some(island.agents[0].as_str()), "the agent in the conversation");
+    assert_eq!(island.app.island.tab(), Tab::Chat, "still the island's conversation");
+    assert!(!island.app.mini.open, "no mini chat opened over the screen for it");
+    assert!(shown.says(&first), "its name shows: {:?}", shown.texts);
+    // the way back, by Luna's name
+    let back = shown.place_of("Luna").unwrap_or_else(|| panic!("the way back says Luna: {:?}", shown.texts));
+
+    island.click(back.center());
+    assert_eq!(island.app.chat_agent.as_deref(), Some(island.luna.as_str()), "back to Luna");
+    assert!(!island.app.mini.open, "still no mini chat over the screen");
 }
 
 /// The island's conversation says over its log who it is with: Luna (her crown, her chat's title) or the agent by
 /// its own name.
 #[test]
 fn the_islands_conversation_names_who_it_is_with() {
-    let mut island = Island::open(false);
+    let mut island = Island::open();
     let frame = island.rest(Pos2::new(ISLAND_SCREEN.x / 2.0, 100.0), 0.2);
     let luna = frame.place_of("Luna").expect("Luna named");
 
@@ -201,46 +198,39 @@ fn the_islands_conversation_names_who_it_is_with() {
 /// covers the conversation.
 #[test]
 fn the_islands_buttons_show_the_hand_and_their_press_never_drags_the_window() {
-    for full in [false, true] {
-        let mut island = Island::open(full);
-        let frame = island.rest(Pos2::new(ISLAND_SCREEN.x / 2.0, 100.0), 0.2);
-        let rect = island_rect(&island.app);
-        let agents = frame.place_of("Agentes").expect("the agents' button").center();
-        let mut buttons = vec![("Início", Pos2::new(rect.left() + 29.0, rect.top() + 25.0)), ("Agentes", agents)];
+    let mut island = Island::open();
+    let frame = island.rest(Pos2::new(ISLAND_SCREEN.x / 2.0, 100.0), 0.2);
+    let rect = island_rect(&island.app);
+    let agents = frame.place_of("Agentes").expect("the agents' button").center();
+    let mut buttons = vec![("Início", Pos2::new(rect.left() + 29.0, rect.top() + 25.0)), ("Agentes", agents)];
 
-        buttons.extend((0..RIGHT_BUTTONS).map(|index| ("à direita", right_button(&island.app, index))));
+    buttons.extend((0..RIGHT_BUTTONS).map(|index| ("à direita", right_button(&island.app, index))));
 
-        if !full {
-            buttons.push(("⤢", Pos2::new(rect.right() - 10.0 - 18.0, rect.top() + 42.0 + 18.0)));
+    for (name, at) in buttons {
+        let rested = island.rest(at, 1.0);
+
+        assert_eq!(rested.cursor, CursorIcon::PointingHand, "the hand over {name} at {at:?}");
+
+        for tip in ["Chat atual", "Início: o resumo", "Ajustes da ilha", "Recolher", "Abrir o chat completo", "Ver os agentes da Luna"] {
+            assert!(rested.place_of(tip).is_none(), "no tip ({tip}) over the page");
         }
 
-        for (name, at) in buttons {
-            let rested = island.rest(at, 1.0);
+        // pressed, then moved past a click: the drag is the button's, not the window's
+        island.frame(vec![button(at, true)]);
+        island.frame(vec![egui::Event::PointerMoved(at + Vec2::new(14.0, 3.0))]);
+        island.frame(vec![egui::Event::PointerMoved(at + Vec2::new(16.0, 4.0))]);
+        let dragged = island.ctx.dragged_id().and_then(|id| island.ctx.read_response(id)).map(|response| response.rect);
 
-            assert_eq!(rested.cursor, CursorIcon::PointingHand, "{full}: the hand over {name} at {at:?}");
+        assert!(dragged.is_none_or(|rect| rect.contains(at) && rect.width() < 200.0), "{name}'s press dragged {dragged:?}");
+        island.frame(vec![button(at + Vec2::new(16.0, 4.0), false)]);
+        island.rest(at, 0.2);
+        // the menu a press opened goes, for the next button
+        island.frame(vec![egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }]);
 
-            for tip in ["Chat atual", "Início: o resumo", "Ajustes da ilha", "Recolher", "Abrir o chat completo", "Ver os agentes da Luna"] {
-                assert!(rested.place_of(tip).is_none(), "{full}: no tip ({tip}) over the page");
-            }
-
-            // pressed, then moved past a click: the drag is the button's, not the window's
-            island.frame(vec![button(at, true)]);
-            island.frame(vec![egui::Event::PointerMoved(at + Vec2::new(14.0, 3.0))]);
-            island.frame(vec![egui::Event::PointerMoved(at + Vec2::new(16.0, 4.0))]);
-            let dragged = island.ctx.dragged_id().and_then(|id| island.ctx.read_response(id)).map(|response| response.rect);
-
-            assert!(dragged.is_none_or(|rect| rect.contains(at) && rect.width() < 200.0), "{full}: {name}'s press dragged {dragged:?}");
-            island.frame(vec![button(at + Vec2::new(16.0, 4.0), false)]);
-            island.rest(at, 0.2);
-            // the menu a press opened goes, for the next button
-            island.frame(vec![egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }]);
-
-            if island.app.island.tab() != Tab::Chat || island.app.island.size().x < crate::app::island::EXPANDED_W - 1.0 {
-                // a tab or the close took the press as a click after all: open again on the conversation
-                island.app.island_show_page(Tab::Chat);
-                island.app.island.chat_full = full;
-                island.rest(Pos2::new(ISLAND_SCREEN.x / 2.0, 100.0), 2.0);
-            }
+        if island.app.island.tab() != Tab::Chat || island.app.island.size().x < crate::app::island::EXPANDED_W - 1.0 {
+            // a tab or the close took the press as a click after all: open again on the conversation
+            island.app.island_show_page(Tab::Chat);
+            island.rest(Pos2::new(ISLAND_SCREEN.x / 2.0, 100.0), 2.0);
         }
     }
 }
@@ -282,7 +272,7 @@ fn an_agents_message_to_a_chat_goes_signed_and_chat_open_shows_one_in_the_island
 /// completes the picked command instead of sending it.
 #[test]
 fn the_islands_box_opens_the_slash_menu_and_esc_closes_only_the_menu() {
-    let mut island = Island::open(false);
+    let mut island = Island::open();
     let at = Pos2::new(ISLAND_SCREEN.x / 2.0, 100.0);
 
     island.ctx.memory_mut(|memory| memory.request_focus(egui::Id::unique("chat_draft")));

@@ -183,6 +183,15 @@ impl DrawingApp {
         rows
     }
 
+    /// Who an agent of "Para" is: the Maestro's chat as Luna (its title, named by what was talked about, after it),
+    /// the others by their name.
+    pub(crate) fn review_name(&self, row: &AgentRow) -> String {
+        match self.chats.iter().find(|chat| chat.id == row.id) {
+            Some(chat) if !chat.recruit => format!("Luna · {}", row.spec.label()),
+            _ => row.spec.label().to_string(),
+        }
+    }
+
     /// The agent a review goes to: `name` (its name or id), else the one picked in the panel, else the first working in
     /// the folders shown.
     pub(crate) fn review_agent(&self, name: &str, groups: &[ChangeGroup]) -> Result<String, String> {

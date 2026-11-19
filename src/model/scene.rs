@@ -159,8 +159,6 @@ pub(crate) struct Prefs {
     pub(crate) island: bool,
     /// Where the island was left (screen): its centre x and its top.
     pub(crate) island_at: Option<[f32; 2]>,
-    /// The conversation in the island, as big as the person pulled it (width, height).
-    pub(crate) island_chat: Option<[f32; 2]>,
     /// The short conversation in the island (an agent's log and its box), as big as the person pulled it; none: it
     /// grows with what was said.
     pub(crate) island_talk: Option<[f32; 2]>,
@@ -223,8 +221,6 @@ pub(crate) struct Prefs {
     pub(crate) sidebar_hidden: bool,
     /// The sidebar's "Agentes deste espaço" folded to its heading (ui/attention.rs).
     pub(crate) sidebar_agents_closed: bool,
-    /// The sidebar's green "Nada esperando por você" closed by its × (ui/attention.rs); the amber card still shows.
-    pub(crate) sidebar_clear_hidden: bool,
     /// The Maestros (chat or terminal ids) whose recruits show under them, in Conversas (chat/list/team.rs) and in
     /// Agentes deste espaço (ui/attention.rs); the others fold them to "N agentes", as they all start.
     pub(crate) teams_open: Vec<String>,
@@ -311,7 +307,6 @@ impl Default for Prefs {
             avatar_at: None,
             island: true,
             island_at: None,
-            island_chat: None,
             island_talk: None,
             island_sound: true,
             island_projects: Vec::new(),
@@ -342,7 +337,6 @@ impl Default for Prefs {
             gnome_cursor: true,
             sidebar_hidden: false,
             sidebar_agents_closed: false,
-            sidebar_clear_hidden: false,
             teams_open: Vec::new(),
             pane_width: None,
             quick_note: String::new(),
