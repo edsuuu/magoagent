@@ -187,7 +187,6 @@ impl GtkPage {
         })
     }
 
-    /// The keyboard back to the app's window: a page took it when clicked (`watch`).
     /// Whether the page's window takes the pointer, or lets it through to the app's (browser/types.rs `take_input`).
     pub(crate) fn take_input(&self, on: bool) {
         if self.holder != 0 {
@@ -195,6 +194,7 @@ impl GtkPage {
         }
     }
 
+    /// The keyboard back to the app's window: a page took it when clicked (`watch`).
     pub(crate) fn focus_parent(&self) -> wry::Result<()> {
         release_keys(Some(self.parent));
         Ok(())
