@@ -166,6 +166,7 @@ impl DrawingApp {
 
                         button(ui, Icon::Edit, false, "Editar", "edit");
                         button(ui, Icon::Panel, spec.chrome_hidden, if spec.chrome_hidden { "Mostrar barra" } else { "Ocultar barra" }, "chrome");
+                        button(ui, Icon::Expand, enlarged, if enlarged { "Sair da tela cheia (Esc)" } else { "Tela cheia (clique duplo no título)" }, "expand");
                     }
 
                     glass_divider(ui, dark);

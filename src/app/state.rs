@@ -355,6 +355,8 @@ pub(crate) struct DrawingApp {
     pub(crate) portal_events: (std::sync::mpsc::Sender<PortalEvent>, std::sync::mpsc::Receiver<PortalEvent>),
     /// The address being typed in a portal's bar (portal id, text, whether to take focus).
     pub(crate) portal_url_edit: Option<(String, String, bool)>,
+    /// The portal clicked into: only its page takes the pointer and the keys; over the others the canvas pans and zooms.
+    pub(crate) portal_focus: Option<String>,
     /// The portal Design is armed on, if any (design.rs).
     pub(crate) design: Option<browser::design::DesignSession>,
     /// Each portal's kept annotations, numbered in the order they were kept.

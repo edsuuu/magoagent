@@ -50,6 +50,37 @@ fn a_lifted_portal_hides_the_pages_of_the_other_portals() {
     assert!(app.portal_page_rect(&a_el).is_some(), "A shows its own page");
 }
 
+/// A portal in full screen has its way out in its bar, the button before the trash, as the other windows do; Esc too.
+#[test]
+fn a_portal_in_full_screen_leaves_it_by_its_bar_or_by_esc() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let mut portal = app.new_element(ElementKind::Rectangle { x: 60.0, y: 60.0, width: 320.0, height: 240.0 });
+
+    portal.portal = Some(PortalSpec { name: "A".into(), url: "about:blank".into(), ..Default::default() });
+    let id = portal.id.clone();
+
+    app.scene.elements = vec![portal];
+    app.selected = vec![0];
+    app.set_elevated(Some(id.clone()));
+
+    for time in [1.0, 2.0, 3.0] {
+        frame_at(&mut app, &ctx, Some(time), vec![]);
+    }
+
+    let bar = ctx.memory(|m| m.area_rect(crate::app::ui::nodes::context_bar_id(&app.scene.elements[0]))).expect("the bar shows");
+    // from the right: the margin (6), the trash (30), a gap (5), the divider (1), a gap (5), then the button's middle (15)
+    let at = Pos2::new(bar.right() - 62.0, bar.center().y);
+
+    frame_at(&mut app, &ctx, Some(4.0), vec![egui::Event::PointerMoved(at), button(at, true)]);
+    frame_at(&mut app, &ctx, Some(4.1), vec![button(at, false)]);
+    assert_eq!(app.terminal_elevated, None, "Sair da tela cheia");
+
+    app.set_elevated(Some(id.clone()));
+    frame_at(&mut app, &ctx, Some(5.0), vec![key_press(Key::Escape)]);
+    assert_eq!(app.terminal_elevated, None, "Esc");
+}
+
 #[test]
 fn a_double_click_on_a_title_lifts_a_window_and_another_puts_it_back() {
     let ctx = Context::default();
