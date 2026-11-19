@@ -1,10 +1,9 @@
-//! Ajustes › Integrações: the hooks of the sessions outside the app first (`hooks.rs`), then one group per integration
-//! (`app/integrations/`): its dot (green connected, red not), its name and what it does, its switch, then its own fields
+//! Ajustes › Integrações: the hooks and the MCP of the sessions outside the app first (`hooks.rs`, `mcp.rs`), then one
+//! group per integration (`app/integrations/`): its dot (green connected, red not), its name and what it does, its switch, then its own fields
 //! and buttons. Off, only the head shows.
 
 use super::kit::*;
 use crate::app::chat::list::clipped;
-use crate::app::integrations::spotify::{Command, Player};
 use crate::app::integrations::{github, hermes, open_page};
 use crate::prelude::*;
 
@@ -71,8 +70,11 @@ fn calendar(ui: &mut egui::Ui, k: &K, activity: &github::Activity) {
 
 impl DrawingApp {
     pub(super) fn settings_integrations(&mut self, ui: &mut egui::Ui, k: &K) {
-        // the hooks first, easy to find: the sessions of Claude Code and Codex outside the app (hooks.rs)
+        // the hooks first, easy to find: the sessions of Claude Code and Codex outside the app (hooks.rs), then the
+        // app's MCP in them (mcp.rs)
         self.settings_hooks(ui, k);
+        divider(ui, k);
+        self.settings_mcp_elsewhere(ui, k);
         divider(ui, k);
         // then a card for each service (the page's line says what they are and where the secrets go)
         title(ui, k, "SERVIÇOS");
@@ -82,13 +84,6 @@ impl DrawingApp {
         block(ui, k, |_| ());
         self.settings_spotify(ui, k);
         divider(ui, k);
-
-        // Spotify's Connect receiver is only for Linux
-        if cfg!(not(any(windows, target_os = "macos"))) {
-            block(ui, k, |_| ());
-            self.settings_soloist(ui, k);
-            divider(ui, k);
-        }
 
         if crate::app::integrations::hermes::available() {
             block(ui, k, |_| ());
@@ -247,21 +242,29 @@ impl DrawingApp {
         }
     }
 
+    /// Spotify, one card for every player (the app, Spotifast and, on Linux, Soloist): what plays shows on the island,
+    /// not here. On, the dance's switch, the account and, on Linux, Soloist's Configurar.
     fn settings_spotify(&mut self, ui: &mut egui::Ui, k: &K) {
         let hint = if cfg!(any(windows, target_os = "macos")) {
-            "A música que toca, com a capa e os botões de tocar, pausar e pular. Sem conta e sem chave: fala com o Spotify aberto neste computador."
+            "A música que toca, na ilha, com a capa e os botões. Sem conta e sem chave: fala com o Spotify aberto neste computador."
         } else {
-            "A música que toca, com a capa e os botões de tocar, pausar e pular. Sem conta e sem chave: fala com o Spotify (ou o Spotifast) aberto neste computador."
+            "A música que toca, na ilha, com a capa e os botões. Sem conta e sem chave: fala com o Spotify, o Spotifast ou o Soloist abertos neste computador."
         };
 
-        let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.on(Player::App));
+        let playing = self.integrations.spotify.now.is_some();
 
         head(ui, k, "Spotify", hint, playing, &mut self.prefs.integrations.spotify);
 
         if self.prefs.integrations.spotify {
-            self.settings_player(ui, k, Player::App);
             self.settings_luna(ui, k);
             self.settings_spotify_account(ui, k);
+
+            // Spotify's Connect receiver is only for Linux
+            if cfg!(not(any(windows, target_os = "macos"))) {
+                self.settings_soloist_setup(ui, k);
+            }
+        } else if self.integrations.soloist_setup.open {
+            self.integrations.soloist_setup.close();
         }
     }
 
@@ -275,29 +278,6 @@ impl DrawingApp {
         };
 
         toggle(ui, k, "A Luna dança com a música", hint, &mut self.prefs.integrations.luna_dances);
-    }
-
-    /// Spotify's Soloist (Linux): its own switch, what it plays with the same buttons, and Configurar; the dance's
-    /// switch and the account here too while Spotify's own switch is off.
-    fn settings_soloist(&mut self, ui: &mut egui::Ui, k: &K) {
-        let hint = "O receptor do Spotify Connect para Linux: a música que você escolhe no celular ou no site toca aqui e aparece na ilha, com os botões. Sem conta e sem chave: fala com o Soloist aberto com a API local (-w 127.0.0.1:0) e com o que o Spotifast abre.";
-        let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.on(Player::Soloist));
-
-        head(ui, k, "Soloist", hint, playing, &mut self.prefs.integrations.soloist);
-
-        if self.prefs.integrations.soloist {
-            self.settings_player(ui, k, Player::Soloist);
-
-            // the dance's switch is under Spotify's card; with only Soloist on, here
-            if !self.prefs.integrations.spotify {
-                self.settings_luna(ui, k);
-                self.settings_spotify_account(ui, k);
-            }
-
-            self.settings_soloist_setup(ui, k);
-        } else if self.integrations.soloist_setup.open {
-            self.integrations.soloist_setup.close();
-        }
     }
 
     /// Configurar: Soloist's five steps (`integrations/spotify/setup`), each done, now or to do by what is found, with
@@ -450,25 +430,30 @@ impl DrawingApp {
         }
     }
 
-    /// Conta do Spotify: the Client ID of the person's own app, the Redirect URI to register there (with a copy
-    /// button), and Conectar / Desconectar. With it the island's page has the app's queue, Curtidas, the playlists, the
+    /// Conta do Spotify, in steps until there is a Client ID: open the developers' dashboard, copy the Redirect URI to
+    /// register there, paste the Client ID. With it only Conectar shows (Desconectar once linked); a failed login
+    /// shows the steps again, to fix the app. Linked, the island's page has the queue, Curtidas, the playlists, the
     /// search and the heart.
     fn settings_spotify_account(&mut self, ui: &mut egui::Ui, k: &K) {
-        use crate::app::integrations::spotify::account::{DASHBOARD, Link, REDIRECT_URI};
+        use crate::app::integrations::spotify::account::{DASHBOARD, Link, REDIRECT_URI, client_id_looks_right};
         let account = &self.integrations.spotify.account;
+        let link = account.link.clone();
+        let has_app = client_id_looks_right(self.prefs.integrations.spotify_client_id.trim());
 
-        let (status, detail) = match &account.link {
+        let (status, detail) = match &link {
             Link::Linked if account.name.is_empty() => ("Conta do Spotify conectada".to_string(), "O token fica no cofre do sistema.".to_string()),
             Link::Linked => (format!("Conectada como {}", account.name), "O token fica no cofre do sistema.".to_string()),
             Link::Waiting => ("Esperando o navegador…".to_string(), "Autorize no site do Spotify que abriu; depois volte aqui.".to_string()),
             Link::Failed(why) => ("Conta do Spotify não conectada".to_string(), why.clone()),
+            Link::Off if has_app => {
+                ("Conta do Spotify".to_string(), "Traz a fila, as Curtidas, as suas playlists, a busca e o coração para a ilha.".to_string())
+            }
             Link::Off => (
                 "Conta do Spotify".to_string(),
-                "Opcional: traz a fila do app, as Curtidas, as suas playlists, a busca e o coração para a página do Spotify na ilha.".to_string(),
+                "Opcional, para a fila, as Curtidas, as playlists e a busca na ilha: crie um app no painel do Spotify e siga os passos.".to_string(),
             ),
         };
 
-        let link = account.link.clone();
         let mut action = "";
 
         row(ui, k, &status, &detail, |ui| match link {
@@ -482,47 +467,47 @@ impl DrawingApp {
                     action = "cancel";
                 }
             }
-            Link::Off | Link::Failed(_) => {
+            Link::Off | Link::Failed(_) if has_app => {
                 if button(ui, k, "Conectar").clicked() {
                     action = "connect";
                 }
             }
+            Link::Off | Link::Failed(_) => {}
         });
 
-        let hint = "O Client ID do seu app no painel do Spotify para desenvolvedores (sem segredo: o app usa PKCE). Sem app: Criar app, cole o Redirect URI abaixo, marque Web API e salve; o Client ID aparece na página dele.";
+        // the steps, until the Client ID is pasted (and again when a login failed, to fix the app)
+        if !has_app || matches!(link, Link::Failed(_)) {
+            let hint = "No painel do Spotify para desenvolvedores: Create app, com Web API marcada.";
 
-        row(ui, k, "Client ID", hint, |ui| {
-            if button(ui, k, "Abrir painel…").clicked() {
-                action = "dashboard";
-            }
+            row(ui, k, "1. Abrir o painel do Spotify", hint, |ui| {
+                if button(ui, k, "Abrir painel").clicked() {
+                    action = "dashboard";
+                }
+            });
 
-            if button(ui, k, "Criar app…").clicked() {
-                action = "create";
-            }
+            let hint = format!("{REDIRECT_URI}: cole em Redirect URIs, no app criado, e salve.");
 
-            input(
-                ui,
-                k,
-                egui::Id::unique("settings_spotify_client_id"),
-                "Client ID do app do Spotify",
-                &mut self.prefs.integrations.spotify_client_id,
-                "32 letras e números",
-                250.0,
-                false,
-            );
-        });
+            row(ui, k, "2. Copiar o Redirect URI", &hint, |ui| {
+                if button(ui, k, "Copiar").clicked() {
+                    action = "copy";
+                }
+            });
 
-        row(ui, k, REDIRECT_URI, "Redirect URI: cadastre este endereço exato no app do Spotify (Edit settings › Redirect URIs).", |ui| {
-            if button(ui, k, "Copiar").clicked() {
-                action = "copy";
-            }
-        });
+            let hint = "Está na página do app, no painel. Sem segredo: o app usa PKCE.";
 
-        note(
-            ui,
-            k,
-            "Já tem um Client ID do Spotifast (callback http://127.0.0.1:8989/login)? O mesmo serve: no painel, adicione também o Redirect URI acima ao app. Em Development Mode, a sua conta precisa estar na lista de usuários do app.",
-        );
+            row(ui, k, "3. Colar o Client ID", hint, |ui| {
+                input(
+                    ui,
+                    k,
+                    egui::Id::unique("settings_spotify_client_id"),
+                    "Client ID do app do Spotify",
+                    &mut self.prefs.integrations.spotify_client_id,
+                    "32 letras e números",
+                    250.0,
+                    false,
+                );
+            });
+        }
 
         match action {
             "connect" => {
@@ -536,11 +521,6 @@ impl DrawingApp {
 
                 self.toast(said);
             }
-            "create" => {
-                if !cfg!(test) {
-                    open_external(crate::app::integrations::spotify::account::CREATE_APP);
-                }
-            }
             "dashboard" => {
                 if !cfg!(test) {
                     open_external(DASHBOARD);
@@ -551,28 +531,6 @@ impl DrawingApp {
                 self.toast("Redirect URI copiado.");
             }
             _ => {}
-        }
-    }
-
-    /// One player's line: what it plays and its buttons while it is the one shown, else why not.
-    fn settings_player(&mut self, ui: &mut egui::Ui, k: &K, player: Player) {
-        let now = self.integrations.spotify.now.clone().filter(|now| now.on(player));
-        let mut asked = None;
-
-        row(ui, k, &self.integrations.spotify.report_of(player), "", |ui| {
-            let Some(now) = &now else { return };
-
-            for (label, command) in
-                [("Próxima", Command::Next), (if now.playing { "Pausar" } else { "Tocar" }, Command::PlayPause), ("Anterior", Command::Previous)]
-            {
-                if button(ui, k, label).clicked() {
-                    asked = Some(command);
-                }
-            }
-        });
-
-        if let Some(command) = asked {
-            self.spotify_control(command);
         }
     }
 
@@ -588,26 +546,31 @@ impl DrawingApp {
         let (mut save, mut test, mut remove) = (false, false, false);
         let hint = "Clássico com o escopo repo, ou fine-grained com leitura em Commit statuses e Actions e leitura e escrita em Pull requests (para salvar a descrição e comentar pela ilha).";
 
-        row(ui, k, "Token pessoal", hint, |ui| {
-            save = button(ui, k, "Salvar").clicked();
+        // with a token saved only its line shows (Remover brings the field back)
+        let has_token = self.integrations.github.has_token();
 
-            if button(ui, k, "Criar token…").clicked() {
-                open_page(github::TOKENS_PAGE);
-            }
+        if !has_token {
+            row(ui, k, "Token pessoal", hint, |ui| {
+                save = button(ui, k, "Salvar").clicked();
 
-            let field = input(
-                ui,
-                k,
-                egui::Id::unique("settings_github_token"),
-                "Token pessoal do GitHub",
-                &mut self.integrations.token_field,
-                "ghp_… ou github_pat_…",
-                250.0,
-                true,
-            );
+                if button(ui, k, "Criar token…").clicked() {
+                    open_page(github::TOKENS_PAGE);
+                }
 
-            save |= field.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
-        });
+                let field = input(
+                    ui,
+                    k,
+                    egui::Id::unique("settings_github_token"),
+                    "Token pessoal do GitHub",
+                    &mut self.integrations.token_field,
+                    "ghp_… ou github_pat_…",
+                    250.0,
+                    true,
+                );
+
+                save |= field.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+            });
+        }
 
         let github = &self.integrations.github;
 

@@ -124,52 +124,25 @@ fn the_close_folds_it_even_with_the_pointer_still_on_it() {
     assert!(app.island.size().x <= COMPACT_W, "folded: {:?}", app.island.size());
 }
 
+/// The Chat tab is the island's one conversation: no ⤢ opens another chat in it, nor does its chips' row (their menus
+/// are here, in the island).
 #[test]
-fn the_conversation_grows_and_comes_back_by_its_size_button() {
-    let (mut app, ctx, mut time) = opened();
-
-    // the whole mini chat (the conversation's ⤢)
-    app.island.chat_full = true;
-    let at = tab_button(&app, 1);
-
-    click(&mut app, &ctx, &mut time, at);
-    // the spring that opens the conversation takes a little over a second to settle
-    rest(&mut app, &ctx, &mut time, at, 1.0);
-    let small = app.island.size();
-    let at = right_button(&app, BIG_BUTTON);
-
-    click(&mut app, &ctx, &mut time, at);
-    rest(&mut app, &ctx, &mut time, at, 1.0);
-    assert!(app.island.chat_big(), "big");
-    let big = app.island.size();
-
-    assert!(big.x > small.x && big.y > small.y, "{small:?} → {big:?}");
-    // the same button, where it is now on the big island
-    let at = right_button(&app, BIG_BUTTON);
-
-    click(&mut app, &ctx, &mut time, at);
-    rest(&mut app, &ctx, &mut time, at, 1.0);
-    assert!(!app.island.chat_big(), "back");
-    assert!((app.island.size() - small).length() < 1.0, "the size it had: {small:?}, {:?}", app.island.size());
-}
-
-#[test]
-fn the_chat_tab_is_the_compact_conversation_and_its_expand_opens_the_whole_chat() {
+fn the_chat_tab_is_the_one_conversation_and_nothing_opens_another() {
     let (mut app, ctx, mut time) = opened();
     let at = tab_button(&app, 1);
 
     click(&mut app, &ctx, &mut time, at);
     rest(&mut app, &ctx, &mut time, at, 1.5);
-    assert!(!app.island.chat_full && app.mini.rect.is_none(), "the compact conversation, not the mini chat");
+    assert!(app.mini.rect.is_none(), "the conversation, not the mini chat");
     assert_eq!(app.island.size(), Vec2::new(EXPANDED_W, 240.0), "240 tall with nothing said yet");
-    // its ⤢, at the card's top right (the page is 10 in from the sides and 42 down)
+    // where the ⤢ was, at the card's top right (the page is 10 in from the sides and 42 down): nothing opens
     let rect = island_rect(&app);
-    let expand = Pos2::new(rect.right() - 10.0 - 18.0, rect.top() + 42.0 + 18.0);
+    let corner = Pos2::new(rect.right() - 10.0 - 18.0, rect.top() + 42.0 + 18.0);
 
-    click(&mut app, &ctx, &mut time, expand);
-    rest(&mut app, &ctx, &mut time, expand, 1.5);
-    assert!(app.island.chat_full && app.mini.rect.is_some(), "the whole mini chat");
-    assert!(app.island.size().y > 300.0, "at its own size: {:?}", app.island.size());
+    click(&mut app, &ctx, &mut time, corner);
+    rest(&mut app, &ctx, &mut time, corner, 1.5);
+    assert!(app.mini.rect.is_none() && app.island.tab() == Tab::Chat, "still the one conversation");
+    assert_eq!(app.island.size(), Vec2::new(EXPANDED_W, 240.0));
 }
 
 /// The window has room for the island as it is drawn: nothing of it is cut.
@@ -182,9 +155,6 @@ fn window_holds(app: &DrawingApp) -> bool {
 #[test]
 fn pulled_by_its_bottom_edge_the_conversation_grows_and_its_window_holds_it_all_the_way() {
     let (mut app, ctx, mut time) = opened();
-
-    // the whole mini chat (the conversation's ⤢)
-    app.island.chat_full = true;
     let at = tab_button(&app, 1);
 
     click(&mut app, &ctx, &mut time, at);
@@ -213,7 +183,7 @@ fn pulled_by_its_bottom_edge_the_conversation_grows_and_its_window_holds_it_all_
     let pulled = app.island.size();
 
     assert!(pulled.y > before.y + 300.0 && pulled.y > 500.0, "it followed the pointer: {before:?} → {pulled:?}");
-    assert_eq!(app.prefs.island_chat, None, "the prefs (and their file) are not written at every frame of the pull");
+    assert_eq!(app.prefs.island_talk, None, "the prefs (and their file) are not written at every frame of the pull");
     step(&mut app, &ctx, time, vec![press(at, false)]);
     let end = time + 1.0;
 
@@ -224,7 +194,7 @@ fn pulled_by_its_bottom_edge_the_conversation_grows_and_its_window_holds_it_all_
     }
 
     assert!((app.island.size() - pulled).length() < 2.0, "let go, it keeps the size: {pulled:?}, {:?}", app.island.size());
-    assert_eq!(app.prefs.island_chat.map(|[_, height]| height), Some(pulled.y.round()), "and the size is kept");
+    assert_eq!(app.prefs.island_talk.map(|[_, height]| height), Some(pulled.y.round()), "and the size is kept");
 }
 
 #[test]
@@ -233,7 +203,6 @@ fn the_short_conversation_is_pulled_wider_by_a_side_and_a_double_click_takes_it_
     let at = tab_button(&app, 1);
 
     click(&mut app, &ctx, &mut time, at);
-    assert!(!app.island.chat_full);
     let before = app.island.size();
     let grip = Pos2::new(island_rect(&app).right() - 4.0, island_rect(&app).center().y);
     let press = |at, pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
@@ -261,8 +230,7 @@ fn the_short_conversation_is_pulled_wider_by_a_side_and_a_double_click_takes_it_
     let pulled = app.island.size();
 
     assert!(pulled.x > before.x + 150.0, "wider on both sides of its centre: {before:?} → {pulled:?}");
-    assert_eq!(app.prefs.island_talk.map(|[width, _]| width), Some(pulled.x.round()), "kept for the short conversation");
-    assert_eq!(app.prefs.island_chat, None, "not the whole chat's");
+    assert_eq!(app.prefs.island_talk.map(|[width, _]| width), Some(pulled.x.round()), "kept for the conversation");
     // a double click on the edge: back to growing with what was said
     let edge = Pos2::new(island_rect(&app).right() - 4.0, island_rect(&app).center().y);
 
@@ -278,80 +246,6 @@ fn the_short_conversation_is_pulled_wider_by_a_side_and_a_double_click_takes_it_
 
     assert_eq!(app.prefs.island_talk, None);
     assert!((app.island.size().x - before.x).abs() < 4.0, "its size from before: {:?}", app.island.size());
-}
-
-#[test]
-fn the_window_holds_the_big_conversation_while_it_opens() {
-    let (mut app, ctx, mut time) = opened();
-
-    // the whole mini chat (the conversation's ⤢)
-    app.island.chat_full = true;
-    let at = tab_button(&app, 1);
-
-    click(&mut app, &ctx, &mut time, at);
-    let at = right_button(&app, BIG_BUTTON);
-    let press = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
-
-    for events in [vec![egui::Event::PointerMoved(at)], vec![press(true)], vec![press(false)]] {
-        step(&mut app, &ctx, time, events);
-        time += 0.05;
-    }
-
-    // 70% of the monitor: every frame of the spring that opens it (it overshoots) fits in the window
-    let end = time + 2.0;
-
-    while time < end {
-        step(&mut app, &ctx, time, vec![egui::Event::PointerMoved(at)]);
-        time += 0.02;
-        assert!(window_holds(&app), "cut: window {:?}, island {:?}", app.island.window(), app.island.size());
-    }
-
-    assert!(app.island.chat_big() && (app.island.size() - ISLAND_SCREEN * 0.7).length() < 1.0, "{:?}", app.island.size());
-}
-
-/// The conversation's own header (chat/mini.rs): ✕ at its left, full screen at its right.
-fn chat_header(app: &DrawingApp) -> (Pos2, Pos2) {
-    let panel = app.mini.rect.expect("the conversation is drawn");
-    let y = panel.top() + 25.0;
-
-    (Pos2::new(panel.left() + 24.0, y), Pos2::new(panel.right() - 24.0, y))
-}
-
-#[test]
-fn the_conversations_close_folds_the_island() {
-    let (mut app, ctx, mut time) = opened();
-
-    // the whole mini chat (the conversation's ⤢)
-    app.island.chat_full = true;
-    let at = tab_button(&app, 1);
-
-    click(&mut app, &ctx, &mut time, at);
-    assert_eq!(app.island.tab(), Tab::Chat);
-    let (close, _) = chat_header(&app);
-
-    click(&mut app, &ctx, &mut time, close);
-    rest(&mut app, &ctx, &mut time, close, 1.5);
-    assert!(app.island.size().x <= COMPACT_W, "the ✕ (Recolher) folded it: {:?}", app.island.size());
-    assert_eq!(app.island.tab(), Tab::Home, "and it opens on Home next time");
-}
-
-#[test]
-fn full_screen_takes_the_chat_to_the_app_and_folds_the_island() {
-    let (mut app, ctx, mut time) = opened();
-
-    // the whole mini chat (the conversation's ⤢)
-    app.island.chat_full = true;
-    let at = tab_button(&app, 1);
-
-    click(&mut app, &ctx, &mut time, at);
-    let shown = app.chat_agent.clone().expect("the conversation tab picks a chat");
-    let (_, full) = chat_header(&app);
-
-    click(&mut app, &ctx, &mut time, full);
-    rest(&mut app, &ctx, &mut time, full, 1.5);
-    assert!(app.island.size().x <= COMPACT_W, "folded: {:?}", app.island.size());
-    assert_eq!(app.chat_agent.as_deref(), Some(shown.as_str()), "the same chat, now in the app");
-    assert!(app.chat_open, "open in the app chat screen");
 }
 
 #[test]
@@ -644,8 +538,8 @@ fn the_spotify_tab_plays_what_is_pressed() {
     use crate::app::integrations::spotify::{Command, Now, Playback, Player, QueueItem, Track};
     let (mut app, ctx, mut time) = opened();
 
-    // Soloist only counts on Linux: the Spotify switch keeps the integration on elsewhere
-    (app.prefs.integrations.soloist, app.prefs.integrations.spotify) = (true, true);
+    // one switch for every player (Soloist only counts on Linux)
+    app.prefs.integrations.spotify = true;
     let playback = Playback { shuffle: Some(false), position_ms: Some(10_000), duration_ms: Some(200_000), ..Default::default() };
 
     app.integrations.spotify.now =
@@ -692,15 +586,16 @@ fn turning_spotify_off_takes_its_tab_away() {
     assert!(!lines.iter().any(|id| id.ends_with("spotify")), "no pill, so no tab: {lines:?}");
 }
 
-/// In the island's window (here the screen is as big as it), the model chip's menu opens over the chip inside the
-/// island; Mais modelos opens its list in it (egui's menu closed at that click), the menu still in the island, and a
+/// In the island's window (here the screen is as big as it), the conversation's model chip's menu opens over the chip
+/// inside the island; Mais modelos opens its list in it (egui's menu closed at that click), the menu still in the island, and a
 /// model picked is the chat's.
 #[test]
 fn the_model_menu_stays_in_the_island_and_opens_more_models() {
     let (mut app, ctx, mut time) = opened();
 
-    app.island.chat_full = true;
     app.chat_agent = Some("a".into());
+    // pulled taller, as the person does for room: on a short conversation the menu scrolls in what is over the chip
+    app.prefs.island_talk = Some([EXPANDED_W, 460.0]);
 
     // the chip's model and effort the chat's own: with none, they come from this computer's ~/.claude/settings.json
     // (`footer::agent_default`), which the CI's machines do not have
@@ -775,7 +670,7 @@ fn the_model_menu_stays_in_the_island_and_opens_more_models() {
 
     tap(&mut app, sonnet);
     assert_eq!(app.chats[0].model, "claude-sonnet-5-5");
-    assert!(menu().is_empty() && app.island.chat_full, "the pick closed the menu, the island stays");
+    assert!(menu().is_empty() && app.island.tab() == Tab::Chat, "the pick closed the menu, the island stays");
 }
 
 /// With the call and Ditar on hold (`voice::CALL_ON`, `voice::DICTATION_ON`) the island's header has no Chat por

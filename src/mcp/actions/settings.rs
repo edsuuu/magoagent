@@ -58,6 +58,7 @@ impl DrawingApp {
             ("codex_hooks", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return self.act_codex_hooks(action),
             // by the bridge it runs on a thread (`act_later`)
             ("register_mcp", agent) => return crate::app::system::mcp_register::mcp_register(agent),
+            ("unregister_mcp", agent) => return crate::app::system::mcp_register::mcp_remove(agent),
             ("island", "on" | "ligado") => self.prefs.island = true,
             ("island", "off" | "desligado") => self.prefs.island = false,
             ("island_sound", "on" | "ligado") => self.prefs.island_sound = true,
@@ -66,7 +67,13 @@ impl DrawingApp {
                 self.prefs.island_volume = volume.parse().unwrap_or(0.1)
             }
             ("frame_rate", rate) if rate.parse::<u16>().is_ok_and(|rate| FRAME_RATES.contains(&rate)) => self.prefs.frame_rate = rate.parse().unwrap_or(60),
-            ("gnome_cursor", action @ ("install" | "instalar" | "remove" | "remover" | "status")) => return gnome_cursor(action),
+            // the preference follows: on, the app puts the extension back at the next start
+            ("gnome_cursor", action @ ("install" | "instalar" | "remove" | "remover")) => {
+                self.prefs.gnome_cursor = matches!(action, "install" | "instalar");
+
+                return gnome_cursor(action);
+            }
+            ("gnome_cursor", "status") => return gnome_cursor("status"),
             ("island_place", "top" | "topo") => self.put_island(crate::app::island::Place::Top),
             ("island_place", "bottom" | "embaixo" | "baixo") => self.put_island(crate::app::island::Place::Bottom),
             ("island_place", "left" | "esquerda") => self.put_island(crate::app::island::Place::Left),
@@ -138,8 +145,6 @@ impl DrawingApp {
                 wsl_choose(&self.prefs.wsl);
                 self.chat_installed = None;
             }
-            ("agent_hooks", "on" | "ligado") => self.prefs.agent_hooks = true,
-            ("agent_hooks", "off" | "desligado") => self.prefs.agent_hooks = false,
             ("ok_mago", "on" | "ligado") => self.prefs.ok_mago = true,
             ("ok_mago", "off" | "desligado") => self.prefs.ok_mago = false,
             ("speak_answers", "on" | "ligado") => self.prefs.speak_answers = true,
@@ -243,7 +248,6 @@ mod chat_tests {
         app.act_setting("chat_folder", " C:/Projetos ").unwrap();
         app.act_setting("chat_autocompact", "200k").unwrap();
         app.act_setting("chat_panel", "on").unwrap();
-        app.act_setting("agent_hooks", "on").unwrap();
         // the WSL distro the agents run in (system/wsl.rs)
         app.act_setting("wsl", "Ubuntu").unwrap();
         assert_eq!(app.prefs.wsl, "Ubuntu");
@@ -254,7 +258,7 @@ mod chat_tests {
         let prefs = &app.prefs;
 
         assert_eq!((prefs.chat_agent.as_str(), prefs.chat_mode, prefs.chat_folder.as_str()), ("codex", 1, "C:/Projetos"));
-        assert_eq!((prefs.chat_autocompact.as_str(), prefs.chat_panel, prefs.agent_hooks), ("200k", true, true));
+        assert_eq!((prefs.chat_autocompact.as_str(), prefs.chat_panel), ("200k", true));
         app.act_setting("chat_autocompact", "1m").unwrap();
         assert_eq!(app.prefs.chat_autocompact, "1M");
         app.act_setting("chat_autocompact", "padrão").unwrap();

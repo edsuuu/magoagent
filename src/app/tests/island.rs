@@ -613,6 +613,15 @@ fn a_question_shows_its_options_whole_and_takes_an_answer_of_ones_own() {
     assert!(has(question) && has(meaning), "whole, without the …: {:?}", drawn.iter().map(|(text, _)| text).collect::<Vec<_>>());
     assert!(has("Merge com commit") && has("Rebase"));
     assert!(app.island.size().y > 200.0, "taller than the fixed card it was: {:?}", app.island.size());
+    // the list's words end before the room of its scroll bar, at the island's right: nothing of it is cut
+    let room = island_rect(&app).right() - 10.0 - 12.0 - crate::app::ui::scroll_style().floating_allocated_width;
+
+    for wanted in [question, meaning, "Outro: escreva a sua resposta…"] {
+        let (_, rect) = drawn.iter().find(|(text, _)| text == wanted).unwrap();
+
+        assert!(rect.right() <= room, "{wanted}: {rect:?} past {room}");
+    }
+
     // "Outro": a click on it, the words and Enter answer the question with them
     let other = drawn.iter().find(|(text, _)| text == "Outro: escreva a sua resposta…").map(|(_, rect)| rect.center()).expect("the box of Outro");
 

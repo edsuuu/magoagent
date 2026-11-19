@@ -156,7 +156,7 @@ impl DrawingApp {
         match self.integrations.spotify.now.clone() {
             Some(now) => self.music_player(ui, left, &now, time, &mut state, &mut pressed),
             None => {
-                let words = if self.prefs.integrations.spotify || self.prefs.integrations.soloist { "Nada tocando agora" } else { "O Spotify está desligado" };
+                let words = if self.prefs.integrations.spotify { "Nada tocando agora" } else { "O Spotify está desligado" };
 
                 ui.painter().text(left.center() - Vec2::new(0.0, 8.0), egui::Align2::CENTER_CENTER, words, semi(13.0), DIM);
                 let hint = "Toque algo no Spotify (ou escolha o Soloist no celular)";

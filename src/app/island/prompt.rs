@@ -1,9 +1,9 @@
-//! The island's conversation: one card with the indigo
-//! wash, the wizard at 52 at the left, and from 84 the log (the person's words in bubbles at the right, the answers
-//! plain), the model's pill and a box that grows with the words. Its ⤢ opens the whole mini chat in the island instead.
+//! The island's conversation, the one chat of the island: one card with the indigo wash, the wizard at 52 at the left,
+//! and from 84 the log (the person's words in bubbles at the right, the answers plain), the chat's own chips (folder,
+//! permission, model and effort, as the big chat's) and a box that grows with the words.
 
 use super::log::said;
-use super::paint::{AMBER, BLACK, CARD, DIM_3, EXPAND, INK, Out, View, aim, font};
+use super::paint::{AMBER, BLACK, CARD, DIM_3, INK, Out, View, aim, font};
 use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::chat::mini_agents::{KinLook, pressable};
 use crate::app::mascot::mago::MagoState;
@@ -131,24 +131,18 @@ impl DrawingApp {
 
         aim(view, Pos2::new(origin.x + 52.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 44.0, state);
 
-        // the name row: ⤢ (the whole mini chat in the island: attachments, folder, mode, model, dictation, voice), the
-        // Maestro's agents and who it is. No tip: they would cover the conversation
+        // the name row: the Maestro's agents and who it is. No tip: they would cover the conversation
         let head = name_row(page);
         let cy = head.center().y;
-        let expand = Rect::from_center_size(Pos2::new(head.right() - 12.0, cy), Vec2::splat(24.0));
-        let response = pressable(ui, expand, ui.scope_id().with("island_prompt_full"), "Abrir o chat completo");
-
-        glyph(&painter, expand.center(), 14.0, 1.5, if response.hovered() { INK } else { DIM_3 }, EXPAND);
-        out.full = response.clicked();
         // an agent picked (or the Maestro again) is shown here, in the island: no floating window opens for it
         let kin_look = KinLook { ground: Color32::from_white_alpha(15), lit: Color32::from_white_alpha(30), ink: INK, font: font(12.0), height: 24.0 };
-        let (pick, room) = self.kin_button(ui, row, expand.left() - 6.0, cy, &kin_look, time);
+        let (pick, room) = self.kin_button(ui, row, head.right() - 6.0, cy, &kin_look, time);
 
         if let Some(id) = pick {
             self.chat_agent = Some(id);
         }
 
-        self.island_who(&painter, row, Rect::from_min_max(head.min, Pos2::new(expand.left() - 6.0 - room - 8.0, head.max.y)));
+        self.island_who(&painter, row, Rect::from_min_max(head.min, Pos2::new(head.right() - 6.0 - room - 8.0, head.max.y)));
 
         let draft_id = egui::Id::unique("chat_draft");
         let (log, chip_row, bar) = chat_body(page, bar_height(ui, draft_id), NAME_ROW);
@@ -157,23 +151,25 @@ impl DrawingApp {
 
         out.picture = self.island_log(ui, log, &messages, working, Some(&row.id), time).or(out.picture.take());
 
-        // `.model-btn`: the agent and its model; a click opens the whole chat, where they are chosen
-        let chat = self.chats.iter().find(|chat| chat.id == row.id);
-        let model = chat.map(|chat| if chat.model.is_empty() { "padrão".to_string() } else { chat.model.clone() }).unwrap_or_default();
-        let label = format!("{} · {model}", row.spec.label());
-        let name = clipped(ui.painter(), label, font(10.5), Color32::from_rgb(0x7b, 0x80, 0x89), chip_row.width() - 40.0);
+        // a chat's own chips, the big chat's (folder, permission, model and effort), each with its menu here; an agent
+        // that is not a chat (a terminal) keeps its name's pill
+        let chips = chip_row.expand2(Vec2::new(0.0, 2.0));
+        let act = self.chats.iter().find(|chat| chat.id == row.id).map(|chat| self.chat_footer(ui, chips, chat, look));
 
-        let chip = Rect::from_min_size(
-            Pos2::new(chip_row.right() - name.size().x - 8.0 - 6.0 - 5.0 - 8.0, chip_row.top() + 2.0),
-            Vec2::new(name.size().x + 27.0, 20.0),
-        );
+        // what a chip picked is applied once the frame's conversation is drawn (its log borrows the transcripts)
+        let footer_act = match act {
+            Some(act) => act,
+            None => {
+                let ink = Color32::from_rgb(0x7b, 0x80, 0x89);
+                let name = clipped(ui.painter(), row.spec.label().to_string(), font(10.5), ink, chip_row.width() - 40.0);
+                let chip = Rect::from_min_size(Pos2::new(chip_row.right() - name.size().x - 27.0, chip_row.top() + 2.0), Vec2::new(name.size().x + 27.0, 20.0));
 
-        let response = pressable(ui, chip, ui.scope_id().with("island_prompt_model"), "Trocar o modelo no chat completo");
-
-        painter.rect_filled(chip, 10, Color32::from_white_alpha(if response.hovered() { 26 } else { 15 }));
-        painter.circle_filled(Pos2::new(chip.left() + 11.0, chip.center().y), 3.0, line.map_or(INK, |line| line.color));
-        painter.galley(Pos2::new(chip.left() + 19.0, chip.center().y - name.size().y / 2.0), name, Color32::from_rgb(0x7b, 0x80, 0x89));
-        out.full |= response.clicked();
+                painter.rect_filled(chip, 10, Color32::from_white_alpha(15));
+                painter.circle_filled(Pos2::new(chip.left() + 11.0, chip.center().y), 3.0, line.map_or(INK, |line| line.color));
+                painter.galley(Pos2::new(chip.left() + 19.0, chip.center().y - name.size().y / 2.0), name, ink);
+                None
+            }
+        };
 
         // `.chat-bar`: 7% white, radius 12, padding 6 10; the box and the round send button
         painter.rect_filled(bar, 12, Color32::from_white_alpha(18));
@@ -203,6 +199,10 @@ impl DrawingApp {
 
         if self.chat_draft.is_empty() {
             self.chat_draft = draft;
+        }
+
+        if let Some(act) = footer_act {
+            self.chat_footer_act(act);
         }
     }
 

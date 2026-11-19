@@ -17,10 +17,6 @@ impl DrawingApp {
                 self.prefs.sidebar_agents_closed = action == "agents_close";
                 Ok(if action == "agents_close" { "Agentes deste espaço recolhidos." } else { "Agentes deste espaço abertos." }.into())
             }
-            "notice_hide" | "notice_show" => {
-                self.prefs.sidebar_clear_hidden = action == "notice_hide";
-                Ok(if action == "notice_hide" { "Aviso \"Nada esperando por você\" oculto." } else { "Aviso \"Nada esperando por você\" de volta." }.into())
-            }
             "usage_open" | "usage_close" => {
                 if action == "usage_open" && self.usage_ui.probe.shown().is_empty() {
                     return Err("Ainda não há leitura do uso dos planos: peça `usage_refresh` e tente de novo.".into());

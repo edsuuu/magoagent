@@ -72,7 +72,7 @@ fn the_card_counts_who_needs_you_in_every_space() {
     let mut app = DrawingApp::default();
 
     side(&mut app, &ctx, vec![]);
-    assert!(found(&side(&mut app, &ctx, vec![]), "Nada esperando por você").is_some(), "nobody waits: the green notice");
+    assert!(found(&side(&mut app, &ctx, vec![]), "Nada esperando por você").is_none(), "nobody waits: no card");
     two_agents(&mut app);
     // one more in a space off view
     let spec = TerminalSpec { name: "Longe".into(), command: "claude".into(), ..Default::default() };
@@ -139,7 +139,7 @@ fn only_an_agent_asking_the_person_counts_as_needing_them() {
 
     app.terminal_unread.extend([done, shell]);
     side(&mut app, &ctx, vec![]);
-    assert!(found(&side(&mut app, &ctx, vec![]), "Nada esperando por você").is_some(), "nobody calls");
+    assert!(found(&side(&mut app, &ctx, vec![]), "1 agente precisa de você").is_none(), "nobody calls");
     assert!(app.needing_you().is_empty() && app.space_counts().values().all(|(_, needs)| *needs == 0));
     // the Maestro asks the person
     let (reply, _answer) = std::sync::mpsc::channel();
@@ -147,21 +147,6 @@ fn only_an_agent_asking_the_person_counts_as_needing_them() {
     app.person_asks.borrow_mut().push(crate::app::chat::decide::PersonAsk::new(luna.clone(), &json!({ "tool_name": "AskUserQuestion" }), reply));
     assert!(found(&side(&mut app, &ctx, vec![]), "1 agente precisa de você").is_some());
     assert_eq!(app.needing_you(), [luna]);
-}
-
-/// The green notice's × hides it for good; somebody waiting still shows the amber card; the MCP brings it back.
-#[test]
-fn the_green_notice_closes_by_its_x() {
-    let ctx = Context::default();
-    let mut app = DrawingApp::default();
-
-    press(&mut app, &ctx, "×");
-    assert!(app.prefs.sidebar_clear_hidden, "kept in the preferences");
-    assert!(found(&side(&mut app, &ctx, vec![]), "Nada esperando por você").is_none());
-    app.act("sidebar", &json!({ "action": "notice_show" })).unwrap();
-    assert!(found(&side(&mut app, &ctx, vec![]), "Nada esperando por você").is_some());
-    app.act("sidebar", &json!({ "action": "notice_hide" })).unwrap();
-    assert!(app.prefs.sidebar_clear_hidden);
 }
 
 #[test]

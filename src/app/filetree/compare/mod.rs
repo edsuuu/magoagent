@@ -1,8 +1,10 @@
-//! The tab that compares a file with the last commit: two columns (the HEAD's text and the file's), row for row, so a line
-//! only one side has faces an empty, hatched row on the other. Removed lines are a soft red, added ones a soft green and, in
-//! a modified line, the changed words stronger. Each column has its numbers at its left edge; between the columns a narrow
-//! strip marks each change, and its small arrow (on hover, or on the change the walk is on) puts the HEAD's lines back in
-//! the file (`compare_ui` returns it; the pane reverts the change). Both columns scroll together. Long unchanged stretches
+//! The tab that compares a file with the last commit, as the JetBrains IDEs' side-by-side diff: two columns (the HEAD's
+//! text and the file's), each with only its own lines, and between them a band per change that joins its lines on the
+//! left to its lines on the right, curving where they sit at different heights (a pure insertion or removal is a line
+//! across the column that lacks it). Removed lines are a soft red, added ones a soft green and, in a modified line, the
+//! changed words stronger. Each column has its numbers at its left edge; a band's small arrow (on hover, or on the change
+//! the walk is on) puts the HEAD's lines back in the file (`compare_ui` returns it; the pane reverts the change). The
+//! columns scroll together: the other follows by the changes, so the lines at the view's third stay side by side. Long unchanged stretches
 //! collapse to a "N linhas sem mudança" row (fold.rs). F7 and Shift+F7 (and Alt+↓ and Alt+↑) walk the changes. "Unificado"
 //! puts both texts in one column, with the arrow at the left of the numbers.
 
@@ -28,8 +30,7 @@ const ADDED_WORD: Color32 = Color32::from_rgb(0x2C, 0x5C, 0x3A);
 /// One row of a column.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Item {
-    /// A line (side by side: only the column's own side of `row` is set, and neither on the empty row across from a line
-    /// only the other side has), with the line it pairs with when modified.
+    /// A line (side by side: only the column's own side of `row` is set), with the line it pairs with when modified.
     Line { row: DiffRow, partner: Option<usize> },
     /// `count` unchanged lines hidden (from line `starts` of the old and of the new text); `key` names the stretch (what `open_fold` takes).
     Fold { key: usize, count: usize, starts: [usize; 2] },
@@ -151,8 +152,14 @@ impl Compare {
                     if self.unified {
                         self.items[0].push(Item::Line { row, partner });
                     } else {
-                        self.items[0].push(Item::Line { row: DiffRow { right: None, ..row }, partner: row.left.and(row.right) });
-                        self.items[1].push(Item::Line { row: DiffRow { left: None, ..row }, partner: row.right.and(row.left) });
+                        // each column only its own lines: the band between them joins a change's two sides
+                        if row.left.is_some() {
+                            self.items[0].push(Item::Line { row: DiffRow { right: None, ..row }, partner: row.left.and(row.right) });
+                        }
+
+                        if row.right.is_some() {
+                            self.items[1].push(Item::Line { row: DiffRow { left: None, ..row }, partner: row.right.and(row.left) });
+                        }
                     }
 
                     if spans.get(next).is_some_and(|span| span.end == index + 1) {
@@ -210,13 +217,48 @@ impl Compare {
         self.scroll
     }
 
-    /// After column `driver` scrolled to `top` (a row): clamp it, and the other one follows (side by side the rows match).
-    pub(crate) fn scroll_driver(&mut self, driver: usize, top: f32, most: [f32; 2]) {
+    /// After column `driver` scrolled to `top` (a row): clamp it, and the other one follows so that the row `focal` under
+    /// the top of each shows the same place of the file (`follow`).
+    pub(crate) fn scroll_driver(&mut self, driver: usize, top: f32, most: [f32; 2], focal: f32) {
         self.scroll[driver] = top.clamp(0.0, most[driver]);
 
         if !self.unified {
-            self.scroll[1 - driver] = self.scroll[driver].clamp(0.0, most[1 - driver]);
+            let other = 1 - driver;
+
+            self.scroll[other] = (self.follow(driver, self.scroll[driver] + focal) - focal).clamp(0.0, most[other]);
         }
+    }
+
+    /// The row of the other column that faces `row` (fractional) of column `from`: the same distance past the last
+    /// change in the unchanged stretches, and in a change its place spread over the other side's lines (none there: the
+    /// line where they would be).
+    pub(crate) fn follow(&self, from: usize, row: f32) -> f32 {
+        let to = 1 - from;
+        let ends = [self.items[0].len(), self.items[1].len()];
+        let mut anchors = vec![[0, 0]];
+
+        for block in &self.blocks {
+            anchors.push([block.rows[0].start, block.rows[1].start]);
+            anchors.push([block.rows[0].end, block.rows[1].end]);
+        }
+
+        anchors.push(ends);
+
+        for pair in anchors.windows(2) {
+            let (start, end) = (pair[0], pair[1]);
+            let (from_start, from_end) = (start[from] as f32, end[from] as f32);
+
+            if row < from_start || row > from_end || from_end <= from_start {
+                continue;
+            }
+
+            let fraction = (row - from_start) / (from_end - from_start);
+
+            return start[to] as f32 + fraction * (end[to] as f32 - start[to] as f32);
+        }
+
+        // past the last line: as far past the other's
+        row - ends[from] as f32 + ends[to] as f32
     }
 
     /// How many lines the file lost and gained against the HEAD.

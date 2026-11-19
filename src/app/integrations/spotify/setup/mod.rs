@@ -1,4 +1,4 @@
-//! Ajustes › Integrações › Soloist › Configurar (Linux): Soloist set up from the app, step by step, with no other
+//! Ajustes › Integrações › Spotify › Configurar o Soloist (Linux): Soloist set up from the app, step by step, with no other
 //! program: (1) its download from Spotify into `~/.local/bin`, (2) the developer key pasted, (3) the device's name,
 //! (4) both saved in `~/.config/soloist/soloist.env` and the user's `soloist.service` turned on, (5) Soloist chosen on
 //! the phone. Each step shows done, now or later by what is found (`detect`, only looked at); what is done is never

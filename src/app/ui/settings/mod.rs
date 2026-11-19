@@ -1,11 +1,13 @@
 //! Ajustes (⌘,): an 880 wide window over a veil, the pages in a sidebar at its left, each with its name, a line on
-//! what it holds and its groups of rows in cards. The controls are in `kit`; the
-//! panels by subject in `general`, `terminal`, `agents`, `voice` (with `studio`), `integrations` (with `hooks`) and `data`.
+//! what it holds and its groups of rows in cards. The controls are in `kit`; the panels by subject in `general`,
+//! `island`, `canvas`, `navigation`, `terminal`, `agents`, `chat`, `skills`, `voice` (with `studio`), `integrations`
+//! (with `hooks` and `mcp`) and `data`.
 
 use crate::prelude::*;
 
 mod about;
 mod agents;
+mod canvas;
 mod chat;
 mod data;
 mod general;
@@ -13,8 +15,12 @@ mod hooks;
 mod hooks_preview;
 mod hotkeys;
 mod integrations;
+mod island;
 pub(in crate::app::ui) mod kit;
+mod mcp;
+mod navigation;
 mod ok_mago;
+mod skills;
 mod studio;
 mod terminal;
 #[cfg(test)]
@@ -23,9 +29,24 @@ mod voice;
 
 use kit::K;
 
-pub(crate) const SETTINGS_TABS: [&str; 10] = ["Geral", "Terminal", "Agentes", "Chat", "Voz", "Ok Mago", "Integrações", "Atalhos", "Dados", "Sobre"];
-const TAB_ICONS: [Icon; 10] =
-    [Icon::Gear, Icon::CodeBlock, Icon::Agents, Icon::Tool(Tool::Chat), Icon::Composer, Icon::Palette, Icon::Connect, Icon::Menu, Icon::Open, Icon::Eye];
+pub(crate) const SETTINGS_TABS: [&str; 14] =
+    ["Geral", "Ilha", "Canvas", "Navegação e editor", "Terminal", "Agentes", "Chat", "Skills", "Voz", "Ok Mago", "Integrações", "Atalhos", "Dados", "Sobre"];
+const TAB_ICONS: [Icon; 14] = [
+    Icon::Gear,
+    Icon::Monitor,
+    Icon::Grid,
+    Icon::Code,
+    Icon::CodeBlock,
+    Icon::Agents,
+    Icon::Tool(Tool::Chat),
+    Icon::Markdown,
+    Icon::Composer,
+    Icon::Palette,
+    Icon::Connect,
+    Icon::Menu,
+    Icon::Open,
+    Icon::Eye,
+];
 /// Tabs kept in the code but not shown (the indexes of the others do not move). Voz and Ok Mago are off the
 /// menu.
 pub(crate) const HIDDEN_TABS: [&str; 2] = ["Voz", "Ok Mago"];
@@ -41,14 +62,18 @@ const SIDEBAR: f32 = 200.0;
 const MAIN_TOP: f32 = 28.0;
 const MAIN_SIDE: f32 = 32.0;
 /// What each page says under its name.
-const SUBTITLES: [&str; 10] = [
-    "Aparência, como o app abre, a ilha e o canvas.",
+const SUBTITLES: [&str; 14] = [
+    "Aparência e como o app abre.",
+    "A pílula no topo da tela: onde fica, quando fecha e os olhos da Luna.",
+    "O fundo, a seleção e as dicas do canvas.",
+    "A roda do mouse, o zoom e a Árvore de Arquivos.",
     "Os atalhos de início, a aparência e o shell dos terminais.",
     "O que cada agente gastou e o que segura a Luna.",
-    "Como um chat novo começa: agente, pasta, permissão e estilo.",
+    "Como um chat novo começa: agente, pasta, permissão e contexto.",
+    "As skills que os agentes do app leem, como a do seu estilo de código.",
     "Quem ouve e fala na chamada com a Luna e no Ditar.",
     "Chamar a Luna pela voz no meio da chamada.",
-    "Os hooks das sessões de fora e os serviços mostrados na ilha. Segredos vão para o cofre do sistema.",
+    "Os hooks e o MCP das sessões de fora e os serviços mostrados na ilha. Segredos vão para o cofre do sistema.",
     "Os da ilha valem com qualquer programa na frente. Clique nas teclas para trocar.",
     "Onde ficam os desenhos do canvas, os dados do app e os chats, neste computador.",
     "A versão, as novidades, a atualização e a privacidade.",
@@ -57,7 +82,7 @@ const SUBTITLES: [&str; 10] = [
 const OPEN_TIME: f64 = 0.16;
 
 impl DrawingApp {
-    /// Ajustes opened on a page by its name (the usage pill's "Configurações…" on Agentes, the island's on Geral).
+    /// Ajustes opened on a page by its name (the usage pill's "Configurações…" on Agentes, the island's on Ilha).
     pub(crate) fn open_settings_at(&mut self, tab: &str) {
         self.settings_open = true;
         self.settings_tab = SETTINGS_TABS.iter().position(|t| *t == tab).unwrap_or(0);
@@ -232,9 +257,13 @@ impl DrawingApp {
 
                     match SETTINGS_TABS[tab] {
                         "Geral" => self.settings_general(ui, k),
+                        "Ilha" => self.settings_island(ui, k),
+                        "Canvas" => self.settings_canvas(ui, k),
+                        "Navegação e editor" => self.settings_navigation(ui, k),
                         "Terminal" => self.settings_terminal(ui, k),
                         "Agentes" => self.settings_agents(ui, k),
                         "Chat" => self.settings_chat(ui, k),
+                        "Skills" => self.settings_skills(ui, k),
                         "Voz" => self.settings_voice(ui, k),
                         "Ok Mago" => self.settings_ok_mago(ui, k),
                         "Integrações" => self.settings_integrations(ui, k),

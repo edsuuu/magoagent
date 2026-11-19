@@ -257,7 +257,6 @@ fn the_controls_go_to_soloist_or_to_the_account() {
     assert_eq!(app.spotify_search("lista"), Err(LISTS_NEED_ACCOUNT.into()));
     assert!(app.integrations.spotify.library.web_asked.is_empty());
     app.prefs.integrations.spotify = false;
-    app.prefs.integrations.soloist = false;
     assert!(app.spotify_set_shuffle(false).unwrap_err().contains("desligado"));
     // with the account: Liked Songs, the heart, the search and another device by the Web API
     let mut app = app_with(Player::Soloist, true);
