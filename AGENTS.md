@@ -59,6 +59,9 @@ build-macos-app.sh  gera MagoAgent.app (bundle com.edsuuu.magoagent)
 - Cada arquivo começa com `use crate::prelude::*;`. Item compartilhado é `pub(crate)` e entra no `prelude` pelo módulo
   dele. Os métodos de `DrawingApp` ficam em blocos `impl DrawingApp` no arquivo do assunto.
 - `src/editor/` é a exceção: código portado, importa egui direto e usa `super::*`.
+- Linhas em branco separam as partes de um bloco (`src/tests/spacing.rs`, o `cargo test` confere): depois de um grupo
+  de `let`, antes e depois de uma instrução de várias linhas e antes de `return`, `break` e `continue`. O corretor:
+  `MAGOAGENT_FIX_SPACING=1 cargo test --release statements_have_their_blank_lines`.
 - Arquivo passando de ~600 linhas: divida por assunto.
 - Nomes por extenso (`index`, `response`, `colors`), nada de variáveis de uma letra fora de fechamentos curtos.
 - Atalho deliberado com limite conhecido leva `// ponytail: <limite>, <como evoluir>`.
