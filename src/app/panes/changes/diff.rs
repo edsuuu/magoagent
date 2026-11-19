@@ -15,8 +15,8 @@ const DIFF_LINES: usize = 400;
 /// A row of the diff.
 const LINE: f32 = 17.0;
 /// The background of an added and of a removed line.
-const ADDED_ROW: Color32 = Color32::from_rgba_unmultiplied_const(46, 160, 67, 40);
-const REMOVED_ROW: Color32 = Color32::from_rgba_unmultiplied_const(248, 81, 73, 40);
+pub(super) const ADDED_ROW: Color32 = Color32::from_rgba_unmultiplied_const(46, 160, 67, 40);
+pub(super) const REMOVED_ROW: Color32 = Color32::from_rgba_unmultiplied_const(248, 81, 73, 40);
 
 /// A line of the diff: `+`, `-`, ` ` or `…` (stretches apart), its numbers in the HEAD and in the file now, its text
 /// and its colors (byte ranges of `text` and their kind).

@@ -9,6 +9,55 @@ use crate::prelude::*;
 
 /// The comment's bar at the panel's bottom.
 const COMMENT_BAR: f32 = 136.0;
+/// The lines of a comment's excerpt its card shows; the rest is counted.
+const EXCERPT_LINES: usize = 4;
+
+/// The excerpt's lines as `excerpt_ui` shows them: each line's mark (+, - or a space) and its text, without the
+/// indentation they share (tabs as four spaces), at most `EXCERPT_LINES`, and how many more there are.
+pub(crate) fn excerpt_lines(excerpt: &str) -> (Vec<(char, String)>, usize) {
+    let lines: Vec<(char, String)> = excerpt
+        .lines()
+        .map(|line| {
+            let mut characters = line.chars();
+            let mark = characters.next().unwrap_or(' ');
+
+            (mark, characters.as_str().replace('\t', "    "))
+        })
+        .collect();
+
+    let shared = lines.iter().filter(|(_, text)| !text.trim().is_empty()).map(|(_, text)| text.len() - text.trim_start().len()).min().unwrap_or(0);
+    let more = lines.len().saturating_sub(EXCERPT_LINES);
+    let shown = lines.into_iter().take(EXCERPT_LINES).map(|(mark, text)| (mark, text.get(shared..).unwrap_or(text.trim_start()).to_string())).collect();
+
+    (shown, more)
+}
+
+/// A comment's lines as in the diff: the mark and the code in monospace on the row's green or red, cut at the card's
+/// edge, then "+ N linhas" when there are more.
+fn excerpt_ui(ui: &mut egui::Ui, excerpt: &str, muted: Color32) {
+    let (lines, more) = excerpt_lines(excerpt);
+
+    ui.spacing_mut().item_spacing.y = 0.0;
+
+    for (mark, text) in lines {
+        let fill = match mark {
+            '+' => super::diff::ADDED_ROW,
+            '-' => super::diff::REMOVED_ROW,
+            _ => Color32::TRANSPARENT,
+        };
+
+        egui::Frame::new().fill(fill).inner_margin(egui::Margin::symmetric(4, 1)).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.add(egui::Label::new(egui::RichText::new(format!("{mark} {text}")).monospace().size(11.0)).truncate());
+        });
+    }
+
+    if more > 0 {
+        ui.label(egui::RichText::new(format!("+ {more} linhas")).size(11.0).color(muted));
+    }
+
+    ui.spacing_mut().item_spacing.y = 6.0;
+}
 
 impl DrawingApp {
     /// How much of the panel's bottom the comment's bar takes: all of it while lines are picked, none otherwise.
@@ -90,11 +139,7 @@ impl DrawingApp {
 
                     ui.vertical(|ui| {
                         ui.add(egui::Label::new(egui::RichText::new(comment.place()).monospace().size(12.0)).truncate());
-
-                        if let Some(first) = comment.excerpt.lines().find(|l| l.starts_with(['+', '-'])).or(comment.excerpt.lines().next()) {
-                            ui.add(egui::Label::new(egui::RichText::new(first).monospace().size(11.0).color(colors.muted)).truncate());
-                        }
-
+                        excerpt_ui(ui, &comment.excerpt, colors.muted);
                         ui.add(egui::Label::new(&comment.note).wrap());
                     });
                 });
@@ -199,5 +244,26 @@ impl DrawingApp {
                 Err(why) => self.toast(why),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The lines a comment shows: without the indentation they share, tabs as spaces, four at most and the rest counted.
+    #[test]
+    fn a_comments_lines_lose_their_shared_indentation() {
+        let excerpt = "-            \"action\": { \"type\": \"string\" },\n+                \"enum\": [],\n \n+\t\t\tfim";
+        let (lines, more) = excerpt_lines(excerpt);
+
+        assert_eq!(lines[0], ('-', "\"action\": { \"type\": \"string\" },".to_string()));
+        assert_eq!(lines[1], ('+', "    \"enum\": [],".to_string()));
+        assert_eq!(lines[2], (' ', String::new()), "a blank line stays blank");
+        assert_eq!(lines[3], ('+', "fim".to_string()), "a tab is four spaces");
+        assert_eq!(more, 0);
+        let long = "+ x\n".repeat(7);
+
+        assert_eq!(excerpt_lines(&long), (vec![('+', "x".to_string()); 4], 3));
     }
 }

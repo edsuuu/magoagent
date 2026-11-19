@@ -137,7 +137,7 @@ fn the_edge_pulls_the_panel_wider_keeps_it_and_a_double_click_gives_back_the_def
 }
 
 #[test]
-fn the_list_shows_ten_rows_and_the_search_finds_a_name_or_a_stretch_of_code() {
+fn the_list_shows_six_rows_and_the_search_finds_a_name_or_a_stretch_of_code() {
     if !has_git() {
         return;
     }
@@ -156,13 +156,13 @@ fn the_list_shows_ten_rows_and_the_search_finds_a_name_or_a_stretch_of_code() {
     let shown = until(&mut app, &ctx, |app| app.changed_lines(&dir.join("arquivo07.txt")).is_some());
 
     assert_eq!(files(&shown), names, "every file is in the list, in order");
-    // ten rows in view: the rest scrolls inside the list, the review starts right under it
+    // six rows in view: the rest scrolls inside the list, the review starts right under it
     let row = |name: &str| find(&shown, Role::Button, name).unwrap();
     let below = find(&shown, Role::Label, "Revisão").expect("the review under the list");
 
-    assert!(below.top() < row("arquivo11.txt").top(), "the 12th row is past the list's bottom: {below:?}");
-    assert!(below.top() > row("arquivo09.txt").bottom(), "the 10th is in view");
-    assert!(below.top() - row("arquivo00.txt").top() < 11.0 * 28.0 + 20.0, "{below:?}");
+    assert!(below.top() < row("arquivo07.txt").top(), "the 8th row is past the list's bottom: {below:?}");
+    assert!(below.top() > row("arquivo05.txt").bottom(), "the 6th is in view");
+    assert!(below.top() - row("arquivo00.txt").top() < 7.0 * 28.0 + 20.0, "{below:?}");
     // by the file's name
     app.panes.changes.search = "ARQUIVO03".into();
     let shown = pane_frame(&mut app, &ctx, vec![]);
