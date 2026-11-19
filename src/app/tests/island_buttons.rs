@@ -59,10 +59,6 @@ fn the_tabs_change_the_page() {
     let at = tab_button(&app, 3);
 
     click(&mut app, &ctx, &mut time, at);
-    assert_eq!(app.island.tab(), Tab::Claude, "Claude Code's spark: the sessions outside the app");
-    let at = tab_button(&app, 4);
-
-    click(&mut app, &ctx, &mut time, at);
     assert_eq!(app.island.tab(), Tab::New, "the plus: the new chat (GitHub and Spotify off: no tab of theirs)");
     let at = tab_button(&app, 0);
 
@@ -317,7 +313,7 @@ fn closed_it_is_the_notch_again_after_the_pointer_leaves() {
     assert_eq!(app.island.size().x, CLOSED_W);
 }
 
-/// The integrations and the sessions outside each on a tab of their own (Claude Code, GitHub, Spotify).
+/// The integrations each on a tab of their own (GitHub, Spotify); Chats has the agents.
 #[test]
 fn spotify_has_its_tab_and_chats_only_the_agents() {
     let (mut app, ctx, mut time) = opened();
@@ -327,8 +323,8 @@ fn spotify_has_its_tab_and_chats_only_the_agents() {
 
     app.integrations.spotify.now = Some(crate::app::integrations::spotify::Now { track, playing: true, ..Default::default() });
     assert_eq!(app.island.tab(), Tab::Home);
-    // Home, Chat, Chats, Claude Code, Spotify (GitHub is off), +
-    let at = tab_button(&app, 4);
+    // Home, Chat, Chats, Spotify (GitHub is off), +
+    let at = tab_button(&app, 3);
 
     click(&mut app, &ctx, &mut time, at);
     assert_eq!(app.island.tab(), Tab::Music, "Spotify's tab: the player, not the chats");

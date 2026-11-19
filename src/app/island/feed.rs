@@ -47,8 +47,8 @@ fn opens(line: &Line) -> bool {
 /// The lines Início lists: the sessions outside and the integrations always, the app's own agents only while something
 /// goes on with them (an idle chat is Chats' business).
 pub(super) fn feed_lines<'a>(lines: &'a [Line], hidden: &HashMap<String, u64>) -> (Vec<&'a Line>, usize) {
-    let mut shown: Vec<&Line> =
-        lines.iter().filter(|line| !matches!(Tab::of(&line.id), Tab::Chats) || rank(line) < 4).filter(|line| line.state != AgentState::Ended).collect();
+    let always = |line: &Line| line.id.starts_with(PILL_PREFIX) || Tab::of(&line.id) != Tab::Chats;
+    let mut shown: Vec<&Line> = lines.iter().filter(|line| always(line) || rank(line) < 4).filter(|line| line.state != AgentState::Ended).collect();
 
     let before = shown.len();
 

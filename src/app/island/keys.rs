@@ -271,7 +271,7 @@ mod tests {
     }
     #[test]
     fn a_session_from_a_terminal_is_on_home_when_the_island_opens() {
-        // the compact island shows its mini: opened, Início's list has it, and its pill lives on Claude Code's page
+        // the compact island shows its mini: opened, Início's list has it, and its pill lives on Chats
         let (mut app, _ctx, _time) = island();
         let payload = json!({ "hook_event_name": "UserPromptSubmit", "session_id": "s1", "cwd": "C:/proj", "prompt": "oi" });
 
@@ -283,7 +283,7 @@ mod tests {
         let (listed, _) = crate::app::island::feed::feed_lines(&view.lines, &Default::default());
 
         assert!(listed.iter().any(|line| line.id == pill.id), "Início lists the session");
-        assert_eq!(Tab::of(&pill.id), Tab::Claude);
+        assert_eq!(Tab::of(&pill.id), Tab::Chats, "on Chats, with the app's agents");
     }
     #[test]
     fn each_project_of_claude_code_has_a_mini_of_its_own_colour() {
