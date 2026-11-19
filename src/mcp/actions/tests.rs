@@ -267,7 +267,7 @@ fn the_agents_reach_soloists_own_switch() {
 
     assert_eq!(soloist(&mut app, "status").unwrap(), "Soloist: desligado.");
     soloist(&mut app, "on").unwrap();
-    assert!(app.prefs.integrations.soloist && !app.prefs.integrations.spotify);
+    assert!(app.prefs.integrations.spotify, "one switch for every player");
     assert!(soloist(&mut app, "").unwrap().contains("-w 127.0.0.1:0"), "not playing: how to open it");
 
     app.integrations.spotify.now =
@@ -278,7 +278,7 @@ fn the_agents_reach_soloists_own_switch() {
     assert_eq!(app.integrations.spotify.asked, [Command::Next], "its buttons, with only Soloist on");
     assert!(app.act("integrations", &json!({})).unwrap().contains("Soloist: Tocando"));
     soloist(&mut app, "off").unwrap();
-    assert!(!app.prefs.integrations.soloist);
+    assert!(!app.prefs.integrations.spotify);
 }
 
 /// `integrations soloist`'s Configurar: its steps in words and its buttons, one at a time; the key never comes through
@@ -316,7 +316,7 @@ fn the_agents_set_soloist_up_but_never_carry_its_key() {
     assert!(report.contains("wg0") && !report.contains("SEGREDO"), "{report}");
     let refused = soloist(&mut app, "key").unwrap_err();
 
-    assert!(refused.contains("Ajustes › Integrações › Soloist") && !refused.contains("SEGREDO"), "{refused}");
+    assert!(refused.contains("Ajustes › Integrações › Spotify › Configurar o Soloist") && !refused.contains("SEGREDO"), "{refused}");
     assert!(soloist(&mut app, "update").unwrap().contains("Baixando"));
     assert!(soloist(&mut app, "stop").unwrap_err().contains("ocupado"), "one at a time");
 

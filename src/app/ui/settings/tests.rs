@@ -182,25 +182,24 @@ fn the_sheet_measures_what_the_design_does() {
     assert!(aparencia.top() > names[1].bottom() + 18.0, "under the page's line");
 }
 
-/// What the ☰ menu held lives here now, in Geral with the rest: the canvas's and the editor's.
+/// What the ☰ menu held lives here now, each part in a page of its own: Geral, Ilha, Canvas, Navegação e editor.
 #[test]
 fn ajustes_holds_what_the_menu_had() {
-    let window = Window::at(0);
-
-    for name in [
-        "Tema",
-        "Idioma",
-        "Abrir o app em",
-        "Fechar sozinho",
-        "Seleção por caixa",
-        "Dicas nos botões",
-        "Dispositivo",
-        "Passo do zoom",
-        "Ligaduras no código",
-        "Fundo",
+    for (page, names) in [
+        ("Geral", &["Tema", "Idioma", "Abrir o app em"][..]),
+        ("Ilha", &["Mostrar a ilha", "Fechar sozinho"]),
+        ("Canvas", &["Fundo", "Seleção por caixa", "Dicas nos botões"]),
+        ("Navegação e editor", &["Dispositivo", "Passo do zoom", "Ligaduras no código"]),
     ] {
-        assert!(window.has(name), "{name} in Geral: {:?}", window.texts);
+        let window = Window::at(tab_of(page));
+
+        for name in names {
+            assert!(window.has(name), "{name} in {page}: {:?}", window.texts);
+        }
     }
+
+    // Geral keeps only its own
+    assert!(!Window::at(0).has("Fechar sozinho") && !Window::at(0).has("Passo do zoom"));
 }
 
 #[test]
@@ -208,8 +207,8 @@ fn a_click_opens_a_section_and_flips_a_switch() {
     let mut window = Window::new();
 
     window.click_text("Agentes");
-    assert_eq!(window.app.settings_tab, 2, "the tab opens");
-    window.click_text("Geral");
+    assert_eq!(SETTINGS_TABS[window.app.settings_tab], "Agentes", "the tab opens");
+    window.click_text("Ilha");
     let island = window.app.prefs.island;
     let switch = window.switch_of("Mostrar a ilha");
 
@@ -223,11 +222,13 @@ fn a_select_changes_its_setting_and_the_zoom_step_steps() {
 
     window.click_text("Claro");
     assert_eq!(window.app.prefs.theme, Theme::Light, "the segment picks it");
-    // a select's menu
+    // a select's menu, in Canvas
+    window.click_text("Canvas");
     window.scroll_to("Traçado animado");
     window.click_text("Traçado animado");
     window.click_text("Sem traçado");
     assert_eq!(window.app.prefs.window_outline, WindowOutline::Hidden, "the menu picks it");
+    window.click_text("Navegação e editor");
     window.scroll_to("Passo do zoom");
     assert_eq!(window.app.prefs.zoom_step, 10);
     // the plus of the stepper, 30 wide at the right end of the row, in the middle of its first 48
@@ -259,7 +260,7 @@ fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
     let window = Window::at(tab_of("Agentes"));
 
     // asked out: the skills, the memory in use, the hooks (now in Integrações) and the avatar; with them the sub-tabs
-    for name in ["Skills", "Memória", "Controle", "Avatar", "Hooks", "CLAUDE CODE FORA DO APP"] {
+    for name in ["Memória", "Controle", "Avatar", "Hooks", "CLAUDE CODE FORA DO APP", "MCP EM OUTROS AGENTES"] {
         assert!(!window.has(name), "{name}: {:?}", window.texts);
     }
 
@@ -303,10 +304,21 @@ fn the_usage_pill_opens_agentes_uso() {
     assert_eq!(super::SETTINGS_TABS[window.app.settings_tab], "Agentes");
     window.frame(vec![]);
     assert!(window.has("LIMITES DO MAESTRO") && window.has("Parar de recrutar em"), "{:?}", window.texts);
+}
 
-    for name in ["MCP EM OUTROS AGENTES", "Registrar no Claude Code", "Registrar no Codex"] {
+/// The app's MCP in the Claude Code and the Codex outside it: in Integrações, under the hooks and before the services;
+/// a test never asks the real CLIs, so neither is found and nothing is offered.
+#[test]
+fn the_mcp_elsewhere_is_in_integracoes() {
+    let window = Window::at(tab_of("Integrações"));
+
+    for name in ["MCP EM OUTROS AGENTES", "Claude Code não encontrado", "Codex não encontrado"] {
         assert!(window.has(name), "{name}: {:?}", window.texts);
     }
+
+    assert!(window.at_text("CODEX FORA DO APP").top() < window.at_text("MCP EM OUTROS AGENTES").top());
+    assert!(window.at_text("MCP EM OUTROS AGENTES").top() < window.at_text("SERVIÇOS").top());
+    assert!(!window.has("Registrar no Claude Code") && !window.has("Remover"), "{:?}", window.texts);
 }
 
 /// The hooks of the sessions outside the app live in Integrações, first on the page, with the services after them.
@@ -321,7 +333,7 @@ fn the_outside_hooks_are_in_integracoes() {
     let (claude, codex, services) = (window.at_text("CLAUDE CODE FORA DO APP"), window.at_text("CODEX FORA DO APP"), window.at_text("SERVIÇOS"));
 
     assert!(claude.top() < codex.top() && codex.top() < services.top() && services.top() < window.at_text("GitHub").top());
-    assert!(window.texts.iter().any(|(text, _)| text.contains("Os hooks das sessões de fora")), "the page's line says so");
+    assert!(window.texts.iter().any(|(text, _)| text.contains("Os hooks e o MCP das sessões de fora")), "the page's line says so");
 }
 
 /// Off the menu, their code kept and the others in their places.
@@ -330,7 +342,7 @@ fn voz_and_ok_mago_are_off_the_menu_and_the_others_keep_their_places() {
     let window = Window::at(0);
 
     assert!(!window.has("Voz") && !window.has("Ok Mago"), "{:?}", window.texts);
-    assert_eq!(SETTINGS_TABS[4], "Voz");
+    assert_eq!(SETTINGS_TABS[8], "Voz");
     let (atalhos, sobre) = (Window::at(tab_of("Atalhos")), Window::at(tab_of("Sobre")));
 
     assert!(atalhos.has("Atalhos") && sobre.has("Sobre"));
@@ -398,8 +410,7 @@ fn atualizar_warns_that_the_app_closes_and_reopens_before_doing_anything() {
 fn integracoes_shows_github_with_its_token_row_and_its_pull_requests() {
     use crate::app::integrations::github::{GitHub, Pulse};
 
-    assert_eq!(SETTINGS_TABS[6], "Integrações");
-    let mut window = Window::at(6);
+    let mut window = Window::at(tab_of("Integrações"));
 
     assert!(window.has("GitHub") && !window.has("Token pessoal"), "{:?}", window.texts);
     // its switch: 19 from the right of the column, level with its name (16 after the dot)
@@ -411,11 +422,14 @@ fn integracoes_shows_github_with_its_token_row_and_its_pull_requests() {
     assert!(!window.has("Testar"), "no token yet: nothing to test");
     // something that is not a token: refused, and the field is emptied
     window.app.integrations.token_field = "isso não é um token".into();
+    window.scroll_to("Token pessoal");
     window.click_text("Salvar");
     assert!(window.app.status.contains("não parece um token") && window.app.integrations.token_field.is_empty(), "{}", window.app.status);
     window.app.integrations.github = GitHub::with_token("ghp_0123456789abcdefghijABCDEFGHIJ012345");
     window.app.integrations.github.pulse = Pulse::parse(&serde_json::from_str(include_str!("../../integrations/fixtures/github_pulse.json")).unwrap());
     window.frame(vec![]);
+
+    assert!(!window.has("Token pessoal") && !window.has("Criar token…"), "with a token its field hides: {:?}", window.texts);
 
     for text in [
         "Conectado como @ana-dev",
@@ -432,85 +446,68 @@ fn integracoes_shows_github_with_its_token_row_and_its_pull_requests() {
     assert!(!window.texts.iter().any(|(text, _)| text.contains("ghp_0123")), "the token is never drawn");
 }
 
+/// Spotify is one card for every player (Soloist too, on Linux); what plays is on the island, not here.
 #[test]
-fn integracoes_shows_what_spotify_plays_with_its_buttons() {
-    use crate::app::integrations::spotify::{Command, Now, Track};
-    let mut window = Window::at(6);
+fn integracoes_has_one_spotify_card_without_the_player() {
+    use crate::app::integrations::spotify::{Now, Player, Track};
+    let mut window = Window::at(tab_of("Integrações"));
 
-    assert!(window.has("Spotify") && !window.has("Próxima"), "{:?}", window.texts);
+    assert!(window.has("Spotify") && !window.has("Soloist"), "{:?}", window.texts);
     window.app.prefs.integrations.spotify = true;
+
+    window.app.integrations.spotify.now =
+        Some(Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, player: Player::Soloist, ..Default::default() });
+
     window.frame(vec![]);
-    assert!(window.texts.iter().any(|(text, _)| text.contains("não está aberto")) && !window.has("Próxima"), "closed: no buttons: {:?}", window.texts);
-    window.app.integrations.spotify.now = Some(Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, ..Default::default() });
-    window.frame(vec![]);
-    assert!(window.has("Tocando: Canção — Banda") && window.has("Pausar") && window.has("Anterior"), "{:?}", window.texts);
-    window.click_text("Próxima");
-    window.click_text("Pausar");
-    assert_eq!(window.app.integrations.spotify.asked, [Command::Next, Command::PlayPause]);
-    window.app.integrations.spotify.now.as_mut().unwrap().playing = false;
-    window.frame(vec![]);
-    assert!(window.has("Pausado: Canção — Banda") && window.has("Tocar"), "{:?}", window.texts);
+
+    for player in ["Próxima", "Pausar", "Anterior"] {
+        assert!(!window.has(player), "{player}: {:?}", window.texts);
+    }
+
+    assert!(!window.texts.iter().any(|(text, _)| text.contains("Canção")), "{:?}", window.texts);
+    assert!(window.app.spotify_sources().soloist == cfg!(not(any(windows, target_os = "macos"))), "its switch is Soloist's too");
 }
 
-/// Conta do Spotify: the Client ID, the exact Redirect URI with its copy button, and Conectar / Cancelar / Desconectar.
+/// Conta do Spotify: the steps (Abrir painel, the Redirect URI to copy, the Client ID) until there is a Client ID; then
+/// only Conectar, Cancelar while the browser asks, and Desconectar once linked.
 #[test]
-fn integracoes_has_the_spotify_account_with_its_redirect_uri() {
+fn integracoes_has_the_spotify_account_in_steps() {
     use crate::app::integrations::spotify::account::{Account, Link, REDIRECT_URI};
-    let mut window = Window::at(6);
+    let mut window = Window::at(tab_of("Integrações"));
 
-    assert!(!window.has("Client ID"), "off: no account to show");
+    assert!(!window.has("3. Colar o Client ID"), "off: no account to show");
     window.app.prefs.integrations.spotify = true;
     window.frame(vec![]);
-    window.scroll_to(REDIRECT_URI);
-    assert!(window.has("Conta do Spotify") && window.has("Client ID") && window.has(REDIRECT_URI) && window.has("Copiar"), "{:?}", window.texts);
-    assert!(window.texts.iter().any(|(text, _)| text.contains("8989/login")), "the Spotifast Client ID serves too: {:?}", window.texts);
-    // no Client ID: it says what to paste
-    window.click_text("Conectar");
-    assert_eq!(window.app.integrations.spotify.account.link, Link::Off);
+    window.scroll_to("3. Colar o Client ID");
+
+    for name in ["Conta do Spotify", "1. Abrir o painel do Spotify", "Abrir painel", "2. Copiar o Redirect URI", "Copiar", "3. Colar o Client ID"] {
+        assert!(window.has(name), "{name}: {:?}", window.texts);
+    }
+
+    assert!(window.texts.iter().any(|(text, _)| text.contains(REDIRECT_URI)), "{:?}", window.texts);
+    assert!(!window.has("Conectar"), "no Client ID yet: nothing to connect");
+    window.click_text("Copiar");
+    assert_eq!(window.app.status, "Redirect URI copiado.");
+    // pasted: the steps go and only Conectar stays
     window.app.prefs.integrations.spotify_client_id = "0123456789abcdef0123456789abcdef".into();
+    // the page got shorter: its scroll settles the frame after
     window.frame(vec![]);
+    window.frame(vec![]);
+    assert!(window.has("Conectar") && !window.has("2. Copiar o Redirect URI") && !window.has("3. Colar o Client ID"), "{:?}", window.texts);
     window.click_text("Conectar");
     assert_eq!(window.app.integrations.spotify.account.link, Link::Waiting, "no browser in a test");
     window.frame(vec![]);
     window.click_text("Cancelar");
     assert_eq!(window.app.integrations.spotify.account.link, Link::Off);
+    // a login that failed: the steps again, to fix the app
+    window.app.integrations.spotify.account.link = Link::Failed("INVALID_CLIENT".into());
+    window.frame(vec![]);
+    assert!(window.has("Conectar") && window.has("3. Colar o Client ID"), "{:?}", window.texts);
     window.app.integrations.spotify.account = Account::with_session("ana");
     window.frame(vec![]);
-    assert!(window.has("Conectada como Ana") && window.has("Desconectar"), "{:?}", window.texts);
+    assert!(window.has("Conectada como Ana") && window.has("Desconectar") && !window.has("Conectar"), "{:?}", window.texts);
     window.click_text("Desconectar");
     assert!(!window.app.integrations.spotify.account.linked());
-}
-
-/// Soloist has its own switch beside Spotify's; what it plays shows on its card only.
-#[test]
-fn integracoes_has_a_switch_of_its_own_for_soloist() {
-    use crate::app::integrations::spotify::{Now, Player, Track};
-    let mut window = Window::at(6);
-
-    // Spotify's Connect receiver is only for Linux: elsewhere there is no card for it
-    if cfg!(any(windows, target_os = "macos")) {
-        assert!(window.has("Spotify") && !window.has("Soloist"), "{:?}", window.texts);
-
-        return;
-    }
-
-    assert!(window.has("Spotify") && window.has("Soloist"), "{:?}", window.texts);
-    window.app.prefs.integrations.soloist = true;
-    window.frame(vec![]);
-    assert!(window.texts.iter().any(|(text, _)| text.contains("-w 127.0.0.1:0")), "it says how to open it: {:?}", window.texts);
-    assert!(!window.app.prefs.integrations.spotify, "the app's switch stays as it was");
-    let now = Now { track: Track::new("Canção", "Banda", "", "").unwrap(), playing: true, player: Player::Soloist, ..Default::default() };
-
-    window.app.integrations.spotify.now = Some(now);
-    window.frame(vec![]);
-    window.scroll_to("Tocando: Canção — Banda (Soloist)");
-    assert!(window.has("Tocando: Canção — Banda (Soloist)") && window.has_under("Soloist", "Pausar"), "{:?}", window.texts);
-    window.click_text("Pausar");
-    assert_eq!(window.app.integrations.spotify.asked, [crate::app::integrations::spotify::Command::PlayPause]);
-    // with the app's switch on too, its card says it is not the one playing
-    window.app.prefs.integrations.spotify = true;
-    window.frame(vec![]);
-    assert!(window.texts.iter().any(|(text, _)| text.contains("o Soloist está")), "{:?}", window.texts);
 }
 
 /// Soloist's Configurar (Linux): the five steps by what was found, a button only for what is missing (so a setup that
@@ -524,9 +521,9 @@ fn integracoes_sets_soloist_up_step_by_step() {
         return;
     }
 
-    let mut window = Window::at(6);
+    let mut window = Window::at(tab_of("Integrações"));
 
-    window.app.prefs.integrations.soloist = true;
+    window.app.prefs.integrations.spotify = true;
     window.frame(vec![]);
     window.scroll_to("Configurar");
     window.click_text("Configurar");
@@ -623,7 +620,7 @@ fn integracoes_asks_before_installing_the_hermes_plugin() {
     let home = hermes::home().unwrap();
 
     assert!(home.starts_with(std::env::temp_dir()), "never the person's own Hermes");
-    let mut window = Window::at(6);
+    let mut window = Window::at(tab_of("Integrações"));
 
     assert!(window.has("Hermes Agent") && !window.has_under("Hermes Agent", "Instalar…"), "{:?}", window.texts);
     window.app.prefs.integrations.hermes = true;
@@ -769,26 +766,14 @@ fn tab_of(name: &str) -> usize {
 
 #[test]
 fn chat_has_its_own_tab_with_the_new_chat_defaults() {
-    let mut window = Window::at(tab_of("Chat"));
+    let window = Window::at(tab_of("Chat"));
 
-    for name in [
-        "CHAT",
-        "Agente",
-        "Pasta de trabalho",
-        "O agente pode",
-        "Skill de estilo",
-        "Compactar automaticamente em",
-        "Painel Contexto aberto",
-        "Hooks nos agentes do app",
-    ] {
+    for name in ["CHAT", "Agente", "Pasta de trabalho", "O agente pode", "Compactar automaticamente em", "Painel Contexto aberto"] {
         assert!(window.has(name), "{name}: {:?}", window.texts);
     }
 
-    window.scroll_to("Hooks nos agentes do app");
-    let switch = window.switch_of("Hooks nos agentes do app");
-
-    window.click(switch);
-    assert!(window.app.prefs.agent_hooks, "its switch is the real preference");
+    // the hooks are always on, and the style skill has the Skills page
+    assert!(!window.has("Hooks nos agentes do app") && !window.has("Skill de estilo"), "{:?}", window.texts);
     // Agentes keeps the use and the Maestro's limits only
     let agents = Window::at(tab_of("Agentes"));
 
@@ -1026,4 +1011,31 @@ fn limpar_todos_os_dados_asks_before_it_closes_the_app() {
     window.click_text("Apagar tudo");
     assert!(!window.app.wipe_confirm, "answered");
     assert!(window.app.quitting, "it closes");
+}
+
+/// Skills: the style skill (`~/.magoagent/Skills/estilo/SKILL.md` at first) and the skills the app's agents get.
+#[test]
+fn skills_has_a_page_with_the_style_skill() {
+    let window = Window::at(tab_of("Skills"));
+
+    for name in ["SKILL DE ESTILO", "Skill de estilo", "Abrir", "SKILLS DOS AGENTES DO APP"] {
+        assert!(window.has(name), "{name}: {:?}", window.texts);
+    }
+
+    let style = std::path::PathBuf::from(&window.app.prefs.style_skill);
+
+    assert!(style.ends_with(".magoagent/Skills/estilo/SKILL.md"), "{style:?}");
+}
+
+/// An earlier build's first style skill (`~/Skill/SKILL.md`) moves to today's; one the person chose stays.
+#[test]
+fn the_old_first_style_skill_moves_to_the_skills_folder() {
+    let home = std::path::PathBuf::from(std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).unwrap());
+    let mut prefs = Prefs { style_skill: home.join("Skill").join("SKILL.md").to_string_lossy().into_owned(), ..Default::default() };
+
+    prefs.move_old_defaults();
+    assert_eq!(prefs.style_skill, Prefs::default().style_skill);
+    prefs.style_skill = "/projetos/estilo/SKILL.md".into();
+    prefs.move_old_defaults();
+    assert_eq!(prefs.style_skill, "/projetos/estilo/SKILL.md", "chosen by the person: stays");
 }

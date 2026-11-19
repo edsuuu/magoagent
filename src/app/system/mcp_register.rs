@@ -1,6 +1,8 @@
-//! Ajustes › Agentes › MCP em outros agentes: puts this exe's MCP (`<exe> mcp`) in the person's own Claude Code
-//! (`claude mcp add --scope user`) or Codex (`codex mcp add`), where the app finds them (system/wsl.rs: in WSL the exe
-//! goes by its `/mnt/c/…` path, `AgentCli::finish` translates it). The CLIs run on a thread, never on the frame.
+//! Ajustes › Integrações › MCP em outros agentes: puts this exe's MCP (`<exe> mcp`) in the person's own Claude Code
+//! (`claude mcp add --scope user`) or Codex (`codex mcp add`), or takes it out, where the app finds them
+//! (system/wsl.rs: in WSL the exe goes by its `/mnt/c/…` path, `AgentCli::finish` translates it). Whether it is there
+//! is asked once a run (`mcp get magoagent`, which tries only ours, not every server as `mcp list` does). The CLIs run
+//! on a thread, never on the frame.
 
 use crate::prelude::*;
 use std::sync::{Mutex, OnceLock};
@@ -18,11 +20,20 @@ pub(crate) enum McpStatus {
     Missing,
 }
 
+/// What the page offers for an agent: register, take out, or nothing while it is asked or missing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum McpAction {
+    Register,
+    Remove,
+}
+
 #[derive(Default)]
 struct State {
     status: [McpStatus; 2],
-    /// An agent being looked at or registered in: its button waits.
-    busy: [bool; 2],
+    /// What is being done in an agent (looked at, registered, taken out), for the page's line: its button waits.
+    busy: [Option<&'static str>; 2],
+    /// Looked at in this run: the page asks again only after a registration or a removal.
+    checked: [bool; 2],
     /// What a registration from the page said, for its toast.
     said: Vec<String>,
 }
@@ -48,17 +59,29 @@ pub(crate) fn mcp_register_args(agent: &str, exe: &str) -> [Vec<String>; 2] {
     }
 }
 
-/// Whether `mcp list` lists ours: a line whose first word is `magoagent` (Codex's table) or `magoagent:` (Claude's).
-pub(crate) fn mcp_listed(output: &str) -> bool {
-    output.lines().any(|line| line.split_whitespace().next().is_some_and(|word| word.trim_end_matches(':') == "magoagent"))
+/// The CLI's arguments that take ours out.
+pub(crate) fn mcp_remove_args(agent: &str) -> Vec<String> {
+    mcp_register_args(agent, "")[0].clone()
+}
+
+/// The button an agent's line has: Registrar when ours is not there, Remover when it is, none while something is
+/// being done or the agent is not on this computer.
+pub(crate) fn mcp_action(status: McpStatus, busy: bool) -> Option<McpAction> {
+    match status {
+        _ if busy => None,
+        McpStatus::Registered => Some(McpAction::Remove),
+        McpStatus::NotRegistered => Some(McpAction::Register),
+        McpStatus::Checking | McpStatus::Missing => None,
+    }
 }
 
 pub(crate) fn mcp_status(agent: &str) -> McpStatus {
     index(agent).map_or(McpStatus::Missing, |at| state().status[at])
 }
 
-pub(crate) fn mcp_busy(agent: &str) -> bool {
-    index(agent).is_some_and(|at| state().busy[at])
+/// What is being done in `agent` now ("Verificando…", "Registrando…", "Removendo…").
+pub(crate) fn mcp_doing(agent: &str) -> Option<&'static str> {
+    index(agent).and_then(|at| state().busy[at])
 }
 
 /// What the registrations started from the page said since the last call.
@@ -85,23 +108,31 @@ fn look(agent: &str) -> McpStatus {
 
     match agent_cli(agent) {
         None => McpStatus::Missing,
-        Some(cli) => match run(&cli, &["mcp".into(), "list".into()]) {
-            Ok(output) if mcp_listed(&output) => McpStatus::Registered,
-            _ => McpStatus::NotRegistered,
+        // `get` fails when there is no server by that name
+        Some(cli) => match run(&cli, &["mcp".into(), "get".into(), "magoagent".into()]) {
+            Ok(_) => McpStatus::Registered,
+            Err(_) => McpStatus::NotRegistered,
         },
     }
 }
 
-/// Looks at both agents again on a thread (the page opened); `ctx` draws the answer.
+/// Looks at the agents not looked at yet in this run, on a thread (the page opened); `ctx` draws the answer.
 pub(crate) fn mcp_check(ctx: &Context) {
     for (at, (agent, _)) in MCP_AGENTS.iter().enumerate() {
         let mut held = state();
 
-        if held.busy[at] {
+        if held.busy[at].is_some() || held.checked[at] {
             continue;
         }
 
-        (held.busy[at], held.status[at]) = (true, McpStatus::Checking);
+        // a test never asks the real CLIs: the answer (none found) comes at once
+        if cfg!(test) {
+            (held.status[at], held.checked[at]) = (look(agent), true);
+
+            continue;
+        }
+
+        (held.busy[at], held.status[at], held.checked[at]) = (Some("Verificando…"), McpStatus::Checking, true);
         drop(held);
         let ctx = ctx.clone();
 
@@ -109,7 +140,7 @@ pub(crate) fn mcp_check(ctx: &Context) {
             let status = look(agent);
             let mut held = state();
 
-            (held.busy[at], held.status[at]) = (false, status);
+            (held.busy[at], held.status[at]) = (None, status);
             ctx.request_repaint();
         });
     }
@@ -125,14 +156,14 @@ pub(crate) fn mcp_register(agent: &str) -> Result<String, String> {
 
     let cli = agent_cli(agent).ok_or_else(|| format!("{name} não encontrado neste computador."))?;
 
-    state().busy[at] = true;
+    state().busy[at] = Some("Registrando…");
     let [remove, add] = mcp_register_args(agent, &crate::app::chat::tools::mcp_exe(false));
     // the first registration has nothing to remove
     let _ = run(&cli, &remove);
     let result = run(&cli, &add);
     let status = look(agent);
 
-    (state().busy[at], state().status[at]) = (false, status);
+    (state().busy[at], state().status[at]) = (None, status);
     let place = if cli.wsl().is_some() { " (no WSL)" } else { "" };
 
     match result {
@@ -142,27 +173,52 @@ pub(crate) fn mcp_register(agent: &str) -> Result<String, String> {
     }
 }
 
-/// The page's button: registers on a thread and leaves what it said for a toast.
-pub(crate) fn mcp_register_soon(agent: &'static str, ctx: &Context) {
-    if mcp_busy(agent) {
-        return;
+/// Takes this app's MCP out of `agent` (claude or codex): blocks, so off the frame.
+pub(crate) fn mcp_remove(agent: &str) -> Result<String, String> {
+    let (at, name) = index(agent).map(|at| (at, MCP_AGENTS[at].1)).ok_or_else(|| format!("\"{agent}\" não é um agente: claude ou codex"))?;
+
+    if cfg!(test) {
+        return Err("nunca nos testes".into());
     }
 
-    if let Some(at) = index(agent) {
-        state().busy[at] = true;
+    let cli = agent_cli(agent).ok_or_else(|| format!("{name} não encontrado neste computador."))?;
+
+    state().busy[at] = Some("Removendo…");
+    let result = run(&cli, &mcp_remove_args(agent));
+    let status = look(agent);
+
+    (state().busy[at], state().status[at]) = (None, status);
+    let place = if cli.wsl().is_some() { " (no WSL)" } else { "" };
+
+    match result {
+        _ if status == McpStatus::NotRegistered => Ok(format!("O MCP do MagoAgent saiu do {name}{place}; vale nas próximas sessões.")),
+        Ok(_) => Err(format!("O {name}{place} aceitou a remoção, mas ainda mostra o magoagent.")),
+        Err(why) => Err(format!("O {name}{place} não tirou o MCP: {why}")),
+    }
+}
+
+/// The page's buttons: registers or takes out on a thread and leaves what it said for a toast.
+pub(crate) fn mcp_soon(agent: &'static str, action: McpAction, ctx: &Context) {
+    let Some(at) = index(agent) else { return };
+
+    {
+        let mut held = state();
+
+        if held.busy[at].is_some() {
+            return;
+        }
+
+        held.busy[at] = Some(if action == McpAction::Remove { "Removendo…" } else { "Registrando…" });
     }
 
     let ctx = ctx.clone();
 
     std::thread::spawn(move || {
-        let said = mcp_register(agent).unwrap_or_else(|why| why);
+        let done = if action == McpAction::Remove { mcp_remove(agent) } else { mcp_register(agent) };
         let mut held = state();
 
-        if let Some(at) = index(agent) {
-            held.busy[at] = false;
-        }
-
-        held.said.push(said);
+        held.busy[at] = None;
+        held.said.push(done.unwrap_or_else(|why| why));
         ctx.request_repaint();
     });
 }
@@ -182,18 +238,18 @@ mod tests {
         assert_eq!(remove, ["mcp", "remove", "magoagent"]);
         assert_eq!(add, ["mcp", "add", "magoagent", "--", "/opt/magoagent", "mcp"]);
         assert_eq!(mcp_register("gemini").unwrap_err(), "\"gemini\" não é um agente: claude ou codex");
+        assert_eq!(mcp_remove_args("claude"), ["mcp", "remove", "--scope", "user", "magoagent"]);
+        assert_eq!(mcp_remove_args("codex"), ["mcp", "remove", "magoagent"]);
+        assert_eq!(mcp_remove("gemini").unwrap_err(), "\"gemini\" não é um agente: claude ou codex");
     }
 
     #[test]
-    fn the_mcp_list_of_each_agent_says_whether_ours_is_there() {
-        let claude = "Checking MCP server health…\n\nplugin:magoagent:x: npx y - ✔ Connected\nrea: node rea.mjs mcp - ✔ Connected\n";
-
-        assert!(!mcp_listed(claude), "a plugin's server is not ours");
-        assert!(mcp_listed(&format!("{claude}magoagent: C:/MagoAgent/magoagent.exe mcp - ✔ Connected\n")));
-        let codex = "Name         Command      Args  Env  Cwd  Status   Auth\nrea          node.exe     rea.mjs mcp  -  -  enabled  Unsupported\n";
-
-        assert!(!mcp_listed(codex));
-        assert!(mcp_listed(&format!("{codex}magoagent    C:/MagoAgent/magoagent.exe  mcp  -  -  enabled  Unsupported\n")));
-        assert!(!mcp_listed("magoagentx: other mcp"));
+    fn registered_offers_remover_and_not_registered_offers_registrar() {
+        assert_eq!(mcp_action(McpStatus::Registered, false), Some(McpAction::Remove));
+        assert_eq!(mcp_action(McpStatus::NotRegistered, false), Some(McpAction::Register));
+        // nothing while it is asked or something is being done, nor without the agent
+        assert_eq!(mcp_action(McpStatus::Registered, true), None);
+        assert_eq!(mcp_action(McpStatus::Checking, false), None);
+        assert_eq!(mcp_action(McpStatus::Missing, false), None);
     }
 }

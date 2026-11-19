@@ -1,7 +1,8 @@
 //! GNOME on Wayland: where the pointer is anywhere on the screen, for the island's eyes. The app runs on XWayland,
 //! whose X server only knows the pointer over its windows (`x11::cursor`); a small extension of GNOME Shell
-//! (assets/gnome/) answers where it is over D-Bus. Ajustes › Geral › Ilha installs it (`install`, `set_setting
-//! gnome_cursor` for the MCP); the shell loads a new extension on the next login.
+//! (assets/gnome/) answers where it is over D-Bus. On by default: the app puts it in at the start
+//! (`install_if_missing`) unless the switch in Ajustes › Ilha (or `set_setting gnome_cursor` for the MCP) took it out;
+//! the shell loads a new extension on the next login.
 
 use crate::prelude::*;
 use gtk::gio::prelude::*;
@@ -224,6 +225,13 @@ pub(crate) fn install() -> Result<String, String> {
     } else {
         "Extensão do GNOME instalada. O GNOME a carrega quando você sair e entrar de novo na sessão.".into()
     })
+}
+
+/// At the start, on GNOME on Wayland: puts it in when it is not there (the preference is on by default).
+pub(crate) fn install_if_missing() {
+    if wanted() && folder().is_some_and(|folder| !written(&folder)) {
+        let _ = install();
+    }
 }
 
 /// Takes it out: off in the shell's settings and its folder gone.

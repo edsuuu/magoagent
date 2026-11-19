@@ -133,11 +133,6 @@ impl DrawingApp {
         Ok(())
     }
 
-    /// Play/pause, next or previous (the pill, Ajustes, the MCP); false when it went nowhere.
-    pub(crate) fn spotify_control(&mut self, command: Command) -> bool {
-        self.spotify_do(command).is_ok()
-    }
-
     pub(crate) fn spotify_set_shuffle(&mut self, on: bool) -> Result<(), String> {
         self.spotify_do(Command::Shuffle(on))
     }

@@ -214,6 +214,13 @@ fn main() -> eframe::Result {
 
             install_fonts(&cc.egui_ctx, app.prefs.ligatures);
 
+            // GNOME on Wayland: the extension for the island's eyes is in by default, unless taken out in Ajustes › Ilha;
+            // never from a test instance (a scene of its own)
+            #[cfg(target_os = "linux")]
+            if app.prefs.gnome_cursor && std::env::var_os("MAGOAGENT_SCENE").is_none() {
+                std::thread::spawn(app::island::gnome::install_if_missing);
+            }
+
             // Linux on X11: the swap does not wait for the screen, so each frame waits for the GPU (system/finish.rs)
             #[cfg(target_os = "linux")]
             if app::island::x11::active() {
