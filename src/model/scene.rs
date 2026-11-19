@@ -159,8 +159,6 @@ pub(crate) struct Prefs {
     pub(crate) island: bool,
     /// Where the island was left (screen): its centre x and its top.
     pub(crate) island_at: Option<[f32; 2]>,
-    /// The conversation in the island, as big as the person pulled it (width, height).
-    pub(crate) island_chat: Option<[f32; 2]>,
     /// The short conversation in the island (an agent's log and its box), as big as the person pulled it; none: it
     /// grows with what was said.
     pub(crate) island_talk: Option<[f32; 2]>,
@@ -311,7 +309,6 @@ impl Default for Prefs {
             avatar_at: None,
             island: true,
             island_at: None,
-            island_chat: None,
             island_talk: None,
             island_sound: true,
             island_projects: Vec::new(),

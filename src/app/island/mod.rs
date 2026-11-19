@@ -88,14 +88,11 @@ const COMPACT_WING_WIDE: f32 = 104.0;
 /// Open around a notch, its header is the notch's row: each wing holds the tabs at the left (seven at most, 35 apart
 /// from 14 in) or the buttons at the right.
 const HEADER_WING: f32 = 14.0 + 7.0 * 35.0 + 6.0;
-/// The conversation at least this big, in points.
-const CHAT_MIN: (f32, f32) = (420.0, 300.0);
 const EXPANDED_CORNER: f32 = 22.0;
 /// Home's height (the reference's 160), and the conversation's.
 const HOME_H: f32 = 160.0;
 /// Início's height: the summary and the list of what happened, a few lines of it.
 const FEED_H: f32 = 270.0;
-const CHAT_H: f32 = 360.0;
 
 /// What the island says about the agents at a glance.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -355,15 +352,6 @@ pub(crate) fn chat_most(work: Rect) -> Vec2 {
     work.size() * 0.95
 }
 
-/// The conversation's size kept in `Prefs`, within what the monitor's work area `work` allows; `big`: 70% of it.
-pub(crate) fn chat_size(saved: Option<[f32; 2]>, big: bool, work: Rect) -> Vec2 {
-    let most = chat_most(work);
-    let least = Vec2::new(CHAT_MIN.0, CHAT_MIN.1).min(most);
-    let size = if big { work.size() * 0.7 } else { saved.map_or(Vec2::new(EXPANDED_W, CHAT_H), |[w, h]| Vec2::new(w, h)) };
-
-    size.clamp(least, most)
-}
-
 /// The least the short conversation (an agent's log and its box) is pulled to.
 const TALK_MIN: (f32, f32) = (420.0, 220.0);
 
@@ -433,10 +421,7 @@ pub(crate) struct Island {
     captured: Option<bool>,
     /// Whether the panel was open last frame.
     open: bool,
-    /// The conversation at the size that is kept, big (70% of the monitor), and being pulled by an edge now.
-    chat_big: bool,
-    /// The whole mini chat on the Chat tab (its ⤢) instead of the compact conversation, until the island closes.
-    pub(crate) chat_full: bool,
+    /// The conversation being pulled by an edge now.
     resizing: bool,
     /// The conversation's size while an edge is pulled: it goes to the prefs (and their file) once the edge is let go.
     pulled: Option<[f32; 2]>,
@@ -576,11 +561,6 @@ impl Island {
     }
 
     #[cfg(test)]
-    pub(crate) fn chat_big(&self) -> bool {
-        self.chat_big
-    }
-
-    #[cfg(test)]
     pub(crate) fn chimes(&self) -> u32 {
         self.chimes
     }
@@ -676,8 +656,7 @@ impl DrawingApp {
         }
 
         if std::mem::take(&mut self.island.chat_asked) {
-            // "Abrir em miniatura" asks for the mini chat itself
-            self.island.chat_full = true;
+            // "Abrir em miniatura": the island's conversation, its one chat
             self.island.tab = Tab::Chat;
             self.island.settings = false;
             self.island.machine.force_home(time);
@@ -696,10 +675,8 @@ impl DrawingApp {
             (crate::app::chat::mini::screen_work(ctx, window::probe(anchor)), Some(anchor))
         };
 
-        // the compact conversation grows with what was said (`chatPromptHeight`); the whole mini chat has its own size
-        let chat = if self.island.chat_full {
-            chat_size(self.island.pulled.or(self.prefs.island_chat), self.island.chat_big, work)
-        } else {
+        // the conversation grows with what was said (`chatPromptHeight`)
+        let chat = {
             let said = match &self.island.session {
                 Some(session) => session.said(),
                 None => self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map_or(0, |transcript| log::said(&transcript.items).count()),
@@ -786,8 +763,6 @@ impl DrawingApp {
 
         if was_open && !open {
             island.tab = Tab::Home;
-            island.chat_big = false;
-            island.chat_full = false;
             island.session = None;
         }
 
@@ -954,8 +929,6 @@ impl DrawingApp {
             || out.terminal.is_some()
             || out.voice
             || out.close
-            || out.big
-            || out.full
             || out.sound
             || out.picked
         {
@@ -1220,23 +1193,12 @@ mod tests {
         assert_eq!(layers.values(6.6)[3], 1.0);
     }
 
-    #[test]
-    fn the_conversation_is_sized_within_the_monitor_and_big_is_seventy_percent() {
-        let work = Rect::from_min_size(Pos2::ZERO, Vec2::new(1920.0, 1040.0));
-
-        assert_eq!(chat_size(None, false, work), Vec2::new(760.0, 360.0));
-        assert_eq!(chat_size(Some([800.0, 500.0]), false, work), Vec2::new(800.0, 500.0));
-        assert_eq!(chat_size(Some([100.0, 100.0]), false, work), Vec2::new(420.0, 300.0), "not smaller than the least");
-        assert_eq!(chat_size(Some([9000.0, 9000.0]), false, work), Vec2::new(1824.0, 988.0), "nor bigger than the monitor");
-        assert_eq!(chat_size(Some([800.0, 500.0]), true, work), Vec2::new(1344.0, 728.0), "big: 70% of the work area");
-    }
-
     /// Around a 179x32 notch, closed it is the notch with a wing each side and as tall; compact, wider; open, its panel
     /// under the notch's row.
     #[test]
     fn around_a_notch_the_island_is_the_notch_grown() {
         let notch = Vec2::new(179.0, 32.0);
-        let chat = Vec2::new(EXPANDED_W, CHAT_H);
+        let chat = Vec2::new(EXPANDED_W, 360.0);
 
         let sized =
             |shape: Shape, tab: Tab, song: bool, voice: bool| around_notch(shape, target(shape, tab, false, false, false, 0.0, chat).0, notch, song, voice);
@@ -1247,9 +1209,9 @@ mod tests {
         assert_eq!(sized(Shape::Compact, Tab::Home, false, true), sized(Shape::Compact, Tab::Home, true, false), "the voice and a song: wide");
         assert_eq!(sized(Shape::Open, Tab::Home, false, false), Vec2::new(EXPANDED_W, FEED_H), "the header on the notch's row: no band over it");
         // a narrow conversation widens until the tabs and the buttons fit beside the camera
-        let narrow = around_notch(Shape::Open, Vec2::new(CHAT_MIN.0, CHAT_MIN.1), notch, false, false);
+        let narrow = around_notch(Shape::Open, Vec2::new(420.0, 300.0), notch, false, false);
 
-        assert_eq!(narrow, Vec2::new(179.0 + 2.0 * HEADER_WING, CHAT_MIN.1));
+        assert_eq!(narrow, Vec2::new(179.0 + 2.0 * HEADER_WING, 300.0));
         assert!(narrow.x <= EXPANDED_W, "never wider than the open island is anyway");
         // the wings hold what goes in them: the face (18) with room, the wizard (30) and the minis' grid (30) 12 from the edges
         const { assert!(CLOSED_WING >= 18.0 + 12.0 && COMPACT_WING >= 12.0 + 30.0 + 12.0) };

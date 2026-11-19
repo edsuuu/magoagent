@@ -48,12 +48,9 @@ pub(crate) struct Mini {
     focus: bool,
     /// The panel is being drawn in its own window (chat/mini_window.rs), filling it.
     pub(crate) window: bool,
-    /// The panel is drawn inside the island (island/paint.rs): the island sizes it, not the system.
-    pub(crate) in_island: bool,
-    /// Inside the island, the island as painted: the chips' menus stay in it (`footer::menu_height`).
+    /// The island as painted while its conversation draws the chat's chips: their menus stay in it
+    /// (`footer::menu_height`).
     pub(crate) island_rect: Option<Rect>,
-    /// Its close or expand was clicked this frame: inside the island, the island folds.
-    pub(crate) left: bool,
     /// Where its window opened: the window is built with it for as long as it is open (a builder that
     /// followed the window would fight the system's move and resize).
     pub(crate) opened_at: Option<[f32; 4]>,
@@ -589,8 +586,7 @@ impl DrawingApp {
             stopped = grip.drag_stopped();
             // the header's buttons take their press (the grip under them would move the window), and in the island no
             // tip covers the conversation under them
-            let in_island = self.mini.in_island;
-            let tip = |hit: egui::Response, text: &str| if in_island { hit } else { hit.tip(text) };
+            let tip = |hit: egui::Response, text: &str| hit.tip(text);
             // close, at the left like the reference's panels
             let x = Rect::from_center_size(Pos2::new(rect.left() + 24.0, cy), Vec2::splat(22.0));
             let hit = tip(pressable(ui, x, ui.scope_id().with("mini_close"), "Recolher"), "Recolher (Esc)");
@@ -678,7 +674,7 @@ impl DrawingApp {
                 footer = ui.cursor().top() - top;
             });
 
-            if window && !self.mini.in_island {
+            if window {
                 crate::app::chat::mini_window::resize_edges(ui, rect);
             }
         });
@@ -744,16 +740,10 @@ impl DrawingApp {
             self.send_from_box(ctx, &id, text);
         }
 
-        self.mini.left = switch.is_none() && (expand || close);
-
         if let Some(other) = switch {
-            // another chat in the same panel: the Maestro's agent, or back to the Maestro. In the island it is the
-            // island's conversation that changes: no mini chat opens over the screen besides it
+            // another chat in the same panel: the Maestro's agent, or back to the Maestro
             self.chat_agent = Some(other);
-
-            if !self.mini.in_island {
-                self.mini_set(true);
-            }
+            self.mini_set(true);
         } else if expand {
             self.mini.open = false;
             self.chat_agent = Some(id);

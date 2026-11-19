@@ -6,7 +6,7 @@ use super::marquee::marquee;
 use super::minis::mini_cells;
 use super::stage::{self, Activity};
 use super::{EXPANDED_W, Line, Mood, NewForm, Shape, Tab, icons, main_state};
-use crate::app::chat::list::{Look, clipped, glyph};
+use crate::app::chat::list::{Look, clipped};
 use crate::app::chat::mini_agents::pressable;
 use crate::app::integrations::spotify::Now;
 use crate::app::integrations::spotify::groove::Ear;
@@ -71,7 +71,6 @@ pub(super) struct View {
     /// A session outside the app shown on the conversation page instead (`session.rs`).
     pub(super) session: Option<String>,
     /// The whole mini chat on the Chat tab, not the compact conversation.
-    pub(super) chat_full: bool,
     /// What the agent in focus is doing (`stage.rs`), for how long (s), and a glimpse of the file it reads.
     pub(super) activity: Option<Activity>,
     pub(super) since: f32,
@@ -142,15 +141,12 @@ pub(crate) struct Out {
     pub(super) pick_folder: bool,
     /// The press that moves the window: the system takes it from here.
     pub(super) drag: bool,
-    /// The conversation pulled by an edge to this size, and the big/small button.
+    /// The conversation pulled by an edge to this size.
     pub(super) resize: Option<Vec2>,
-    pub(super) big: bool,
     /// An edge double-clicked: the size before it was pulled.
     pub(super) unpull: bool,
     /// A picture of the log clicked (its base64): on the whole screen.
     pub(super) picture: Option<String>,
-    /// The conversation's ⤢ (or its model's pill): the whole mini chat in the island.
-    pub(super) full: bool,
     /// The sound button.
     pub(super) sound: bool,
     /// A pill was clicked: its blip.
@@ -300,7 +296,6 @@ impl DrawingApp {
             focus,
             chat_row,
             session: self.island.session.as_ref().map(|session| session.id.clone()),
-            chat_full: self.island.chat_full,
             activity,
             since,
             glimpse,
@@ -613,17 +608,11 @@ impl DrawingApp {
                 self.island_edges(ui, rect, out);
             }
             Tab::Chat => match &view.chat_row {
-                Some(row) if !view.chat_full => {
-                    self.island_prompt(ui, page, row, view, look, time, out);
-                    self.island_edges(ui, rect, out);
-                }
                 Some(row) => {
-                    self.refresh_transcript();
-                    (self.mini.window, self.mini.in_island, self.mini.island_rect) = (true, true, Some(rect));
-                    self.mini_panel(ui.ctx(), row, page, look, colors, time);
-                    (self.mini.window, self.mini.in_island, self.mini.island_rect) = (false, false, None);
-                    // its ✕ (and Esc) and its full screen: the island folds, the chat going to the app with the latter
-                    out.close |= std::mem::take(&mut self.mini.left);
+                    // the chips' menus stay in the island (`footer::menu_height`)
+                    self.mini.island_rect = Some(rect);
+                    self.island_prompt(ui, page, row, view, look, time, out);
+                    self.mini.island_rect = None;
                     self.island_edges(ui, rect, out);
                 }
                 None => {
@@ -723,14 +712,6 @@ impl DrawingApp {
             }
 
             out.voice = response.clicked();
-        }
-
-        // the conversation: its big and small size
-        if view.tab == Tab::Chat && view.chat_full && !pinned {
-            let (response, at, ink) = button(ui, "island_big", "Aumentar ou voltar ao tamanho", false);
-
-            glyph(ui.painter(), at, 16.0, 1.6, ink, EXPAND);
-            out.big = response.clicked();
         }
     }
 
@@ -1045,9 +1026,6 @@ fn mini_badge(painter: &Painter, center: Pos2, body: f32, line: &Line, time: f64
     painter.circle_filled(at, radius * ring * 1.25, Color32::BLACK);
     painter.circle_filled(at, radius * disc * 1.25, color);
 }
-
-pub(super) const EXPAND: &[&[(f32, f32)]] =
-    &[&[(14.0, 4.5), (19.5, 4.5), (19.5, 10.0)], &[(19.5, 4.5), (13.0, 11.0)], &[(10.0, 19.5), (4.5, 19.5), (4.5, 14.0)], &[(4.5, 19.5), (11.0, 13.0)]];
 
 impl DrawingApp {
     /// The pill of who asks: a session outside's (by its pill) or the chat's.

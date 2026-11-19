@@ -43,18 +43,13 @@ impl DrawingApp {
 
         if let Some(size) = out.resize {
             self.island.pulled = Some([size.x.round(), size.y.round()]);
-            self.island.chat_big = false;
         } else if let Some(size) = self.island.pulled.take() {
-            *if self.island.chat_full { &mut self.prefs.island_chat } else { &mut self.prefs.island_talk } = Some(size);
+            self.prefs.island_talk = Some(size);
         }
 
         // an edge double-clicked: back to the size it had before it was pulled
         if out.unpull {
-            if self.island.chat_full {
-                (self.prefs.island_chat, self.island.chat_big) = (None, false);
-            } else {
-                self.prefs.island_talk = None;
-            }
+            self.prefs.island_talk = None;
         }
 
         if let Some(data) = out.picture.clone() {
@@ -65,14 +60,6 @@ impl DrawingApp {
 
         if out.sound {
             self.prefs.island_sound = !self.prefs.island_sound;
-        }
-
-        if out.full {
-            self.island.chat_full = true;
-        }
-
-        if out.big {
-            self.island.chat_big = !self.island.chat_big;
         }
 
         if out.close {
@@ -260,7 +247,7 @@ impl DrawingApp {
         if self.outside_focus(id) {
             self.island.focus = Some(id.to_string());
             self.island.session = Some(super::session::SessionView::new(id));
-            (self.island.tab, self.island.chat_full, self.island.settings, self.island.form) = (Tab::Chat, false, false, None);
+            (self.island.tab, self.island.settings, self.island.form) = (Tab::Chat, false, None);
             self.island.machine.force_home(time);
 
             return;
