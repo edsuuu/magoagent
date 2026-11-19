@@ -22,8 +22,8 @@ impl DrawingApp {
         // the terminal's button is the chat's too (its dialog picks one), so it wears the chat's mark
         let (icon, label) = if tool == Tool::Terminal { (Icon::Tool(Tool::Chat), "Terminal ou chat") } else { (Icon::Tool(tool), tool.label()) };
         let response = glass_button(ui, self.tool == tool, icon, self.dark());
-        // its key in small at the corner, on every tool that has one; the tip is just its name (asked)
-        // in the glass's own ink, so it reads over whatever the bar floats on (a note, a picture)
+        // its key in small at the corner, on every tool that has one; the tip is just its name in the
+        // glass's own ink, so it reads over whatever the bar floats on (a note, a picture)
         let ink = glass_ink(self.dark()).gamma_multiply(0.7);
         ui.painter().text(response.rect.right_bottom() + Vec2::new(1.0, 2.0), egui::Align2::RIGHT_BOTTOM, tool.badge(), FontId::proportional(8.0), ink);
         if response.tip(label).clicked() {
@@ -430,7 +430,7 @@ fn extra_row(ui: &mut egui::Ui, tool: Tool, current: bool, c: &UiColors) -> bool
         p.rect_filled(rect, ITEM_RADIUS, colors.hover);
     }
     let ink = if current { PRIMARY } else { c.text };
-    // the menus' own size, not bigger (asked: "diminui a fonte dessas palavras")
+    // the menus' own size, not bigger
     let size = MENU_TEXT_SIZE;
     paint_icon_scaled(p, Icon::Tool(tool), Pos2::new(rect.left() + ROW_PAD + ICON_SIZE / 2.0, rect.center().y), ink, ICON_SIZE / 16.0, 0.0);
     let x = rect.left() + ROW_PAD + ICON_SIZE + ROW_GAP;

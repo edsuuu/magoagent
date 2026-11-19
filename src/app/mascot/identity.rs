@@ -1,6 +1,5 @@
-//! Who is who among the agents (asked: "os mascotes ... precisam mudar a cor para não ficar igual, ou ele ter nome, cada um
-//! precisa ter um nome diferente"): each one's mascot in a colour of its own, the same in every place it shows, and a
-//! name no other agent on the same list shows.
+//! Who is who among the agents: each one's mascot in a colour of its own, the same in every place it shows, and a name no
+//! other agent on the same list shows.
 
 use crate::prelude::*;
 use std::collections::{HashMap, HashSet};

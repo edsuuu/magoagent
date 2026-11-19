@@ -1,8 +1,6 @@
-//! The GitHub tab (asked: "do github, pode criar uma tab ... para ele mostrar as pr ativas, fechadas, q travou ci ou cd,
-//! com review, mergeada"; "faltou o botao para abrir no navegador, preview para editar o comentario do pr, se deu
-//! conflito"). At the left the person's pull requests under four filters, each with its state's icon, its CI and what
-//! asks for them; at the right the one picked: what holds it back, its description written or previewed (or a comment),
-//! and the buttons. Under the list, each repository's main branch CI.
+//! The GitHub tab. At the left the person's pull requests under four filters, each with its state's icon, its CI and
+//! what asks for them; at the right the one picked: what holds it back, its description written or previewed (or a
+//! comment), and the buttons. Under the list, each repository's main branch CI.
 
 use super::forms;
 use super::icons;

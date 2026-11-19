@@ -98,9 +98,8 @@ fn ir_para_o_proximo_goes_round_the_ones_that_need_you() {
     assert!(app.act("sidebar", &json!({ "action": "next" })).unwrap_err().contains("Nenhum agente"));
 }
 
-/// Asked: "'Agentes precisam de você' — em 90% dos casos não precisa: foram agentes novos, shells que o Maestro abriu. Ali
-/// deve aparecer apenas quando o Maestro me chamar, para ser mais claro". A new agent, one that finished unseen, a shell
-/// and a chat at rest call nobody; the Maestro asking the person (`ask_person`) does, and so does a permission.
+/// A new agent, one that finished unseen, a shell and a chat at rest call nobody; the Maestro asking the person
+/// (`ask_person`) does, and so does a permission.
 #[test]
 fn only_an_agent_asking_the_person_counts_as_needing_them() {
     use crate::app::ui::agents::{AgentState, calls_person};
@@ -129,8 +128,7 @@ fn only_an_agent_asking_the_person_counts_as_needing_them() {
     assert_eq!(app.needing_you(), [luna]);
 }
 
-/// Asked: "precisa ter uma opção x para ocultar ou remover". The green notice's × hides it for good; somebody waiting
-/// still shows the amber card; the MCP brings it back.
+/// The green notice's × hides it for good; somebody waiting still shows the amber card; the MCP brings it back.
 #[test]
 fn the_green_notice_closes_by_its_x() {
     let ctx = Context::default();
@@ -202,8 +200,7 @@ fn the_foot_shows_each_plan_and_its_detail_fits_the_sidebar() {
     assert_eq!(app.usage_ui.probe.next, 0.0);
     let said = app.act("usage", &json!({})).unwrap();
     assert!(said.contains("Plano lido pela CLI, Claude Code (Max): Sessão 98% (redefine em 3 dias)"), "{said}");
-    // asked ("se eu clico em configurações o meu cursor fica cursor de texto"): the link opens Ajustes › Agentes, it
-    // doesn't select its text
+    // the link opens Ajustes › Agentes, it doesn't select its text
     app.act("sidebar", &json!({ "action": "usage_open" })).unwrap();
     press(&mut app, &ctx, "Configurações…");
     assert!(app.settings_open && !app.usage_ui.open);
@@ -263,8 +260,8 @@ fn the_agents_at_rest_in_the_list_ask_for_no_frames() {
     assert!(!causes.iter().any(|cause| cause.file.contains("mascot")), "an ended agent's wizard is still: {causes:?}");
 }
 
-/// Asked: "Um botão para ser como acordeão para deixar fechado os agentes que foram disparados". A Maestro's recruits
-/// go under it, folded to "2 agentes" until opened; the click is kept, and the MCP opens and folds them by its name.
+/// A Maestro's recruits go under it, folded to "2 agentes" until opened; the click is kept, and the MCP opens and
+/// folds them by its name.
 #[test]
 fn a_maestros_recruits_fold_under_it_among_the_agents_of_the_space() {
     let ctx = Context::default();

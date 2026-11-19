@@ -1,8 +1,7 @@
-//! What the app's agents are told about the system's temporary folder (asked: "Uma config para nunca usar a /tmp, só em
-//! alguns casos, pois reiniciou o PC e sumiu tudo"): a restart may empty it, and with it the clones, worktrees and
-//! drafts an agent left there. With Ajustes › Agentes › "Trabalho fora da pasta temporária" on (`Prefs::work_outside_temp`,
-//! the default) the chats' agents get it in their instructions (chat/tools.rs) and a Claude Code recruited into a
-//! terminal gets it as `--append-system-prompt`.
+//! What the app's agents are told about the system's temporary folder: a restart may empty it, and with it the clones,
+//! worktrees and drafts an agent left there. With Ajustes › Agentes › "Trabalho fora da pasta temporária" on
+//! (`Prefs::work_outside_temp`, the default) the chats' agents get it in their instructions (chat/tools.rs) and a Claude
+//! Code recruited into a terminal gets it as `--append-system-prompt`.
 
 use crate::prelude::*;
 

@@ -128,9 +128,8 @@ impl DrawingApp {
         let font = FontId::proportional(13.0);
         // the buttons first, from the right: the name and folder are cut before them
         let mut right = main.right();
-        // no Abrir em miniatura: the small conversation is the island's alone (asked: "do chat abrir em um pop, remove
-        // 'Abrir em miniatura', deixa apenas na ilha")
-        // Ver no canvas: the canvas, in the agent's space, on its card
+        // no Abrir em miniatura: the small conversation is the island's alone Ver no canvas: the canvas, in the
+        // agent's space, on its card
         let label = if narrow { "" } else { "Ver no canvas" };
         let width = if narrow { 32.0 } else { 30.0 + ui.painter().layout_no_wrap(label.into(), font.clone(), look.soft).size().x + 12.0 };
         let rect = button(right, width);
@@ -271,13 +270,13 @@ impl DrawingApp {
             let char_w = p.layout_no_wrap("M".into(), mono.clone(), look.soft).size().x.max(1.0);
             let at = dot.right() + 8.0;
             let fits = ((x + room - at) / char_w).floor().max(0.0) as usize;
-            // the app's own folder is no folder (asked: "no chat fica .magoagent, é para ficar Nenhuma pasta")
+            // the app's own folder is no folder
             let shown = if crate::app::chat::direct::no_folder(&folder) { "Nenhuma pasta".to_string() } else { short_path(&folder, &home, fits) };
             if fits > 1 {
                 let g = p.layout_no_wrap(shown.clone(), mono.clone(), look.soft);
                 let rect = Rect::from_min_size(Pos2::new(at, line1 - g.size().y / 2.0), g.size());
                 p.galley(rect.min, g, look.soft);
-                // the whole path in a tip only when it had to be cut (asked: no tip repeating what shows)
+                // the whole path in a tip only when it had to be cut
                 if shown.contains('…') {
                     let whole = crate::app::chat::direct::folder(&folder).map_or(folder.clone(), |f| f.display().to_string());
                     ui.interact(rect, ui.scope_id().with("chat_folder_path"), Sense::hover()).tip(whole);

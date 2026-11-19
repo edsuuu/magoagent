@@ -110,8 +110,7 @@ fn a_click_on_inicios_line_of_a_session_outside_opens_its_conversation_at_once()
     let middle = island_rect(&app).center();
     click(&mut app, &ctx, &mut time, middle);
     assert_eq!(app.island.tab(), Tab::Home);
-    // asked ("clicar numa linha que é um chat ou sessão precisa abrir a conversa dela na hora"): one click, and its
-    // conversation is there with what the terminal said
+    // one click, and its conversation is there with what the terminal said
     let row_pos = first_row(&app);
     let texts = click(&mut app, &ctx, &mut time, row_pos);
     assert_eq!((app.island.tab(), app.island.focus()), (Tab::Chat, Some(id.as_str())), "{texts:?}");
@@ -169,8 +168,8 @@ fn abrir_on_a_session_outside_opens_its_conversation_followed_while_it_works_and
     let _ = fs::remove_dir_all(dir);
 }
 
-/// Asked ("cliquei na opção do whatsapp e não aconteceu nada"): WhatsApp's line in Início opens Ajustes › Integrações
-/// while the gateway is not ready, and folds the island so the app shows.
+/// WhatsApp's line in Início opens Ajustes › Integrações while the gateway is not ready, and folds the island so the
+/// app shows.
 #[test]
 fn a_click_on_whatsapps_line_in_inicio_opens_its_settings() {
     let ctx = Context::default();

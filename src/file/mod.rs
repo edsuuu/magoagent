@@ -152,8 +152,8 @@ pub(crate) fn data_dir() -> Option<PathBuf> {
     }
 }
 
-/// The chats' folder when none was picked ("Nenhuma pasta"): `~/.magoagent`, outside the install folder (asked). The
-/// chats made in the old `data/projetos` keep it: their sessions live there.
+/// The chats' folder when none was picked ("Nenhuma pasta"): `~/.magoagent`, outside the install folder. The chats
+/// made in the old `data/projetos` keep it: their sessions live there.
 pub(crate) fn projects_dir() -> Option<PathBuf> {
     if cfg!(test) {
         return Some(test_dir().join("home-magoagent"));

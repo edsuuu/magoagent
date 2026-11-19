@@ -261,8 +261,7 @@ fn a_long_title_in_the_working_row_ends_in_an_ellipsis_before_the_stop_button() 
     assert_eq!(last, "…");
 }
 
-/// Asked: "do chat abrir em um pop, remove 'Abrir em miniatura', deixa apenas na ilha". With the island on, the MCP's
-/// mini chat opens the conversation in the island, never a panel over the canvas.
+/// With the island on, the MCP's mini chat opens the conversation in the island, never a panel over the canvas.
 #[test]
 fn the_small_conversation_is_the_islands_alone() {
     let mut app = app_with_chat();

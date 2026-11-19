@@ -40,10 +40,9 @@ pub(crate) fn prompt_gate(claude: Option<&crate::transcript::Session>, made_for_
     }
 }
 
-/// Whether an agent in `state` calls the person (asked: "'Agentes precisam de você' — em 90% dos casos não precisa: foram
-/// agentes novos, shells que o Maestro abriu. Ali deve aparecer apenas quando o Maestro me chamar, para ser mais claro"):
-/// an agent stopped on a question or a permission only the person answers (the Maestro's `ask_person` too), or one its
-/// hook holds for them (`held`). A shell, and an agent new, at work, finished or at rest, calls nobody.
+/// Whether an agent in `state` calls the person: an agent stopped on a question or a permission only the person answers
+/// (the Maestro's `ask_person` too), or one its hook holds for them (`held`). A shell, and an agent new, at work,
+/// finished or at rest, calls nobody.
 pub(crate) fn calls_person(state: AgentState, agent: bool, held: bool) -> bool {
     agent && (state == AgentState::Waiting || held)
 }

@@ -1,7 +1,6 @@
-//! A conversation kept after /clear (asked: "O chat não fica no histórico quando eu faço um /clear, precisaria
-//! manter"): what was said so far becomes a chat of its own in the list, by its title, with the agent's session to go on
-//! from and no card on the canvas; the chat that was cleared keeps its id (its card, its ropes, its team) and starts a
-//! new session.
+//! A conversation kept after /clear: what was said so far becomes a chat of its own in the list, by its title, with the
+//! agent's session to go on from and no card on the canvas; the chat that was cleared keeps its id (its card, its ropes,
+//! its team) and starts a new session.
 
 use super::*;
 
@@ -10,8 +9,7 @@ fn earlier_name(name: &str) -> String {
     format!("{name} (antes do /clear)")
 }
 
-/// What heads a conversation that /clear started (asked: "o /clear precisaria criar uma nova sessão, para ser mais
-/// claro"), a line across it with the time: "Nova sessão · 14:32".
+/// What heads a conversation that /clear started, a line across it with the time: "Nova sessão · 14:32".
 const NEW_SESSION: &str = "Nova sessão";
 
 /// The line that heads a new session, at `ms` since 1970.
@@ -81,7 +79,6 @@ mod tests {
         (app, id, dir)
     }
 
-    /// Asked: "O chat não fica no histórico quando eu faço um /clear, precisaria manter".
     #[test]
     fn clear_keeps_the_conversation_in_the_list_as_a_chat_of_its_own_and_the_card_starts_over() {
         let (mut app, id, dir) = talked(("Codex", "codex"), "Arrumar o login");
@@ -119,7 +116,6 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// Asked: "o /clear precisaria criar uma nova sessão, para ser mais claro".
     #[test]
     fn a_new_session_is_headed_by_its_line_and_its_time() {
         let mark = new_session_mark(now_ms());

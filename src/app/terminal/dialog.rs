@@ -48,7 +48,7 @@ impl DrawingApp {
             let tile = Vec2::new((DIALOG_WIDTH - (TILES_PER_ROW as f32 - 1.0) * TILE_GAP) / TILES_PER_ROW as f32, TILE_HEIGHT);
             for row in presets.chunks(TILES_PER_ROW) {
                 let (line, _) = ui.allocate_exact_size(Vec2::new(DIALOG_WIDTH, TILE_HEIGHT), Sense::hover());
-                // a row short of five sits in the middle (asked)
+                // a row short of five sits in the middle
                 let used = row.len() as f32 * tile.x + (row.len() as f32 - 1.0) * TILE_GAP;
                 let start = line.min + Vec2::new((DIALOG_WIDTH - used) / 2.0, 0.0);
                 for (i, preset) in row.iter().enumerate() {

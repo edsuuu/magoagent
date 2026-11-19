@@ -25,8 +25,7 @@ pub(crate) const MAX_ASKS: usize = 5;
 /// How long the badge of a turn that ended (its ✓, or the error) stays when nobody looks at it: then the pill sleeps.
 const BADGE_FOR: i64 = 20 * 60 * 1000;
 /// A pill whose session said nothing for this long is gone (it died without a SessionEnd). Until then a session whose
-/// turn ended stays, asleep (asked: "se eles nao está trabalhando ou se ja terminou ele fica com a expressao zzz ou com o
-/// check ali"), instead of leaving with its badge.
+/// turn ended stays, asleep, instead of leaving with its badge.
 const SILENT_FOR: i64 = 8 * 60 * 60 * 1000;
 /// A question answered "no, in the terminal" asks again through the other hook of the CLI: ignore it for this long.
 const DECLINED_FOR: i64 = 3000;
@@ -188,7 +187,7 @@ fn origin(payload: &Value) -> Origin {
         "cursor" => ("cursor", "Cursor", Some(rgb_hex(0xc0c4cc))),
         _ => ("code", "Claude Code", None),
     };
-    // asked ("fica sempre com o prefixo claude code"): the program no longer eats the room of the folder's name
+    // the program no longer eats the room of the folder's name
     let name = if cwd.is_empty() { program.to_string() } else { short_name(&folder_label(cwd)) };
     Origin { key: format!("{prefix}:{cwd}"), name, kind: program.into(), brand }
 }

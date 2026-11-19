@@ -258,8 +258,7 @@ mod tests {
         assert_eq!(machine.stage(), Stage::Petit, "folds at thirty seconds");
     }
 
-    /// Asked ("tem um tempo para ele ficar menor? como eu deixo configurável"): the compact island shrinks to the notch
-    /// when the person set, and with 0 never.
+    /// The compact island shrinks to the notch when the person set, and with 0 never.
     #[test]
     fn the_compact_island_shrinks_when_the_person_set_and_never_with_zero() {
         for (seconds, shrinks) in [(15_u16, true), (0, false)] {

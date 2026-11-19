@@ -254,9 +254,7 @@ impl DrawingApp {
             // Linux: the same, with the picture WebKit took while the page stood still (`portal_snaps`), but the page is
             // never hidden nor moved while the canvas moves: it stays where it was, cut away whole (`veil`), and takes
             // its new place and zoom at rest, still cut away, showing once it has drawn there. Hidden and shown again,
-            // or given a new size at each frame, WebKitGTK drew it black or at 200×200 for a moment (asked: "quando dou
-            // zoom e tiro zoom no canvas com o navegador aberto fica piscando preto", "O zoom do canvas deixa o
-            // navegador bugado")
+            // or given a new size at each frame, WebKitGTK drew it black or at 200×200 for a moment
             #[cfg(target_os = "linux")]
             let veiled = {
                 let moved = rect.map(|r| {

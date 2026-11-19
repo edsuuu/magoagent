@@ -1,7 +1,6 @@
-//! An agent's turn ending, on the island (asked: "Sempre quando termina, eles acionam a ilha e ela abre sem necessidade
-//! ou faz barulho; poderia só mudar a Luna com um check, aí eu clico e vejo"): one that finished neither opens it nor
-//! sounds; Luna wears a check until the person opens the island and sees what finished. One that stopped on a question
-//! or a permission still opens it, as a question does.
+//! An agent's turn ending, on the island: one that finished neither opens it nor sounds; Luna wears a check until the
+//! person opens the island and sees what finished. One that stopped on a question or a permission still opens it, as a
+//! question does.
 
 use crate::app::ui::agents::{AgentRow, AgentState};
 use crate::prelude::*;

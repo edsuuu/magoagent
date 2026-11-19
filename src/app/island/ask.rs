@@ -1,8 +1,7 @@
-//! The card of a question or a permission on the open island: one card
-//! with its wash (cyan asking, amber for a permission), the wizard inside it at the left, and at 116 the agent and the
-//! permission's command with a row of round buttons, or the question whole with its options as rows (each label and what
-//! it means, wrapped: asked "fica com os ... e eu tenho que passar o mouse em cima de cada opção") and "Outro", a box for
-//! an answer of one's own; the card grows with them, and past the window's room they scroll.
+//! The card of a question or a permission on the open island: one card with its wash (cyan asking, amber for a
+//! permission), the wizard inside it at the left, and at 116 the agent and the permission's command with a row of round
+//! buttons, or the question whole with its options as rows and "Outro", a box for an answer of one's own; the card grows
+//! with them, and past the window's room they scroll.
 
 use super::paint::{AMBER, BLACK, CARD, DIM, INK, Out, View, aim, font, semi, wash_with};
 use crate::app::chat::list::clipped;

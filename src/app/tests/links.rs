@@ -300,9 +300,9 @@ fn connect_skips_arrows_and_says_why_a_locked_node_wont_join() {
     assert!(app.connecting.is_none());
 }
 
-/// Asked: "a linha de conexão ficou em cima, e não vinculada ao terminal". A rope ties right on its windows' edges, at
-/// the middle of the two sides closest to each other (the reference app's closestEdgePins), with no gap: one window
-/// above the other ties bottom to top, side by side ties side to side, and it follows a window moved.
+/// A rope ties right on its windows' edges, at the middle of the two sides closest to each other (the reference app's
+/// closestEdgePins), with no gap: one window above the other ties bottom to top, side by side ties side to side, and
+/// it follows a window moved.
 #[test]
 fn a_rope_ties_at_the_middle_of_the_closest_sides_with_no_gap() {
     let mut app = DrawingApp::default();

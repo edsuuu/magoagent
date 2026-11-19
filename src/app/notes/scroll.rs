@@ -1,6 +1,6 @@
-//! A resting note whose text is longer than its card (asked: "redimensionar para ler a nota melhor"): the wheel over its
-//! text scrolls it, as a window's own wheel does (Ctrl + wheel still zooms the canvas), and a thin bar at its right edge
-//! says where it is (render/mod.rs `paint_note`). Kept for the session, by note id; typing, the editor scrolls instead.
+//! A resting note whose text is longer than its card: the wheel over its text scrolls it, as a window's own wheel does
+//! (Ctrl + wheel still zooms the canvas), and a thin bar at its right edge says where it is (render/mod.rs
+//! `paint_note`). Kept for the session, by note id; typing, the editor scrolls instead.
 
 use crate::prelude::*;
 

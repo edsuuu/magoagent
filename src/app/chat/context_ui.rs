@@ -130,7 +130,7 @@ Conector {}: {}{}",
         let info = self.chat_ctx.info.get(id);
         match info.and_then(|i| i.report.as_ref().map(|r| (i, r))) {
             Some((info, report)) => Some((report.used + info.since()) as f64 / report.window.max(1) as f64 * 100.0),
-            // asked: "pelo menos a % de contexto precisa aparecer no chat", before the panel is ever opened
+            // before the panel is ever opened
             None => self
                 .usage
                 .agents
@@ -300,8 +300,7 @@ mod tests {
         assert!(!app.prefs.chat_panel);
     }
 
-    /// Asked: "pelo menos a % de contexto precisa aparecer no chat". After a reply, before any `/context`: what the reply
-    /// used over the window its end told.
+    /// After a reply, before any `/context`: what the reply used over the window its end told.
     #[test]
     fn a_reply_alone_gives_the_context_share() {
         let mut app = DrawingApp::default();

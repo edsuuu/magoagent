@@ -174,8 +174,8 @@ impl DrawingApp {
         entries.extend(self.outside_pills().into_iter().map(|pill| {
             let last = self.waiting_line(&pill.id).unwrap_or(if pill.activity.is_empty() { "Sem atividade ainda".to_string() } else { pill.activity });
             Entry {
-                // the name is the folder's (asked: "fica sempre com o prefixo claude code"); a program other than Claude
-                // Code, the group's usual one, says itself before what it does
+                // the name is the folder's; a program other than Claude Code, the group's usual one, says itself before
+                // what it does
                 last: if pill.kind == "Claude Code" || pill.kind == pill.name { last } else { format!("{} · {last}", pill.kind) },
                 ago: (pill.at > 0).then(|| (now - pill.at).max(0) as f64 / 1000.0),
                 id: pill.id,

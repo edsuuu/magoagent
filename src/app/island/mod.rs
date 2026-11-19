@@ -58,37 +58,33 @@ pub(crate) fn notch_at(at: Pos2) -> Option<Rect> {
 }
 
 /// The sizes of the island: the closed one, the open one and their corners.
-// asked: "entre a capa e a Luna, e entre a frequência e os mini mascotes, tem um espaço muito grande": about 15 each
-// with two minis
+// about 15 each with two minis
 pub(crate) const COMPACT_W: f32 = 188.0;
 /// How far the middle of the wizard (30 wide) is from the compact island's left side: 12 of room to the edge, as the
-/// minis have at the right (asked: "coloca um padding na esquerda da Luna, ela ficou muito colada").
+/// minis have at the right.
 pub(crate) const COMPACT_SIDE: f32 = 27.0;
-/// The same for the minis' grid at the right, which keeps 12 of room to the edge (asked: "os mini mascotes, coloca um
-/// padding na direita").
+/// The same for the minis' grid at the right, which keeps 12 of room to the edge.
 pub(crate) const MINIS_SIDE: f32 = 27.0;
-// asked: "essa barra da ilha está muito grande, diminui uns 1,5 px"
 pub(crate) const COMPACT_H: f32 = 38.5;
 /// Standing up on a side of the screen, the compact island is this tall (`COMPACT_H` wide): the wizard at the top, the
 /// minis at the bottom.
 pub(crate) const COMPACT_TALL: f32 = 128.0;
-/// The same while a song shows: its cover and its bars go between the wizard and the minis (asked: "na ilha lateral, não
-/// fica a capa da música e frequência em vertical").
+/// The same while a song shows: its cover and its bars go between the wizard and the minis.
 pub(crate) const COMPACT_TALL_SONG: f32 = 176.0;
 pub(crate) const EXPANDED_W: f32 = 760.0;
 pub(crate) const CLOSED_W: f32 = 80.0;
 pub(crate) const CLOSED_H: f32 = 24.0;
 const CLOSED_CORNER: f32 = 10.0;
 const COMPACT_CORNER: f32 = 18.0;
-/// Around a camera notch (asked: "ajustar a ilha com a ilha da câmera do Mac para ficar na mesma proporção"), the wing
-/// each side of it: closed, the wizard's face (with a song, its cover beside her and the bars on the other side);
-/// compact, the wizard and the minis (with a song or the voice, the cover and the bars split by the notch too).
+/// Around a camera notch, the wing each side of it: closed, the wizard's face (with a song, its cover beside her and
+/// the bars on the other side); compact, the wizard and the minis (with a song or the voice, the cover and the bars
+/// split by the notch too).
 const CLOSED_WING: f32 = 30.0;
 const CLOSED_WING_SONG: f32 = 48.0;
 const COMPACT_WING: f32 = 54.0;
 const COMPACT_WING_WIDE: f32 = 104.0;
-/// Open around a notch, its header is the notch's row (asked: "deixar os botões separando quando estivesse na posição da
-/// câmera"): each wing holds the tabs at the left (seven at most, 35 apart from 14 in) or the buttons at the right.
+/// Open around a notch, its header is the notch's row: each wing holds the tabs at the left (seven at most, 35 apart
+/// from 14 in) or the buttons at the right.
 const HEADER_WING: f32 = 14.0 + 7.0 * 35.0 + 6.0;
 /// The conversation at least this big, in points.
 const CHAT_MIN: (f32, f32) = (420.0, 300.0);
@@ -254,8 +250,7 @@ pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, settings: bool, tall:
     }
     match (pinned, tab) {
         (true, _) => (Vec2::new(EXPANDED_W, 42.0 + body + 10.0), EXPANDED_CORNER),
-        // its settings are a short page of their own, whatever tab is under them (asked: "clico nas configurações e ela
-        // não se adapta, fica com o mesmo tamanho da maior")
+        // its settings are a short page of their own, whatever tab is under them
         _ if settings => (Vec2::new(EXPANDED_W, HOME_H), EXPANDED_CORNER),
         (_, Tab::Home) => (Vec2::new(EXPANDED_W, FEED_H), EXPANDED_CORNER),
         (_, Tab::GitHub) => (Vec2::new(EXPANDED_W, github::HEIGHT), EXPANDED_CORNER),
@@ -267,9 +262,9 @@ pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, settings: bool, tall:
 }
 
 /// The island of `size` on a screen whose camera notch is `notch` big: it grows out of the notch, which it hides, as
-/// black as it is. Closed and compact it is the notch with a wing each side, as tall as it (asked: "não pegou a proporção
-/// de altura"), wider while a `song` shows or the `voice` talks; open, its header is the notch's row, so it is as tall as
-/// anywhere and at least wide enough for the tabs and the buttons each side of the camera.
+/// black as it is. Closed and compact it is the notch with a wing each side, as tall as it, wider while a `song` shows or
+/// the `voice` talks; open, its header is the notch's row, so it is as tall as anywhere and at least wide enough for the
+/// tabs and the buttons each side of the camera.
 pub(crate) fn around_notch(shape: Shape, size: Vec2, notch: Vec2, song: bool, voice: bool) -> Vec2 {
     let wings = |wing: f32| notch.x + 2.0 * wing;
     match shape {
@@ -679,7 +674,7 @@ impl DrawingApp {
                 None => self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map_or(0, |transcript| log::said(&transcript.items).count()),
             };
             // the size the person pulled it to is the open conversation's; with none open, the page is its plain small
-            // self (asked: "se não tiver chat aberto, ele não é para manter")
+            // self
             let open = self.island.session.is_some() || self.chat_agent.as_ref().is_some_and(|id| self.chats.iter().any(|chat| &chat.id == id));
             talk_size(self.island.pulled.or(self.prefs.island_talk).filter(|_| open), said, work)
         };
@@ -715,8 +710,7 @@ impl DrawingApp {
         if busy && !island.was_busy {
             island.machine.reveal(time);
         }
-        // the end is celebrated quietly (asked: "Sempre quando termina, eles acionam a ilha e ela abre sem necessidade ou
-        // faz barulho"): no chime
+        // the end is celebrated quietly: no chime
         if island.was_busy && mood == Mood::Ready {
             island.celebrate_until = time + 6.0;
         }
@@ -841,8 +835,8 @@ impl DrawingApp {
         island.holding = out.holding;
         island.typing = out.typing;
         // its window lost the focus: a click elsewhere (another program, the app's window, the desktop). The open island
-        // folds, as a menu does (asked: "se eu abrir a ilha e clicar fora ela precisa fechar"); a question waiting on
-        // the person, or a new agent's form half filled, keeps it open as before ("se for pergunta, mantém como está")
+        // folds, as a menu does; a question waiting on the person, or a new agent's form half filled, keeps it open as
+        // before ("se for pergunta, mantém como está")
         let blurred = std::mem::replace(&mut island.focused, out.focused) && !out.focused;
         if blurred && island.open && !pinned && island.form.is_none() && !island.holding {
             island.machine.force_petit(time);
@@ -896,9 +890,8 @@ impl DrawingApp {
 mod tests {
     use super::*;
 
-    /// Asked: "a ilha ainda tem uns problemas, meio travada ou algo assim, em notebook que não tem placa de vídeo
-    /// dedicada". Drawing itself (`replay.rs`), the island at rest no longer brings the app's frames at the ambient rate,
-    /// each of which painted the whole app: only when its stage gives way by the clock; the person on it brings them.
+    /// Drawing itself (`replay.rs`), the island at rest no longer brings the app's frames at the ambient rate, each of
+    /// which painted the whole app: only when its stage gives way by the clock; the person on it brings them.
     #[test]
     fn drawing_itself_the_island_brings_the_apps_frames_only_by_the_clock() {
         let ambient = Some(crate::app::update::AMBIENT);
@@ -925,8 +918,8 @@ mod tests {
         assert_eq!(main_state(Mood::Ready, false), MagoState::Idle);
     }
 
-    /// Asked: "aqui como fica, fica sempre com o prefixo claude code": the pills and the cards show the session's folder,
-    /// its program beside it (the card's kind); the app's agents in colours of their own, the same as in the lists.
+    /// The pills and the cards show the session's folder, its program beside it (the card's kind); the app's agents in
+    /// colours of their own, the same as in the lists.
     #[test]
     fn the_pills_show_each_agent_by_its_own_name_and_colour() {
         let mut app = DrawingApp::default();
@@ -968,8 +961,8 @@ mod tests {
         }
     }
 
-    /// Asked ("enquanto ela trabalha, aqui na ilha ela pega o mesmo comportamento"): a chat of the app is on the island
-    /// as its band shows it, working, talking while it writes, and done when its answer ends.
+    /// A chat of the app is on the island as its band shows it, working, talking while it writes, and done when its
+    /// answer ends.
     #[test]
     fn a_chat_of_the_app_is_on_the_island_as_its_band_shows_it() {
         use crate::transcript::{ChatItem, Transcript};
@@ -993,9 +986,8 @@ mod tests {
         assert_eq!(view.lines[0].mago, MagoState::Done);
     }
 
-    /// Asked: "Sempre quando termina, eles acionam a ilha e ela abre sem necessidade ou faz barulho; poderia só mudar a
-    /// Luna com um check, aí eu clico e vejo". A turn that ends leaves the island as it was and quiet, Luna with a check
-    /// until it is opened; one stopped by Esc gets none; one that stops on a question still opens it.
+    /// A turn that ends leaves the island as it was and quiet, Luna with a check until it is opened; one stopped by Esc
+    /// gets none; one that stops on a question still opens it.
     #[test]
     fn a_turn_that_ends_puts_a_check_on_luna_quietly_until_the_island_is_opened() {
         let frame = |app: &mut DrawingApp, ctx: &Context, time: f64| {
@@ -1123,8 +1115,8 @@ mod tests {
         assert_eq!(chat_size(Some([800.0, 500.0]), true, work), Vec2::new(1344.0, 728.0), "big: 70% of the work area");
     }
 
-    /// Asked: "ajustar a ilha com a ilha da câmera do Mac para ficar na mesma proporção": around a 179x32 notch, closed
-    /// it is the notch with a wing each side and as tall; compact, wider; open, its panel under the notch's row.
+    /// Around a 179x32 notch, closed it is the notch with a wing each side and as tall; compact, wider; open, its panel
+    /// under the notch's row.
     #[test]
     fn around_a_notch_the_island_is_the_notch_grown() {
         let notch = Vec2::new(179.0, 32.0);

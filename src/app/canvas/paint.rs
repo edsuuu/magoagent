@@ -364,8 +364,7 @@ impl DrawingApp {
         };
         if let Some(note) = self.scene.elements.get(index).and_then(|label| note_of_label(&self.scene.elements, label)) {
             // the note typed in is in front (`raise_card`), however its typing began: its card and text are drawn over
-            // the cards that covered it, as the editor is (asked: "cliquei em editar a nota e o texto saiu em cima do
-            // terminal")
+            // the cards that covered it, as the editor is
             let note = self.raise_card(note);
             return self.note_editor(ctx, self.editing.unwrap_or(index), note);
         }

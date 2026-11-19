@@ -57,7 +57,7 @@ fn maestro_recruits_opens_portals_and_connects() {
     assert_eq!((first.terminal.as_ref().unwrap().cwd.as_str(), first.terminal.as_ref().unwrap().command.as_str()), ("/tmp/projeto", "codex"));
     assert!(app.links()[&boss_id].contains(&first.id));
     // the next one gets a name of its own and the free spot nearest the caller, lined up with it: beside it, not further
-    // down or off to one side (asked: "a posição dos terminais, às vezes ele junta tudo na direita")
+    // down or off to one side
     app.recruit(&boss_id, "claude", tx.clone());
     assert!(rx.recv().unwrap().unwrap().contains("criado à sua direita"));
     let second = newest(&app);
@@ -241,8 +241,7 @@ fn a_window_a_chats_agent_draws_is_roped_to_its_card() {
     assert!(other.chat_node("c").is_none());
 }
 
-/// Asked: "a posição dos terminais, precisa corrigir pois às vezes ele junta tudo na direita". What an agent opens goes
-/// around it, the nearest free place first, and none overlaps another.
+/// What an agent opens goes around it, the nearest free place first, and none overlaps another.
 #[test]
 fn the_windows_an_agent_opens_go_around_it_not_all_to_one_side() {
     let mut app = DrawingApp::default();
@@ -273,9 +272,8 @@ fn the_windows_an_agent_opens_go_around_it_not_all_to_one_side() {
     assert_eq!(side_of(Rect::from_min_size(Pos2::new(0.0, 500.0), size), b), "abaixo de você");
 }
 
-/// Asked: "precisa ver o espaçamento das coisas no canvas, para não ficar tudo grudado". A spot asked for 20 away from
-/// a window was taken as free and left them touching: a window opens at least 56 from every other, the spot lined up
-/// 60 beside the one that opens it still free.
+/// A spot asked for 20 away from a window was taken as free and left them touching: a window opens at least 56 from
+/// every other, the spot lined up 60 beside the one that opens it still free.
 #[test]
 fn a_new_window_keeps_room_from_the_others() {
     let mut app = DrawingApp::default();

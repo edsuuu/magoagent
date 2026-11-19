@@ -87,7 +87,7 @@ impl DrawingApp {
     /// opens or closes its panel. Hidden over the chat, which the panels don't cover.
     pub(crate) fn pane_buttons(&mut self, ui: &mut egui::Ui) {
         self.panes.buttons = None;
-        // over the chat, which the panels don't cover, and on the welcome (asked: "eles nem devem aparecer na intro")
+        // over the chat, which the panels don't cover, and on the welcome
         if self.chat_open || self.welcome.is_some() {
             return;
         }

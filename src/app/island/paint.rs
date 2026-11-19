@@ -330,12 +330,11 @@ impl DrawingApp {
         let grip = ui.interact(rect, ui.scope_id().with("island_grip"), Sense::click_and_drag());
         out.drag = grip.drag_started();
         out.holding = ui.input(|input| input.pointer.any_down()) && out.hovered;
-        // asked: "se eu tiver com o foco no input na ilha, ela não pode fechar"; another window taking the system's focus
-        // lets it fold again
+        // another window taking the system's focus lets it fold again
         let focused = ui.memory(|memory| memory.focused());
         out.typing = ui.input(|input| input.focused) && focused.and_then(|id| ui.ctx().read_response(id)).is_some_and(|field| rect.intersects(field.rect));
         let opens = anim.x < EXPANDED_W - 40.0;
-        // what opens by the click shows the hand (asked: "precisa ter o cursor pointer")
+        // what opens by the click shows the hand
         let grip = if opens { grip.on_hover_cursor(CursorIcon::PointingHand) } else { grip };
         out.wake = grip.clicked() && opens;
         // each content comes and goes on its own transition (`Layers`); the page that shows says where the wizard goes
@@ -359,9 +358,8 @@ impl DrawingApp {
             ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
                 ui.set_opacity(open);
                 ui.set_clip_rect(rect.intersect(ui.clip_rect()));
-                // around a notch the header is its row, the tabs left of the camera and the buttons right of it (asked:
-                // "um espaço cinza enorme no topo que daria para remover"): the panel starts above so its header's middle
-                // is the notch's
+                // around a notch the header is its row, the tabs left of the camera and the buttons right of it: the
+                // panel starts above so its header's middle is the notch's
                 let panel = view.notch.map_or(rect, |notch| rect.with_min_y(rect.top() + notch.y / 2.0 - HEADER_MID));
                 self.island_open(ui, panel, view, form, look, colors, time, &mut out);
             });
@@ -380,15 +378,13 @@ impl DrawingApp {
             let (at, size) = view.bot.unwrap_or((wanted.at, wanted.size));
             let center = rect.min + at;
             let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
-            // while the music plays and no agent wants the person, she dances to it, open too (asked: "ali a Luna não
-            // reage à música"); open and paused, she does not nap there. An agent at work does not stop her (asked:
-            // "tem momento que a Luna fica parada como se nada estivesse tocando")
+            // while the music plays and no agent wants the person, she dances to it, open too; open and paused, she
+            // does not nap there. An agent at work does not stop her
             let playing = self.integrations.spotify.now.as_ref().is_some_and(|now| now.playing);
             let calm = dances_through(wanted.state) && (view.shape != Shape::Open || playing);
-            // she dances only to a song heard here; not heard (or paused), she is awake and can be poked, with her own
-            // faces (asked: "se eu abro a ilha ela tem que acordar", "no notch os olhos da Luna somem")
-            // dancing she can still be poked dizzy (asked: "se a Luna está dançando eu não consigo clicar nela para ela ficar
-            // tonta"): the pokes go to her own motion, and dizzy she stops dancing until it passes (`Luna`)
+            // she dances only to a song heard here; not heard (or paused), she is awake and can be poked, with her own faces
+            // dancing she can still be poked dizzy: the pokes go to her own motion, and dizzy she stops dancing until it
+            // passes (`Luna`)
             let luna = self.island_luna(calm).with(wanted.state, view.pointer, true);
             let pointer = view.pointer.or_else(|| painter.ctx().pointer_latest_pos());
             if luna.dances(time) && pointer.is_some_and(|at| at.distance(center) < size * 0.45) && painter.ctx().input(|input| input.pointer.primary_pressed())
@@ -404,17 +400,16 @@ impl DrawingApp {
         out
     }
 
-    /// The closed notch: only the wizard's face, in the middle, its eyes on the cursor (asked: "ele não acompanha o
-    /// cursor"; the reference's looks around by itself there), and around by itself while the cursor is not known. The
-    /// compact island: the wizard at the left, its eyes on the cursor, and a mini one per agent
-    /// in a grid at the right (`mini_cells`), in its colour, with a badge on the ones that wait. While a song plays,
-    /// Spotify's pill gives its place to the song's cover and to the sound's bars (`pill.rs`).
+    /// The closed notch: only the wizard's face, in the middle, its eyes on the cursor, and around by itself while the
+    /// cursor is not known. The compact island: the wizard at the left, its eyes on the cursor, and a mini one per
+    /// agent in a grid at the right (`mini_cells`), in its colour, with a badge on the ones that wait. While a song
+    /// plays, Spotify's pill gives its place to the song's cover and to the sound's bars (`pill.rs`).
     fn island_small(&self, ui: &mut egui::Ui, rect: Rect, view: &View, compact: bool, time: f64, out: &mut Out) {
         let state = main_state(view.mood, view.celebrating);
-        // while a song plays, its cover and the sound's bars fill the pill (asked: "como a Dynamic Island do iPhone")
-        // playing or paused, as the Dynamic Island keeps the song while it pauses (its bars then rest as dots)
-        // paused for a while, the song leaves the pill (`Spotify::shown`)
-        // standing up on a side of the screen, the closed notch and the compact one have them one under the other
+        // while a song plays, its cover and the sound's bars fill the pill playing or paused, as the Dynamic Island
+        // keeps the song while it pauses (its bars then rest as dots) paused for a while, the song leaves the pill
+        // (`Spotify::shown`) standing up on a side of the screen, the closed notch and the compact one have them one
+        // under the other
         let upright = view.dock.upright();
         let now = self.integrations.spotify.shown(time);
         // the bars hear the song whether or not Luna dances to it (`Ear::groove` asks for the listening)
@@ -428,9 +423,9 @@ impl DrawingApp {
                 Some(_) => Pos2::new(rect.left() + (rect.width() - notch) / 4.0, rect.center().y),
                 None => rect.center(),
             };
-            // while the music plays and no agent wants the person, she dances to it (asked: "a luna dançando")
+            // while the music plays and no agent wants the person, she dances to it
             let luna = self.island_luna(dances_through(state)).with(state, view.pointer, false);
-            // the notch is 24 tall: she keeps 3 above and below (asked: "a Luna está quase colada, diminui um pouco")
+            // the notch is 24 tall: she keeps 3 above and below
             const LUNA: f32 = 18.0;
             super::replay::live(ui.painter(), time, move |painter, time| luna.paint(painter, center, LUNA, time));
             if view.finished {
@@ -584,9 +579,8 @@ impl DrawingApp {
     }
 
     /// The tabs at the left (Início, the conversation, Chats, Claude Code, GitHub and Spotify when they are on, the new
-    /// chat); the voice, the settings and the close at the right. Each takes its own press with the hand over it (the
-    /// island under them is dragged by the press: asked "o cursor fica em modo visual como move e não com cursor
-    /// pointer"); their names go to the system's accessibility, not to a tip over the page under them.
+    /// chat); the voice, the settings and the close at the right. Each takes its own press with the hand over it; their
+    /// names go to the system's accessibility, not to a tip over the page under them.
     fn island_header(&self, ui: &mut egui::Ui, rect: Rect, view: &View, out: &mut Out, time: f64) {
         let center_y = rect.top() + HEADER_MID;
         let pinned = !view.asks.is_empty();
@@ -596,7 +590,7 @@ impl DrawingApp {
             let area = Rect::from_center_size(Pos2::new(rect.left() + 14.0 + 15.0 + index as f32 * 35.0, center_y), Vec2::new(30.0, 28.0));
             let response = pressable(ui, area, ui.scope_id().with(("island_tab", index)), tip);
             let on = view.tab == tab && !pinned && !view.settings;
-            // a round mark under the icon, not a capsule (asked: "a aba ativa tá meia oval")
+            // a round mark under the icon, not a capsule
             if on {
                 ui.painter().circle_filled(area.center(), TAB_DOT, TAB_ON);
             } else if response.hovered() {
@@ -680,8 +674,7 @@ impl DrawingApp {
             top += height + 10.0;
         }
         let row_font = font(12.5);
-        // 1: the sound, its volume, and the colours
-        // on whole pixels and a point lower, on the line of the "Som" letters (asked: "o toggle de som está muito para cima")
+        // 1: the sound, its volume, and the colours on whole pixels and a point lower, on the line of the "Som" letters
         let switch =
             egui::emath::GuiRounding::round_to_pixels(Rect::from_min_size(Pos2::new(left, centers[0] - 8.0), Vec2::new(32.0, 18.0)), ui.pixels_per_point());
         let response = ui.interact(switch, ui.scope_id().with("island_settings_sound"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
@@ -872,9 +865,8 @@ fn badge(painter: &Painter, center: Pos2, line: &Line, radius: f32) {
     }
 }
 
-/// What a session outside is at, on its mini's shoulder (asked: "se eles nao está trabalhando ou se ja terminou ele fica
-/// com a expressao zzz ou com o check ali"): `!` it waits on the person, `✓` its turn ended, `✕` it failed, a `z` that
-/// drifts up while it is stopped; working, its mini is awake and says it.
+/// What a session outside is at, on its mini's shoulder: `!` it waits on the person, `✓` its turn ended, `✕` it failed,
+/// a `z` that drifts up while it is stopped; working, its mini is awake and says it.
 pub(super) fn shoulder_mark(painter: &Painter, center: Pos2, body: f32, line: &Line, time: f64) {
     let at = center + Vec2::new(body * 0.42, -body * 0.4);
     let mark = match (line.badge, line.state) {
@@ -1059,8 +1051,8 @@ pub(super) fn wash(painter: &Painter, card: Rect, state: MagoState) {
     wash_with(painter, card, color, strength, 0.0);
 }
 
-/// A wash of `color` over the whole card, strongest under its bottom middle, `shift` points to the side (asked: "esse
-/// blur seria melhor se tivesse no card todo"): an ellipse as wide as the card, in layers.
+/// A wash of `color` over the whole card, strongest under its bottom middle, `shift` points to the side: an ellipse
+/// as wide as the card, in layers.
 pub(super) fn wash_with(painter: &Painter, card: Rect, color: Color32, strength: f32, shift: f32) {
     let center = Pos2::new(card.center().x + shift, card.bottom() + card.height() * 0.15);
     let reach = wash_reach(card);

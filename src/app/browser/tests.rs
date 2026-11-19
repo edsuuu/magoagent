@@ -93,9 +93,8 @@ fn a_linux_page_picture_is_unpadded_and_cropped() {
     assert!(webkit::crop(4, 2, &picture[..16], [0.0, 0.0, 2.0, 2.0], 1.0).is_none());
 }
 
-/// Asked: "quando dou zoom e tiro zoom no canvas com o navegador aberto fica piscando preto". Moving, the page is cut
-/// away and its picture goes with the card; just stopped, it lays out unseen; then it shows over its picture, which goes
-/// after.
+/// Moving, the page is cut away and its picture goes with the card; just stopped, it lays out unseen; then it shows over
+/// its picture, which goes after.
 #[test]
 fn a_page_hides_while_its_card_moves_and_comes_back_unseen_first() {
     assert_eq!(motion(None), Motion::Still, "not on the canvas");
@@ -109,9 +108,9 @@ fn a_page_hides_while_its_card_moves_and_comes_back_unseen_first() {
     assert_eq!(motion(Some(0.15)), Motion::Unseen);
 }
 
-/// Asked: "O zoom do canvas deixa o navegador bugado". The frame the card moves, the page's last picture is painted over
-/// its new page box already (the page is cut away from that frame on, `sync_portals`), and where the card painted it is
-/// kept: the zoom buttons change the view after the canvas painted, and the page waits a frame for its picture.
+/// The frame the card moves, the page's last picture is painted over its new page box already (the page is cut away from
+/// that frame on, `sync_portals`), and where the card painted it is kept: the zoom buttons change the view after the
+/// canvas painted, and the page waits a frame for its picture.
 #[test]
 fn a_moving_card_carries_its_pages_picture_from_the_first_frame() {
     let ctx = Context::default();

@@ -1,8 +1,6 @@
 //! The cards (windows and notes) stack in the drawing's order, over the drawings, and a press brings one to the front,
-//! its live parts and a portal's page following it. Asked: "olha o bug aqui quando eu tenho um terminal aberto, pode ver
-//! também no repo ali como funciona a hierarquia de elemento no canvas e corrigir por favor" (a note selected over a
-//! browser under its bar and page; a browser over a terminal with its bar and page over the terminal's text but its
-//! header under it).
+//! its live parts and a portal's page following it. (a note selected over a browser under its bar and page; a browser
+//! over a terminal with its bar and page over the terminal's text but its header under it).
 
 use super::*;
 
@@ -90,9 +88,8 @@ fn a_portals_bar_and_a_focused_terminals_grid_stack_with_their_cards() {
     assert_eq!(app.live_layers(&app.scene.elements[1]), vec![middle(egui::Id::unique("terminal_overlay"))]);
 }
 
-/// Asked: "cliquei em editar a nota e o texto saiu em cima do terminal". However its typing begins (here Enter on the
-/// selected note, with no press on it), the note typed in comes in front of the terminal over it: its card and text are
-/// drawn where the editor is, over the terminal.
+/// However its typing begins (here Enter on the selected note, with no press on it), the note typed in comes in front
+/// of the terminal over it: its card and text are drawn where the editor is, over the terminal.
 #[test]
 fn a_note_typed_in_comes_in_front_of_the_card_covering_it() {
     let ctx = Context::default();

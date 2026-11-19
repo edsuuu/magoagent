@@ -26,8 +26,8 @@ use kit::K;
 pub(crate) const SETTINGS_TABS: [&str; 10] = ["Geral", "Terminal", "Agentes", "Chat", "Voz", "Ok Mago", "Integrações", "Atalhos", "Dados", "Sobre"];
 const TAB_ICONS: [Icon; 10] =
     [Icon::Gear, Icon::CodeBlock, Icon::Agents, Icon::Tool(Tool::Chat), Icon::Composer, Icon::Palette, Icon::Connect, Icon::Menu, Icon::Open, Icon::Eye];
-/// Tabs kept in the code but not shown (the indexes of the others do not move). Voz and Ok Mago are off the menu
-/// (asked: "oculta no menu de configurações a opção Ok Mago" and "oculta também o modo voz").
+/// Tabs kept in the code but not shown (the indexes of the others do not move). Voz and Ok Mago are off the
+/// menu.
 pub(crate) const HIDDEN_TABS: [&str; 2] = ["Voz", "Ok Mago"];
 pub(crate) const LANGUAGES: [&str; 3] = ["Automático", "Português", "English"];
 

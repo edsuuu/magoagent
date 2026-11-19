@@ -543,8 +543,8 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
             ..Default::default()
         })),
         // a tool that failed shows it on its own step (✗, why on its row and whole in its card): a line of its own for
-        // each one made the conversation a column of "Ferramenta falhou" (asked: "tem muito ponto que 'Ferramenta
-        // falhou' no chat"), most of them the agent's own retries. Only a refusal and a denied permission say more.
+        // each one made the conversation a column of "Ferramenta falhou", most of them the agent's own retries. Only a
+        // refusal and a denied permission say more.
         "tool_result" if block["is_error"] == true => {
             let text = block_text(&block["content"]);
             if text.starts_with("The user doesn't want to proceed with this tool use") {

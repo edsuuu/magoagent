@@ -271,8 +271,7 @@ pub(crate) fn wsl_quoted_paths(line: &str) -> String {
 }
 
 /// A message for an agent in WSL: the Windows paths in it (a pasted picture's, a dropped file's), each a word or in
-/// quotes, as WSL sees them (asked: the picture pasted in a chat in WSL went as `C:\Users\…`, which it cannot open). A
-/// short name (`IGORRI~1`) is made long first: `/mnt/c` knows only the long ones.
+/// quotes, as WSL sees them. A short name (`IGORRI~1`) is made long first: `/mnt/c` knows only the long ones.
 pub(crate) fn wsl_prompt_paths(text: &str) -> String {
     let path = |word: &str| {
         if !word.contains('~') || word.as_bytes().get(1) != Some(&b':') {

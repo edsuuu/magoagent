@@ -42,9 +42,8 @@ pub(crate) struct Chat {
     /// Renamed by the person (Renomear on its row): `name` is its title, not the conversation's own.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) named: bool,
-    /// Opened by the chat screen and not talked to yet (asked: "só cria o chat se enviar a primeira mensagem"): only
-    /// that screen shows it, with no card on the canvas and nothing saved, and it goes when another chat is picked.
-    /// Its first message makes it a chat.
+    /// Opened by the chat screen and not talked to yet: only that screen shows it, with no card on the canvas and
+    /// nothing saved, and it goes when another chat is picked. Its first message makes it a chat.
     #[serde(skip)]
     pub(crate) draft: bool,
 }
@@ -188,8 +187,7 @@ pub(crate) fn folder(cwd: &str) -> Option<PathBuf> {
     match cwd.strip_prefix('~') {
         Some(rest) => home.map(|h| if rest.is_empty() { h } else { h.join(rest.trim_start_matches(['/', '\\'])) }),
         None if cwd.is_empty() => home,
-        // an agent in WSL names its folders as Linux sees them: on Windows that is the distro's share (asked: "A pasta
-        // /home/bkuste2/projects/hdtb não existe")
+        // an agent in WSL names its folders as Linux sees them: on Windows that is the distro's share
         None if cfg!(windows) && cwd.starts_with('/') && !cwd.starts_with("//") => match crate::app::system::wsl::wsl_distro_in_use() {
             Some(distro) => Some(PathBuf::from(crate::app::system::wsl::windows_path(&distro.name, cwd))),
             None => Some(PathBuf::from(cwd)),
@@ -213,8 +211,7 @@ pub(crate) fn no_folder(cwd: &str) -> bool {
     crate::file::projects_dir().is_some_and(|dir| plain(cwd) == plain(&dir.display().to_string()))
 }
 
-/// A chat's name: its agent and its folder's, only the agent with no folder picked (asked: "no chat fica .magoagent,
-/// não é para ter, é para ficar Nenhuma pasta").
+/// A chat's name: its agent and its folder's, only the agent with no folder picked.
 pub(crate) fn chat_name(agent: &str, cwd: &str) -> String {
     if no_folder(cwd) { agent.to_string() } else { format!("{agent} · {}", folder_label(cwd)) }
 }

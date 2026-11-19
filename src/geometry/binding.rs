@@ -119,8 +119,7 @@ pub(crate) fn resolve_arrow(elements: &[Element], arrow: &mut Element) -> bool {
     if let ElementKind::Line { points, .. } = &mut arrow.kind {
         let n = points.len();
         // a rope ties right on its windows' edges, at the middle of the two sides closest to each other (as the
-        // reference app pins its ropes); an arrow stops short of its shapes (asked: "a linha de conexão ficou em
-        // cima, e não vinculada ao terminal")
+        // reference app pins its ropes); an arrow stops short of its shapes
         if let (true, Some((from, _)), Some((to, _))) = (arrow.rope, &start, &end)
             && n >= 2
         {

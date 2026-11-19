@@ -169,7 +169,6 @@ impl DrawingApp {
         out.rect = frame.response.rect;
         out.send = ready && (frame.inner || clicked_send);
         // under the card only what the voice is doing (dictation, the call); the keys' hint is gone
-        // (the owner asked: the box says enough)
         let voice = &self.voice;
         let line = if let Some(dictation) = &self.dictation {
             dictation.line().map(|l| (l, look.soft))

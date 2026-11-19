@@ -54,7 +54,7 @@ pub(crate) const GLASS_BUTTON: f32 = 30.0;
 pub(crate) const GLASS_GAP: f32 = 5.0;
 pub(crate) const GLASS_HEIGHT: f32 = 40.0;
 const GLASS_END: f32 = 6.5;
-/// The corners' pills (the floors, Ver tudo with the zoom and the minimap, Desfazer and Refazer): 2 smaller (asked).
+/// The corners' pills (the floors, Ver tudo with the zoom and the minimap, Desfazer and Refazer): 2 smaller.
 pub(crate) const CORNER_HEIGHT: f32 = GLASS_HEIGHT - 2.0;
 pub(crate) const CORNER_BUTTON: f32 = GLASS_BUTTON - 2.0;
 /// Their icons, a little over the 16 the app's icons are drawn at.
@@ -249,9 +249,8 @@ pub(crate) struct UiColors {
     // agent states: error, waiting for you; as text on the panels too
     pub(crate) danger: Color32,
     pub(crate) warning: Color32,
-    /// Code and file names in a chat's words, and the links to files: blue-purple letters on no ground (asked: "quando é
-    /// código ou arquivo, ele fica com o background gray; ao invés disso muda a cor, deixa tipo um azul/purple igual o
-    /// Claude Code faz"), the lavender of Claude Code's dark theme and its deeper blue on a light one.
+    /// Code and file names in a chat's words, and the links to files: blue-purple letters on no ground, the lavender of
+    /// Claude Code's dark theme and its deeper blue on a light one.
     pub(crate) code: Color32,
 }
 

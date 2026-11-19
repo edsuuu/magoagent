@@ -1,8 +1,7 @@
 //! Linux on X11 (XWayland in a Wayland session): a frame goes to the screen only once the GPU has drawn all of it. The
 //! swap does not wait for the screen there (main.rs), and XWayland took the window's picture while the GPU was still
 //! drawing it: now and then a frame showed the canvas without the sidebar and the bar's buttons, or the whole window
-//! gray (asked: "No zoom, a tela meio que fica piscando quando faço o zoom e tiro o zoom"). Recorded on an NVIDIA card
-//! during a zoom: 61 of 1440 frames so, none with the wait.
+//! gray. Recorded on an NVIDIA card during a zoom: 61 of 1440 frames so, none with the wait.
 
 use crate::prelude::*;
 

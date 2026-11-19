@@ -382,8 +382,8 @@ impl DrawingApp {
 }
 
 impl DrawingApp {
-    /// Remover chat, confirmed (asked: a confirmation before, not an undo after): the conversation is deleted for good
-    /// and an agent running in it stops, so the dialog says so; Remover (or Enter) removes it, Cancelar or Esc keeps it.
+    /// Remover chat, confirmed: the conversation is deleted for good and an agent running in it stops, so the dialog
+    /// says so; Remover (or Enter) removes it, Cancelar or Esc keeps it.
     pub(crate) fn remove_chat_dialog(&mut self, ctx: &Context) {
         let Some(id) = self.chat_listing.removing.take() else { return };
         let Some(row) = self.chat_rows().into_iter().find(|row| row.id == id) else { return };

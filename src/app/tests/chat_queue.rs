@@ -244,9 +244,8 @@ fn poll_for(app: &mut DrawingApp, seconds: f64) {
     }
 }
 
-/// Asked ("ela finalizou, mas ainda ficou com uma mensagem pendente, rodando há mais de 30 minutos"): the agent's process
-/// is gone but something it left running holds its output open, so the end of it never comes. The chat stops working a
-/// little after, and what waits in its queue can go.
+/// The agent's process is gone but something it left running holds its output open, so the end of it never comes. The
+/// chat stops working a little after, and what waits in its queue can go.
 #[test]
 fn a_chat_whose_agent_exited_with_its_output_held_open_stops_working() {
     let mut app = DrawingApp::default();

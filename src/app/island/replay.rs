@@ -1,10 +1,9 @@
 //! The island at rest draws itself between the app's frames. Its window is drawn in the app's own pass (an immediate
 //! viewport), so each frame of Luna, of the song's bars or of the minis painted the whole app's window too: on a laptop
 //! with no graphics card (Mesa's llvmpipe) that window was nine in ten of the work, 118% of a core for a closed island
-//! with a song (asked: "a ilha ainda tem uns problemas, meio travada, em notebook que não tem placa de vídeo dedicada").
-//! At rest (`Island::at_rest`), the frame the app draws is taken down as it was (`begin`, `end`) with what moves in it
-//! (`live`), and the island's window draws that again by itself (`frame`, a deferred viewport) until the app draws again
-//! (its own frames) or the person does anything on it (which wakes the app).
+//! with a song. At rest (`Island::at_rest`), the frame the app draws is taken down as it was (`begin`, `end`) with what
+//! moves in it (`live`), and the island's window draws that again by itself (`frame`, a deferred viewport) until the app
+//! draws again (its own frames) or the person does anything on it (which wakes the app).
 
 use crate::prelude::*;
 use egui::{LayerId, Ui};

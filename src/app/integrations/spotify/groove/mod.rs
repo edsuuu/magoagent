@@ -146,7 +146,7 @@ pub(crate) struct Shared {
     /// It ended without hearing anything: no program to listen with, or no device.
     failed: AtomicBool,
     /// The song changed: the thread hears the next one from scratch (its loudness and tempo), not measured against the
-    /// last one (asked: "quando troca de música a frequência fica bugada e depois de uns 20 segundos volta fluido").
+    /// last one.
     pub(crate) new_song: AtomicBool,
     latest: Mutex<Option<(Groove, Instant)>>,
 }

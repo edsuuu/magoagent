@@ -81,8 +81,7 @@ impl DrawingApp {
                     let mut ask = self.chat_asks.remove(i);
                     let answer = ask.answer.take().unwrap_or_else(|| Err("parou sem responder".into()));
                     // nobody waits for it any more (a recruit's task, a question past the asker's wait): it goes to the
-                    // chat that asked, as it is said (asked: "não aparece na hora, nem a linha de vínculo diz que o
-                    // agente terminou e está mandando mensagem para o Maestro")
+                    // chat that asked, as it is said
                     if let Err(lost) = ask.reply.send(answer) {
                         self.bring_answer(ctx, &ask, lost.0);
                     }

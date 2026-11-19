@@ -507,8 +507,8 @@ fn the_card_has_the_words_on_top_and_its_buttons_under_them() {
     assert_eq!(keys, Rect::NOTHING, "no keys' hint under it");
 }
 
-/// Asked: "do chat abrir em um pop, remove 'Abrir em miniatura', deixa apenas na ilha". The header's last button is no
-/// longer Abrir em miniatura: a click at the header's right end opens no panel over the canvas.
+/// The header's last button is no longer Abrir em miniatura: a click at the header's right end opens no panel over the
+/// canvas.
 #[test]
 fn the_header_has_no_abrir_em_miniatura() {
     let ctx = Context::default();
@@ -549,9 +549,8 @@ fn a_long_chat_lays_out_only_what_is_on_screen() {
     assert!(texts.iter().filter(|(t, _)| t.starts_with("mensagem")).count() < 60);
 }
 
-/// Asked: "só cria o chat se enviar a primeira mensagem". The chat screen with nothing to talk to opens a draft: no card
-/// on the canvas, nothing saved, not among the agents. Its first message makes it a chat; one never sent goes when
-/// another chat is picked.
+/// The chat screen with nothing to talk to opens a draft: no card on the canvas, nothing saved, not among the agents.
+/// Its first message makes it a chat; one never sent goes when another chat is picked.
 #[test]
 fn the_chat_screen_makes_a_chat_only_with_its_first_message() {
     // an agent that starts and ends at once
@@ -682,8 +681,7 @@ fn a_table_in_the_chat_takes_the_columns_width_with_nothing_cut() {
     }
 }
 
-/// Asked (D-010 of the egui review, the owner chose a confirmation): Remover chat asks first, saying the conversation goes
-/// for good; Esc keeps the chat, Enter (Remover) removes it.
+/// Remover chat asks first, saying the conversation goes for good; Esc keeps the chat, Enter (Remover) removes it.
 #[test]
 fn remover_chat_asks_first_and_only_remover_deletes_it() {
     let ctx = Context::default();

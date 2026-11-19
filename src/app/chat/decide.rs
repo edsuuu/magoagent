@@ -384,8 +384,7 @@ impl DrawingApp {
             }
             for (option, (label, meaning)) in question.options.iter().enumerate() {
                 let on = ask.picked[step].contains(&option);
-                // the whole label and what it means, wrapped (asked: "fica com os ... e eu tenho que passar o mouse em cima
-                // de cada opção")
+                // the whole label and what it means, wrapped
                 let room = ui.available_width() - 24.0;
                 let mark = if question.multiple { if on { "☑" } else { "☐" } } else { "" };
                 let number = format!("{}{}. {label}", if mark.is_empty() { String::new() } else { format!("{mark} ") }, option + 1);

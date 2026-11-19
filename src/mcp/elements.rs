@@ -104,8 +104,7 @@ pub(crate) fn tie_to_caller(scene: &mut Scene, caller: Option<&str>, created: &[
 }
 
 /// A window an agent added over another window or a note moves to the free place nearest to the agent (to where it put
-/// it, when no window asked): it reads the canvas from a list, and stacked what it opened (asked: "a posição dos
-/// terminais, às vezes ele junta tudo na direita"). Its label goes with it.
+/// it, when no window asked): it reads the canvas from a list, and stacked what it opened. Its label goes with it.
 pub(crate) fn make_room(scene: &mut Scene, caller: Option<&str>, created: &[Value]) {
     let around = caller.and_then(|id| scene.elements.iter().find(|e| e.id == id)).map(element_bounds);
     let ids: Vec<&str> = created.iter().filter_map(|c| c["id"].as_str()).collect();
@@ -135,10 +134,9 @@ fn end_target(value: &Value) -> Option<String> {
     value.as_str().or(value["id"].as_str()).or(value["elementId"].as_str()).map(String::from)
 }
 
-/// `start: {id}` / `end: {id}` become orbit bindings; missing points are aimed center to center. An end that names
-/// an element in any of the ways an agent writes it (`end: "b"`, `end: {elementId}`, `endBinding: "b"`) binds, and one
-/// naming no element is an error: dropped without a word, the arrow was drawn right and only one end was tied (asked:
-/// "quando desenhou no canvas ele vinculou apenas um e outro não, mas desenhou corretamente").
+/// `start: {id}` / `end: {id}` become orbit bindings; missing points are aimed center to center. An end that names an
+/// element in any of the ways an agent writes it (`end: "b"`, `end: {elementId}`, `endBinding: "b"`) binds, and one
+/// naming no element is an error: dropped without a word, the arrow was drawn right and only one end was tied.
 pub(crate) fn prepare_line(scene: &Scene, v: &mut Map<String, Value>) -> Result<(), String> {
     let mut ends = [None, None];
     for (k, key) in ["start", "end"].into_iter().enumerate() {

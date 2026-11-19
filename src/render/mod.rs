@@ -302,8 +302,8 @@ pub(crate) fn note_colors(note: &Element, opacity: u8) -> (Color32, Color32) {
     (paper, if light { Color32::from_rgb(0x33, 0x33, 0x33) } else { Color32::WHITE })
 }
 
-/// The strip of tape holding a note to the board (asked: "a nota ter esse efeito de adesivo"): a translucent band across
-/// the top edge, a little turned, its size by the note's (`bounds` in the note's own points, `place` to the screen).
+/// The strip of tape holding a note to the board: a translucent band across the top edge, a little turned, its size by
+/// the note's (`bounds` in the note's own points, `place` to the screen).
 pub(crate) fn tape(bounds: Rect) -> [Pos2; 4] {
     let width = (bounds.width() * 0.32).clamp(20.0, 76.0);
     let height = (width * 0.26).clamp(8.0, 18.0);

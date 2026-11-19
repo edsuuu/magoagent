@@ -1,7 +1,7 @@
-//! The Spotify tab (asked: "um player do spotify, com fila, aleatório, curtidas, playlists e busca"). At the left the
-//! player: the cover, the song, where it comes from, the time, the buttons (aleatório, voltar, tocar, pular, repetir,
-//! o coração), the volume and the device, with the Luna dancing next to the name. At the right the search and three
-//! lists: A seguir, Playlists and Curtidas. A press is a word for `spotify_press` (`integrations/spotify/controls.rs`).
+//! The Spotify tab. At the left the player: the cover, the song, where it comes from, the time, the buttons (aleatório,
+//! voltar, tocar, pular, repetir, o coração), the volume and the device, with the Luna dancing next to the name. At the
+//! right the search and three lists: A seguir, Playlists and Curtidas. A press is a word for `spotify_press`
+//! (`integrations/spotify/controls.rs`).
 
 use super::icons;
 use super::marquee::marquee;
@@ -108,8 +108,7 @@ pub(super) fn picture(painter: &Painter, rect: Rect, round: u8, texture: Option<
     painter.add(mesh);
 }
 
-/// A round button of the player: its press. `hint` is for screen readers only: the hover is enough on screen (asked:
-/// "tooltip nesses botões não precisa, só um hover já serve").
+/// A round button of the player: its press. `hint` is for screen readers only: the hover is enough on screen.
 fn round_button(ui: &mut egui::Ui, center: Pos2, side: f32, id: &str, hint: &str) -> egui::Response {
     let rect = Rect::from_center_size(center, Vec2::splat(side));
     let response = ui.interact(rect, ui.scope_id().with(("island_music", id)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
@@ -117,8 +116,7 @@ fn round_button(ui: &mut egui::Ui, center: Pos2, side: f32, id: &str, hint: &str
     response
 }
 
-/// The white ball at the end of a bar while the pointer is on it, as Spotify's (asked: "cadê a bolinha na ponta da
-/// barra quando eu deixo o mouse em cima").
+/// The white ball at the end of a bar while the pointer is on it, as Spotify's.
 fn knob(painter: &Painter, at: Pos2) {
     painter.circle_filled(at, 6.0, Color32::WHITE);
 }
@@ -569,8 +567,7 @@ impl DrawingApp {
     }
 
     /// A song's row: the cover, the title and the artist, the time; on hover Tocar and + Fila when `actions`, and a play
-    /// button over the cover that sends `play` (asked: "na listagem de música na capa precisa ter o botão de play quando
-    /// passa o mouse em cima"). Its response (a press on the row itself).
+    /// button over the cover that sends `play`. Its response (a press on the row itself).
     fn music_song(&self, ui: &mut egui::Ui, item: &QueueItem, actions: bool, play: String, pressed: &mut Vec<String>) -> egui::Response {
         let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::click());
         let response = response.on_hover_cursor(CursorIcon::PointingHand);
@@ -674,8 +671,8 @@ fn section(ui: &mut egui::Ui, text: &str) {
     ui.painter().text(Pos2::new(rect.left() + 6.0, rect.center().y + 2.0), egui::Align2::LEFT_CENTER, spaced.trim_end(), font(10.0), DIM_3);
 }
 
-/// Why a list is empty, in a quiet line; when it sends the person to Ajustes › Integrações, a button that opens it
-/// (asked: "caso não tivesse a configuração de integração, poderia ter um botão para levar até lá").
+/// Why a list is empty, in a quiet line; when it sends the person to Ajustes › Integrações, a button that opens
+/// it.
 fn needs(ui: &mut egui::Ui, text: &str) {
     let width = ui.available_width() - 12.0;
     ui.add_space(6.0);

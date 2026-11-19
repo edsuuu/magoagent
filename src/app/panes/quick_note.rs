@@ -1,6 +1,5 @@
-//! Nota rápida (asked: "uma nota rápida de fácil acesso, ao lado de Alterações … um botão a gente leva essa nota para
-//! dentro do canvas … não quero que esteja em markdown"): a panel of plain text, kept with the preferences, always a
-//! click away; Levar para o canvas puts it on the canvas as a note shown as typed (no markdown) and empties the panel.
+//! Nota rápida: a panel of plain text, kept with the preferences, always a click away; Levar para o canvas puts it on
+//! the canvas as a note shown as typed (no markdown) and empties the panel.
 
 use crate::prelude::*;
 

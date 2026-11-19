@@ -183,8 +183,7 @@ pub(crate) fn rope_curve(a: [f32; 2], b: [f32; 2]) -> Vec<[f32; 2]> {
 
 /// Size of a text in world units: its widest line in the hand font, one line height per line. Kept by the text's
 /// fingerprint: a note's text is a text element too, and its box was measured glyph by glyph several times a frame
-/// for every note of the canvas, on screen or not (48 notes of 200 lines took 66 ms a frame; asked: "poderíamos
-/// deixar só o que está na visual da tela").
+/// for every note of the canvas, on screen or not.
 pub(crate) fn text_size(value: &str, size: f32) -> Vec2 {
     // ponytail: a 64-bit fingerprint, a collision gives a text another's box; the cache empties itself when full
     const KEPT: usize = 4096;
@@ -266,9 +265,7 @@ pub(crate) const WINDOW_GAP: f32 = 60.0;
 /// Where a window the size of `want` goes among `elements`: at `want` when that is free, else in the rings around
 /// `around` (the window that opens it, or `want` itself), lined up with its edges 60 away: first below, right, left and
 /// above it, then its corners, then the next ring out, overlapping no window or note. What an agent opens stays around
-/// it, not piled up on one side (asked: "a posição dos terminais, às vezes ele junta tudo na direita"). Free is
-/// `CLEAR` away from every window and note: 20 left them touching (asked: "precisa ver o espaçamento das coisas no
-/// canvas, para não ficar tudo grudado").
+/// it, not piled up on one side. Free is `CLEAR` away from every window and note: 20 left them touching.
 pub(crate) fn free_spot_among<'a>(elements: impl Iterator<Item = &'a Element>, want: Rect, around: Rect) -> Rect {
     const GAP: f32 = WINDOW_GAP;
     // under the rings' gap, so the spot lined up beside the window that opens it stays free of it

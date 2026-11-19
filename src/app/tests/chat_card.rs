@@ -321,8 +321,8 @@ fn a_chat_cards_picture_shows_the_last_answer_in_markdown() {
     assert!(!preview.contains("**") && !preview.contains('`') && !preview.contains('*'), "{preview:?}");
 }
 
-/// Asked ("As opções no chat, quando digito /c, não aparece um select para aparecer as opções que eu tenho"): the box of a
-/// chat's card on the canvas opens the / menu as the big chat's does, filtered as it is typed, and Tab completes it.
+/// The box of a chat's card on the canvas opens the / menu as the big chat's does, filtered as it is typed, and Tab
+/// completes it.
 #[test]
 fn the_cards_box_opens_the_slash_menu_filtered_as_it_is_typed() {
     let ctx = Context::default();

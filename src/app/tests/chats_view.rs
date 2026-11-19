@@ -201,9 +201,8 @@ fn said(kind: &str, text: &str) -> String {
     format!("{}\n", json!({ "type": kind, "message": { "content": content } }))
 }
 
-/// Asked ("cliquei em ver uma sessão fora do app e ela não abre de jeito nenhum, nem no topo nem no chat"): a session
-/// outside, picked in the list, shows its conversation in the chat's own area (and in the island), read from the file
-/// Claude Code keeps under the folder it names after the session's; one with no message yet says so.
+/// A session outside, picked in the list, shows its conversation in the chat's own area (and in the island), read
+/// from the file Claude Code keeps under the folder it names after the session's; one with no message yet says so.
 #[test]
 fn a_session_outside_picked_in_the_list_opens_its_conversation_here_and_in_the_island() {
     let dir = std::env::temp_dir().join(format!("mago-chats-fora-{}", std::process::id()));
@@ -271,7 +270,6 @@ fn settled(app: &mut DrawingApp, ctx: &Context) -> Vec<(String, Rect)> {
     (0..70).map(|_| shown(app, ctx, vec![])).last().unwrap()
 }
 
-/// Asked: "Um botão para ser como acordeão para deixar fechado os agentes que foram disparados".
 #[test]
 fn a_maestros_recruits_fold_under_it_in_conversas_and_a_chip_shows_the_ones_it_finds() {
     let ctx = Context::default();
@@ -306,8 +304,7 @@ fn a_maestros_recruits_fold_under_it_in_conversas_and_a_chip_shows_the_ones_it_f
     assert!(!app.team_open(&luna));
 }
 
-/// Asked: "O chat não fica no histórico quando eu faço um /clear, precisaria manter". The conversation before /clear
-/// is a row of Conversas of its own, which opens it.
+/// The conversation before /clear is a row of Conversas of its own, which opens it.
 #[test]
 fn the_conversation_before_clear_stays_in_conversas_and_opens() {
     let ctx = Context::default();

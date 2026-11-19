@@ -1,6 +1,6 @@
-//! A text file opened in a note on the canvas (asked of a chat's file card: "abrir no canvas em uma nota q já é um
-//! editor"; the MCP's `open_as_note`): its words in a note sized to read them, beside the chat's card or in the middle
-//! of the view, and the canvas shown on it. The note holds a copy, as a dropped file's does: it is the person's to edit.
+//! A text file opened in a note on the canvas: its words in a note sized to read them, beside the chat's card or in the
+//! middle of the view, and the canvas shown on it. The note holds a copy, as a dropped file's does: it is the person's
+//! to edit.
 
 use crate::prelude::*;
 use std::path::Path;

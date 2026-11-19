@@ -10,11 +10,11 @@ use std::sync::mpsc::{Receiver, channel};
 const LATEST: &str = "https://api.github.com/repos/edsuuu/magoagent/releases/latest";
 pub(crate) const RELEASES_PAGE: &str = "https://github.com/edsuuu/magoagent/releases";
 const HOUR_MS: i64 = 3_600_000;
-/// With "Sempre" (`Prefs.update_check` 0) the app looks again every hour it stays open (asked: "a cada 1 hora faz um
-/// check no GitHub"); a check that failed (no network) is tried again sooner.
+/// With "Sempre" (`Prefs.update_check` 0) the app looks again every hour it stays open; a check that failed (no
+/// network) is tried again sooner.
 pub(crate) const CHECK_EVERY_MS: i64 = HOUR_MS;
 pub(crate) const RETRY_MS: i64 = 30 * 60_000;
-/// "Atualizar depois" lasts this long (asked: "6 horas"), or until the computer restarts.
+/// "Atualizar depois" lasts this long, or until the computer restarts.
 pub(crate) const LATER_MS: i64 = 6 * HOUR_MS;
 /// What the person is told before an update that closes and reopens the app.
 pub(crate) const CLOSES_AND_REOPENS: &str =
@@ -185,9 +185,8 @@ pub(crate) fn boot_ms() -> Option<i64> {
     }
 }
 
-/// On Windows, asks to be opened again when Windows Update restarts the computer with the app open (asked: "ao
-/// atualizar com o windows, salva o estado e reinicia o app"): the app comes back with the work it saved, and its first
-/// check finds the version waiting ("Atualizar depois" ends with the restart).
+/// On Windows, asks to be opened again when Windows Update restarts the computer with the app open: the app comes back
+/// with the work it saved, and its first check finds the version waiting ("Atualizar depois" ends with the restart).
 pub(crate) fn reopen_after_windows_restarts() {
     #[cfg(windows)]
     {

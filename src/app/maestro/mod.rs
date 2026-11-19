@@ -27,8 +27,8 @@ use std::sync::mpsc::Sender;
 pub(crate) const RECRUIT_CARD: Vec2 = Vec2::new(380.0, 400.0);
 
 /// What an agent says, signed with its name so whoever reads it (the person, Luna, another agent) knows who speaks:
-/// "Ana: estou parado" (asked: "cada agente no chat precisa ter um nome ... precisa avisar 'Agente tal aqui: estou
-/// parado'"). A text that already starts with the name ("Ana aqui: …", "Ana: …", "Agente Ana: …") stays as it is.
+/// "Ana: estou parado". A text that already starts with the name ("Ana aqui: …", "Ana: …", "Agente Ana: …") stays
+/// as it is.
 pub(crate) fn signed(who: &str, text: &str) -> String {
     let (who, text) = (who.trim(), text.trim());
     match () {

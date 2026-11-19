@@ -29,8 +29,8 @@ pub(super) fn chat_body(page: Rect, bar: f32, head: f32) -> (Rect, Rect, Rect) {
     (log, chip_row, bar)
 }
 
-/// The row over the conversation's log: who it is (asked: "cada agente no chat precisa ter um nome, pois na tab não
-/// conseguimos ver quem é quem"), the Maestro's agents (or the way back to it) and the ⤢, each in a room of its own.
+/// The row over the conversation's log: who it is, the Maestro's agents (or the way back to it) and the ⤢, each in a
+/// room of its own.
 pub(super) const NAME_ROW: f32 = 28.0;
 
 /// The name row of `page`: from the log's left to the card's right, its middle where the ⤢ always was.
@@ -38,7 +38,7 @@ pub(super) fn name_row(page: Rect) -> Rect {
     Rect::from_min_max(Pos2::new(page.left() + 84.0, page.top() + 6.0), Pos2::new(page.right() - 6.0, page.top() + 30.0))
 }
 
-/// The most lines a box grows to (asked: "não quebra a linha, sempre vai uma linha direta"); past them its words scroll.
+/// The most lines a box grows to; past them its words scroll.
 const FIELD_LINES: f32 = 5.0;
 
 /// How tall the box `id` is (`.chat-bar`, 40 for a line): it grows with the lines its words wrapped to last frame, up to
@@ -120,7 +120,7 @@ impl DrawingApp {
         aim(view, Pos2::new(origin.x + 52.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 44.0, state);
 
         // the name row: ⤢ (the whole mini chat in the island: attachments, folder, mode, model, dictation, voice), the
-        // Maestro's agents and who it is. No tip: they would cover the conversation (asked: "tem o tooltip que atrapalha")
+        // Maestro's agents and who it is. No tip: they would cover the conversation
         let head = name_row(page);
         let cy = head.center().y;
         let expand = Rect::from_center_size(Pos2::new(head.right() - 12.0, cy), Vec2::splat(24.0));

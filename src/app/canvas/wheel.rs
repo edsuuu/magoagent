@@ -1,11 +1,10 @@
-//! The wheel and the pinch over the canvas: they pan and zoom it, a long note's text scrolls under them, and the
-//! windows on it (a tree, a chat card, a focused terminal) scroll their own content. A gesture that started on the
-//! canvas stays the canvas's while it lasts, over whatever window passes under the pointer, as a browser latches a
-//! wheel to what it started on (asked: "se eu estou scrollando pelo canvas e sem querer deixo o mouse em cima de algum
-//! item, chat ou sei lá, ele foca no elemento e não consigo scrollar mais"); the window takes the wheel once the gesture
-//! pauses or after a click. Ctrl + wheel and the pinch zoom the canvas whoever has the keys, over a window too ("se eu
-//! não clicar no canvas para pegar o foco, eu não consigo segurar Control e tirar o zoom"), and an enlarged file tree
-//! zooms itself ("se eu estou com o foco nela e tento dar zoom no código, não funciona").
+//! The wheel and the pinch over the canvas: they pan and zoom it, a long note's text scrolls under them, and the windows
+//! on it (a tree, a chat card, a focused terminal) scroll their own content. A gesture that started on the canvas stays
+//! the canvas's while it lasts, over whatever window passes under the pointer, as a browser latches a wheel to what it
+//! started on; the window takes the wheel once the gesture pauses or after a click. Ctrl + wheel and the pinch zoom the
+//! canvas whoever has the keys, over a window too ("se eu não clicar no canvas para pegar o foco, eu não consigo segurar
+//! Control e tirar o zoom"), and an enlarged file tree zooms itself ("se eu estou com o foco nela e tento dar zoom no
+//! código, não funciona").
 
 use crate::prelude::*;
 

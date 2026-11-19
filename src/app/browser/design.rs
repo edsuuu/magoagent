@@ -212,8 +212,7 @@ pub(crate) fn snapshot(webview: &wry::WebView, [x, y, w, h]: [f64; 4], done: imp
 
 impl DrawingApp {
     /// The agents roped to an element: the terminals running a command (a plain shell would run each pasted line as a
-    /// command) and the chats' cards, Luna's and a chat recruit's (asked, of the Design mode with Luna roped to the
-    /// browser: "por que não está vinculado automaticamente?"; only terminals counted, "Nenhum agente conectado").
+    /// command) and the chats' cards, Luna's and a chat recruit's.
     pub(crate) fn roped_agents(&self, id: &str) -> Vec<String> {
         let agent = |element: &Element| element.terminal.as_ref().is_some_and(|t| !t.command.trim().is_empty()) || element.chat.is_some();
         self.links().get(id).into_iter().flatten().filter(|o| self.scene.elements.iter().any(|e| &e.id == *o && agent(e))).cloned().collect()
@@ -536,8 +535,8 @@ mod tests {
         assert!(app.design_confirm.is_none());
     }
 
-    /// Asked, of the Design mode with Luna roped to the browser: "por que não está vinculado automaticamente?". A chat's
-    /// card roped to it (Luna's, a chat recruit's) is an agent there too; a plain shell is not.
+    /// In the Design mode, a chat's card roped to the browser (Luna's, a chat recruit's) is an agent there too; a plain
+    /// shell is not.
     #[test]
     fn a_chat_roped_to_the_browser_is_an_agent_of_its_design_mode() {
         let mut app = DrawingApp::default();

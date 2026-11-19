@@ -1,4 +1,4 @@
-//! A note's text being typed over its card (asked: "a barra de edição diminui e o texto fica cortado da nota").
+//! A note's text being typed over its card.
 
 use crate::prelude::*;
 
@@ -31,9 +31,8 @@ impl DrawingApp {
             // off the screen with its note, never clamped back onto it; and never over the sidebar
             ui.shrink_clip_rect(self.canvas_rect);
             // the whole text box, whatever size the area had the last time a note was typed: an area keeps its last
-            // size, and the scroll area inside it never grew past it (asked: "a barra de edição diminui e o texto fica
-            // cortado da nota")
-            // and its scroll bar in the note's right margin, where the resting note's is: the text keeps the box's width
+            // size, and the scroll area inside it never grew past it and its scroll bar in the note's right margin,
+            // where the resting note's is: the text keeps the box's width
             let margin = NOTE_PAD * zoom;
             ui.spacing_mut().scroll.floating = true;
             ui.spacing_mut().scroll.floating_allocated_width = margin;
@@ -42,7 +41,7 @@ impl DrawingApp {
             let shown = scroll.show(ui, |ui| {
                 if let Some(Element { kind: ElementKind::Text { value, .. }, .. }) = self.scene.elements.get_mut(index) {
                     // only what the caret is on shows its markdown (the reference's live preview): the rest of the note
-                    // stays as it rests (asked: "só muda o texto que eu quero editar")
+                    // stays as it rests
                     let id = crate::app::notes::editor_id();
                     let caret_of = |range: egui::text::CCursorRange| markdown::Caret { head: range.primary.index.into(), anchor: range.secondary.index.into() };
                     let caret = ui

@@ -132,9 +132,8 @@ pub(crate) fn text_ui(
             // and so does a click on its menu, which would reach the text under the menu
             let right = ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Secondary))
                 || (egui::Popup::is_any_open(ui.ctx()) && ui.input(|i| i.pointer.any_pressed()));
-            // an undo or a redo: egui puts back the caret it had when the step was kept (the file's end for the first
-            // one: asked "se eu aperto Ctrl+Z para voltar, o foco vai para a última linha do arquivo"), so the caret goes
-            // to what changed instead
+            // an undo or a redo: egui puts back the caret it had when the step was kept, so the caret goes to what
+            // changed instead
             let undoing = ui.memory(|m| m.has_focus(id))
                 && ui.input(|i| {
                     i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Z | Key::Y, pressed: true, modifiers, .. } if modifiers.command))

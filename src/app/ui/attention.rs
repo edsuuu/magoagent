@@ -13,7 +13,7 @@ use crate::prelude::*;
 pub(crate) enum Attention {
     Next,
     ToggleAgents,
-    /// The × of the green notice: hides it (asked: "precisa ter uma opção x para ocultar ou remover").
+    /// The × of the green notice: hides it.
     HideClear,
     Agent(String),
     /// A Maestro's agents opened (true) or folded under it (chat/list/team.rs).

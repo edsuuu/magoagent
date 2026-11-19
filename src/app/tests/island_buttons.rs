@@ -69,8 +69,7 @@ fn the_sound_button_turns_the_sounds_off_and_on() {
     assert_eq!(app.prefs.island_sound, !before);
     click(&mut app, &ctx, &mut time, at);
     assert_eq!(app.prefs.island_sound, before);
-    // with the settings page open too: its own switch must not take the click away (asked: "clico na engrenagem e
-    // clico no ícone do som ali do lado, ele não funciona")
+    // with the settings page open too: its own switch must not take the click away
     let gear = right_button(&app, 2);
     click(&mut app, &ctx, &mut time, gear);
     assert!(app.island.settings_open());
@@ -358,7 +357,7 @@ fn closed_it_is_the_notch_again_after_the_pointer_leaves() {
     assert_eq!(app.island.size().x, CLOSED_W);
 }
 
-/// Asked: the integrations and the sessions outside each on a tab of their own (Claude Code, GitHub, Spotify).
+/// The integrations and the sessions outside each on a tab of their own (Claude Code, GitHub, Spotify).
 #[test]
 fn spotify_has_its_tab_and_chats_only_the_agents() {
     let (mut app, ctx, mut time) = opened();
@@ -582,9 +581,9 @@ fn turning_spotify_off_takes_its_tab_away() {
     assert!(!lines.iter().any(|id| id.ends_with("spotify")), "no pill, so no tab: {lines:?}");
 }
 
-/// Asked: "quando eu clico em trocar o modelo no chat completo, ele fica bugado". In the island's window (here the
-/// screen is as big as it), the model chip's menu opens over the chip inside the island; Mais modelos opens its list
-/// in it (egui's menu closed at that click), the menu still in the island, and a model picked is the chat's.
+/// In the island's window (here the screen is as big as it), the model chip's menu opens over the chip inside the
+/// island; Mais modelos opens its list in it (egui's menu closed at that click), the menu still in the island, and a
+/// model picked is the chat's.
 #[test]
 fn the_model_menu_stays_in_the_island_and_opens_more_models() {
     let (mut app, ctx, mut time) = opened();
@@ -649,9 +648,8 @@ fn the_model_menu_stays_in_the_island_and_opens_more_models() {
     assert!(menu().is_empty() && app.island.chat_full, "the pick closed the menu, the island stays");
 }
 
-/// Asked: "do modo chat oculta o modo voz e ditado por favor, e da ilha também". With the call and Ditar on hold
-/// (`voice::CALL_ON`, `voice::DICTATION_ON`) the island's header has no Chat por voz, and neither the island nor the
-/// MCP starts them.
+/// With the call and Ditar on hold (`voice::CALL_ON`, `voice::DICTATION_ON`) the island's header has no Chat por
+/// voz, and neither the island nor the MCP starts them.
 #[test]
 fn the_island_and_the_chat_have_no_voice_nor_dictation_while_they_are_on_hold() {
     if crate::app::voice::CALL_ON || crate::app::voice::DICTATION_ON {

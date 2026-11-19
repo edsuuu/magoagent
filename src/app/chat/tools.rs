@@ -378,7 +378,6 @@ mod tests {
         }
     }
 
-    /// Asked: "Uma config para nunca usar a /tmp, só em alguns casos, pois reiniciou o PC e sumiu tudo".
     #[test]
     fn the_maestro_and_its_recruits_keep_their_work_out_of_the_temp_folder_unless_ajustes_says_otherwise() {
         let mut prefs = Prefs::default();
