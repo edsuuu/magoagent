@@ -25,7 +25,7 @@ fn recruit(app: &mut DrawingApp) -> String {
     let (reply, said) = std::sync::mpsc::channel();
     let command = "claude \"faça o passo 0\"".into();
 
-    app.apply_agent_command(UiCommand::Recruit { from: boss, command, worktree: false, mode: Some(AgentMode::Chat), reply });
+    app.apply_agent_command(UiCommand::Recruit { from: boss, name: String::new(), command, worktree: false, mode: Some(AgentMode::Chat), reply });
     assert!(said.recv().unwrap().is_ok());
     let id = app.chats.iter().find(|c| c.recruit).unwrap().id.clone();
     let mut transcript = Transcript::new(PathBuf::new());

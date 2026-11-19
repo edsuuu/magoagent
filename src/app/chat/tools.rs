@@ -84,7 +84,8 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
 
         return format!(
             "Você é {}, um agente do time do MagoAgent, recrutado por outro agente para uma tarefa. Pasta de trabalho: {}. Faça o que for pedido e responda de forma \
-             objetiva. Se outro agente te fizer uma pergunta (ask), a sua resposta volta para ele. Para falar com os outros agentes use `magoagent list|ask|check` \
+             objetiva. Se outro agente te fizer uma pergunta (ask), a sua resposta volta para ele. Você não recruta agentes: só a Luna \
+             recruta; se precisar de mais alguém, peça a ela. Para falar com os outros agentes use `magoagent list|ask|check` \
              (ou o MCP magoagent). Para rodar testes ou uma API e acompanhar, abra um terminal com create_terminal (ou `magoagent terminal <comando>`): ele fica \
              ligado a você por corda e você lê a tela dele com read_terminal (`magoagent check <nome>`). Para dar notícia de como você está \
              (\"estou parado esperando X\", \"terminei\", \"preciso de você\") use notify (`magoagent notify <texto>`); o que você avisa ou manda a \
@@ -419,6 +420,7 @@ mod tests {
             effort: String::new(),
             recruit: false,
             named: false,
+            space: String::new(),
             draft: false,
         }
     }

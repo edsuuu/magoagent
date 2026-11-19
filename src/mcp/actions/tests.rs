@@ -71,6 +71,7 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
         effort: String::new(),
         recruit: false,
         named: false,
+        space: String::new(),
         draft: false,
     };
 
@@ -504,6 +505,7 @@ fn a_terminal_an_agent_opens_is_roped_to_it() {
         effort: String::new(),
         recruit: false,
         named: false,
+        space: String::new(),
         draft: false,
     }];
 

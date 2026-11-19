@@ -26,6 +26,10 @@ use std::sync::mpsc::Sender;
 /// 340 x 220 the band went past the card's edge).
 pub(crate) const RECRUIT_CARD: Vec2 = Vec2::new(380.0, 400.0);
 
+/// What a recruit hears when it tries to recruit.
+pub(crate) const ONLY_THE_MAESTRO: &str =
+    "Só a Luna (o Maestro) recruta agentes: um agente recrutado não pode recrutar outro. Se precisar de mais alguém, peça à Luna.";
+
 /// What an agent says, signed with its name so whoever reads it (the person, Luna, another agent) knows who speaks:
 /// "Ana: estou parado". A text that already starts with the name ("Ana aqui: …", "Ana: …", "Agente Ana: …") stays
 /// as it is.
@@ -66,13 +70,20 @@ impl DrawingApp {
     /// `recruit`: a terminal the caller's size and folder, below it, running `command`, with an agent's name.
     #[cfg(test)]
     pub(crate) fn recruit(&mut self, from: &str, command: &str, reply: Sender<Result<String, String>>) {
-        self.recruit_in(from, command, false, None, reply);
+        self.recruit_in(from, "", command, false, None, reply);
     }
 
     /// The recruit, in the caller's folder or, with `worktree`, in an environment of its own: a git
     /// worktree of the caller's repository on a branch of the recruit's (environments.rs). `mode` (else
-    /// Ajustes' `agent_mode`) says whether it is a terminal or a chat of the app (a card, no Maestro's hands).
-    pub(crate) fn recruit_in(&mut self, from: &str, command: &str, worktree: bool, mode: Option<AgentMode>, reply: Sender<Result<String, String>>) {
+    /// Ajustes' `agent_mode`) says whether it is a terminal or a chat of the app (a card, no Maestro's hands). `name`: the
+    /// one the Maestro gave it, else one of AGENT_NAMES. Only a Maestro recruits: a recruit asking is refused.
+    pub(crate) fn recruit_in(&mut self, from: &str, name: &str, command: &str, worktree: bool, mode: Option<AgentMode>, reply: Sender<Result<String, String>>) {
+        if self.is_recruit_chat(from) {
+            let _ = reply.send(Err(ONLY_THE_MAESTRO.into()));
+
+            return;
+        }
+
         let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else {
             let _ = reply.send(Err("recrute de dentro de um terminal do MagoAgent".into()));
 
@@ -104,7 +115,7 @@ impl DrawingApp {
         let size = if chat_mode { RECRUIT_CARD } else { size };
         let at = self.free_spot_near(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), size), b);
         let side = side_of(at, b);
-        let name = self.agent_name();
+        let name = self.agent_name(name);
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
         // its own environment first: without it there is no recruit
         let mut own = String::new();
@@ -192,7 +203,9 @@ impl DrawingApp {
             model,
             effort: flags.effort.unwrap_or_default(),
             recruit: true,
-            named: false,
+            // its name stays: the first message does not title it, the team calls it by that name
+            named: true,
+            space: self.spaces.current.clone(),
             draft: false,
         };
 

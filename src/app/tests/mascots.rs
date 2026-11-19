@@ -110,7 +110,7 @@ fn a_recruit_takes_no_name_an_agent_off_view_has() {
     }
 
     app.away.insert("longe".into(), ("outro-espaço".into(), TerminalSpec { name: last.to_lowercase(), ..Default::default() }));
-    let name = app.agent_name();
+    let name = app.agent_name("");
 
     assert!(name.ends_with(" 2"), "all taken, in any case: numbered ({name})");
     assert!(app.chats.iter().all(|chat| chat.name != name) && last.to_lowercase() != name.to_lowercase());
