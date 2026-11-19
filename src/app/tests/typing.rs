@@ -104,6 +104,24 @@ fn text_tool_on_a_window_neither_writes_over_it_nor_leaves_the_focus() {
     assert_eq!(app.terminal_focus.as_ref(), Some(&id), "a click on it works like a normal click");
 }
 
+/// H (Mão) pressed on the canvas, then a click on a window: the window gets it, it is not a pan.
+#[test]
+fn hand_tool_on_a_window_leaves_the_click_to_it() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+
+    frame(&mut app, &ctx, vec![]);
+    let id = terminal_at(&mut app, &ctx, Pos2::new(400.0, 300.0));
+    let at = app.to_screen(local_bounds(app.scene.elements.last().unwrap()).center());
+
+    frame(&mut app, &ctx, vec![key_press(Key::H)]);
+    assert_eq!(app.tool, Tool::Hand);
+    click(&mut app, &ctx, at);
+    assert!(!app.panning);
+    assert_eq!(app.tool, Tool::Select);
+    assert_eq!(app.terminal_focus.as_ref(), Some(&id));
+}
+
 #[test]
 fn text_tool_click_on_a_shape_labels_it() {
     let ctx = Context::default();
