@@ -88,6 +88,10 @@ impl DrawingApp {
             self.floors_ui.overview = !self.floors_ui.overview;
         }
         if ctx.current_pass_index() > 0 || (self.keyboard_taken(ctx) && !settings_key) {
+            // the zoom's keys still reach the canvas from a tree or a text field (canvas/wheel.rs)
+            if ctx.current_pass_index() == 0 {
+                self.zoom_shortcuts(ctx, pressed(AppAction::ZoomIn), pressed(AppAction::ZoomOut), pressed(AppAction::ZoomReset));
+            }
             return;
         }
         let hit = |key: Key, command: bool, shift: bool, alt: bool| {
@@ -226,16 +230,7 @@ impl DrawingApp {
         if pressed(AppAction::Duplicate) {
             self.duplicate();
         }
-        if pressed(AppAction::ZoomIn) {
-            self.zoom_step(0.1);
-        }
-        if pressed(AppAction::ZoomOut) {
-            self.zoom_step(-0.1);
-        }
-        if pressed(AppAction::ZoomReset) {
-            let center = self.canvas_rect.center();
-            self.zoom_at(1.0, center);
-        }
+        self.zoom_shortcuts(ctx, pressed(AppAction::ZoomIn), pressed(AppAction::ZoomOut), pressed(AppAction::ZoomReset));
         if pressed(AppAction::FitAll) {
             self.zoom_to_fit(false);
         }

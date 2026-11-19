@@ -362,8 +362,8 @@ pub(crate) mod plain {
 
     /// This app's window called `title` shown (from the tray or the taskbar too) and in front, with the keyboard. Not
     /// winit's focus, which presses and lets go of an Alt that is not there to get the right to: on some machines that
-    /// Alt opened the Start menu's search (asked: "no Windows ao clicar em abrir ele fica levantando a barra de
-    /// pesquisa"). The person's click or key on the app is what gives it that right. False when it is not found.
+    /// Alt opened the Start menu's search. The person's click or key on the app is what gives it that right. False
+    /// when it is not found.
     pub(crate) fn bring_forward(title: &str) -> bool {
         const SW_SHOW: i32 = 5;
         const SW_RESTORE: i32 = 9;

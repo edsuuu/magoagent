@@ -1,0 +1,31 @@
+name: Recurso novo
+description: Uma ideia ou melhoria para o MagoAgent
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: hoje
+    attributes:
+      label: Hoje
+      description: Como funciona hoje e o que falta ou atrapalha.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposta
+    attributes:
+      label: Proposta
+      description: O que você gostaria que o app fizesse. Lembre que toda ação da interface também ganha a sua ferramenta no MCP.
+    validations:
+      required: true
+
+  - type: textarea
+    id: pronto
+    attributes:
+      label: Pronto quando
+      description: Como saber que está feito (o que dá para ver no app ou testar).
+
+  - type: textarea
+    id: alternativas
+    attributes:
+      label: Alternativas
+      description: Outros jeitos que você pensou, ou como resolve hoje.

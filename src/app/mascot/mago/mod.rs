@@ -165,8 +165,8 @@ pub(crate) fn paint_mago(
     draw::paint(painter, center, size, color, motion, time);
     // at rest it only sways slowly and blinks (0.12 s): 15 frames a second show it, and a wizard always on screen (the
     // island's) no longer keeps the whole app at 30 while nothing happens; a click or the pointer bring frames anyway
-    let frame = if matches!(state, MagoState::Idle | MagoState::Sleeping) { 66 } else { 33 };
-    painter.ctx().request_repaint_after(std::time::Duration::from_millis(frame));
+    let frame = if matches!(state, MagoState::Idle | MagoState::Sleeping) { std::time::Duration::from_millis(66) } else { crate::app::update::AMBIENT };
+    painter.ctx().request_repaint_after(frame);
 }
 
 /// What `paint` draws, squashed or stretched by `scale` around `center` (the entrance's bounces): egui scales its shapes only evenly, so they are made triangles first and those are scaled.
@@ -232,7 +232,7 @@ pub(crate) fn paint_mini(painter: &Painter, id: &str, center: Pos2, body: f32, c
         motion.advance(state, time, Some(glance));
         draw::paint_mini(painter, center, body, color, motion, time);
     });
-    painter.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+    painter.ctx().request_repaint_after(crate::app::update::AMBIENT);
 }
 
 /// The same, still: one pose of `state`, and no frames asked for (an agent at rest in the sidebar's list leaves the

@@ -45,6 +45,8 @@ jobs:
         if: steps.pr.outputs.number != ''
         with:
           ref: main
+          # a tag sai pela API (gh), não por git push: o checkout não precisa guardar o token
+          persist-credentials: false
       - name: Tag e release quando a versão mudou
         if: steps.pr.outputs.number != ''
         run: |

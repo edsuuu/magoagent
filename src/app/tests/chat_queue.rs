@@ -244,9 +244,8 @@ fn poll_for(app: &mut DrawingApp, seconds: f64) {
     }
 }
 
-/// Asked ("ela finalizou, mas ainda ficou com uma mensagem pendente, rodando há mais de 30 minutos"): the agent's process
-/// is gone but something it left running holds its output open, so the end of it never comes. The chat stops working a
-/// little after, and what waits in its queue can go.
+/// The agent's process is gone but something it left running holds its output open, so the end of it never comes. The
+/// chat stops working a little after, and what waits in its queue can go.
 #[test]
 fn a_chat_whose_agent_exited_with_its_output_held_open_stops_working() {
     let mut app = DrawingApp::default();
@@ -279,4 +278,28 @@ fn a_chat_whose_agent_said_its_last_word_stops_working_even_if_its_process_linge
     // Codex says it its own way
     assert!(turn_over("codex", &json!({ "type": "turn.completed" })) && turn_over("codex", &json!({ "type": "turn.failed" })));
     assert!(!turn_over("codex", &json!({ "type": "item.completed" })) && !turn_over("claude", &json!({ "type": "assistant" })));
+}
+
+/// Windows with WSL: a message sent while WSL's first probe runs waits in the queue, said so, and goes once the probe
+/// ends; the window goes on drawing (it froze up to 15 s waiting for the probe).
+#[test]
+fn a_message_sent_while_wsl_is_probed_waits_in_the_queue_and_the_window_goes_on() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.create_chat(&NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &[Preset::new("Agente", "agente-que-nao-existe")]);
+    let id = app.chat_agent.clone().unwrap();
+    let settling = |on: bool| crate::app::system::wsl::SETTLING.with(|settling| settling.set(on));
+    settling(true);
+    let started = std::time::Instant::now();
+    assert!(app.chat_send(&ctx, &id, "rode os testes"));
+    assert!(started.elapsed() < std::time::Duration::from_millis(100), "nothing was waited for");
+    assert_eq!(app.chat_queue, [(id.clone(), "rode os testes".to_string())]);
+    assert!(app.transcripts[&id].items.iter().any(|item| matches!(item, ChatItem::System(text) if text.contains("Preparando o WSL"))));
+    // the probe still running, it stays
+    app.chat_nodes_tick(&ctx);
+    assert_eq!(app.chat_queue.len(), 1);
+    // done: it goes (here to an agent not installed, which says so)
+    settling(false);
+    app.chat_nodes_tick(&ctx);
+    assert!(app.chat_queue.is_empty());
 }

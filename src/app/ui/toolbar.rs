@@ -22,8 +22,8 @@ impl DrawingApp {
         // the terminal's button is the chat's too (its dialog picks one), so it wears the chat's mark
         let (icon, label) = if tool == Tool::Terminal { (Icon::Tool(Tool::Chat), "Terminal ou chat") } else { (Icon::Tool(tool), tool.label()) };
         let response = glass_button(ui, self.tool == tool, icon, self.dark());
-        // its key in small at the corner, on every tool that has one; the tip is just its name (asked)
-        // in the glass's own ink, so it reads over whatever the bar floats on (a note, a picture)
+        // its key in small at the corner, on every tool that has one; the tip is just its name in the
+        // glass's own ink, so it reads over whatever the bar floats on (a note, a picture)
         let ink = glass_ink(self.dark()).gamma_multiply(0.7);
         ui.painter().text(response.rect.right_bottom() + Vec2::new(1.0, 2.0), egui::Align2::RIGHT_BOTTOM, tool.badge(), FontId::proportional(8.0), ink);
         if response.tip(label).clicked() {
@@ -38,6 +38,7 @@ impl DrawingApp {
             || self.filetree_dialog_open()
             || self.design_confirm.is_some()
             || self.space_dialog.is_some()
+            || self.chat_listing.removing.is_some()
             || self.welcome.is_some()
             || self.tour.is_some()
             || self.changelog.is_some()
@@ -163,8 +164,20 @@ impl DrawingApp {
             }
         }
 
-        // hint under toolbar
-        if let Some(hint) = self.hint().filter(|_| !self.chat_open) {
+        // hint under toolbar; while a note's text is edited under it, it gives way: it covered the first line (its words
+        // mixed with the hint's) and the note's own bar already says it is being edited
+        // `middle` is the toolbars' offset from the window's center
+        let hint_at = Rect::from_center_size(Pos2::new(ctx.content_rect().center().x + middle, toolbar.bottom() + 20.0), Vec2::new(420.0, 24.0));
+        // a note's text is kept at the card's middle: the card is what shows the text
+        let edited = self
+            .editing
+            .and_then(|index| self.scene.elements.get(index))
+            .map(|element| note_of_label(&self.scene.elements, element).map_or(element, |note| &self.scene.elements[note]));
+        let over_edit = edited.is_some_and(|element| {
+            let bounds = element_bounds(element);
+            Rect::from_min_max(self.to_screen(bounds.min), self.to_screen(bounds.max)).intersects(hint_at)
+        });
+        if let Some(hint) = self.hint().filter(|_| !self.chat_open && !over_edit) {
             egui::Area::new(egui::Id::unique("hint")).anchor(egui::Align2::CENTER_TOP, (middle, toolbar.bottom() + 10.0)).interactable(false).show(ctx, |ui| {
                 ui.add(egui::Label::new(egui::RichText::new(keys_label(hint)).size(13.0).color(c.muted)).wrap_mode(egui::TextWrapMode::Extend));
             });
@@ -417,7 +430,7 @@ fn extra_row(ui: &mut egui::Ui, tool: Tool, current: bool, c: &UiColors) -> bool
         p.rect_filled(rect, ITEM_RADIUS, colors.hover);
     }
     let ink = if current { PRIMARY } else { c.text };
-    // the menus' own size, not bigger (asked: "diminui a fonte dessas palavras")
+    // the menus' own size, not bigger
     let size = MENU_TEXT_SIZE;
     paint_icon_scaled(p, Icon::Tool(tool), Pos2::new(rect.left() + ROW_PAD + ICON_SIZE / 2.0, rect.center().y), ink, ICON_SIZE / 16.0, 0.0);
     let x = rect.left() + ROW_PAD + ICON_SIZE + ROW_GAP;

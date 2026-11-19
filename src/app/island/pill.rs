@@ -1,13 +1,13 @@
-//! The pill while Spotify plays (asked: "como a Dynamic Island do iPhone quando toca música"): the song's cover beside
-//! the wizard, at the left, and the sound's bars at the right, rising and falling with it. Paused or with nothing
-//! loaded, the pill shows what it always did (`paint::island_small`).
+//! The pill while Spotify plays: the song's cover beside the wizard, at the left, and the sound's bars at the right,
+//! rising and falling with it. Paused or with nothing loaded, the pill shows what it always did
+//! (`paint::island_small`).
 
 use crate::prelude::*;
 
 use super::music::{GREEN, picture};
 
 use crate::app::integrations::spotify::CoverFade;
-use crate::app::integrations::spotify::groove::Groove;
+use crate::app::integrations::spotify::groove::{Ear, Groove};
 
 /// The side of the cover and its corner on the compact island.
 const COVER: f32 = 22.0;
@@ -16,15 +16,14 @@ const COVER_CORNER: u8 = 6;
 /// ends as far from the right edge as the wizard starts from the left.
 const WIZARD_AT: f32 = super::COMPACT_SIDE;
 const WIZARD: f32 = 30.0;
-/// The same on the closed notch, which is smaller.
+/// The same on the closed notch, which is smaller: the cover this far from its left end (standing up, its top).
 const COVER_SMALL: f32 = 16.0;
 const COVER_CORNER_SMALL: u8 = 5;
 const COVER_LEFT_SMALL: f32 = 4.0;
 
-/// The bars: how many, the side of each one and the room between them, how far their middle is from the right edge,
-/// and the tallest one.
+/// The bars: how many, the side of each one and the room between them, how far their middle is from the right edge
+/// (standing up, from the bottom), and the tallest one.
 const BARS: usize = crate::app::integrations::spotify::groove::BANDS;
-// asked: "os palitinhos da frequência estão muito grossos, daria para deixar mais finos"
 const BAR: f32 = 1.5;
 const BAR_GAP: f32 = 3.0;
 const BAR_SMALL: f32 = 1.5;
@@ -40,9 +39,8 @@ const PAIR_GAP: f32 = 10.0;
 
 /// Where the cover and the bars start on the compact island `rect`, which go side by side: with the agents' minis
 /// (`minis`, their grid) in the middle between the wizard and them; with none, at the right, as far from the edge as the
-/// wizard is from the left (asked: "Luna à esquerda, capa e frequência no meio, os mini agentes à direita"). Around a
-/// camera `notch` (its width; 0 without one) the middle is under it: the cover goes in the left wing after the wizard and
-/// the bars in the right one before the minis.
+/// wizard is from the left. Around a camera `notch` (its width; 0 without one) the middle is under it: the cover goes in
+/// the left wing after the wizard and the bars in the right one before the minis.
 pub(crate) fn spread(rect: Rect, minis: Option<Rect>, notch: f32) -> (f32, f32) {
     let pair = COVER + PAIR_GAP + BARS_ROOM;
     let edge = WIZARD_AT - WIZARD / 2.0;
@@ -69,23 +67,22 @@ pub(crate) fn spread_upright(rect: Rect, minis: Option<Rect>) -> (f32, f32) {
     (cover, cover + COVER + PAIR_GAP)
 }
 
-/// The bars' heights, each 0 to 1: the song heard here, each bar its own band, low to high (asked: "de acordo com a
-/// música no Spotify"); with nothing heard (the song plays on another device, the listening is off or failed), they
-/// rest: nothing made up (asked: "se a música não está tocando nesse dispositivo, a frequência precisa ficar parada").
+/// The bars' heights, each 0 to 1: the song heard here, each bar its own band, low to high; with nothing heard (the
+/// song plays on another device, the listening is off or failed), they rest: nothing made up.
 pub(crate) fn bars(groove: Option<&Groove>) -> [f32; BARS] {
-    // a curve, so only the loud parts reach the top (asked: "a sensibilidade está muito alta")
+    // a curve, so only the loud parts reach the top
     groove.and_then(|groove| groove.bands).map(|bands| bands.map(|level| level.powf(1.6))).unwrap_or([0.0; BARS])
 }
 
 /// The song's cover and the sound's bars in the `rect` of the compact island (`minis`: Some, with the agents' grid, or
-/// None without agents; spread by `spread`) or of the closed notch (`minis` is not asked: the cover at the left, the
-/// bars at the right, the wizard between). `cover` is the song's picture (its placeholder without one); `groove` is what
-/// Luna dances to, None while she doesn't. A click on the cover or the bars is true: the island opens on the music's
-/// tab (asked: "se eu clicar na música ele me leva para a tab da música"). The bars take the cover's two liveliest
-/// colours, from the left one to the right one (`spotify::accents`), and go from the colours before to the new ones and
-/// the cover of the song before fades under the new one (`CoverFade`, asked: "a transição entre músicas está ruim na
-/// ilha, e as cores podem ter um degradê"); `tint` is the first colour, for when the tick has not run (Spotify's green
-/// until the cover comes). While they move, the next frame is asked for.
+/// None without agents; spread by `spread`) or of the closed notch (`minis` is not asked: the cover at the left, the bars
+/// at the right, the wizard between). Standing up on a side (`upright`) the same turned: the cover at the top, the bars at
+/// the bottom, each lying down. `cover` is the song's picture (its placeholder without one); `ear` is the listening the
+/// bars follow, None while paused. A click on the cover or the bars is true: the island opens on the music's tab. The bars
+/// take the cover's two liveliest colours, from the left one to the right one (`spotify::accents`), and go from the
+/// colours before to the new ones and the cover of the song before fades under the new one; `tint` is the first colour,
+/// for when the tick has not run (Spotify's green until the cover comes). While they move, the next frame is asked for;
+/// they are drawn as the island at rest draws them again by itself (`replay::live`).
 pub(super) fn spotify(
     ui: &egui::Ui,
     rect: Rect,
@@ -96,7 +93,7 @@ pub(super) fn spotify(
     compact: Option<Option<Rect>>,
     upright: bool,
     notch: f32,
-    groove: Option<&Groove>,
+    ear: Option<&Ear>,
     time: f64,
 ) -> bool {
     let painter = ui.painter();
@@ -111,6 +108,7 @@ pub(super) fn spotify(
     let (cover_left, bars_left) = match compact {
         Some(minis) if upright => spread_upright(rect, minis),
         Some(minis) => spread(rect, minis, notch),
+        None if upright => (rect.top() + COVER_LEFT_SMALL, rect.bottom() - BARS_RIGHT_SMALL - total / 2.0),
         None => (rect.left() + COVER_LEFT_SMALL, rect.right() - BARS_RIGHT_SMALL - total / 2.0),
     };
     let art = if upright {
@@ -131,26 +129,19 @@ pub(super) fn spotify(
         None if before.is_none() => picture(painter, art, corner, None, title),
         None => {}
     }
-    // paused, the dots rest (as the Dynamic Island's), and nothing moves; the closed notch is small: its bars are the
-    // bands two by two
-    let levels = if playing { bars(groove) } else { [0.0; BARS] };
-    let levels: Vec<f32> = if compact.is_some() { levels.to_vec() } else { levels.chunks(2).map(|pair| pair.iter().copied().fold(0.0, f32::max)).collect() };
+    // paused, the dots rest (as the Dynamic Island's), and nothing moves
     let colours = fade.colours_at(time).unwrap_or_else(|| (tint.unwrap_or(GREEN), tint.unwrap_or(GREEN)));
-    for (index, level) in levels.into_iter().enumerate() {
-        let along_line = bars_left + index as f32 * (bar + gap) + bar / 2.0;
-        // a round dot at rest, the tallest at its highest, from the middle line up and down (standing up: to the sides)
-        let height = bar + (tall - bar) * level.clamp(0.0, 1.0);
-        let rise = if upright {
-            Rect::from_center_size(Pos2::new(rect.center().x, along_line), Vec2::new(height, bar))
-        } else {
-            Rect::from_center_size(Pos2::new(along_line, rect.center().y), Vec2::new(bar, height))
-        };
-        // the first bar takes the first colour, the last the second, and the ones between them a bit of each
-        let along = if count > 1 { index as f32 / (count - 1) as f32 } else { 0.0 };
-        painter.rect_filled(rise, bar / 2.0, colours.0.lerp_to_gamma(colours.1, along));
-    }
-    if playing || fade.fading(time) {
-        ui.ctx().request_repaint_after(crate::app::update::frame_spacing());
+    let row = Row { center: rect.center(), upright, start: bars_left, bar, gap, tall, halves: compact.is_none(), colours };
+    let ear = ear.filter(|_| playing).cloned();
+    super::replay::live(painter, time, move |painter, _| {
+        row.paint(painter, ear.as_ref().map_or([0.0; BARS], |ear| bars(Some(&ear.groove(true)))));
+        // at the ambient rate: the screen's kept the whole app painting all song long
+        if ear.is_some() {
+            painter.ctx().request_repaint_after(crate::app::update::AMBIENT);
+        }
+    });
+    if fade.fading(time) {
+        ui.ctx().request_repaint_after(crate::app::update::AMBIENT);
     }
     let bars_area = if upright {
         Rect::from_min_size(Pos2::new(rect.center().x - tall / 2.0, bars_left), Vec2::new(tall, total))
@@ -159,6 +150,42 @@ pub(super) fn spotify(
     };
     let music = art.union(bars_area);
     ui.interact(music.expand(3.0), ui.scope_id().with("island_pill_music"), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).clicked()
+}
+
+/// Where the bars go and how they look: along the middle line of the island (`center`; standing up, `upright`, down
+/// it), from `start`, each `bar` thick with `gap` between them and `tall` at their highest, in `colours` from the first
+/// to the last. On the closed notch (`halves`), which is small, a bar is two bands, the louder of them.
+#[derive(Clone, Copy)]
+struct Row {
+    center: Pos2,
+    upright: bool,
+    start: f32,
+    bar: f32,
+    gap: f32,
+    tall: f32,
+    halves: bool,
+    colours: (Color32, Color32),
+}
+
+impl Row {
+    /// The bars at `levels` (each 0 to 1, a band's).
+    fn paint(&self, painter: &Painter, levels: [f32; BARS]) {
+        let levels: Vec<f32> = if self.halves { levels.chunks(2).map(|pair| pair.iter().copied().fold(0.0, f32::max)).collect() } else { levels.to_vec() };
+        let count = levels.len();
+        for (index, level) in levels.into_iter().enumerate() {
+            let along_line = self.start + index as f32 * (self.bar + self.gap) + self.bar / 2.0;
+            // a round dot at rest, the tallest at its highest, from the middle line up and down (standing up: to the sides)
+            let height = self.bar + (self.tall - self.bar) * level.clamp(0.0, 1.0);
+            let rise = if self.upright {
+                Rect::from_center_size(Pos2::new(self.center.x, along_line), Vec2::new(height, self.bar))
+            } else {
+                Rect::from_center_size(Pos2::new(along_line, self.center.y), Vec2::new(self.bar, height))
+            };
+            // the first bar takes the first colour, the last the second, and the ones between them a bit of each
+            let along = if count > 1 { index as f32 / (count - 1) as f32 } else { 0.0 };
+            painter.rect_filled(rise, self.bar / 2.0, self.colours.0.lerp_to_gamma(self.colours.1, along));
+        }
+    }
 }
 
 /// A picture in `rect`, `alpha` of the way in over the one before it (0 to 1): the fade from a song's cover to the next.
@@ -175,8 +202,8 @@ mod tests {
     use super::*;
     use crate::app::island::{COMPACT_H, COMPACT_TALL_SONG, minis::upright_cells};
 
-    /// Asked ("na ilha lateral, não fica a capa da música e frequência em vertical"): standing up, the cover and the bars
-    /// go one under the other between the wizard and the minis, with room on each side, inside the island.
+    /// Standing up, the cover and the bars go one under the other between the wizard and the minis, with room on each
+    /// side, inside the island.
     #[test]
     fn standing_up_the_cover_and_the_bars_go_between_the_wizard_and_the_minis() {
         let island = Rect::from_min_size(Pos2::new(0.0, 100.0), Vec2::new(COMPACT_H, COMPACT_TALL_SONG));
@@ -194,8 +221,8 @@ mod tests {
         const { assert!(BARS_TALL < COMPACT_H - 8.0) };
     }
 
-    /// Asked: "ajustar a ilha com a ilha da câmera do Mac": around a notch nothing goes under it; the cover in the left
-    /// wing after the wizard, the bars in the right one before the minis, with room to the notch.
+    /// Around a notch nothing goes under it; the cover in the left wing after the wizard, the bars in the right one
+    /// before the minis, with room to the notch.
     #[test]
     fn around_a_notch_the_cover_and_the_bars_go_on_the_wings() {
         use crate::app::island::{Shape, around_notch, minis::mini_cells};

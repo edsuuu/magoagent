@@ -4,7 +4,7 @@
 
 use super::log::said;
 use super::paint::{AMBER, BLACK, CARD, DIM_3, EXPAND, INK, Out, View, aim, font};
-use crate::app::chat::list::{clipped, glyph};
+use crate::app::chat::list::{Look, clipped, glyph};
 use crate::app::chat::mini_agents::{KinLook, pressable};
 use crate::app::mascot::mago::MagoState;
 use crate::app::ui::agents::{AgentRow, AgentState};
@@ -29,8 +29,8 @@ pub(super) fn chat_body(page: Rect, bar: f32, head: f32) -> (Rect, Rect, Rect) {
     (log, chip_row, bar)
 }
 
-/// The row over the conversation's log: who it is (asked: "cada agente no chat precisa ter um nome, pois na tab não
-/// conseguimos ver quem é quem"), the Maestro's agents (or the way back to it) and the ⤢, each in a room of its own.
+/// The row over the conversation's log: who it is, the Maestro's agents (or the way back to it) and the ⤢, each in a
+/// room of its own.
 pub(super) const NAME_ROW: f32 = 28.0;
 
 /// The name row of `page`: from the log's left to the card's right, its middle where the ⤢ always was.
@@ -38,7 +38,7 @@ pub(super) fn name_row(page: Rect) -> Rect {
     Rect::from_min_max(Pos2::new(page.left() + 84.0, page.top() + 6.0), Pos2::new(page.right() - 6.0, page.top() + 30.0))
 }
 
-/// The most lines a box grows to (asked: "não quebra a linha, sempre vai uma linha direta"); past them its words scroll.
+/// The most lines a box grows to; past them its words scroll.
 const FIELD_LINES: f32 = 5.0;
 
 /// How tall the box `id` is (`.chat-bar`, 40 for a line): it grows with the lines its words wrapped to last frame, up to
@@ -107,7 +107,8 @@ pub(super) fn send_field(
 }
 
 impl DrawingApp {
-    pub(super) fn island_prompt(&mut self, ui: &mut egui::Ui, page: Rect, row: &AgentRow, view: &View, time: f64, out: &mut Out) {
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn island_prompt(&mut self, ui: &mut egui::Ui, page: Rect, row: &AgentRow, view: &View, look: &Look, time: f64, out: &mut Out) {
         self.refresh_transcript();
         let painter = ui.painter().with_clip_rect(page);
         painter.rect(page, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
@@ -119,7 +120,7 @@ impl DrawingApp {
         aim(view, Pos2::new(origin.x + 52.0, origin.y + 42.0 + (height - 42.0 - 84.0) / 2.0 + 42.0), 44.0, state);
 
         // the name row: ⤢ (the whole mini chat in the island: attachments, folder, mode, model, dictation, voice), the
-        // Maestro's agents and who it is. No tip: they would cover the conversation (asked: "tem o tooltip que atrapalha")
+        // Maestro's agents and who it is. No tip: they would cover the conversation
         let head = name_row(page);
         let cy = head.center().y;
         let expand = Rect::from_center_size(Pos2::new(head.right() - 12.0, cy), Vec2::splat(24.0));
@@ -138,7 +139,7 @@ impl DrawingApp {
         let (log, chip_row, bar) = chat_body(page, bar_height(ui, draft_id), NAME_ROW);
         let messages: Vec<&ChatItem> = self.transcripts.get(&row.id).map(|transcript| said(&transcript.items).collect()).unwrap_or_default();
         let working = matches!(row.state, AgentState::Working(_));
-        out.picture = self.island_log(ui, log, &messages, working, time).or(out.picture.take());
+        out.picture = self.island_log(ui, log, &messages, working, Some(&row.id), time).or(out.picture.take());
 
         // `.model-btn`: the agent and its model; a click opens the whole chat, where they are chosen
         let chat = self.chats.iter().find(|chat| chat.id == row.id);
@@ -161,9 +162,20 @@ impl DrawingApp {
         let send_rect = Rect::from_center_size(Pos2::new(bar.right() - 10.0 - 14.0, bar.bottom() - 20.0), Vec2::splat(28.0));
         let field = Rect::from_min_max(Pos2::new(bar.left() + 10.0, bar.top() + 6.0), Pos2::new(send_rect.left() - 8.0, bar.bottom() - 6.0));
         let hint = if messages.is_empty() { "Pergunte qualquer coisa…" } else { "Continuar…" };
+        // the / menu over the box, as the big chat's: its arrows, Tab, Enter and Esc while it is open (Esc closes it, not
+        // the island)
+        let typing = ui.memory(|memory| memory.has_focus(draft_id) || memory.had_focus_last_frame(draft_id));
+        let typed = self.chat_draft.clone();
+        let slash = if typing { self.slash_entries_of(&row.id, &typed) } else { None };
         let mut draft = std::mem::take(&mut self.chat_draft);
+        let swallow = slash.as_ref().is_some_and(|entries| self.slash_keys(ui.ctx(), &mut draft, entries, draft_id));
         let (edit, sent) = send_field(ui, &painter, (field, send_rect), &mut draft, draft_id, hint, "island_prompt_send");
-        if sent {
+        if let Some(entries) = &slash
+            && let Some(name) = self.slash_menu_ui(ui.ctx(), entries, bar.left_top() - Vec2::new(0.0, 6.0), bar.width(), look)
+        {
+            crate::app::chat::commands::complete_into(ui.ctx(), &mut draft, &name, draft_id);
+        }
+        if sent && !swallow {
             self.send_from_box(ui.ctx(), &row.id, std::mem::take(&mut draft).trim().to_string());
             edit.request_focus();
         }

@@ -10,9 +10,8 @@ const DEV_BADGE: Color32 = Color32::from_rgb(0xf0, 0xa0, 0x20);
 
 /// The window's buttons, close at the right. Windows' are 46 wide, in a block as tall as the reference app's window overlay
 /// (a tone apart from the canvas), and close turns red under the pointer. On Linux they are GNOME's, as Chrome draws them
-/// there (asked: "porque o do Chrome fica diferente do nosso app, está com os botões do Windows"): round, 24 across, 32
-/// apart and 8 from the window's edge, on the top row with the canvas's buttons, with no ground of their own and close gray
-/// like the others.
+/// there: round, 24 across, 32 apart and 8 from the window's edge, on the top row with the canvas's buttons, with no ground
+/// of their own and close gray like the others.
 // ponytail: always minimize, maximize, close at the right; GNOME's own order (button-layout) is not read
 const GNOME: bool = cfg!(target_os = "linux");
 const CAPTION_WIDTH: f32 = if GNOME { 32.0 } else { 46.0 };
@@ -69,7 +68,7 @@ impl DrawingApp {
             if button.hovered() {
                 p.circle_filled(rect.center(), GLASS_BUTTON / 2.0, ink.gamma_multiply(0.1));
             }
-            // ☰'s three bars read bigger than the other marks: a size down (asked)
+            // ☰'s three bars read bigger than the other marks: a size down
             let scale = if matches!(icon, Icon::Menu) { 0.85 } else { GLASS_ICON };
             paint_icon_scaled(&p, icon, rect.center(), if on { glass_accent(dark) } else { ink.gamma_multiply(0.85) }, scale, 0.0);
             button.clicked()
@@ -242,8 +241,7 @@ impl DrawingApp {
         let (Some(screen), time) = (raw.screen_rect, raw.time.unwrap_or(0.0)) else { return };
         let maximized = raw.viewport().maximized == Some(true);
         let (buttons, panes) = (self.title_buttons, self.panes.buttons);
-        // the welcome covers the whole bar: all of its top moves the window, but the window's own buttons (asked: "se eu
-        // tô na intro e clico e arrasto a janela no meio ela deve deixar eu arrastar")
+        // the welcome covers the whole bar: all of its top moves the window, but the window's own buttons
         let welcome = self.welcome.is_some();
         let empty = |pos: Pos2| {
             if welcome {

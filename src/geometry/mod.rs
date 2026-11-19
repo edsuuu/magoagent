@@ -181,11 +181,43 @@ pub(crate) fn rope_curve(a: [f32; 2], b: [f32; 2]) -> Vec<[f32; 2]> {
     rope_through(a, rope_rest(a, b), b)
 }
 
-/// Size of a text in world units: its widest line in the hand font, one line height per line.
+/// Size of a text in world units: its widest line in the hand font, one line height per line. Kept by the text's
+/// fingerprint: a note's text is a text element too, and its box was measured glyph by glyph several times a frame
+/// for every note of the canvas, on screen or not.
 pub(crate) fn text_size(value: &str, size: f32) -> Vec2 {
+    // ponytail: a 64-bit fingerprint, a collision gives a text another's box; the cache empties itself when full
+    const KEPT: usize = 4096;
+    thread_local! {
+        static MEASURED: std::cell::RefCell<std::collections::HashMap<(u64, u32), Vec2>> = Default::default();
+    }
+    let key = (fingerprint(value.as_bytes()), size.to_bits());
+    if let Some(known) = MEASURED.with_borrow(|measured| measured.get(&key).copied()) {
+        return known;
+    }
     let lines = text_lines(value);
     let width = lines.iter().map(|l| text_advance(l, size)).fold(0.0, f32::max);
-    Vec2::new(width.max(size * 0.5), lines.len() as f32 * size * LINE_HEIGHT)
+    let measured = Vec2::new(width.max(size * 0.5), lines.len() as f32 * size * LINE_HEIGHT);
+    MEASURED.with_borrow_mut(|known| {
+        if known.len() >= KEPT {
+            known.clear();
+        }
+        known.insert(key, measured);
+    });
+    measured
+}
+
+/// A quick 64-bit hash of `bytes` (eight at a time, as rustc's FxHash), with their length in it.
+pub(crate) fn fingerprint(bytes: &[u8]) -> u64 {
+    const SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
+    let mix = |hash: u64, word: u64| (hash.rotate_left(5) ^ word).wrapping_mul(SEED);
+    let (words, rest) = bytes.as_chunks::<8>();
+    let mut hash = mix(0, bytes.len() as u64);
+    for word in words {
+        hash = mix(hash, u64::from_le_bytes(*word));
+    }
+    let mut tail = [0u8; 8];
+    tail[..rest.len()].copy_from_slice(rest);
+    mix(hash, u64::from_le_bytes(tail))
 }
 
 /// Excalidraw's hand-drawn font, Excalifont (OFL 1.1, assets/Excalifont-license.txt), whole in one file.
@@ -227,13 +259,18 @@ pub(crate) fn local_bounds(e: &Element) -> Rect {
     }
 }
 
+/// Between windows the app places: a new one and the one that opens it, and Organizar o canvas.
+pub(crate) const WINDOW_GAP: f32 = 60.0;
+
 /// Where a window the size of `want` goes among `elements`: at `want` when that is free, else in the rings around
 /// `around` (the window that opens it, or `want` itself), lined up with its edges 60 away: first below, right, left and
 /// above it, then its corners, then the next ring out, overlapping no window or note. What an agent opens stays around
-/// it, not piled up on one side (asked: "a posição dos terminais, às vezes ele junta tudo na direita").
+/// it, not piled up on one side. Free is `CLEAR` away from every window and note: 20 left them touching.
 pub(crate) fn free_spot_among<'a>(elements: impl Iterator<Item = &'a Element>, want: Rect, around: Rect) -> Rect {
-    const GAP: f32 = 60.0;
-    let taken: Vec<Rect> = elements.filter(|e| e.is_node() || e.created.is_some()).map(|e| element_bounds(e).expand(20.0)).collect();
+    const GAP: f32 = WINDOW_GAP;
+    // under the rings' gap, so the spot lined up beside the window that opens it stays free of it
+    const CLEAR: f32 = GAP - 4.0;
+    let taken: Vec<Rect> = elements.filter(|e| e.is_node() || e.created.is_some()).map(|e| element_bounds(e).expand(CLEAR)).collect();
     let free = |spot: &Rect| !taken.iter().any(|t| t.intersects(*spot));
     if free(&want) {
         return want;

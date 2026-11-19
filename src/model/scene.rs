@@ -85,7 +85,7 @@ pub(crate) struct Prefs {
     pub(crate) box_overlap: bool,
     pub(crate) mouse_wheel_zooms: bool,
     /// Dispositivo de entrada = Automático: each scroll says whether a mouse wheel or a touchpad sent it
-    /// (`wheel_from_mouse`), and `mouse_wheel_zooms` is not looked at. Off by default: Trackpad (asked).
+    /// (`wheel_from_mouse`), and `mouse_wheel_zooms` is not looked at. Off by default: Trackpad.
     pub(crate) wheel_auto: bool,
     /// Snap to the 20 px grid while drawing and moving (Cmd+').
     pub(crate) grid: bool,
@@ -128,6 +128,9 @@ pub(crate) struct Prefs {
     pub(crate) recruit_model: String,
     /// How the agents the Maestro recruits run: in a terminal (Claude Code whole) or as a light chat of the app.
     pub(crate) agent_mode: AgentMode,
+    /// The app's agents are told to keep no work in the system's temporary folder, which a restart may empty (chat/tools.rs
+    /// `temp_rule`): the project's folder and its worktrees instead. On by default.
+    pub(crate) work_outside_temp: bool,
     /// Ajustes › Agentes › WSL (app/system/wsl.rs): "" looks in the default distro when Windows has no agent, "off"
     /// never, a distro's name runs the agents there.
     pub(crate) wsl: String,
@@ -196,7 +199,7 @@ pub(crate) struct Prefs {
     /// The microphone the call and Ditar hear, by name; empty: the system's, unless that is a virtual cable.
     pub(crate) voice_mic: String,
     /// Ajustes › Ok Mago: "Ok Mago, …" calls the Maestro in a call, even on standby; and the call says the answers out loud (off:
-    /// it starts with the speakers off, as the button does). Both off by default (asked), an old prefs.json without them too.
+    /// it starts with the speakers off, as the button does). Both off by default, an old prefs.json without them too.
     pub(crate) ok_mago: bool,
     pub(crate) speak_answers: bool,
     /// The call hears and speaks on OpenAI's API (voice/openai.rs), in `openai_voice`; off, it is the
@@ -220,8 +223,13 @@ pub(crate) struct Prefs {
     pub(crate) sidebar_agents_closed: bool,
     /// The sidebar's green "Nada esperando por você" closed by its × (ui/attention.rs); the amber card still shows.
     pub(crate) sidebar_clear_hidden: bool,
+    /// The Maestros (chat or terminal ids) whose recruits show under them, in Conversas (chat/list/team.rs) and in
+    /// Agentes deste espaço (ui/attention.rs); the others fold them to "N agentes", as they all start.
+    pub(crate) teams_open: Vec<String>,
     /// The right panel's width (app/panes/) as its edge was pulled; none: `PANE_WIDTH` (a double-click on the edge).
     pub(crate) pane_width: Option<f32>,
+    /// Nota rápida's text (app/panes/quick_note.rs), as typed.
+    pub(crate) quick_note: String,
     /// Mostrar Tamanho: when a portal's header shows its width × height.
     pub(crate) portal_size: crate::app::browser::extras::SizeReadout,
     /// Points of zoom a notch of the wheel adds (Ajustes › Geral › Tela), 2 to 50.
@@ -266,6 +274,7 @@ impl Default for Prefs {
             // the recruits run on Sonnet unless Ajustes says otherwise ("cli" goes back to the CLI's own)
             recruit_model: "sonnet".into(),
             agent_mode: AgentMode::Terminal,
+            work_outside_temp: true,
             wsl: String::new(),
             chat_mode: 0,
             update_check: 0,
@@ -313,7 +322,9 @@ impl Default for Prefs {
             sidebar_hidden: false,
             sidebar_agents_closed: false,
             sidebar_clear_hidden: false,
+            teams_open: Vec::new(),
             pane_width: None,
+            quick_note: String::new(),
             portal_size: Default::default(),
             zoom_step: 10,
             terminal: TermPrefs::default(),

@@ -286,12 +286,12 @@ pub(crate) fn paint_mago_dancing(painter: &Painter, id: &str, center: Pos2, size
     MOTIONS.with(|motions| {
         let mut motions = motions.borrow_mut();
         let motion = motions.entry(key).or_insert_with(|| MagoMotion::seeded(key));
-        // the song's face on top of the state's, eased there by the motion (asked: "a Luna precisa ter mais
-        // expressões nas músicas")
+        // the song's face on top of the state's, eased there by the motion
         motion.dance_face = (groove.dance != Dance::Nap).then(|| draw::dance_expression(groove));
         motion.advance(state, time, None);
         draw::paint_dancer(painter, center, size, color, motion, &pose, time);
     });
-    let frame = if groove.dance == Dance::Nap { std::time::Duration::from_millis(66) } else { crate::app::update::frame_spacing() };
-    painter.ctx().request_repaint_after(frame.max(std::time::Duration::from_millis(16)));
+    // dancing, at the ambient rate: the screen's kept the whole app painting all song long
+    let frame = if groove.dance == Dance::Nap { std::time::Duration::from_millis(66) } else { crate::app::update::AMBIENT };
+    painter.ctx().request_repaint_after(frame);
 }

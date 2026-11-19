@@ -27,7 +27,9 @@ impl DrawingApp {
         let result = self.act_on(action, args);
         // a chat shown in the island is over every window already
         let in_island = args["place"] == "island";
-        if result.is_ok() && !in_island && matches!(action, "ide_folder" | "open_path" | "open_as_note" | "chat_new" | "chat_open" | "chat_node" | "chats_view")
+        if result.is_ok()
+            && !in_island
+            && matches!(action, "ide_folder" | "open_path" | "file_link" | "open_as_note" | "chat_new" | "chat_open" | "chat_node" | "chats_view")
         {
             self.bring_to_front();
         }
@@ -54,7 +56,8 @@ impl DrawingApp {
                     self.tour.as_ref().map_or(1, |tour| tour.step + 1)
                 ))
             }
-            "memory" => Ok(crate::app::system::memory::format(&self.memory.snapshot())),
+            // the bridge's ask goes by `memory_job` (act_later), off the interface's thread
+            "memory" => self.memory_job()(),
             "ide_folder" => self.act_ide_folder(&text("path")),
             "open_default" => self.act_open_default(&text("path")),
             "canvas_drop" => {
@@ -67,6 +70,8 @@ impl DrawingApp {
                 self.drop_on_canvas(&paths, at)
             }
             "open_path" => self.act_open_path(&text("path"), args["line"].as_u64().map(|l| l as usize), &text("asker")),
+            "file_link" if text("action") == "back" => self.link_go_back(),
+            "file_link" => self.act_file_link(&text("path"), args["line"].as_u64().map(|line| line as usize), &text("asker")),
             "open_as_note" => {
                 let path = folder(&text("path")).filter(|_| !text("path").is_empty()).ok_or("diga `path`: o arquivo a abrir na nota")?;
                 let chat = match text("chat").as_str() {
@@ -99,6 +104,16 @@ impl DrawingApp {
                 self.act_note_stack(&text("action"), &names)
             }
             "canvas_group" => self.act_canvas_group(args),
+            "organize_canvas" => {
+                let names = args["elements"].as_array().into_iter().flatten().filter_map(Value::as_str);
+                let only: Vec<usize> = names
+                    .map(|name| self.scene.elements.iter().position(|element| element.id == name.trim()).map_or_else(|| self.node_named(name), Ok))
+                    .collect::<Result<_, _>>()?;
+                match self.arrange_canvas((!only.is_empty()).then_some(only.as_slice())) {
+                    0 => Err("Nada para organizar: são precisos 2 ou mais elementos soltos (os bloqueados ficam onde estão).".into()),
+                    moved => Ok(format!("{moved} itens organizados em fileiras, com 60 px entre eles.")),
+                }
+            }
             "portal_tab" => self.act_portal_tab(&text("portal"), &text("action"), &text("url"), args["index"].as_u64().map(|i| i as usize)),
             "portal_settings" => self.act_portal_settings(args),
             "portal_copy_screenshot" => {
@@ -109,7 +124,10 @@ impl DrawingApp {
             "chat_decide" => self.act_chat_decide(args),
             "disconnect" => self.act_disconnect(&text("a"), &text("b")),
             "chat_list" => Ok(self.act_chat_list()),
-            "chats_view" => self.act_chats_view(&text("state"), &text("filter"), args["query"].as_str()),
+            "chats_view" => {
+                let team = Some(text("team")).filter(|team| !team.is_empty());
+                self.act_chats_view(&text("state"), &text("filter"), args["query"].as_str(), team.as_deref().map(|team| (team, args["team_open"] != false)))
+            }
             "chat_new" => self.act_chat_new(&text("agent"), &text("folder")),
             "chat_provider" => {
                 let id = if text("chat").is_empty() { self.chat_agent.clone().ok_or("nenhum chat aberto")? } else { self.chat_named(&text("chat"))? };
@@ -135,6 +153,11 @@ impl DrawingApp {
                 let open = text("state") != "close";
                 if open {
                     let id = if text("chat").is_empty() { self.chat_agent.clone().ok_or("nenhum chat")? } else { self.chat_named(&text("chat"))? };
+                    // with the island on, the small conversation is the island's: no panel over the canvas
+                    if self.prefs.island {
+                        self.open_mini_chat(&id);
+                        return Ok("Chat aberto na ilha.".into());
+                    }
                     self.chat_agent = Some(id);
                     self.chat_open = false;
                 }
@@ -148,6 +171,14 @@ impl DrawingApp {
                 }
                 // another agent's words go signed with its name: in the chat they are not taken for the person's
                 let asker = text("asker");
+                // the boss to its recruit: a question in the recruit's line, whose answer comes back to the boss's chat
+                // when it is done (ask.rs), as a recruit's first task does
+                if self.is_chat(&asker) && self.boss_of(&id).as_deref() == Some(asker.as_str()) {
+                    let (reply, _) = std::sync::mpsc::channel();
+                    let name = self.speaker(&asker);
+                    self.ask_chat(&id, &asker, &name, &text("text"), reply);
+                    return Ok("Mensagem enviada ao agente do seu time; a resposta dele chega neste chat quando ele terminar.".into());
+                }
                 let words = if asker.is_empty() || asker == id { text("text") } else { crate::app::maestro::signed(&self.speaker(&asker), &text("text")) };
                 self.chat_outbox.push((id, words));
                 Ok("Mensagem enviada ao chat.".into())
@@ -213,8 +244,9 @@ impl DrawingApp {
                 self.prefs.minimap = args["open"].as_bool().unwrap_or(!self.prefs.minimap);
                 Ok(if self.prefs.minimap { "Minimapa aberto." } else { "Minimapa fechado." }.into())
             }
-            "sidebar" => self.act_sidebar(&text("action")),
+            "sidebar" => self.act_sidebar(&text("action"), &text("team")),
             "panel" => self.act_panel(args),
+            "quick_note" => self.act_quick_note(args),
             "changes_review" => self.act_changes_review(args),
             "file_tree" => self.act_file_tree(args),
             "tasks" => self.act_tasks(args),

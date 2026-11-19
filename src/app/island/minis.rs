@@ -10,9 +10,8 @@ const GRID: f32 = 2.0 * BODY + GAP;
 pub(super) const MOST: usize = 4;
 
 /// The cells of the first `count` agents (four at the most) in the grid `MINIS_SIDE` from the right: one or two on the
-/// middle line, the last at the right edge (asked: "perto da borda"); three or four row by row from the grid's top left,
-/// as a CSS grid fills. On an island as short as a camera notch (32) the cells shrink to the reference's 13, keeping 2
-/// above and below.
+/// middle line, the last at the right edge; three or four row by row from the grid's top left, as a CSS grid fills. On
+/// an island as short as a camera notch (32) the cells shrink to the reference's 13, keeping 2 above and below.
 pub(crate) fn mini_cells(island: Rect, count: usize) -> Vec<Rect> {
     let count = count.min(MOST);
     let body = BODY.min((island.height() - 4.0 - GAP) / 2.0);

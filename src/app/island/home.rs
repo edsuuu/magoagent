@@ -23,8 +23,8 @@ fn hairline() -> Stroke {
     Stroke::new(1.0, Color32::from_white_alpha(9))
 }
 
-/// What an empty page says: its title and what to do, by the tab; Claude Code's knows whether its hooks are in
-/// (asked: "se os hooks estão instalados aqui precisa saber").
+/// What an empty page says: its title and what to do, by the tab; Claude Code's knows whether its hooks are
+/// in.
 pub(crate) fn empty_words(tab: Tab, hooks: bool) -> (&'static str, &'static str) {
     match tab {
         Tab::Claude if hooks => ("Nenhuma sessão do Claude Code", "Os hooks estão instalados: as sessões aparecem aqui quando começarem"),

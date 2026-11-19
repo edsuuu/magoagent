@@ -37,9 +37,8 @@ fn frame_delay(app: &mut DrawingApp, ctx: &Context, time: f64) -> std::time::Dur
     output.viewport_output.get(&egui::ViewportId::ROOT).map_or(std::time::Duration::MAX, |viewport| viewport.repaint_delay)
 }
 
-/// Asked ("como a Dynamic Island do iPhone quando toca música"): the pill's bars follow the bands heard, each its own;
-/// with nothing heard here (the song on another device, the listening off), they rest, nothing made up (asked: "se a
-/// música não está tocando nesse dispositivo, a frequência precisa ficar parada").
+/// The pill's bars follow the bands heard, each its own; with nothing heard here (the song on another device, the
+/// listening off), they rest, nothing made up.
 #[test]
 fn the_pills_bars_follow_what_is_heard_and_rest_without_it() {
     use crate::app::integrations::spotify::groove::{BANDS, Dance, Groove};
@@ -57,8 +56,8 @@ fn the_pills_bars_follow_what_is_heard_and_rest_without_it() {
     assert_eq!(bars(None), [0.0; BANDS]);
 }
 
-/// Asked ("Luna à esquerda, capa e frequência no meio, os mini agentes à direita; sem mini agentes, à direita"): the
-/// cover and the bars go together, in the middle between the wizard and the minis, or at the right without minis.
+/// The cover and the bars go together, in the middle between the wizard and the minis, or at the right without
+/// minis.
 #[test]
 fn the_cover_and_the_bars_sit_in_the_middle_or_at_the_right() {
     use crate::app::island::minis::mini_cells;
@@ -80,15 +79,15 @@ fn the_cover_and_the_bars_sit_in_the_middle_or_at_the_right() {
     let (cover, bars) = spread(pill, Some(grid), 0.0);
     let (before, after) = (cover - 42.0, grid.left() - (bars + 42.0));
     assert!((before - after).abs() < 1.0 && before > 10.0, "the gaps: {before} and {after}");
-    // two minis side by side: still some room, not the wide gaps (asked: "diminuir mais um pouco esse espaço")
+    // two minis side by side: still some room, not the wide gaps
     let grid = mini_cells(pill, 2).into_iter().reduce(|grid, cell| grid.union(cell)).unwrap();
     let (cover, bars) = spread(pill, Some(grid), 0.0);
     let (before, after) = (cover - 42.0, grid.left() - (bars + 42.0));
     assert!((10.0..=20.0).contains(&before) && (before - after).abs() < 1.0, "the gaps: {before} and {after}");
 }
 
-/// Asked ("ali a Luna não reage à música"): open on Início, while the song plays she dances too, and her dance asks for
-/// the listening; paused, nothing asks for it.
+/// Open on Início, while the song plays she dances too, and her dance asks for the listening; paused, nothing asks for
+/// it.
 #[test]
 fn open_on_home_luna_dances_to_the_song() {
     use crate::app::integrations::spotify::{Now, Track};
@@ -125,8 +124,7 @@ fn the_pill_asks_for_frames_while_the_song_plays_and_not_paused() {
     assert_eq!(paused, frame_delay(&mut app, &ctx, 2.4), "paused, the pill asks for no frame, as with no song");
 }
 
-/// Asked ("se eu clicar na música ele me leva para a tab da música"): a click on the cover in the notch opens the
-/// island on Música.
+/// A click on the cover in the notch opens the island on Música.
 #[test]
 fn a_click_on_the_songs_cover_opens_the_island_on_the_music() {
     use crate::app::integrations::spotify::{Now, Track};
@@ -145,8 +143,7 @@ fn a_click_on_the_songs_cover_opens_the_island_on_the_music() {
     assert_eq!((app.island.size().x, app.island.tab()), (EXPANDED_W, Tab::Music), "open on Música");
 }
 
-/// Asked ("tem momento que a Luna fica parada como se nada estivesse tocando"): an agent at work or done does not stop
-/// her dance; what needs the person does.
+/// An agent at work or done does not stop her dance; what needs the person does.
 #[test]
 fn luna_dances_through_the_agents_work_and_stops_for_the_person() {
     use crate::app::island::paint::dances_through;
@@ -159,8 +156,7 @@ fn luna_dances_through_the_agents_work_and_stops_for_the_person() {
     }
 }
 
-/// Asked ("o dono quer as duas: as do canvas (terminais do app rodando Claude Code e chats do app com agente claude) e
-/// as de fora"): Claude Code's page shows the app's Claude agents, each saying it is on the canvas, and not the others.
+/// Claude Code's page shows the app's Claude agents, each saying it is on the canvas, and not the others.
 #[test]
 fn the_claude_page_has_the_apps_agents_on_the_canvas() {
     let ctx = Context::default();
@@ -174,7 +170,7 @@ fn the_claude_page_has_the_apps_agents_on_the_canvas() {
     assert!(!texts.iter().any(|text| text.contains("site")), "the app's Codex is no Claude Code session ({:?}): {texts:?}", app.island.tab());
 }
 
-/// Asked ("se os hooks estão instalados aqui precisa saber"): the empty Claude Code page says so when they are in.
+/// The empty Claude Code page says so when they are in.
 #[test]
 fn the_empty_claude_page_knows_whether_the_hooks_are_in() {
     use crate::app::island::home::empty_words;
@@ -400,8 +396,7 @@ fn no_canvas_on_the_card_brings_the_app_up_on_the_agents_card() {
     assert_eq!((app.selected.clone(), app.terminal_focus.as_deref()), (vec![0], Some("c")));
 }
 
-/// Asked ("tem vezes q vai tudo para baixo, e a ilha some, precisa ter um botao nas configurações para voltar a ilha"):
-/// whatever was saved, it goes back to the top of the screen, through Ajustes and through the MCP.
+/// Whatever was saved, it goes back to the top of the screen, through Ajustes and through the MCP.
 #[test]
 fn the_island_lost_off_the_screen_comes_back_to_where_it_starts() {
     let ctx = Context::default();
@@ -493,8 +488,7 @@ fn the_islands_settings_link_opens_app_settings_closes_island_settings_and_folds
     assert!((app.island.size().x - COMPACT_W).abs() < 4.0, "the island folded to compact: {:?}", app.island.size());
 }
 
-/// Asked ("o chat atual abre um monte, salva a altura que deixei, mas se não tiver chat aberto não é para manter"): the
-/// size the conversation was pulled to is not the page's with no chat open.
+/// The size the conversation was pulled to is not the page's with no chat open.
 #[test]
 fn with_no_chat_open_the_chat_page_is_its_plain_size_not_the_pulled_one() {
     let ctx = Context::default();
@@ -526,9 +520,8 @@ fn a_note_wears_tape_across_its_top_edge() {
     assert!(small.iter().all(|point| point.x > 0.0 && point.x < 40.0), "a small note keeps it inside: {small:?}");
 }
 
-/// Asked: "não consigo ler o texto completo, quando a IA me pergunta algo, fica com os ... e eu tenho que passar o mouse
-/// em cima de cada opção, para ler o que seria cada uma, e não tem a opção de Outro": the question and what each option
-/// means whole, the card as tall as they need, and "Outro" to answer in one's own words (Enter sends).
+/// The question and what each option means whole, the card as tall as they need, and "Outro" to answer in one's own
+/// words (Enter sends).
 #[test]
 fn a_question_shows_its_options_whole_and_takes_an_answer_of_ones_own() {
     let ctx = Context::default();
@@ -563,9 +556,8 @@ fn a_question_shows_its_options_whole_and_takes_an_answer_of_ones_own() {
     assert!(app.person_asks.borrow().is_empty());
 }
 
-/// Asked: "quando estiver criando a mensagem na ilha ele não quebra a linha, sempre vai uma linha direta" and "se eu
-/// tiver com o foco no input na ilha, ela não pode fechar": the words wrap and the box grows with them, and while the
-/// box has the keyboard the island stays open after the pointer left.
+/// The words wrap and the box grows with them, and while the box has the keyboard the island stays open after the
+/// pointer left.
 #[test]
 fn the_islands_box_wraps_its_words_and_holds_the_island_open_while_typing() {
     let ctx = Context::default();
@@ -603,8 +595,7 @@ fn focus_frame(app: &mut DrawingApp, ctx: &Context, time: f64, focused: bool) {
     output.textures_delta.clear();
 }
 
-/// Asked: "se eu abrir a ilha e clicar fora ela precisa fechar, apenas quando eu estiver com o chat da tab aberto, ou na
-/// música, git etc.; se for pergunta que fez, mantém como está hoje". The window losing the focus is the click elsewhere.
+/// The window losing the focus is the click elsewhere.
 #[test]
 fn a_click_elsewhere_folds_the_open_island_but_not_one_with_a_question() {
     for page in ["chats", "spotify", "github"] {
@@ -637,4 +628,21 @@ fn a_click_elsewhere_folds_the_open_island_but_not_one_with_a_question() {
         time += 0.05;
     }
     assert!(!app.person_asks.borrow().is_empty() && app.island.size().x > COMPACT_W + 20.0, "the question keeps it open: {}", app.island.size().x);
+}
+
+/// Every frame of the island paints the whole app: with the pointer on it, it asks for them at the rate in Ajustes;
+/// left alone and settled, only for what moves in it, never sooner than the ambient rate.
+#[test]
+fn the_island_left_alone_asks_for_few_frames() {
+    let (mut app, ctx, mut time) = opened();
+    let on_it = island_rect(&app).center();
+    rest(&mut app, &ctx, &mut time, on_it, 1.0);
+    let touched = frame_delay(&mut app, &ctx, time);
+    assert!(touched <= crate::app::update::frame_spacing(), "the pointer on it: the rate in Ajustes ({touched:?})");
+    app.island.over = Some(false);
+    frame_at(&mut app, &ctx, time, vec![egui::Event::PointerGone]);
+    run(&mut app, &ctx, time + 0.05, time + 2.0, vec![]);
+    assert_eq!(app.island.size().x, EXPANDED_W, "still open");
+    let alone = frame_delay(&mut app, &ctx, time + 2.05);
+    assert!(alone >= crate::app::update::AMBIENT, "left alone: no frame sooner than the ambient rate ({alone:?})");
 }

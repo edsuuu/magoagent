@@ -12,6 +12,7 @@ use crate::prelude::*;
 mod actions;
 mod ask;
 mod cursor;
+mod done;
 mod entry;
 pub(super) mod feed;
 mod forms;
@@ -25,6 +26,7 @@ mod integrations;
 mod keymap;
 mod keys;
 mod log;
+mod luna;
 #[cfg(target_os = "macos")]
 pub(crate) mod macos;
 mod marquee;
@@ -34,6 +36,7 @@ pub(crate) mod paint;
 pub(crate) mod picture;
 pub(crate) mod pill;
 mod prompt;
+pub(crate) mod replay;
 mod session;
 mod sounds;
 mod spring;
@@ -55,37 +58,33 @@ pub(crate) fn notch_at(at: Pos2) -> Option<Rect> {
 }
 
 /// The sizes of the island: the closed one, the open one and their corners.
-// asked: "entre a capa e a Luna, e entre a frequência e os mini mascotes, tem um espaço muito grande": about 15 each
-// with two minis
+// about 15 each with two minis
 pub(crate) const COMPACT_W: f32 = 188.0;
 /// How far the middle of the wizard (30 wide) is from the compact island's left side: 12 of room to the edge, as the
-/// minis have at the right (asked: "coloca um padding na esquerda da Luna, ela ficou muito colada").
+/// minis have at the right.
 pub(crate) const COMPACT_SIDE: f32 = 27.0;
-/// The same for the minis' grid at the right, which keeps 12 of room to the edge (asked: "os mini mascotes, coloca um
-/// padding na direita").
+/// The same for the minis' grid at the right, which keeps 12 of room to the edge.
 pub(crate) const MINIS_SIDE: f32 = 27.0;
-// asked: "essa barra da ilha está muito grande, diminui uns 1,5 px"
 pub(crate) const COMPACT_H: f32 = 38.5;
 /// Standing up on a side of the screen, the compact island is this tall (`COMPACT_H` wide): the wizard at the top, the
 /// minis at the bottom.
 pub(crate) const COMPACT_TALL: f32 = 128.0;
-/// The same while a song shows: its cover and its bars go between the wizard and the minis (asked: "na ilha lateral, não
-/// fica a capa da música e frequência em vertical").
+/// The same while a song shows: its cover and its bars go between the wizard and the minis.
 pub(crate) const COMPACT_TALL_SONG: f32 = 176.0;
 pub(crate) const EXPANDED_W: f32 = 760.0;
 pub(crate) const CLOSED_W: f32 = 80.0;
 pub(crate) const CLOSED_H: f32 = 24.0;
 const CLOSED_CORNER: f32 = 10.0;
 const COMPACT_CORNER: f32 = 18.0;
-/// Around a camera notch (asked: "ajustar a ilha com a ilha da câmera do Mac para ficar na mesma proporção"), the wing
-/// each side of it: closed, the wizard's face (with a song, its cover beside her and the bars on the other side);
-/// compact, the wizard and the minis (with a song or the voice, the cover and the bars split by the notch too).
+/// Around a camera notch, the wing each side of it: closed, the wizard's face (with a song, its cover beside her and
+/// the bars on the other side); compact, the wizard and the minis (with a song or the voice, the cover and the bars
+/// split by the notch too).
 const CLOSED_WING: f32 = 30.0;
 const CLOSED_WING_SONG: f32 = 48.0;
 const COMPACT_WING: f32 = 54.0;
 const COMPACT_WING_WIDE: f32 = 104.0;
-/// Open around a notch, its header is the notch's row (asked: "deixar os botões separando quando estivesse na posição da
-/// câmera"): each wing holds the tabs at the left (seven at most, 35 apart from 14 in) or the buttons at the right.
+/// Open around a notch, its header is the notch's row: each wing holds the tabs at the left (seven at most, 35 apart
+/// from 14 in) or the buttons at the right.
 const HEADER_WING: f32 = 14.0 + 7.0 * 35.0 + 6.0;
 /// The conversation at least this big, in points.
 const CHAT_MIN: (f32, f32) = (420.0, 300.0);
@@ -136,12 +135,6 @@ pub(crate) fn main_state(mood: Mood, celebrating: bool) -> MagoState {
         Mood::Ready if celebrating => MagoState::Done,
         _ => MagoState::Idle,
     }
-}
-
-/// Whether an agent at work last frame (`working`) ended its turn now: done, or waiting on the person. One stopped
-/// (Esc: idle since no answer) or closed did not.
-pub(crate) fn turn_ended(working: &std::collections::HashSet<String>, rows: &[AgentRow]) -> bool {
-    rows.iter().any(|row| working.contains(&row.id) && matches!(row.state, AgentState::Idle(Some(_)) | AgentState::Waiting))
 }
 
 /// What the open island shows.
@@ -215,10 +208,26 @@ pub(crate) enum Shape {
 }
 
 impl Shape {
-    /// The wizard has a loop to play (swaying, blinking) in the compact and open island, as in the reference, whose
-    /// requestAnimationFrame runs while either shows: a frame per refresh, not 15 or 30 a second.
+    /// The compact and open island run at the rate asked in Ajustes while the person is on them, as the reference's
+    /// requestAnimationFrame; left alone, at what they show asks for (`update::AMBIENT`).
     fn animates_every_frame(self) -> bool {
         self != Shape::Closed
+    }
+}
+
+/// When the app's next frame comes for the island `shape`. While the person is on the compact or open one (`touched`),
+/// at the rate asked in Ajustes (the window has no vsync to hold it back: a bare `request_repaint` ran at 230 a second,
+/// 55% of a core). Left alone, what it shows asks for its own frames (the wizard 15 a second at rest, the springs every
+/// frame, the rest `update::AMBIENT`), and while it `moves` the app comes at the ambient rate; each of these frames paints
+/// the whole app. Drawing itself (`replaying`, `replay.rs`), what moves asks for the island's window alone: the app comes
+/// for what changes, and when the stage gives way by the clock (`due`, in seconds from now).
+fn next_frame(shape: Shape, touched: bool, moving: bool, replaying: bool, due: Option<f64>) -> Option<std::time::Duration> {
+    if shape.animates_every_frame() && touched {
+        Some(crate::app::update::frame_spacing())
+    } else if replaying {
+        due.map(|due| std::time::Duration::from_secs_f64(due.max(0.0)))
+    } else {
+        moving.then_some(crate::app::update::AMBIENT)
     }
 }
 
@@ -241,8 +250,7 @@ pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, settings: bool, tall:
     }
     match (pinned, tab) {
         (true, _) => (Vec2::new(EXPANDED_W, 42.0 + body + 10.0), EXPANDED_CORNER),
-        // its settings are a short page of their own, whatever tab is under them (asked: "clico nas configurações e ela
-        // não se adapta, fica com o mesmo tamanho da maior")
+        // its settings are a short page of their own, whatever tab is under them
         _ if settings => (Vec2::new(EXPANDED_W, HOME_H), EXPANDED_CORNER),
         (_, Tab::Home) => (Vec2::new(EXPANDED_W, FEED_H), EXPANDED_CORNER),
         (_, Tab::GitHub) => (Vec2::new(EXPANDED_W, github::HEIGHT), EXPANDED_CORNER),
@@ -254,9 +262,9 @@ pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, settings: bool, tall:
 }
 
 /// The island of `size` on a screen whose camera notch is `notch` big: it grows out of the notch, which it hides, as
-/// black as it is. Closed and compact it is the notch with a wing each side, as tall as it (asked: "não pegou a proporção
-/// de altura"), wider while a `song` shows or the `voice` talks; open, its header is the notch's row, so it is as tall as
-/// anywhere and at least wide enough for the tabs and the buttons each side of the camera.
+/// black as it is. Closed and compact it is the notch with a wing each side, as tall as it, wider while a `song` shows or
+/// the `voice` talks; open, its header is the notch's row, so it is as tall as anywhere and at least wide enough for the
+/// tabs and the buttons each side of the camera.
 pub(crate) fn around_notch(shape: Shape, size: Vec2, notch: Vec2, song: bool, voice: bool) -> Vec2 {
     let wings = |wing: f32| notch.x + 2.0 * wing;
     match shape {
@@ -356,6 +364,7 @@ pub(crate) fn talk_size(saved: Option<[f32; 2]>, said: usize, work: Rect) -> Vec
 }
 
 /// One agent or chat of the grid.
+#[derive(Clone)]
 pub(super) struct Line {
     pub(super) id: String,
     pub(super) name: String,
@@ -389,9 +398,11 @@ pub(crate) struct Island {
     asked: usize,
     /// Something was working or waiting last frame: the end of it is news.
     was_busy: bool,
-    /// The agents and chats at work last frame (`turn_ended`).
+    /// The agents and chats at work last frame (`done.rs`).
     working: std::collections::HashSet<String>,
     celebrate_until: f64,
+    /// An agent finished since the island was last open: Luna wears a check until the person opens it (`done.rs`).
+    finished: bool,
     /// The island as drawn: its size and corner follow the target, easing.
     anim: Vec2,
     radius: f32,
@@ -497,6 +508,13 @@ pub(crate) struct Island {
     place_ask: Option<window::Place>,
     /// A picture of the conversation on the whole screen (`picture.rs`).
     picture: Option<picture::Shown>,
+    /// Nothing moves it but what it shows (`at_rest`): the frame the app draws is taken down (`replay.rs`), the window
+    /// draws it again by itself until the app draws again (`replaying`, as last drawn).
+    at_rest: bool,
+    replay: std::sync::Arc<std::sync::Mutex<replay::Replay>>,
+    replaying: bool,
+    /// The screen's scale and the window's place, for the eyes of what the window draws again by itself.
+    eyes: Option<(f32, Pos2)>,
 }
 
 /// The form of a new chat.
@@ -558,6 +576,29 @@ impl Island {
     #[cfg(test)]
     pub(crate) fn focus(&self) -> Option<&str> {
         self.focus.as_deref()
+    }
+
+    /// Hangs it from `anchor` (screen points): on a side of the screen it stands up.
+    #[cfg(test)]
+    pub(crate) fn hang_from(&mut self, anchor: [f32; 2]) {
+        self.anchor = Some(anchor);
+    }
+
+    /// Its window draws it again by itself between the app's frames (`replay.rs`): that window is cleared see-through.
+    pub(crate) fn draws_itself(&self) -> bool {
+        self.replaying
+    }
+
+    /// Nothing moves it but what it shows, as last drawn (`replay.rs`).
+    #[cfg(test)]
+    pub(crate) fn at_rest(&self) -> bool {
+        self.at_rest
+    }
+
+    /// The island at rest as the app last drew it, which its window draws again by itself.
+    #[cfg(test)]
+    pub(crate) fn taken(&self) -> std::sync::MutexGuard<'_, replay::Replay> {
+        self.replay.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -633,7 +674,7 @@ impl DrawingApp {
                 None => self.chat_agent.as_ref().and_then(|id| self.transcripts.get(id)).map_or(0, |transcript| log::said(&transcript.items).count()),
             };
             // the size the person pulled it to is the open conversation's; with none open, the page is its plain small
-            // self (asked: "se não tiver chat aberto, ele não é para manter")
+            // self
             let open = self.island.session.is_some() || self.chat_agent.as_ref().is_some_and(|id| self.chats.iter().any(|chat| &chat.id == id));
             talk_size(self.island.pulled.or(self.prefs.island_talk).filter(|_| open), said, work)
         };
@@ -669,14 +710,16 @@ impl DrawingApp {
         if busy && !island.was_busy {
             island.machine.reveal(time);
         }
+        // the end is celebrated quietly: no chime
         if island.was_busy && mood == Mood::Ready {
             island.celebrate_until = time + 6.0;
-            tones.push(sounds::FINISH);
         }
         island.was_busy = busy;
-        // asked ("quando ela termina uma ação, ela não abre a ilha"): an agent done or waiting on the person opens it, as
-        // a question does, and it folds after "Fechar sozinho" as usual
-        if turn_ended(&island.working, &rows) {
+        // an agent done marks Luna with a check until the island is opened ("poderia só mudar a Luna com um check, aí eu
+        // clico e vejo"); one that stopped on the person opens it, as a question does, and it folds after "Fechar
+        // sozinho" as usual
+        island.finished |= done::turn_done(&island.working, &rows);
+        if done::turn_waits(&island.working, &rows) {
             island.machine.force_home(time);
         }
         island.working = rows.iter().filter(|row| matches!(row.state, AgentState::Working(_))).map(|row| row.id.clone()).collect();
@@ -699,6 +742,10 @@ impl DrawingApp {
             island.session = None;
         }
         island.open = open;
+        // open, what finished is in sight: the check goes
+        if stage == fsm::Stage::Home {
+            island.finished = false;
+        }
         let shape = match stage {
             fsm::Stage::Hidden => Shape::Closed,
             fsm::Stage::Petit => Shape::Compact,
@@ -742,6 +789,24 @@ impl DrawingApp {
         if view.pokes > std::mem::replace(&mut island.pokes, view.pokes) {
             tones.push(if view.dizzy { sounds::DIZZY } else { sounds::POKE });
         }
+        // nothing moves it but what it shows (Luna, the song's bars, the minis): the person is not on it, it does not
+        // spring, fade or play the end, and nothing else is drawn with it (a menu, the call's bars, a cover fading in)
+        let fading = crate::app::integrations::spotify::CoverFade::read(ctx).fading(time);
+        island.at_rest = shape != Shape::Open
+            && !island.geometry.moving()
+            && !island.layers.moving(time)
+            && island.bot.iter().all(spring::Spring::settled)
+            && !(island.hovered || island.holding || island.typing || island.resizing || island.drag_next)
+            && island.moved.is_none()
+            && island.slim.is_none()
+            && island.menus.is_none()
+            && island.picture.is_none()
+            && time >= island.celebrate_until
+            && !voice
+            && !fading
+            // Windows: once its own window is shown without the border (`plain`); drawn in the app's (embedded) there is
+            // no window to wait for
+            && (!cfg!(windows) || ctx.embed_viewports() || island.plain >= 3);
         let colors = self.colors();
         let look = crate::app::chat::list::Look::new(true, &colors);
         let mut form = self.island.form.take();
@@ -772,8 +837,8 @@ impl DrawingApp {
         island.holding = out.holding;
         island.typing = out.typing;
         // its window lost the focus: a click elsewhere (another program, the app's window, the desktop). The open island
-        // folds, as a menu does (asked: "se eu abrir a ilha e clicar fora ela precisa fechar"); a question waiting on
-        // the person, or a new agent's form half filled, keeps it open as before ("se for pergunta, mantém como está")
+        // folds, as a menu does; a question waiting on the person, or a new agent's form half filled, keeps it open as
+        // before ("se for pergunta, mantém como está")
         let blurred = std::mem::replace(&mut island.focused, out.focused) && !out.focused;
         if blurred && island.open && !pinned && island.form.is_none() && !island.holding {
             island.machine.force_petit(time);
@@ -790,16 +855,13 @@ impl DrawingApp {
         // open or compact (and while the entrance plays) every frame, as the reference's requestAnimationFrame; closed, the
         // wizards move while they work or wait, and the fold after the pointer left comes by the clock
         let moving = busy || time < island.celebrate_until || island.hovered;
-        if shape.animates_every_frame() {
-            // at the rate asked in Ajustes: the window has no vsync to hold it back (a bare `request_repaint` ran at 230
-            // a second, 55% of a core)
-            ctx.request_repaint_after(crate::app::update::frame_spacing());
-        } else if moving {
-            ctx.request_repaint_after(std::time::Duration::from_millis(33));
+        let touched = island.hovered || island.typing || island.holding;
+        if let Some(delay) = next_frame(shape, touched, moving, island.replaying, island.machine.due().map(|due| due - time)) {
+            ctx.request_repaint_after(delay);
         }
         // the window lets the clicks through, so only the frames see the cursor: often while it moves (the eyes follow
         // it), seldom while it rests (`cursor::watch` wakes it when the cursor comes onto the island)
-        if cfg!(any(windows, target_os = "macos")) && !ctx.embed_viewports() {
+        if cfg!(any(windows, target_os = "macos")) && !ctx.embed_viewports() && !self.island.replaying {
             let moved = std::mem::replace(&mut self.island.looked, self.island.pointer) != self.island.pointer;
             ctx.request_repaint_after(std::time::Duration::from_millis(if moved { 33 } else { 250 }));
         }
@@ -830,6 +892,18 @@ impl DrawingApp {
 mod tests {
     use super::*;
 
+    /// Drawing itself (`replay.rs`), the island at rest no longer brings the app's frames at the ambient rate, each of
+    /// which painted the whole app: only when its stage gives way by the clock; the person on it brings them.
+    #[test]
+    fn drawing_itself_the_island_brings_the_apps_frames_only_by_the_clock() {
+        let ambient = Some(crate::app::update::AMBIENT);
+        assert_eq!(next_frame(Shape::Compact, false, true, false, Some(5.0)), ambient, "the app draws it: the ambient rate");
+        assert_eq!(next_frame(Shape::Compact, false, true, true, Some(5.0)), Some(std::time::Duration::from_secs(5)), "drawing itself: when it folds");
+        assert_eq!(next_frame(Shape::Closed, false, true, true, None), None, "drawing itself, nothing due: none");
+        assert_eq!(next_frame(Shape::Compact, true, true, true, None), Some(crate::app::update::frame_spacing()), "on it: the rate in Ajustes");
+        assert_eq!(next_frame(Shape::Closed, false, false, false, None), None, "nothing moves: none");
+    }
+
     #[test]
     fn the_island_says_what_the_agents_are_doing_and_the_wizard_follows() {
         let working = AgentState::Working(10.0);
@@ -846,8 +920,8 @@ mod tests {
         assert_eq!(main_state(Mood::Ready, false), MagoState::Idle);
     }
 
-    /// Asked: "aqui como fica, fica sempre com o prefixo claude code": the pills and the cards show the session's folder,
-    /// its program beside it (the card's kind); the app's agents in colours of their own, the same as in the lists.
+    /// The pills and the cards show the session's folder, its program beside it (the card's kind); the app's agents in
+    /// colours of their own, the same as in the lists.
     #[test]
     fn the_pills_show_each_agent_by_its_own_name_and_colour() {
         let mut app = DrawingApp::default();
@@ -889,8 +963,8 @@ mod tests {
         }
     }
 
-    /// Asked ("enquanto ela trabalha, aqui na ilha ela pega o mesmo comportamento"): a chat of the app is on the island
-    /// as its band shows it, working, talking while it writes, and done when its answer ends.
+    /// A chat of the app is on the island as its band shows it, working, talking while it writes, and done when its
+    /// answer ends.
     #[test]
     fn a_chat_of_the_app_is_on_the_island_as_its_band_shows_it() {
         use crate::transcript::{ChatItem, Transcript};
@@ -914,32 +988,53 @@ mod tests {
         assert_eq!(view.lines[0].mago, MagoState::Done);
     }
 
+    /// A turn that ends leaves the island as it was and quiet, Luna with a check until it is opened; one stopped by Esc
+    /// gets none; one that stops on a question still opens it.
     #[test]
-    fn the_island_opens_when_a_turn_ends_and_not_when_it_is_stopped() {
+    fn a_turn_that_ends_puts_a_check_on_luna_quietly_until_the_island_is_opened() {
         let frame = |app: &mut DrawingApp, ctx: &Context, time: f64| {
             let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1200.0, 800.0))), time: Some(time), ..Default::default() };
             ctx.run_ui(raw, |_| app.island_ui(ctx)).textures_delta.clear();
         };
-        for (ended, opens) in [(Some(4.0), true), (None, false)] {
+        let island = || {
             let (ctx, mut app) = (Context::default(), DrawingApp::default());
             app.prefs.island = true;
             app.chats = vec![chat("a")];
             frame(&mut app, &ctx, 1.0);
             assert_eq!(app.island.machine.stage(), fsm::Stage::Hidden);
-            // the chat was at work last frame; now its answer ended (or Esc stopped it)
+            // the chat was at work last frame
             app.island.working.insert("a".into());
+            app.island.was_busy = true;
+            (ctx, app)
+        };
+        for (ended, checked) in [(Some(4.0), true), (None, false)] {
+            let (ctx, mut app) = island();
+            // its answer ended (or Esc stopped it)
             if let Some(at) = ended {
                 app.chat_ended.insert("a".into(), at);
             }
+            let chimes = app.island.chimes();
             frame(&mut app, &ctx, 5.0);
-            assert_eq!(app.island.machine.stage() == fsm::Stage::Home, opens, "ended at {ended:?}");
+            assert_eq!(app.island.machine.stage(), fsm::Stage::Hidden, "it does not open, ended at {ended:?}");
+            assert_eq!(app.island.chimes(), chimes, "nor sound");
+            assert_eq!(app.island.finished, checked, "ended at {ended:?}");
             assert!(app.island.working.is_empty(), "no one at work now");
         }
-        let working: std::collections::HashSet<String> = ["a".to_string()].into();
-        let row = |state| AgentRow { id: "a".into(), spec: Default::default(), state, mission: None, space: String::new() };
-        assert!(turn_ended(&working, &[row(AgentState::Waiting)]), "waiting on the person");
-        assert!(!turn_ended(&working, &[row(AgentState::Working(1.0))]), "still at work");
-        assert!(!turn_ended(&Default::default(), &[row(AgentState::Idle(Some(1.0)))]), "it was not at work");
+        // the check stays until the person opens the island, and goes once it is open
+        let (ctx, mut app) = island();
+        app.chat_ended.insert("a".into(), 4.0);
+        frame(&mut app, &ctx, 5.0);
+        frame(&mut app, &ctx, 90.0);
+        assert!(app.island.finished && app.island.machine.stage() != fsm::Stage::Home);
+        app.island.machine.click(91.0);
+        frame(&mut app, &ctx, 91.0);
+        assert!(!app.island.finished, "seen");
+        // a question opens it, as before
+        let (ctx, mut app) = island();
+        let (reply, _answer) = std::sync::mpsc::channel();
+        app.person_asks.borrow_mut().push(crate::app::chat::decide::PersonAsk::new("a".into(), &json!({ "tool_name": "Bash" }), reply));
+        frame(&mut app, &ctx, 5.0);
+        assert_eq!(app.island.machine.stage(), fsm::Stage::Home);
     }
 
     #[test]
@@ -1022,8 +1117,8 @@ mod tests {
         assert_eq!(chat_size(Some([800.0, 500.0]), true, work), Vec2::new(1344.0, 728.0), "big: 70% of the work area");
     }
 
-    /// Asked: "ajustar a ilha com a ilha da câmera do Mac para ficar na mesma proporção": around a 179x32 notch, closed
-    /// it is the notch with a wing each side and as tall; compact, wider; open, its panel under the notch's row.
+    /// Around a 179x32 notch, closed it is the notch with a wing each side and as tall; compact, wider; open, its panel
+    /// under the notch's row.
     #[test]
     fn around_a_notch_the_island_is_the_notch_grown() {
         let notch = Vec2::new(179.0, 32.0);

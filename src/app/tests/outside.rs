@@ -130,7 +130,6 @@ fn pill_names(events: &[(&str, &str, &str)]) -> Vec<String> {
 
 #[test]
 fn claude_desktop_and_the_cli_are_told_apart_one_pill_per_folder() {
-    // asked: "ele não está fazendo a diferenciação entre o Claude Code Desktop e o Claude Code CLI"
     assert_eq!(pill_names(&[("s1", "C:/Users/eu/loja", "claude-desktop"), ("s2", "C:/Users/eu/loja", "cli")]), ["loja", "loja 2"]);
     // two sessions of the Desktop in two folders are two pills, as the CLI's are; one folder, one pill
     assert_eq!(
@@ -370,8 +369,7 @@ fn the_turn_going_on_or_ending_drops_the_card_and_the_badge_comes_and_goes() {
     assert_eq!(app.outside_pills()[0].badge, Some(Badge::Error));
     app.take_hook("ext:s1", &hook("UserPromptSubmit", "", Value::Null), None);
     assert_eq!(app.outside_pills()[0].badge, None);
-    // after a Stop the pill stays (asked: "ele fica com a expressao zzz ou com o check ali"): its ✓, then asleep once
-    // the badge is over; a session that ended goes at once
+    // after a Stop the pill stays: its ✓, then asleep once the badge is over; a session that ended goes at once
     app.take_hook("ext:s1", &hook("Stop", "", Value::Null), None);
     app.outside_tick();
     assert!(app.outside_pills()[0].badge == Some(Badge::Finished) && !app.outside_pills()[0].asleep);

@@ -299,3 +299,31 @@ fn connect_skips_arrows_and_says_why_a_locked_node_wont_join() {
     click(&mut app, &ctx, inside);
     assert!(app.connecting.is_none());
 }
+
+/// A rope ties right on its windows' edges, at the middle of the two sides closest to each other (the reference app's
+/// closestEdgePins), with no gap: one window above the other ties bottom to top, side by side ties side to side, and
+/// it follows a window moved.
+#[test]
+fn a_rope_ties_at_the_middle_of_the_closest_sides_with_no_gap() {
+    let mut app = DrawingApp::default();
+    let maestro = box_at(&mut app, "Luna", 0.0);
+    let below = {
+        let mut e = app.new_element(ElementKind::Rectangle { x: 50.0, y: 400.0, width: 200.0, height: 120.0 });
+        e.terminal = Some(TerminalSpec { name: "Bia".into(), ..Default::default() });
+        let id = e.id.clone();
+        app.scene.elements.push(e);
+        id
+    };
+    app.rope_between(&maestro, &below, false);
+    let ends = |app: &DrawingApp| {
+        let rope = app.scene.elements.iter().find(|e| e.rope).unwrap();
+        let ElementKind::Line { points, .. } = &rope.kind else { unreachable!() };
+        (Pos2::new(points[0][0], points[0][1]), Pos2::new(points[points.len() - 1][0], points[points.len() - 1][1]))
+    };
+    assert_eq!(ends(&app), (Pos2::new(100.0, 120.0), Pos2::new(150.0, 400.0)), "bottom middle to top middle, on the edges");
+    // moved beside it: side to side
+    let index = app.scene.elements.iter().position(|e| e.id == below).unwrap();
+    app.scene.elements[index].kind = ElementKind::Rectangle { x: 500.0, y: 0.0, width: 200.0, height: 120.0 };
+    app.update_bindings();
+    assert_eq!(ends(&app), (Pos2::new(200.0, 60.0), Pos2::new(500.0, 60.0)));
+}

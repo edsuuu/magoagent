@@ -49,6 +49,7 @@ assets/          fontes (mão = Excalifont do Excalidraw, interface = Assistant;
 installer/       MSI do Windows (WiX 3: build-msi.sh, magoagent.wxs)
 docs/            imagens do README e o exemplo arquitetura.mago
 build-macos-app.sh  gera MagoAgent.app (bundle com.edsuuu.magoagent)
+.claude/skills/  skills dos agentes, versionadas (o resto do .claude fica fora do git)
 ```
 
 ## Regras de código
@@ -61,10 +62,30 @@ build-macos-app.sh  gera MagoAgent.app (bundle com.edsuuu.magoagent)
 - Arquivo passando de ~600 linhas: divida por assunto.
 - Nomes por extenso (`index`, `response`, `colors`), nada de variáveis de uma letra fora de fechamentos curtos.
 - Atalho deliberado com limite conhecido leva `// ponytail: <limite>, <como evoluir>`.
+- Comentário explica o código, não conta a história do pedido: nada de citar o dono (`Asked: "…"`, `(asked: "…")`). O
+  pedido vai na descrição do PR.
 - Toda ação que a pessoa faz no app tem a sua ferramenta no MCP (o Maestro faz tudo pela voz): a ferramenta em
   `mcp/calls/tools.rs`, o despacho em `mcp/calls/mod.rs`, e a ação do app em `mcp/actions/` (um caso a mais) com a
   entrada em `mcp/app_tools.rs`.
 - No Windows nada abre janela de console: processos saem por `crate::editor::command`.
+- egui 0.37: `Id::unique` (o `Id::new` está obsoleto), `ui.scope_id()` (o `ui.id()` está obsoleto; `ui.unique_id()`
+  não é estável), `Panel` e `.show(ui, ..)`; nada bloqueia no `ui`/`logic` (I/O e processos vão para uma thread que
+  chama `request_repaint` ao terminar); repaint só enquanto algo se mexe; fontes e texturas criadas uma vez. O resto
+  está na skill `egui`.
+
+## Skills
+
+Ficam em `.claude/skills/<nome>/SKILL.md`, versionadas: quem clona o repo já tem. O Claude Code as acha sozinho; no
+Codex (ou em outro agente), leia o `SKILL.md` quando o assunto bater. Este arquivo manda quando uma skill divergir dele.
+
+- `egui`: as regras de egui/eframe 0.37 com as convenções do projeto (APIs que mudaram, IDs, loop do frame, repaint).
+- `egui-review`: revisão só de leitura de código de interface (diff ou pasta), com relatório em pt-BR.
+- `rust-best-practices` (Apollo) e `rust-testing`: Rust idiomático e testes. Cópias sem mudança, com a licença MIT de
+  origem; o projeto não usa async (threads e `std::sync::mpsc`), então as partes de async não se aplicam.
+
+As adaptadas (`egui`, `egui-review`) vêm do egui-agent-skills (MIT/BSD-3, `LICENSE` em cada pasta). Skill nova: uma
+pasta com `SKILL.md` (front matter com `name` e `description`) e a licença, se vier de fora; leia tudo antes de
+versionar, porque ela roda com as permissões do agente.
 
 ## Fluxo de trabalho
 
@@ -77,7 +98,12 @@ build-macos-app.sh  gera MagoAgent.app (bundle com.edsuuu.magoagent)
    Os outros sistemas também compilam: `cargo check --release --target x86_64-unknown-linux-gnu` (e o do Windows/macOS).
 4. **Ver no app** pelo roteiro (abaixo), numa cena de teste, nunca no desenho real do usuário.
 5. **Deixar para o dono:** no fim, `cargo run --release` no target padrão.
-6. **Relatar** em pt-BR: o que mudou, o que foi testado e o que não foi.
+6. **Relatar** em pt-BR: o que mudou, o que foi testado e o que não foi (no PR, pelas seções do modelo, Git abaixo).
+
+Nada de trabalho na `/tmp` (nem na pasta temporária do sistema): no Linux ela é tmpfs e some ao reiniciar (o dono
+perdeu testes num outro PC assim). Worktrees, clones, rascunhos e builds ficam no disco: worktrees ao lado do repo
+(`../magoagent-wt/<nome>`) ou em `<repo>/.magoagent/worktrees`, com o target compartilhado se faltar espaço. A `/tmp` só
+para o que pode sumir: cenas de teste e capturas descartáveis, saídas de comando.
 
 Builds de instalação só quando o dono pedir: suba a versão em `Cargo.toml` e rode `sh installer/build-msi.sh`
 (sai `target/release/MagoAgent-<versão>.msi`, asset da release do GitHub que o Atualizar procura). O MSI instala em
@@ -103,7 +129,8 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="size 1440 900; wait 2000; clic
 
 - A cena de teste leva junto preferências, chats, conexões e `recuperados`; o resto (projetos, memória do Maestro,
   modelos de voz) continua na pasta de dados real. Com o roteiro o app não baixa a voz.
-- `shot` só tem o que o egui desenha; páginas do navegador (nativas) não aparecem.
+- `shot` só tem o que o egui desenha; páginas do navegador (nativas) não aparecem. `shot-ilha arquivo.png` salva a
+  janela da ilha, só enquanto ela se desenha sozinha (em repouso, `island/replay.rs`).
 - No Windows as teclas injetadas de fora não chegam ao app (o mouse chega): teclas vão pelo roteiro.
 
 ## Terminais, agentes e conexões
@@ -141,8 +168,13 @@ MAGOAGENT_SCENE=/tmp/teste.mago MAGOAGENT_SCRIPT="size 1440 900; wait 2000; clic
 
 A esteira de CI roda a cada push na `main` e em cada pull request (uma vez por commit; um push novo no PR cancela o
 anterior), com jobs paralelos de formatação, clippy, auditoria de dependências, testes nos dois sistemas e um teste de
-ponta a ponta no Linux. Uma tag `v*` roda o mesmo CI e, ao mesmo tempo, compila os pacotes; a release (rascunho) só
-sai se o CI passar.
+ponta a ponta no Linux. PR em rascunho não roda: o CI começa quando ele fica pronto para revisão. Uma tag `v*` roda o
+mesmo CI e, ao mesmo tempo, compila os pacotes; a release (rascunho) só sai se o CI passar, já com as notas ("## Novo",
+um item por PR juntado desde a última release; revise antes de publicar) e o `SHA256SUMS.txt`.
+
+O Rust é o do `rust-toolchain.toml`, o mesmo na CI e nas máquinas. Subir de versão é um commit de propósito: muda o
+arquivo e o `dtolnay/rust-toolchain@<versão>` dos workflows junto, e corrige o que o clippy novo apontar. Os alvos da
+compilação cruzada se instalam uma vez por versão (`rustup target add …`, o comando está no arquivo).
 
 Rodar local antes de commitar:
 
@@ -182,3 +214,7 @@ conflitos resolvidos, e a `dev` vai para a `main` num pull request (o CI roda ne
 
 Commits sem linha de coautor. Não versionar `target/`, `MagoAgent.app` nem desenhos (`.mago`, `.rea`); a exceção é
 `docs/arquitetura.mago`.
+
+O PR segue o modelo `.github/pull_request_template.md` (o que mudou, como foi testado, antes e depois, desempenho,
+riscos). Issues de quem usa o app vêm pelos modelos de `.github/ISSUE_TEMPLATE/` (bug, travamento, recurso); as dos
+agentes e do dono podem ser em branco, no formato Hoje / Proposta / Pronto quando.

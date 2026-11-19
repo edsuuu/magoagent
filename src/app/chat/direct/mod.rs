@@ -10,8 +10,10 @@ use crate::prelude::*;
 use crate::transcript::{ChatItem, LOG_MAX, Step, Transcript, claude_dir, log_tail, project_folder, step_mut};
 use std::io::{BufRead, Read, Write};
 use std::sync::mpsc::{Receiver, channel};
+mod archive;
 mod sync;
 mod title;
+pub(crate) use archive::{is_new_session_mark, new_session_mark};
 pub(crate) use title::ChatTitles;
 
 /// What a chat runs, where, and how far it got.
@@ -40,9 +42,8 @@ pub(crate) struct Chat {
     /// Renamed by the person (Renomear on its row): `name` is its title, not the conversation's own.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) named: bool,
-    /// Opened by the chat screen and not talked to yet (asked: "só cria o chat se enviar a primeira mensagem"): only
-    /// that screen shows it, with no card on the canvas and nothing saved, and it goes when another chat is picked.
-    /// Its first message makes it a chat.
+    /// Opened by the chat screen and not talked to yet: only that screen shows it, with no card on the canvas and
+    /// nothing saved, and it goes when another chat is picked. Its first message makes it a chat.
     #[serde(skip)]
     pub(crate) draft: bool,
 }
@@ -186,8 +187,7 @@ pub(crate) fn folder(cwd: &str) -> Option<PathBuf> {
     match cwd.strip_prefix('~') {
         Some(rest) => home.map(|h| if rest.is_empty() { h } else { h.join(rest.trim_start_matches(['/', '\\'])) }),
         None if cwd.is_empty() => home,
-        // an agent in WSL names its folders as Linux sees them: on Windows that is the distro's share (asked: "A pasta
-        // /home/bkuste2/projects/hdtb não existe")
+        // an agent in WSL names its folders as Linux sees them: on Windows that is the distro's share
         None if cfg!(windows) && cwd.starts_with('/') && !cwd.starts_with("//") => match crate::app::system::wsl::wsl_distro_in_use() {
             Some(distro) => Some(PathBuf::from(crate::app::system::wsl::windows_path(&distro.name, cwd))),
             None => Some(PathBuf::from(cwd)),
@@ -211,8 +211,7 @@ pub(crate) fn no_folder(cwd: &str) -> bool {
     crate::file::projects_dir().is_some_and(|dir| plain(cwd) == plain(&dir.display().to_string()))
 }
 
-/// A chat's name: its agent and its folder's, only the agent with no folder picked (asked: "no chat fica .magoagent,
-/// não é para ter, é para ficar Nenhuma pasta").
+/// A chat's name: its agent and its folder's, only the agent with no folder picked.
 pub(crate) fn chat_name(agent: &str, cwd: &str) -> String {
     if no_folder(cwd) { agent.to_string() } else { format!("{agent} · {}", folder_label(cwd)) }
 }
@@ -410,6 +409,8 @@ impl DrawingApp {
         }
         self.chats.retain(|c| c.id != id);
         self.drop_chat_node(id);
+        // its team's fold, if it had one, is not remembered for nothing
+        self.set_team_open(id, false);
         if self.chat_agent.as_deref() == Some(id) {
             self.chat_agent = None;
         }
@@ -425,7 +426,13 @@ impl DrawingApp {
             self.queue_message(id, prompt.to_string());
             return true;
         }
-        wsl_settle();
+        // WSL's first probe still runs: the message waits in the queue and goes once it ends (`chat_nodes_tick`)
+        if wsl_settling() {
+            self.chat_note(id, "Preparando o WSL: a mensagem sai assim que ele responder.");
+            self.queue_message(id, prompt.to_string());
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            return true;
+        }
         let Some(cli) = agent_cli(&chat.agent) else {
             self.toast(format!("{} não foi encontrado no PATH nem no WSL.", chat.agent));
             return false;

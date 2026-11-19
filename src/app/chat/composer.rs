@@ -76,7 +76,9 @@ impl DrawingApp {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 // read before the box takes the key: Response::has_focus is false in the test window,
                 // and Shift lives on the key event, not the global modifiers
-                let enter = ui.memory(|m| m.has_focus(draft_id))
+                // a dialog over the chat (Remover chat) takes the Enter
+                let enter = !self.dialog_open()
+                    && ui.memory(|m| m.has_focus(draft_id))
                     && ui.input(|i| {
                         i.events.iter().any(|e| matches!(e, egui::Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if !modifiers.shift))
                     });
@@ -110,13 +112,13 @@ impl DrawingApp {
                 glyph(ui.painter(), at, 16.0, 2.4, ink, ARROW);
                 clicked_send = ready && send.on_hover_cursor(CursorIcon::PointingHand).clicked();
                 // the call (with its microphone and speakers while it is on), then Ditar
-                // the call on hold (voice::CALL_ON): Ditar takes its place
+                // the call on hold (voice::CALL_ON): Ditar takes its place; Ditar on hold (DICTATION_ON): nothing there
                 let call = at - Vec2::new(if crate::app::voice::CALL_ON { 36.0 } else { 0.0 }, 0.0);
                 if crate::app::voice::CALL_ON {
                     out.voice = self.voice_buttons(ui, call, look, t);
                 }
                 let mut left_of = call.x - 16.0 - if self.voice.on { 72.0 } else { 0.0 };
-                if !self.voice.on {
+                if !self.voice.on && crate::app::voice::DICTATION_ON {
                     let mic = call - Vec2::new(36.0, 0.0);
                     let on = self.dictation.is_some();
                     // grey while it starts, blue once it listens
@@ -167,7 +169,6 @@ impl DrawingApp {
         out.rect = frame.response.rect;
         out.send = ready && (frame.inner || clicked_send);
         // under the card only what the voice is doing (dictation, the call); the keys' hint is gone
-        // (the owner asked: the box says enough)
         let voice = &self.voice;
         let line = if let Some(dictation) = &self.dictation {
             dictation.line().map(|l| (l, look.soft))

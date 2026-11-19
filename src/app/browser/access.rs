@@ -31,6 +31,12 @@ impl DrawingApp {
             let Some(rect) = self.portal_page_rect(element) else { continue };
             let Some(tab) = self.open_tab_view(&element.id) else { continue };
             eprintln!("pagina {}: no canvas {:?}, endereço {}", element.id, rect, tab.webview.url().unwrap_or_default());
+            // the screen's scale the page was last placed at
+            let scale = self.portals.get(&element.id).and_then(|view| view.shown.as_ref()).map_or(1.0, |shown| shown.4);
+            let (id, pixels) = (element.id.clone(), super::webkit::page_pixels(rect, scale));
+            tab.webview.frame(move |window, laid_out, zoom| {
+                eprintln!("pagina {id}: nativa {window:?} (o cartão em pixels: {pixels:?}), página {laid_out:?} px, zoom {zoom:.3}");
+            });
             let file = format!("{path}-{}.png", element.id);
             tab.webview.picture(move |picture| {
                 if let Some(png) = picture.and_then(|(width, height, rgba, _)| crate::app::browser::shot::png(width, height, rgba).ok()) {

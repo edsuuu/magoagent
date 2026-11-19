@@ -38,7 +38,7 @@ pub(crate) fn voice_command(text: &str, name: &str, ok_mago: bool) -> Option<Voi
     Some(VoiceCmd::Ask(rest))
 }
 
-/// A yes or a no to a question the call asked ("sim", "pode", "não precisa"); None for anything else.
+/// A yes or a no to a question the call None for anything else.
 pub(crate) fn yes_or_no(text: &str) -> Option<bool> {
     let clean: String = text.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c.is_whitespace() { c } else { ' ' }).collect();
     let first = clean.split_whitespace().next()?;

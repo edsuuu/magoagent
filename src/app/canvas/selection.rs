@@ -220,11 +220,11 @@ impl DrawingApp {
     pub(crate) fn hit(&self, world: Pos2) -> Option<usize> {
         let tolerance = 10.0 / self.zoom;
         // a note's text is part of its card: clicks pass over it to the card
-        // windows are drawn over the drawings, so a click finds them first
-        let hit = |rope: bool, node: bool| {
+        // the cards (windows and notes) are drawn over the drawings, so a click finds them first
+        let hit = |rope: bool, card: bool| {
             self.scene.elements.iter().rposition(|element| {
                 element.rope == rope
-                    && (rope || element.is_node() == node)
+                    && (rope || element.is_card() == card)
                     && !element.locked
                     && note_of_label(&self.scene.elements, element).is_none()
                     && !hidden_page(&self.scene.elements, element)

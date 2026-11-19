@@ -211,28 +211,16 @@ pub(crate) fn snapshot(webview: &wry::WebView, [x, y, w, h]: [f64; 4], done: imp
 }
 
 impl DrawingApp {
-    /// The agent terminals roped to an element: the ones running a command. A plain shell would
-    /// run each pasted line as a command.
+    /// The agents roped to an element: the terminals running a command (a plain shell would run each pasted line as a
+    /// command) and the chats' cards, Luna's and a chat recruit's.
     pub(crate) fn roped_agents(&self, id: &str) -> Vec<String> {
-        self.links()
-            .get(id)
-            .into_iter()
-            .flatten()
-            .filter(|o| self.scene.elements.iter().any(|e| &e.id == *o && e.terminal.as_ref().is_some_and(|t| !t.command.trim().is_empty())))
-            .cloned()
-            .collect()
+        let agent = |element: &Element| element.terminal.as_ref().is_some_and(|t| !t.command.trim().is_empty()) || element.chat.is_some();
+        self.links().get(id).into_iter().flatten().filter(|o| self.scene.elements.iter().any(|e| &e.id == *o && agent(e))).cloned().collect()
     }
 
-    /// The agents the composer offers for a portal: (terminal id, name).
+    /// The agents the composer offers for a portal: (terminal or chat id, name).
     pub(crate) fn design_agents(&self, portal: &str) -> Vec<(String, String)> {
-        self.roped_agents(portal)
-            .into_iter()
-            .map(|id| {
-                let name =
-                    self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.terminal.as_ref()).map_or_else(|| "Agente".into(), |t| t.name.clone());
-                (id, name)
-            })
-            .collect()
+        self.roped_agents(portal).into_iter().map(|id| (id.clone(), self.speaker(&id))).collect()
     }
 
     /// The Design button: arms it on the portal, or takes it off where it is armed.
@@ -434,9 +422,11 @@ impl DrawingApp {
         // the page can ask for this dialog whenever it likes: only a click on Enviar, once it has
         // been on screen a moment, sends (an Enter typed elsewhere, held or with Shift doesn't)
         let enter = ctx.input(|i| i.key_pressed(Key::Enter));
+        let to_chat = self.is_chat(&confirm.agent);
         let settled = self.now - confirm.since > 0.4;
         let (ok, cancel) = dialog_ui(ctx, &c, &format!("Enviar a {}?", confirm.name), "Enviar", |ui| {
-            dialog_note(ui, "Este texto vai ser digitado no terminal do agente. Confira e clique em Enviar:", &c);
+            let into = if to_chat { "vai para o chat do agente" } else { "vai ser digitado no terminal do agente" };
+            dialog_note(ui, &format!("Este texto {into}. Confira e clique em Enviar:"), &c);
             ui.add_space(4.0);
             egui::ScrollArea::vertical().max_height(260.0).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible).show(ui, |ui| {
                 ui.label(egui::RichText::new(confirm.prompt.as_str()).monospace().size(12.0).color(c.text));
@@ -444,20 +434,23 @@ impl DrawingApp {
         });
         let ok = ok && !enter && settled;
         if ok || cancel {
-            self.finish_design_send(ok);
+            self.finish_design_send(ctx, ok);
         }
     }
 
     /// The dialog's answer: Enviar types the text (if the agent is still roped) and the kept
     /// annotations go; Cancelar sends nothing. Refused, the dialog stays with its comment.
-    pub(crate) fn finish_design_send(&mut self, send: bool) {
+    pub(crate) fn finish_design_send(&mut self, ctx: &Context, send: bool) {
         let Some(confirm) = self.design_confirm.take().filter(|_| send) else { return };
         if !self.roped_agents(&confirm.portal).contains(&confirm.agent) {
             self.toast("O agente não está mais ligado ao navegador: a anotação não foi enviada");
             return;
         }
-        // refused (the toast says why): the comment and the annotations stay for another try
-        if self.send_prompt(&confirm.agent, &confirm.prompt) {
+        // refused (the toast says why): the comment and the annotations stay for another try; a chat that still answers
+        // gets it at the end of its queue
+        let sent =
+            if self.is_chat(&confirm.agent) { self.chat_send(ctx, &confirm.agent, &confirm.prompt) } else { self.send_prompt(&confirm.agent, &confirm.prompt) };
+        if sent {
             self.clear_annotations(&confirm.portal);
             self.toast("Anotação enviada a 1 agente");
         } else {
@@ -527,19 +520,40 @@ mod tests {
         assert!(confirm.prompt.contains("Anotação 1: x 1 y 2, 3×4 px na página. Em https://exemplo.com/conta."), "{}", confirm.prompt);
         assert!(confirm.prompt.contains("Anotação 2: x 5 y 6, 7×8 px na página.\n"), "{}", confirm.prompt);
         assert_eq!(app.annotations[&portal_id].len(), 2, "nothing went yet");
-        app.finish_design_send(false);
+        app.finish_design_send(&Context::default(), false);
         assert!(app.design_confirm.is_none());
         assert_eq!(app.annotations[&portal_id].len(), 2, "Cancelar keeps them");
         // Enviar with the agent's terminal not running: said, and they stay for another try
         app.design_send(&portal_id, &agent_id, "isso");
-        app.finish_design_send(true);
+        app.finish_design_send(&Context::default(), true);
         assert_eq!(app.annotations[&portal_id].len(), 2);
         assert_eq!(app.status, "Revisor não está rodando: abra o terminal e envie de novo.");
         assert!(app.design_confirm.as_ref().is_some_and(|c| c.prompt.contains("isso")), "the dialog stays with its comment");
-        app.finish_design_send(false);
+        app.finish_design_send(&Context::default(), false);
         // a send for an agent not roped is refused at once
         app.design_send(&portal_id, "outro", "x");
         assert!(app.design_confirm.is_none());
+    }
+
+    /// In the Design mode, a chat's card roped to the browser (Luna's, a chat recruit's) is an agent there too; a plain
+    /// shell is not.
+    #[test]
+    fn a_chat_roped_to_the_browser_is_an_agent_of_its_design_mode() {
+        let mut app = DrawingApp::default();
+        app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &[Preset::new("Claude Code", "claude")]);
+        let chat = app.chat_agent.clone().unwrap();
+        let mut portal = app.new_element(ElementKind::Rectangle { x: 2000.0, y: 0.0, width: 800.0, height: 600.0 });
+        portal.portal = Some(PortalSpec { name: "Loja".into(), url: "https://exemplo.com/".into(), ..Default::default() });
+        let mut shell = app.new_element(ElementKind::Rectangle { x: 3000.0, y: 0.0, width: 600.0, height: 400.0 });
+        shell.terminal = Some(TerminalSpec { name: "Shell".into(), ..Default::default() });
+        let (portal_id, shell_id) = (portal.id.clone(), shell.id.clone());
+        app.scene.elements.extend([portal, shell]);
+        app.rope_between(&chat, &portal_id, false);
+        app.rope_between(&shell_id, &portal_id, false);
+        let agents = app.design_agents(&portal_id);
+        assert_eq!(agents, vec![(chat.clone(), app.speaker(&chat))], "the chat, not the shell");
+        app.design_send(&portal_id, &chat, "isso");
+        assert!(app.design_confirm.as_ref().is_some_and(|confirm| confirm.agent == chat), "held for the dialog, to go to the chat");
     }
 
     #[test]

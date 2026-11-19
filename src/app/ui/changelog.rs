@@ -35,8 +35,8 @@ pub(crate) enum ChangelogChoice {
 }
 
 impl DrawingApp {
-    /// The new version found by the app's own check opens its card in a quiet moment: no agent working (asked: "espera o
-    /// agente terminar"), the window in front and nothing being typed. Held for the agents, it says so once.
+    /// The new version found by the app's own check opens its card in a quiet moment: no agent working, the window in
+    /// front and nothing being typed. Held for the agents, it says so once.
     fn open_offer(&mut self, ctx: &Context) {
         let Some(release) = self.updates.offer.clone() else { return };
         if self.changelog.is_some() || !matches!(self.updates.state, UpdateState::Available(_)) {

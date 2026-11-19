@@ -93,8 +93,8 @@ fn a_linux_page_picture_is_unpadded_and_cropped() {
     assert!(webkit::crop(4, 2, &picture[..16], [0.0, 0.0, 2.0, 2.0], 1.0).is_none());
 }
 
-/// Asked: "quando dou zoom e tiro zoom no canvas com o navegador aberto fica piscando preto". Moving, the page hides and
-/// its picture goes with the card; just stopped, it lays out unseen; then it shows over its picture, which goes after.
+/// Moving, the page is cut away and its picture goes with the card; just stopped, it lays out unseen; then it shows over
+/// its picture, which goes after.
 #[test]
 fn a_page_hides_while_its_card_moves_and_comes_back_unseen_first() {
     assert_eq!(motion(None), Motion::Still, "not on the canvas");
@@ -104,4 +104,52 @@ fn a_page_hides_while_its_card_moves_and_comes_back_unseen_first() {
     assert_eq!(motion(Some(0.2)), Motion::Unseen, "stopped: laying out at its new size, cut away");
     assert_eq!(motion(Some(0.4)), Motion::Back, "shown over its picture");
     assert_eq!(motion(Some(0.5)), Motion::Still, "settled: the picture goes");
+    // a page seen the first time starts a settle ago (`sync_portals`): it lays out unseen before it shows
+    assert_eq!(motion(Some(0.15)), Motion::Unseen);
+}
+
+/// The frame the card moves, the page's last picture is painted over its new page box already (the page is cut away from
+/// that frame on, `sync_portals`), and where the card painted it is kept: the zoom buttons change the view after the
+/// canvas painted, and the page waits a frame for its picture.
+#[test]
+fn a_moving_card_carries_its_pages_picture_from_the_first_frame() {
+    let ctx = Context::default();
+    let mut app = DrawingApp { canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)), ..Default::default() };
+    let mut portal = app.new_element(ElementKind::Rectangle { x: 40.0, y: 40.0, width: 600.0, height: 400.0 });
+    portal.portal = Some(PortalSpec { name: "Docs".into(), url: "about:blank".into(), ..Default::default() });
+    let id = portal.id.clone();
+    app.scene.elements = vec![portal];
+    let page = app.portal_page_rect(&app.scene.elements[0]).expect("on the canvas");
+    let picture = ctx.load_texture("pagina", egui::ColorImage::filled([4, 4], Color32::RED), Default::default());
+    app.portal_snaps.insert(id.clone(), (0.0, Some(picture.clone())));
+    let painted = |app: &DrawingApp| {
+        let output = ctx.run_ui(Default::default(), |ui| app.paint_portal(ui.painter(), &app.scene.elements[0]));
+        output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Mesh(mesh) if mesh.texture_id == picture.id()))
+    };
+    // standing still where the page is: the page itself shows, not its picture
+    app.portal_motion.insert(id.clone(), (page, 0.0));
+    assert!(!painted(&app));
+    assert_eq!(app.portal_painted.borrow().get(&id), Some(&page));
+    // zoomed: the card's page box is elsewhere this frame, its picture there
+    app.zoom = 1.5;
+    assert!(painted(&app));
+    let moved = app.portal_page_rect(&app.scene.elements[0]);
+    assert_ne!(moved, Some(page));
+    assert_eq!(app.portal_painted.borrow().get(&id), moved.as_ref());
+}
+
+/// A portal gone from the canvas leaves nothing kept for it: where its page box was painted, how it moved, its picture.
+#[test]
+fn a_portal_gone_leaves_nothing_behind() {
+    let mut app = DrawingApp::default();
+    let place = Rect::from_min_size(Pos2::ZERO, Vec2::splat(100.0));
+    for id in ["fica", "saiu"] {
+        app.portal_painted.get_mut().insert(id.into(), place);
+        app.portal_motion.insert(id.into(), (place, 0.0));
+        app.portal_snaps.insert(id.into(), (0.0, None));
+    }
+    app.forget_portals(&["fica"]);
+    assert_eq!(app.portal_painted.borrow().keys().collect::<Vec<_>>(), ["fica"]);
+    assert_eq!(app.portal_motion.keys().collect::<Vec<_>>(), ["fica"]);
+    assert_eq!(app.portal_snaps.keys().collect::<Vec<_>>(), ["fica"]);
 }

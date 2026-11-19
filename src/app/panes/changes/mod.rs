@@ -1,12 +1,9 @@
-//! Alterações: the files changed against the HEAD in the folders of the canvas's file trees (the
-//! git the trees already read, filetree/view.rs), a group per folder with the agents working in
-//! it, each file with its lines added and removed. A click shows its diff, in the code's colors;
-//! "Abrir na Árvore" opens it in the tree's editor, as the tree's own Alterações panel does.
-//! Asked: "um botao para conseguir alternar entre os worktree, opção para selecionar para o agente e mandar para ele oq
-//! está de errado tipo um analise de pr. faltou ter as cores do código ali e scroll ali nos arquivos para não ficar uma
-//! lista enorme, limitar e 10, com input de pesquisa de arquivo, ou pesquisar um trecho de codigo": a worktree picker
-//! on top (worktrees.rs), the list in a box of ten rows under a search field (list.rs), the diff colored with lines to
-//! pick (diff.rs) and the review of what was picked, sent to an agent (review.rs; the MCP's in actions.rs).
+//! Alterações: the files changed against the HEAD in the folders of the canvas's file trees (the git the trees already
+//! read, filetree/view.rs), a group per folder with the agents working in it, each file with its lines added and
+//! removed. A click shows its diff, in the code's colors; "Abrir na Árvore" opens it in the tree's editor, as the
+//! tree's own Alterações panel does. A worktree picker on top (worktrees.rs), the list in a box of ten rows under a
+//! search field (list.rs), the diff colored with lines to pick (diff.rs) and the review of what was picked, sent to an
+//! agent (review.rs; the MCP's in actions.rs).
 // ponytail: no "Descartar": the app has no action that throws a whole file's changes away (only
 // file_tree's revert_hunk, one range at a time); add one to filetree/ and its button here.
 

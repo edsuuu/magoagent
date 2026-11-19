@@ -51,6 +51,8 @@ fn an_empty_note_can_be_typed_into_after_leaving_it() {
     app.selected.clear();
     app.scene.elements.truncate(1);
     app.tool = Tool::Select;
+    // a frame without the editor (it covers the whole text box while typing): the pointer on its way to the note
+    frame(&mut app, &ctx, vec![]);
     let at = app.to_screen(element_bounds(&app.scene.elements[0]).center());
     click(&mut app, &ctx, at);
     assert!(app.editing.is_some(), "a click on an empty note edits it");
@@ -514,12 +516,12 @@ fn a_pressed_note_comes_to_the_front_with_its_text() {
         app.scene.elements.extend([note, label]);
     }
     let below = app.scene.elements[0].id.clone();
-    let i = app.raise_note(0);
+    let i = app.raise_card(0);
     assert_eq!(i, 2, "the note goes over the other one");
     assert_eq!(app.scene.elements[2].id, below);
     assert_eq!(app.with_card_text(&[2]).len(), 2, "its text goes with it");
     // already on top: nothing moves
-    assert_eq!(app.raise_note(2), 2);
+    assert_eq!(app.raise_card(2), 2);
 }
 
 #[test]

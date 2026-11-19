@@ -140,6 +140,11 @@ impl Machine {
         self.enter(Stage::Petit, time);
     }
 
+    /// When the stage gives way by the clock next, if it does.
+    pub(crate) fn due(&self) -> Option<f64> {
+        self.due
+    }
+
     /// How much of the open island's last seconds is left before it folds, from 1 down to 0: the bar under it shows in
     /// the last 60% of the wait (10 s at the most).
     pub(crate) fn countdown(&self, time: f64) -> Option<f32> {
@@ -253,8 +258,7 @@ mod tests {
         assert_eq!(machine.stage(), Stage::Petit, "folds at thirty seconds");
     }
 
-    /// Asked ("tem um tempo para ele ficar menor? como eu deixo configurável"): the compact island shrinks to the notch
-    /// when the person set, and with 0 never.
+    /// The compact island shrinks to the notch when the person set, and with 0 never.
     #[test]
     fn the_compact_island_shrinks_when_the_person_set_and_never_with_zero() {
         for (seconds, shrinks) in [(15_u16, true), (0, false)] {

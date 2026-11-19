@@ -28,9 +28,8 @@ const DRAG_WAIT: f64 = 0.3;
 
 /// X11: whether the drag asked at `since` starts now, at `time`: once the system has the window (`placed`, last frame) at
 /// the drag size and where it was put (`origin`, `size`), or after `DRAG_WAIT` whatever it has. The system resizes and
-/// moves the window in two steps, and a drag begun between them took the window where it was: the island, at the left
-/// of the big window's room, jumped off to the left of the cursor (asked: "eu tento mover às vezes e ela salta para a
-/// esquerda").
+/// moves the window in two steps, and a drag begun between them took the window where it was: the island, at the left of
+/// the big window's room, jumped off to the left of the cursor.
 pub(crate) fn drag_ready(placed: Option<Rect>, origin: Pos2, size: Vec2, since: f64, time: f64) -> bool {
     let there = placed.is_some_and(|rect| (rect.min - origin).abs().max_elem() < 1.5 && (rect.size() - size).abs().max_elem() < 1.5);
     there || time - since > DRAG_WAIT
@@ -399,9 +398,14 @@ impl DrawingApp {
         let drag_later = slims && self.island.slim.is_none();
         let id = egui::ViewportId::from_hash_of("island_window");
         let (anim, radius) = (self.island.anim, self.island.radius);
-        let out = ctx.show_viewport_immediate(id, builder, |ui, _| {
+        self.island.eyes = Some((scale, origin));
+        let rest = self.island.at_rest;
+        let out = ctx.show_viewport_immediate(id, builder.clone(), |ui, _| {
             let at = (ui.max_rect().min + shown.min.to_vec2()).round();
+            let layer = ui.layer_id();
+            super::replay::begin(rest);
             let out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
+            let taken = super::replay::end(ui.ctx(), layer);
             // Windows: `plain::click_through`, below; X11: the input shape, below
             if send_capture && !clicks_through_part {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::MousePassthrough(!capture));
@@ -410,10 +414,18 @@ impl DrawingApp {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
             let focused = ui.ctx().input(|input| input.focused);
-            (paint::Out { focused, ..out }, ui.ctx().input(|input| input.viewport().outer_rect), menus(ui.ctx()))
+            (paint::Out { focused, ..out }, ui.ctx().input(|input| input.viewport().outer_rect), menus(ui.ctx()), taken)
         });
-        let (out, placed, menus) = out;
+        let (out, placed, menus, taken) = out;
         self.island.menus = menus;
+        // at rest, the window draws the island again by itself, and what moves in it, until the app draws again: its
+        // frames no longer paint the app's window too (`replay.rs`)
+        self.island.replaying = taken.is_some();
+        if let Some(taken) = taken {
+            *self.island.replay.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = taken;
+            let replay = self.island.replay.clone();
+            ctx.show_viewport_deferred(id, builder, move |ui, _| super::replay::frame(ui, &replay));
+        }
         if out.drag && drag_later {
             self.island.slim = Some(self.island.anim.ceil());
             (self.island.drag_next, self.island.drag_since) = (true, Some(time));
@@ -469,7 +481,7 @@ impl DrawingApp {
                 let old = self.island.anchor.unwrap_or([origin.x + size.x / 2.0, origin.y + TOP_PAD]);
                 let island = island_in(old, self.island.dock, origin, size, self.island.anim).translate(placed.min.to_vec2());
                 // the monitor the cursor let it go on: by the island's centre, one dropped by the edge between two
-                // monitors went to the other one (asked: "na lateral que tem outro monitor, ela não gruda")
+                // monitors went to the other one
                 let work = crate::app::chat::mini::screen_work(ctx, grab.unwrap_or(island.center()));
                 let island = pushed_to_top(island, placed.top(), work);
                 let anchor = keep_on_screen(dropped(island, work), work);
@@ -505,7 +517,13 @@ impl DrawingApp {
         let at = Pos2::new((content.center().x - anim.x / 2.0).round(), content.top());
         let mut out = paint::Out::default();
         egui::Area::new(egui::Id::unique("island_area")).order(egui::Order::Foreground).fixed_pos(at).constrain(false).show(ctx, |ui| {
+            // taken down at rest as the window's is (the tests see it); drawn here, it is never drawn again by itself
+            let layer = ui.layer_id();
+            super::replay::begin(self.island.at_rest);
             out = self.island_draw(ui, at, anim, radius, view, form, look, colors, time);
+            if let Some(taken) = super::replay::end(ui.ctx(), layer) {
+                *self.island.replay.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = taken;
+            }
         });
         // drawn in the app's window: that window's focus
         out.focused = ctx.input(|input| input.focused);
@@ -517,8 +535,8 @@ impl DrawingApp {
 mod tests {
     use super::*;
 
-    /// Asked: "eu tento mover às vezes e ela salta para a esquerda". The drag waits for the window to be where and as big
-    /// as it was put: resized but not yet moved (at the big window's left), it would carry the island off to the left.
+    /// The drag waits for the window to be where and as big as it was put: resized but not yet moved (at the big window's
+    /// left), it would carry the island off to the left.
     #[test]
     fn the_drag_waits_for_the_window_to_be_where_it_was_put() {
         let (origin, size) = (Pos2::new(866.0, 0.0), Vec2::new(188.0, 32.0));
@@ -718,7 +736,7 @@ mod tests {
         assert_eq!(pulled_to(rect, Dock::Right, Pos2::new(rect.left() - 100.0, 0.0), true, false), Vec2::new(740.0, 360.0));
     }
 
-    /// Asked ("eu arrasto pra cima ele fica pulando ate o final"): the system stops a window at the top bar.
+    /// The system stops a window at the top bar.
     #[test]
     fn a_dragged_island_has_a_window_of_its_size_until_it_opens_once_let_go() {
         let closed = Vec2::new(288.0, 40.0);
@@ -730,7 +748,6 @@ mod tests {
         assert_eq!(slim_kept(None, closed, true), None);
     }
 
-    /// Asked ("ele nao está identificando quando a ilha está em um monitor ou está em outro").
     #[test]
     fn the_island_goes_by_the_monitor_it_is_on() {
         let first = Rect::from_min_max(Pos2::new(0.0, 32.0), Pos2::new(1920.0, 1017.0));
@@ -746,8 +763,8 @@ mod tests {
         let anchor = dropped(Rect::from_min_size(Pos2::new(2600.0, 1000.0), Vec2::new(288.0, 40.0)), second);
         assert_eq!(anchor[1], 1079.0);
         assert_eq!(keep_on_screen(anchor, second), [2744.0, 1079.0], "kept where it is, on the second monitor");
-        // asked ("na lateral que tem outro monitor, ela não gruda"): held by Luna, at its left, the island let go by the
-        // first's right edge has its centre on the second; the cursor's monitor is the first, and it sticks to its side
+        // held by Luna, at its left, the island let go by the first's right edge has its centre on the second; the
+        // cursor's monitor is the first, and it sticks to its side
         let across = Rect::from_min_size(Pos2::new(1880.0, 480.0), Vec2::new(188.0, 38.5));
         let grab = Pos2::new(1900.0, 500.0);
         assert_eq!(work_at(&works, across.center()), Some(second), "by its centre, the other monitor");
@@ -755,8 +772,7 @@ mod tests {
         assert_eq!(Dock::of(anchor, first), Dock::Right, "on the first's right side: {anchor:?}");
     }
 
-    /// Asked ("tento pegar para arrastar ... ele trava, preciso soltar o click e fazer novamente"): a pause in the middle
-    /// of a drag must not move the window; sticking to an edge waits longer.
+    /// A pause in the middle of a drag must not move the window; sticking to an edge waits longer.
     #[test]
     fn a_pause_in_a_drag_does_not_move_the_window_until_it_has_been_still_a_while() {
         let placed = Pos2::new(600.0, 90.0);

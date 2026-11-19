@@ -10,8 +10,8 @@ fn open_path(path: &std::path::Path) {
 }
 
 impl DrawingApp {
-    /// Ajustes › Dados, in three groups (asked): where the canvas's drawings are saved, the app's data, and where the chats
-    /// are. Each place with its path and a button that opens it.
+    /// Ajustes › Dados, in three groups: where the canvas's drawings are saved, the app's data, and where the chats are.
+    /// Each place with its path and a button that opens it.
     pub(super) fn settings_data(&mut self, ui: &mut egui::Ui, k: &K) {
         let drawing = self.autosave.clone().or_else(autosave_path);
         let folder = drawing.as_ref().and_then(|path| path.parent().map(|parent| parent.to_path_buf()));

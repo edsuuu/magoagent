@@ -260,3 +260,13 @@ fn a_long_title_in_the_working_row_ends_in_an_ellipsis_before_the_stop_button() 
     assert!(line.right() <= button.left(), "{line:?} before {button:?}");
     assert_eq!(last, "…");
 }
+
+/// With the island on, the MCP's mini chat opens the conversation in the island, never a panel over the canvas.
+#[test]
+fn the_small_conversation_is_the_islands_alone() {
+    let mut app = app_with_chat();
+    app.prefs.island = true;
+    app.chat_open = true;
+    let answer = app.act("mini_chat", &serde_json::json!({ "chat": "loja" })).unwrap();
+    assert!(answer.contains("ilha") && !app.mini.open && app.island.chat_asked, "{answer}");
+}

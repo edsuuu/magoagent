@@ -1,6 +1,6 @@
-//! A text file opened in a note on the canvas (asked of a chat's file card: "abrir no canvas em uma nota q já é um
-//! editor"; the MCP's `open_as_note`): its words in a note sized to read them, beside the chat's card or in the middle
-//! of the view, and the canvas shown on it. The note holds a copy, as a dropped file's does: it is the person's to edit.
+//! A text file opened in a note on the canvas: its words in a note sized to read them, beside the chat's card or in the
+//! middle of the view, and the canvas shown on it. The note holds a copy, as a dropped file's does: it is the person's
+//! to edit.
 
 use crate::prelude::*;
 use std::path::Path;
@@ -12,7 +12,7 @@ const READ_MAX_HEIGHT: f32 = 720.0;
 /// The share of the view's height the note takes at most.
 const READ_VIEW_SHARE: f32 = 0.8;
 /// Between the chat's card and the note beside it.
-const BESIDE: f32 = 40.0;
+const BESIDE: f32 = 60.0;
 
 /// The text files a note opens: markdown (formatted) and plain text (as typed).
 pub(crate) fn opens_as_note(path: &Path) -> bool {

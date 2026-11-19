@@ -351,8 +351,7 @@ fn the_bands_follow_where_the_sound_is() {
     assert!(analyzer.groove().bands.unwrap().iter().all(|level| *level < 0.05), "silence: {:?}", analyzer.groove().bands);
 }
 
-/// Asked ("quando troca de música a frequência fica bugada e depois de uns 20 segundos volta fluido"): a new song tells
-/// the listening to start over, so the next one is not measured against the last one's loudness.
+/// A new song tells the listening to start over, so the next one is not measured against the last one's loudness.
 #[cfg(not(target_os = "macos"))]
 #[test]
 fn a_new_song_tells_the_listening_to_start_over() {

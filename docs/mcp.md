@@ -2,7 +2,7 @@
 
 <!-- gerado por docs/mcp.py a partir do tools/list do app: não edite à mão -->
 
-O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.32) e tem **106 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
+O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.33) e tem **109 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
 
 ## Ligar
 
@@ -18,7 +18,7 @@ Um terminal comum (que não é o da Luna) só mexe nas árvores ligadas a ele po
 
 ### `add_elements`
 
-Adiciona elementos (objetos JSON com type, x, y, width, height, cores, text, points). Extras: `label: {text, fontSize?}` em formas e setas; `start: {id}` / `end: {id}` em setas para ligá-las a formas (os pontos são calculados sozinhos). Um terminal, navegador ou árvore de arquivos que você abre aqui (type terminal, portal, filetree) já nasce ligado a você por uma corda (ao seu terminal ou ao seu cartão de chat): list_agents o mostra e read_terminal lê a tela do terminal; posto em cima de outra janela ou nota, ele vai para o lugar livre mais perto de você. Para rodar testes ou uma API e acompanhar, prefira create_terminal. Devolve os ids criados (e em `linked` os ligados a você).
+Adiciona elementos (objetos JSON com type, x, y, width, height, cores, text, points). Extras: `label: {text, fontSize?}` em formas e setas; `start: {id}` / `end: {id}` em setas para ligá-las a formas (os pontos são calculados sozinhos); `link` em formas, textos e notas (um arquivo, com a linha: "/projeto/src/x.rs:120") põe no desenho uma marca que abre o arquivo na Árvore de Arquivos. Um terminal, navegador ou árvore de arquivos que você abre aqui (type terminal, portal, filetree) já nasce ligado a você por uma corda (ao seu terminal ou ao seu cartão de chat): list_agents o mostra e read_terminal lê a tela do terminal; posto em cima de outra janela ou nota, ele vai para o lugar livre mais perto de você. Para rodar testes ou uma API e acompanhar, prefira create_terminal. Devolve os ids criados (e em `linked` os ligados a você).
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -26,7 +26,7 @@ Adiciona elementos (objetos JSON com type, x, y, width, height, cores, text, poi
 
 ### `update_elements`
 
-Altera elementos existentes: cada item tem `id` mais os campos a trocar (x, y, width, height, text, strokeColor, backgroundColor, angle, start/end...). Setas ligadas acompanham as formas movidas. Também move e redimensiona janelas (terminais, navegadores e árvores de arquivos) por x, y, width e height, sem mexer no que rodam.
+Altera elementos existentes: cada item tem `id` mais os campos a trocar (x, y, width, height, text, strokeColor, backgroundColor, angle, start/end, link (null tira)...). Setas ligadas acompanham as formas movidas. Também move e redimensiona janelas (terminais, navegadores e árvores de arquivos) por x, y, width e height, sem mexer no que rodam.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -42,7 +42,7 @@ Apaga elementos pelos ids.
 
 ### `get_scene`
 
-Lista os elementos do desenho atual (id, tipo, posição, tamanho, cores, texto, vínculos de setas) e a área ocupada.
+Lista os elementos do desenho atual (id, tipo, posição, tamanho, cores, texto, vínculos de setas, link para arquivo) e a área ocupada.
 
 Sem parâmetros.
 
@@ -77,7 +77,7 @@ Sem parâmetros.
 
 ### `focus_canvas`
 
-Mostra o canvas à pessoa centralizado no que ela quer ver: `at` são ids ou nomes (de terminais, navegadores, árvores de arquivos ou textos), separados por vírgula; vazio é o desenho todo. O zoom se ajusta para caber, ou use `zoom` (1 = 100%, 0.1 a 4).
+Mostra o canvas à pessoa centralizado no que ela quer ver: `at` são ids ou nomes (de terminais, navegadores, árvores de arquivos ou textos), separados por vírgula; vazio é o desenho todo. O zoom se ajusta para caber, ou use `zoom` (1 = 100%, 0.1 a 4). Com uma Árvore de Arquivos ampliada, `at` com o nome ou id dela e `zoom` mudam o zoom dela (0.5 a 3), como Ctrl + roda sobre ela.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -106,6 +106,14 @@ Grupos do canvas (o quadro tracejado com nome em volta de vários elementos; o m
 | `name` | string |  |
 | `color` | string |  |
 
+### `organize_canvas`
+
+Organizar o canvas (o mesmo do menu do canvas): os terminais, chats, notas, árvores, navegadores, grupos e desenhos do canvas, ou só os `elements`, em fileiras com 60 px entre eles e os ligados por corda ou seta lado a lado; formas e traços perto uns dos outros ou ligados por seta seguem juntos, como um desenho. Cordas e setas presas acompanham; os bloqueados ficam onde estão. Um passo de desfazer, e a vista mostra tudo no fim. Use quando o canvas estiver bagunçado, as janelas encostadas ou a pessoa pedir para arrumar.
+
+| Parâmetro | Tipo | O que é |
+|---|---|---|
+| `elements` | array | só estes (ids ou nomes de nós, 2 ou mais); vazio: o canvas todo |
+
 ### `minimap`
 
 Abre ou fecha o minimapa do canvas (o painel no canto de baixo à direita). Sem `open`, alterna.
@@ -116,22 +124,32 @@ Abre ou fecha o minimapa do canvas (o painel no canto de baixo à direita). Sem 
 
 ### `sidebar`
 
-A lateral dos espaços, como a pessoa a usa: `next` vai ao próximo agente que precisa dela (o botão "Ir para o próximo" do cartão Precisa de você, o mesmo que Ctrl+Shift+A: troca de espaço se preciso e centraliza o cartão dele); `agents_open` e `agents_close` abrem ou recolhem a seção Agentes deste espaço (fica salvo); `notice_hide` e `notice_show` ocultam ou trazem de volta o aviso verde "Nada esperando por você" (o × dele; fica salvo, e o cartão de quem espera aparece mesmo assim); `usage_open` e `usage_close` abrem ou fecham o detalhe do uso dos planos no rodapé; `status` diz quantos agentes precisam da pessoa (em todos os espaços) e lista os agentes deste espaço com o estado. Para centralizar um agente da lista, use `focus_canvas`.
+A lateral dos espaços, como a pessoa a usa: `next` vai ao próximo agente que precisa dela (o botão "Ir para o próximo" do cartão Precisa de você, o mesmo que Ctrl+Shift+A: troca de espaço se preciso e centraliza o cartão dele); `agents_open` e `agents_close` abrem ou recolhem a seção Agentes deste espaço (fica salvo); `notice_hide` e `notice_show` ocultam ou trazem de volta o aviso verde "Nada esperando por você" (o × dele; fica salvo, e o cartão de quem espera aparece mesmo assim); `usage_open` e `usage_close` abrem ou fecham o detalhe do uso dos planos no rodapé; `team_open` e `team_close` abrem ou recolhem, sob o Maestro `team` (o nome dele na lista, ou all), os agentes que ele recrutou (a linha "3 agentes" com a seta, fechada até ser aberta; fica salvo e vale também para a lista de Chats); `status` diz quantos agentes precisam da pessoa (em todos os espaços) e lista os agentes deste espaço com o estado. Para centralizar um agente da lista, use `focus_canvas`.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `action` (obrigatório) | string: `status`, `next`, `agents_open`, `agents_close`, `notice_hide`, `notice_show`, `usage_open`, `usage_close` |  |
+| `action` (obrigatório) | string: `status`, `next`, `agents_open`, `agents_close`, `notice_hide`, `notice_show`, `usage_open`, `usage_close`, `team_open`, `team_close` |  |
+| `team` | string | team_open e team_close: o Maestro (o nome dele na lista) ou all |
 
 ### `panel`
 
-O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.
+O painel à direita da janela (o botão na barra de título): changes (Alterações: os arquivos mudados nas pastas das Árvores do canvas, com o diff colorido, a busca por nome ou trecho de código e a revisão) ou note (Nota rápida: texto simples da pessoa; o texto em si fica na ferramenta quick_note), ao lado do canvas. As tarefas dos agentes ficam na ferramenta tasks, sem painel. `open` true abre, false fecha, sem `open` alterna; sem `name` e sem `open` (ou false) fecha o que estiver aberto. `width` muda a largura do painel, como puxar a borda esquerda dele (0 volta à padrão, 340). `worktree` abre Alterações num worktree dos repositórios (o nome da pasta, o ramo ou o caminho; todos volta às Árvores do canvas); a lista está em changes_review worktrees.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `name` | string: `changes` |  |
+| `name` | string: `changes`, `note` |  |
 | `open` | boolean |  |
 | `width` | number | a largura do painel em pixels (de 300 até deixar 360 ao canvas); 0 volta à padrão |
 | `worktree` | string | Alterações: o worktree a mostrar (nome da pasta, ramo ou caminho); todos: as Árvores do canvas |
+
+### `quick_note`
+
+A Nota rápida (o botão ao lado de Alterações, na barra de título): um bloco de texto simples da pessoa, sem markdown, guardado com as preferências. show abre o painel; get lê o texto; set troca o texto por `text`; append junta `text` numa linha embaixo; to_canvas leva o texto para o canvas como uma nota (mostrada como foi digitada, sem markdown) e esvazia o painel.
+
+| Parâmetro | Tipo | O que é |
+|---|---|---|
+| `action` (obrigatório) | string: `show`, `get`, `set`, `append`, `to_canvas` |  |
+| `text` | string | set e append: o texto |
 
 ### `changes_review`
 
@@ -276,13 +294,15 @@ Manda um prompt a um agente conectado (outro terminal do canvas, ou um chat), es
 
 ### `recruit_agent`
 
-Cria um agente novo (um terminal) abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você; ele ganha um nome (a resposta diz qual) e você fala com ele com ask_agent. Só de dentro de um terminal do MagoAgent. Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).
+Cria um agente novo abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você: um chat do app ou um terminal com o Claude Code, como a pessoa escolheu em Ajustes › Agentes › Invocação dos agentes. Ele ganha um nome (a resposta diz qual, o modelo e o esforço) e você fala com ele com ask_agent. Só de dentro de um terminal ou chat do MagoAgent. Escolha sempre model e effort à altura da tarefa e diga à pessoa o que escolheu. Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `command` | string | o que roda nele; padrão claude (ex.: codex) |
+| `command` | string | o agente e a tarefa; padrão claude (ex.: codex, ou claude "revise o diff") |
+| `model` | string | o modelo que você escolhe para a tarefa: haiku (simples e rápido), sonnet (o dia a dia) ou opus (o difícil e longo); no Codex, um modelo da lista dele (ex.: gpt-5-codex); sem isto vale o de Ajustes |
+| `effort` | string: `low`, `medium`, `high`, `xhigh`, `max` | o esforço que você escolhe para a tarefa: low, medium, high, xhigh ou max |
 | `worktree` | boolean | true: num git worktree próprio, num ramo dele |
-| `mode` | string: `terminal`, `chat` | terminal: Claude Code completo num terminal; chat: conversa leve num chat do app (usa o login do CLI, gasta bem menos memória); sem isto vale o ajuste Invocação dos agentes |
+| `mode` | string: `terminal`, `chat` | só quando a pessoa pedir com essas palavras ("em terminal", "em chat"); sem isto vale o ajuste Invocação dos agentes, o que ela escolheu: não passe por conta própria. terminal: Claude Code completo num terminal; chat: conversa leve num chat do app |
 
 ### `create_terminal`
 
@@ -543,17 +563,19 @@ Mostra um chat à pessoa: na tela de chat do app (place app, o padrão) ou na co
 
 ### `chats_view`
 
-A área de Chats fora do canvas (o botão de chat da barra de título): tudo o que está rodando em todos os espaços (os chats do app, os terminais com Claude Code ou Codex e as sessões de fora do app), agrupado por espaço, com o estado (Trabalhando, Esperando, Pronto) e a última linha de cada um. `state` open (o padrão) abre a área e devolve a lista; close volta ao canvas. `filter` escolhe o chip: all (Todos), working (Trabalhando), waiting (Esperando) ou ready (Prontos); `query` busca nos nomes e nas últimas linhas (vazio limpa a busca).
+A área de Chats fora do canvas (o botão de chat da barra de título): tudo o que está rodando em todos os espaços (os chats do app, os terminais com Claude Code ou Codex e as sessões de fora do app), agrupado por espaço, com o estado (Trabalhando, Esperando, Pronto) e a última linha de cada um. `state` open (o padrão) abre a área e devolve a lista; close volta ao canvas. `filter` escolhe o chip: all (Todos), working (Trabalhando), waiting (Esperando) ou ready (Prontos); `query` busca nos nomes e nas últimas linhas (vazio limpa a busca). Os agentes que um Maestro (a Luna ou um terminal Maestro) recrutou ficam sob ele, recolhidos numa linha "3 agentes" que abre e fecha como um acordeão (fica salvo; vale também para a lateral): `team` com o nome do Maestro (ou all) os abre, e com `team_open` false os recolhe.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
 | `state` | string: `open`, `close` |  |
 | `filter` | string: `all`, `working`, `waiting`, `ready` |  |
 | `query` | string |  |
+| `team` | string | o Maestro cujos agentes recrutados abrir ou recolher sob ele: o nome dele na lista, ou all para todos |
+| `team_open` | boolean | false recolhe os agentes do `team`; padrão true (abre) |
 
 ### `chat_send`
 
-Manda uma mensagem a um chat, como se a pessoa a escrevesse lá; o agente dele responde no chat.
+Manda uma mensagem a um chat, como se a pessoa a escrevesse lá; o agente dele responde no chat. Para um agente que o seu chat recrutou, ela entra na fila dele como pergunta sua, e a resposta dele chega no seu chat quando ele terminar, sem você esperar.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -605,7 +627,7 @@ Troca o provedor de um chat antes da primeira mensagem: `agent` claude ou codex.
 
 ### `chat_command`
 
-Roda um comando com barra do chat, como se a pessoa o digitasse na caixa: login (abre o navegador; console ou sso depois), logout, status, mcp, doctor, update, clear (conversa nova), model e effort (com o nome ou nível), help. A saída aparece no chat, sem ir ao modelo. Outros /comandos (compact, os de .claude/commands) são mensagens ao agente: use chat_send.
+Roda um comando com barra do chat, como se a pessoa o digitasse na caixa: login (abre o navegador; console ou sso depois), logout, status, mcp, doctor, update, clear (conversa nova no mesmo chat; a anterior fica na lista Conversas, com o título dela, para ler e continuar), model e effort (com o nome ou nível), help. A saída aparece no chat, sem ir ao modelo. Outros /comandos (compact, os de .claude/commands) são mensagens ao agente: use chat_send.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -644,7 +666,7 @@ O cartão de um chat no canvas: ali o chat é a Luna (list_agents a chama de Lun
 
 ### `mini_chat`
 
-Abre (state open, o padrão) o chat em miniatura flutuante sobre o canvas, no chat `chat` (vazio: o último aberto), ou o recolhe para a pílula (state close).
+Abre (state open, o padrão) o chat pequeno no chat `chat` (vazio: o último aberto): na ilha, com a ilha ligada; sem ela, flutuante sobre o canvas. state close recolhe o flutuante para a pílula.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
@@ -716,6 +738,16 @@ Abre à vista da pessoa um arquivo ou pasta pelo caminho: uma pasta na Árvore d
 | Parâmetro | Tipo | O que é |
 |---|---|---|
 | `path` (obrigatório) | string |  |
+| `line` | number | linha a mostrar, a partir de 1 |
+
+### `file_link`
+
+Um link para um arquivo, como o clique num caminho que o chat mostra (`src/app/x.rs:120`) ou na marca de link de um desenho: `open` abre o arquivo numa Árvore de Arquivos do canvas (a que já tem o projeto dele, senão uma nova ao lado de quem pediu), escolhido na árvore e aberto no painel de código na `line`; a tela do chat fecha, a câmera vai até a árvore e ela fica com o teclado, e um botão "Voltar" aparece no alto. `back` é esse Voltar: devolve a tela de antes (o chat aberto, ou a câmera onde estava). Um caminho relativo parte da pasta de quem pediu.
+
+| Parâmetro | Tipo | O que é |
+|---|---|---|
+| `action` (obrigatório) | string: `open`, `back` |  |
+| `path` | string | o arquivo; aceita `caminho:linha` e `caminho#L120` |
 | `line` | number | linha a mostrar, a partir de 1 |
 
 ### `open_default`
@@ -977,11 +1009,11 @@ Os andares do espaço de trabalho na tela: o Térreo (o desenho do espaço) e os
 
 ### `set_setting`
 
-Muda um ajuste do app: theme (light, dark, system), voice (voicestudio, openai, codex: o motor da chamada; com o Codex a chamada não liga), island (on, off: a ilha da Luna, um notch no topo da tela por cima de tudo com o resumo dos agentes, as perguntas pendentes, o chat novo e a voz), island_sound (on, off: os sons da ilha), island_volume (0 a 0.2; padrão 0.1), island_close_after (5, 10, 15 ou 30 segundos: quanto a ilha aberta espera para ficar compacta), island_compact_after (15, 30, 60, 300 ou 0 segundos: quanto a ilha compacta espera para virar o notch pequeno; 0 nunca), run_at_login (on, off: o MagoAgent abre ao entrar na conta do Windows, do macOS ou do Linux), island_place (top, bottom, left, right: a ilha no topo, embaixo crescendo para cima, ou grudada na lateral esquerda ou direita, onde fechada ou compacta fica em pé; reset: volta ao lugar padrão, o meio do topo do monitor do app, quando ela sumiu ou ficou fora da tela), island_page (home, chats, chat, new, claude, github, spotify: abre a ilha nessa aba; home é o resumo, claude as sessões do Claude Code, no canvas e fora do app), island_feed (hide_all: oculta as linhas do resumo da aba Início até mudarem; show_hidden: traz as ocultas de volta), frame_rate (30, 60, 120, 144 ou 240: os quadros por segundo da ilha e das animações; mais fica mais suave e gasta mais processador), gnome_cursor (install, remove, status: no Linux com GNOME, a extensão do GNOME que diz onde o mouse está para os olhos da ilha seguirem ele fora das janelas do app; o GNOME a carrega no próximo login; só a pedido da pessoa), island_color (cor #rrggbb), claude_hooks (install, remove, status: os hooks do MagoAgent no settings.json do Claude Code da pessoa, com backup e sem apagar nada, para a ilha mostrar as perguntas e permissões de qualquer sessão, o Claude Desktop incluso; só a pedido dela), register_mcp (claude ou codex: registra o MCP do MagoAgent no Claude Code, com --scope user, ou no Codex da pessoa, trocando um registro anterior de mesmo nome, para as sessões de fora do app usarem o canvas; no WSL quando o agente roda lá; só a pedido dela), voice_studio_url (o endereço do servidor do VoiceStudio, padrão http://127.0.0.1:3900), voice_studio_voice (o id da voz dele, da lista de Ajustes › Voz; alloy é a padrão), voice_studio_key (a chave de API dele, se pedir; vazio tira), terminal_history (1000, 5000, 10000), avatar (on, off: a barra da Luna por cima de tudo na tela), avatar_follow (on: a barra segue a janela em uso; off: fica onde está) zoom_step (de 2 a 50: quantos pontos de zoom um passo da roda do mouse muda) voice_mic (o microfone que a chamada e o Ditar ouvem, por parte do nome; auto usa o do sistema, menos um cabo virtual), ou favorite_folder (o caminho de uma pasta: entra nas favoritas do campo de pasta, no topo da lista Recentes, ou sai delas se já estava). Consumo: max_agents (quantos agentes podem rodar para a Luna recrutar mais um; 0 tira o teto), usage_stop (a porcentagem da janela de 5 horas do plano a partir da qual o app não recruta; 0 nunca para) e agent_mode (terminal ou chat: como os agentes recrutados rodam, num terminal com o Claude Code completo ou num chat leve do app) update_check (sempre, ao abrir ou nunca: quando o app procura sozinho uma versão nova no GitHub; sempre é ao abrir e a cada hora) e recruit_model (o modelo dos agentes recrutados, por exemplo sonnet ou haiku; cli usa o da CLI). style_skill (o caminho do SKILL.md do seu estilo de código, que a etapa Padronização do fluxo manda o agente ler). Chat novo (Ajustes › Chat): chat_agent (claude ou codex), chat_folder (a pasta de trabalho; vazio: a padrão), chat_mode (auto ou bypass: o que o agente pode), chat_autocompact (100k a 1M: onde o Claude Code compacta sozinho; padrão volta ao do modelo), chat_panel (on, off: o painel Contexto) e agent_hooks (on, off: os agentes do app avisam a ilha por hooks). No Windows, wsl (auto: a distro padrão do WSL quando o Windows não tem o claude nem o codex; off: nunca; ou o nome de uma distro, como Ubuntu, para os agentes rodarem sempre nela). Voz (Ajustes › Ok Mago): ok_mago (on, off: dizer Ok Mago chama a Luna na chamada) e speak_answers (on, off: a chamada começa com os alto-falantes ligados). Seleção: window_outline (a borda azul de uma janela selecionada: animated, still ou none). Árvore de Arquivos: hidden_shown (os ocultos que ela ainda lista com os ocultos escondidos, separados por vírgula, como .claude, .idea; a .git fica oculta). Atalhos globais da ilha, que valem com qualquer programa na frente: shortcut_openChat (abre o chat da ilha), shortcut_goToAlert (vai à pergunta ou permissão pendente), shortcut_jumpToTerminal (abre o terminal da sessão), shortcut_nextPill, shortcut_prevPill e shortcut_muteToggle; o valor são as teclas (Ctrl+Alt+K: Ctrl, Alt ou Win com uma tecla), off ou on para desligar e ligar, ou default para voltar ao padrão. wipe_data (Limpar todos os dados) não é feito por aqui: só a pessoa, em Ajustes › Dados. Atalhos do app, que valem na janela dele: shortcut_settings (ajustes), shortcut_palette (paleta de comandos), shortcut_showChat (tela do chat), shortcut_showCanvas (voltar ao canvas), shortcut_openTree (abrir a árvore de arquivos), shortcut_nextNeedingYou (próximo agente que precisa de você), shortcut_floors (visão dos andares), shortcut_grid (mostrar ou esconder a grade), shortcut_theme (tema claro ou escuro), shortcut_save (salvar), shortcut_saveAs (salvar como), shortcut_open (abrir), shortcut_export (exportar imagem), shortcut_undo (desfazer), shortcut_redo (refazer), shortcut_selectAll (selecionar tudo), shortcut_duplicate (duplicar), shortcut_clearCanvas (limpar o canvas), shortcut_group (agrupar), shortcut_ungroup (desagrupar), shortcut_lock (travar ou destravar), shortcut_tidy (arrumar a seleção), shortcut_editPoints (editar os pontos da linha), shortcut_layerForward (uma camada à frente), shortcut_layerBackward (uma camada atrás), shortcut_layerFront (trazer para a frente de tudo), shortcut_layerBack (enviar para trás de tudo), shortcut_zoomIn (aproximar), shortcut_zoomOut (afastar), shortcut_zoomReset (voltar a 100%), shortcut_fitAll (ver tudo), shortcut_fitSelection (ver a seleção), shortcut_sendNow (enviar agora a mensagem da fila). O valor são as teclas (Ctrl+S, Ctrl+Shift+K, Shift+1, F2), none para deixar sem tecla ou default para o padrão; vale também para os globais. Teclas que já são de outro atalho, as fixas (as letras das ferramentas, Esc, Enter, Delete, as setas, Ctrl+C, Ctrl+X, Ctrl+V) e as do sistema (Alt+Tab, Alt+F4) são recusadas, dizendo de quem são.
+Muda um ajuste do app: theme (light, dark, system), voice (voicestudio, openai, codex: o motor da chamada; com o Codex a chamada não liga), island (on, off: a ilha da Luna, um notch no topo da tela por cima de tudo com o resumo dos agentes, as perguntas pendentes, o chat novo e a voz), island_sound (on, off: os sons da ilha), island_volume (0 a 0.2; padrão 0.1), island_close_after (5, 10, 15 ou 30 segundos: quanto a ilha aberta espera para ficar compacta), island_compact_after (15, 30, 60, 300 ou 0 segundos: quanto a ilha compacta espera para virar o notch pequeno; 0 nunca), run_at_login (on, off: o MagoAgent abre ao entrar na conta do Windows, do macOS ou do Linux), island_place (top, bottom, left, right: a ilha no topo, embaixo crescendo para cima, ou grudada na lateral esquerda ou direita, onde fechada ou compacta fica em pé; reset: volta ao lugar padrão, o meio do topo do monitor do app, quando ela sumiu ou ficou fora da tela), island_page (home, chats, chat, new, claude, github, spotify: abre a ilha nessa aba; home é o resumo, claude as sessões do Claude Code, no canvas e fora do app), island_feed (hide_all: oculta as linhas do resumo da aba Início até mudarem; show_hidden: traz as ocultas de volta), frame_rate (30, 60, 120, 144 ou 240: os quadros por segundo da ilha e das animações; mais fica mais suave e gasta mais processador), gnome_cursor (install, remove, status: no Linux com GNOME, a extensão do GNOME que diz onde o mouse está para os olhos da ilha seguirem ele fora das janelas do app; o GNOME a carrega no próximo login; só a pedido da pessoa), island_color (cor #rrggbb), claude_hooks (install, remove, status: os hooks do MagoAgent no settings.json do Claude Code da pessoa, com backup e sem apagar nada, para a ilha mostrar as perguntas e permissões de qualquer sessão, o Claude Desktop incluso; só a pedido dela), register_mcp (claude ou codex: registra o MCP do MagoAgent no Claude Code, com --scope user, ou no Codex da pessoa, trocando um registro anterior de mesmo nome, para as sessões de fora do app usarem o canvas; no WSL quando o agente roda lá; só a pedido dela), voice_studio_url (o endereço do servidor do VoiceStudio, padrão http://127.0.0.1:3900), voice_studio_voice (o id da voz dele, da lista de Ajustes › Voz; alloy é a padrão), voice_studio_key (a chave de API dele, se pedir; vazio tira), terminal_history (1000, 5000, 10000), avatar (on, off: a barra da Luna por cima de tudo na tela), avatar_follow (on: a barra segue a janela em uso; off: fica onde está) zoom_step (de 2 a 50: quantos pontos de zoom um passo da roda do mouse muda) voice_mic (o microfone que a chamada e o Ditar ouvem, por parte do nome; auto usa o do sistema, menos um cabo virtual), ou favorite_folder (o caminho de uma pasta: entra nas favoritas do campo de pasta, no topo da lista Recentes, ou sai delas se já estava). Consumo: max_agents (quantos agentes podem rodar para a Luna recrutar mais um; 0 tira o teto), usage_stop (a porcentagem da janela de 5 horas do plano a partir da qual o app não recruta; 0 nunca para) e agent_mode (terminal ou chat: como os agentes recrutados rodam, num terminal com o Claude Code completo ou num chat leve do app); work_outside_temp (on, off: Ajustes › Agentes › Trabalho fora da pasta temporária; ligado, os agentes do app, os chats, a Luna e os recrutados, são instruídos a não guardar trabalho que precisa durar em /tmp ou na pasta temporária do sistema, que some ao reiniciar, e a usar a pasta do projeto, com os worktrees em <repo>/.magoagent/worktrees; ligado por padrão) update_check (sempre, ao abrir ou nunca: quando o app procura sozinho uma versão nova no GitHub; sempre é ao abrir e a cada hora) e recruit_model (o modelo dos agentes recrutados, por exemplo sonnet ou haiku; cli usa o da CLI). style_skill (o caminho do SKILL.md do seu estilo de código, que a etapa Padronização do fluxo manda o agente ler). Chat novo (Ajustes › Chat): chat_agent (claude ou codex), chat_folder (a pasta de trabalho; vazio: a padrão), chat_mode (auto ou bypass: o que o agente pode), chat_autocompact (100k a 1M: onde o Claude Code compacta sozinho; padrão volta ao do modelo), chat_panel (on, off: o painel Contexto) e agent_hooks (on, off: os agentes do app avisam a ilha por hooks). No Windows, wsl (auto: a distro padrão do WSL quando o Windows não tem o claude nem o codex; off: nunca; ou o nome de uma distro, como Ubuntu, para os agentes rodarem sempre nela). Voz (Ajustes › Ok Mago): ok_mago (on, off: dizer Ok Mago chama a Luna na chamada) e speak_answers (on, off: a chamada começa com os alto-falantes ligados). Seleção: window_outline (a borda azul de uma janela selecionada: animated, still ou none). Árvore de Arquivos: hidden_shown (os ocultos que ela ainda lista com os ocultos escondidos, separados por vírgula, como .claude, .idea; a .git fica oculta). Atalhos globais da ilha, que valem com qualquer programa na frente: shortcut_openChat (abre o chat da ilha), shortcut_goToAlert (vai à pergunta ou permissão pendente), shortcut_jumpToTerminal (abre o terminal da sessão), shortcut_nextPill, shortcut_prevPill e shortcut_muteToggle; o valor são as teclas (Ctrl+Alt+K: Ctrl, Alt ou Win com uma tecla), off ou on para desligar e ligar, ou default para voltar ao padrão. wipe_data (Limpar todos os dados) não é feito por aqui: só a pessoa, em Ajustes › Dados. Atalhos do app, que valem na janela dele: shortcut_settings (ajustes), shortcut_palette (paleta de comandos), shortcut_showChat (tela do chat), shortcut_showCanvas (voltar ao canvas), shortcut_openTree (abrir a árvore de arquivos), shortcut_nextNeedingYou (próximo agente que precisa de você), shortcut_floors (visão dos andares), shortcut_grid (mostrar ou esconder a grade), shortcut_theme (tema claro ou escuro), shortcut_save (salvar), shortcut_saveAs (salvar como), shortcut_open (abrir), shortcut_export (exportar imagem), shortcut_undo (desfazer), shortcut_redo (refazer), shortcut_selectAll (selecionar tudo), shortcut_duplicate (duplicar), shortcut_clearCanvas (limpar o canvas), shortcut_group (agrupar), shortcut_ungroup (desagrupar), shortcut_lock (travar ou destravar), shortcut_tidy (arrumar a seleção), shortcut_editPoints (editar os pontos da linha), shortcut_layerForward (uma camada à frente), shortcut_layerBackward (uma camada atrás), shortcut_layerFront (trazer para a frente de tudo), shortcut_layerBack (enviar para trás de tudo), shortcut_zoomIn (aproximar), shortcut_zoomOut (afastar), shortcut_zoomReset (voltar a 100%), shortcut_fitAll (ver tudo), shortcut_fitSelection (ver a seleção), shortcut_sendNow (enviar agora a mensagem da fila). O valor são as teclas (Ctrl+S, Ctrl+Shift+K, Shift+1, F2), none para deixar sem tecla ou default para o padrão; vale também para os globais. Teclas que já são de outro atalho, as fixas (as letras das ferramentas, Esc, Enter, Delete, as setas, Ctrl+C, Ctrl+X, Ctrl+V) e as do sistema (Alt+Tab, Alt+F4) são recusadas, dizendo de quem são.
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `name` (obrigatório) | string: `theme`, `voice`, `voice_studio_url`, `voice_studio_voice`, `voice_studio_key`, `terminal_history`, `avatar`, `avatar_follow`, `island`, `island_sound`, `island_volume`, `island_close_after`, `island_compact_after`, `run_at_login`, `island_place`, `island_page`, `wipe_data`, `island_feed`, `frame_rate`, `gnome_cursor`, `island_color`, `favorite_folder`, `zoom_step`, `max_agents`, `usage_stop`, `agent_mode`, `update_check`, `recruit_model`, `voice_mic`, `hidden_shown`, `window_outline`, `style_skill`, `chat_agent`, `chat_folder`, `chat_mode`, `chat_autocompact`, `chat_panel`, `agent_hooks`, `wsl`, `ok_mago`, `speak_answers`, `claude_hooks`, `codex_hooks`, `register_mcp`, `shortcut_openChat`, `shortcut_goToAlert`, `shortcut_jumpToTerminal`, `shortcut_nextPill`, `shortcut_prevPill`, `shortcut_muteToggle`, `shortcut_settings`, `shortcut_palette`, `shortcut_showChat`, `shortcut_showCanvas`, `shortcut_openTree`, `shortcut_nextNeedingYou`, `shortcut_floors`, `shortcut_grid`, `shortcut_theme`, `shortcut_save`, `shortcut_saveAs`, `shortcut_open`, `shortcut_export`, `shortcut_undo`, `shortcut_redo`, `shortcut_selectAll`, `shortcut_duplicate`, `shortcut_clearCanvas`, `shortcut_group`, `shortcut_ungroup`, `shortcut_lock`, `shortcut_tidy`, `shortcut_editPoints`, `shortcut_layerForward`, `shortcut_layerBackward`, `shortcut_layerFront`, `shortcut_layerBack`, `shortcut_zoomIn`, `shortcut_zoomOut`, `shortcut_zoomReset`, `shortcut_fitAll`, `shortcut_fitSelection`, `shortcut_sendNow` |  |
+| `name` (obrigatório) | string: `theme`, `voice`, `voice_studio_url`, `voice_studio_voice`, `voice_studio_key`, `terminal_history`, `avatar`, `avatar_follow`, `island`, `island_sound`, `island_volume`, `island_close_after`, `island_compact_after`, `run_at_login`, `island_place`, `island_page`, `wipe_data`, `island_feed`, `frame_rate`, `gnome_cursor`, `island_color`, `favorite_folder`, `zoom_step`, `max_agents`, `usage_stop`, `agent_mode`, `work_outside_temp`, `update_check`, `recruit_model`, `voice_mic`, `hidden_shown`, `window_outline`, `style_skill`, `chat_agent`, `chat_folder`, `chat_mode`, `chat_autocompact`, `chat_panel`, `agent_hooks`, `wsl`, `ok_mago`, `speak_answers`, `claude_hooks`, `codex_hooks`, `register_mcp`, `shortcut_openChat`, `shortcut_goToAlert`, `shortcut_jumpToTerminal`, `shortcut_nextPill`, `shortcut_prevPill`, `shortcut_muteToggle`, `shortcut_settings`, `shortcut_palette`, `shortcut_showChat`, `shortcut_showCanvas`, `shortcut_openTree`, `shortcut_nextNeedingYou`, `shortcut_floors`, `shortcut_grid`, `shortcut_theme`, `shortcut_save`, `shortcut_saveAs`, `shortcut_open`, `shortcut_export`, `shortcut_undo`, `shortcut_redo`, `shortcut_selectAll`, `shortcut_duplicate`, `shortcut_clearCanvas`, `shortcut_group`, `shortcut_ungroup`, `shortcut_lock`, `shortcut_tidy`, `shortcut_editPoints`, `shortcut_layerForward`, `shortcut_layerBackward`, `shortcut_layerFront`, `shortcut_layerBack`, `shortcut_zoomIn`, `shortcut_zoomOut`, `shortcut_zoomReset`, `shortcut_fitAll`, `shortcut_fitSelection`, `shortcut_sendNow` |  |
 | `value` (obrigatório) | string |  |
 
 ### `dictionary`

@@ -161,8 +161,8 @@ fn the_title_bar_holds_the_top_buttons_and_moves_the_window() {
 }
 
 /// Ajustes' veil covers the whole window, the drawn bar too, and took the press: the window did not move while Ajustes
-/// was open (asked). The bar's empty stretch under the veil moves it and a second press maximizes, as without Ajustes;
-/// Ajustes stays open, and a press on the veil off the bar still closes it.
+/// was open. The bar's empty stretch under the veil moves it and a second press maximizes, as without Ajustes; Ajustes
+/// stays open, and a press on the veil off the bar still closes it.
 #[cfg(not(target_os = "macos"))]
 #[test]
 fn the_title_bar_moves_the_window_with_ajustes_open() {
@@ -214,8 +214,8 @@ fn the_title_bar_moves_the_window_with_ajustes_open() {
     assert!(sent.is_empty() && !app.settings_open, "{sent:?}");
 }
 
-/// The welcome covers the whole window, the drawn bar too (asked: minimizar, maximizar e fechar sumiam nela): the
-/// window's buttons stay over it and answer, and the bar's empty stretch under it still moves the window.
+/// The welcome covers the whole window, the drawn bar too: the window's buttons stay over it and answer, and the
+/// bar's empty stretch under it still moves the window.
 #[cfg(not(target_os = "macos"))]
 #[test]
 fn the_window_buttons_stay_over_the_welcome() {
@@ -291,9 +291,8 @@ fn the_window_edge_keeps_its_resize_cursor_over_a_panel() {
     assert_eq!(output.platform_output.cursor_icon, CursorIcon::ResizeEast);
 }
 
-/// Asked: "porque o do Chrome fica diferente do nosso app, está com os botões do Windows". On Linux the window's buttons
-/// are GNOME's, as Chrome draws them: no block of their own, round and gray under the pointer (close too, never red), on
-/// the top row with the canvas's buttons.
+/// On Linux the window's buttons are GNOME's, as Chrome draws them: no block of their own, round and gray under the
+/// pointer (close too, never red), on the top row with the canvas's buttons.
 #[cfg(target_os = "linux")]
 #[test]
 fn the_linux_window_buttons_are_gnomes_round_ones() {

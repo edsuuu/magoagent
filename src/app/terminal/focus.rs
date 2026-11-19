@@ -9,7 +9,7 @@ impl DrawingApp {
             let r = Rect::from_two_pos(start, end);
             Rect::from_min_size(r.min, r.size().max(TERMINAL_MIN))
         };
-        // the toolbar's button opens on Chat (asked), with the first agent a chat speaks with
+        // the toolbar's button opens on Chat, with the first agent a chat speaks with
         let command =
             self.prefs.presets.iter().map(|preset| &preset.command).find(|command| matches!(command.split_whitespace().next(), Some("claude" | "codex")));
         let spec = TerminalSpec { name: self.command_name(""), cwd: self.new_folder(), command: command.cloned().unwrap_or_default(), ..Default::default() };

@@ -92,7 +92,7 @@ pub(crate) fn log_tail(text: &str, max: usize) -> String {
 impl Step {
     /// Its answer: `result` is the line's `toolUseResult`, whose shape each tool decides; `said`,
     /// the answer's text (a failure's reason).
-    fn finish(&mut self, result: &Value, failed: bool, said: &str, at: Option<f64>) {
+    pub(crate) fn finish(&mut self, result: &Value, failed: bool, said: &str, at: Option<f64>) {
         (self.ended, self.failed) = (at, failed);
         // Bash: what it printed, and whether it was stopped
         let printed: Vec<&str> =
@@ -101,7 +101,15 @@ impl Step {
             self.log = log_tail(&printed.join("\n"), LOG_MAX);
         }
         if failed {
-            self.error = Some(log_tail(untag(said.trim()), LOG_MAX)).filter(|e| !e.is_empty());
+            // why, on its row (`note`) and whole in its card; an answer in JSON by what it says, not the braces
+            let said = untag(said.trim());
+            let readable = json_failure(said).unwrap_or_else(|| said.to_string());
+            self.error = Some(log_tail(&readable, LOG_MAX)).filter(|e| !e.is_empty());
+            // the row names the tool already: a JSON answer's action that is the tool's own name is not said again
+            let note = failure_note(said);
+            let tool = self.name.rsplit("__").next().unwrap_or_default();
+            let note = note.strip_prefix(&format!("{tool}: ")).map_or(note.clone(), str::to_string);
+            self.note = Some(note).filter(|note| !note.is_empty());
         } else if result["interrupted"] == true {
             self.error = Some("Interrompido".into());
         }
@@ -534,12 +542,15 @@ pub(crate) fn chat_items(line: &Value) -> Vec<ChatItem> {
             started: line["timestamp"].as_str().and_then(unix_seconds),
             ..Default::default()
         })),
+        // a tool that failed shows it on its own step (✗, why on its row and whole in its card): a line of its own for
+        // each one made the conversation a column of "Ferramenta falhou", most of them the agent's own retries. Only a
+        // refusal and a denied permission say more.
         "tool_result" if block["is_error"] == true => {
             let text = block_text(&block["content"]);
             if text.starts_with("The user doesn't want to proceed with this tool use") {
                 return Some(ChatItem::System("Você recusou o uso da ferramenta.".into()));
             }
-            Some(ChatItem::Error(tool_failure(untag(text.trim()))))
+            permission_denied(untag(text.trim())).map(ChatItem::Error)
         }
         "image" => image(block, user, at),
         _ => None,
@@ -596,22 +607,39 @@ fn summary(input: &Value) -> String {
     one_line(input_text(input), 90)
 }
 
-/// What the chat says of a tool that failed. A tool outside that answers in JSON (`{"action": "type_text", "message":
-/// "…"}`) says why in its `message` (or `error`): that, whole (the chat wraps it), after its action. Any other answer,
-/// its first line (the step's card under its row has all of it).
-fn tool_failure(text: &str) -> String {
-    if let Ok(Value::Object(answer)) = serde_json::from_str::<Value>(text) {
-        let field = |key: &str| answer.get(key).and_then(Value::as_str).map(str::trim).filter(|said| !said.is_empty());
-        let why =
-            field("message").or_else(|| field("error")).or_else(|| answer.get("error")?["message"].as_str().map(str::trim).filter(|said| !said.is_empty()));
-        if let Some(why) = why {
-            return match field("action") {
-                Some(action) => format!("Ferramenta falhou ({action}): {why}"),
-                None => format!("Ferramenta falhou: {why}"),
-            };
-        }
+/// Why a tool that answers in JSON (`{"action": "type_text", "message": "…"}`) failed: its `message` (or `error`),
+/// whole, after its action. None for an answer that is not JSON or says no why.
+fn json_failure(text: &str) -> Option<String> {
+    let Ok(Value::Object(answer)) = serde_json::from_str::<Value>(text) else { return None };
+    let field = |key: &str| answer.get(key).and_then(Value::as_str).map(str::trim).filter(|said| !said.is_empty());
+    let why =
+        field("message").or_else(|| field("error")).or_else(|| answer.get("error")?["message"].as_str().map(str::trim).filter(|said| !said.is_empty()))?;
+    Some(match field("action") {
+        Some(action) => format!("{action}: {why}"),
+        None => why.to_string(),
+    })
+}
+
+/// Why a step failed, in a few words for its row: a command's exit code, a call Claude Code cancelled because another
+/// one beside it failed (no failure of its own), a JSON answer's message, else the first line.
+pub(crate) fn failure_note(text: &str) -> String {
+    let first = text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or_default();
+    if let Some(code) = first.strip_prefix("Exit code ").filter(|code| code.parse::<i64>().is_ok()) {
+        return format!("saiu com o código {code}");
     }
-    format!("Ferramenta falhou: {}", one_line(text, 160))
+    if first.starts_with("Cancelled: parallel tool call") {
+        return "cancelada: outra ferramenta chamada junto falhou".into();
+    }
+    one_line(&json_failure(text).unwrap_or_else(|| first.to_string()), 120)
+}
+
+/// A tool's failure that is a permission the agent did not get (Claude Code's auto mode, a hook, a plugin, the
+/// settings): the person's business, said in the conversation. None for any other failure.
+fn permission_denied(text: &str) -> Option<String> {
+    let first = text.lines().map(str::trim).find(|line| !line.is_empty())?;
+    let lower = first.to_lowercase();
+    let denied = (lower.starts_with("permission") && lower.contains("denied")) || lower.contains("haven't granted");
+    denied.then(|| format!("Permissão negada: {}", one_line(first, 200)))
 }
 
 /// A tool answer's text: a string, or its first text block.

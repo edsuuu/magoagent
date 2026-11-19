@@ -262,9 +262,12 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         "recruit" => {
             let (reply, rx) = mpsc::channel();
             let command = if text.trim().is_empty() { "claude" } else { text };
+            // the model and effort the Maestro picked, as its agent's own flags (maestro/tuning.rs)
+            let tuned = |key: &str| request[key].as_str().unwrap_or_default().to_string();
+            let command = crate::app::maestro::tuning::with_tuning(command, &tuned("model"), &tuned("effort"));
             send(UiCommand::Recruit {
                 from: builder.into(),
-                command: command.into(),
+                command,
                 worktree: request["worktree"] == true,
                 mode: request["mode"].as_str().and_then(AgentMode::parse),
                 reply,

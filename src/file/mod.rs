@@ -3,7 +3,9 @@
 
 use crate::prelude::*;
 mod interop;
+mod prefs;
 pub(crate) use interop::*;
+pub(crate) use prefs::{prefs_written, write_prefs};
 
 /// Why a drawing file can't be used as is. No caller writes over the file on any of these.
 #[derive(Debug)]
@@ -150,8 +152,8 @@ pub(crate) fn data_dir() -> Option<PathBuf> {
     }
 }
 
-/// The chats' folder when none was picked ("Nenhuma pasta"): `~/.magoagent`, outside the install folder (asked). The
-/// chats made in the old `data/projetos` keep it: their sessions live there.
+/// The chats' folder when none was picked ("Nenhuma pasta"): `~/.magoagent`, outside the install folder. The chats
+/// made in the old `data/projetos` keep it: their sessions live there.
 pub(crate) fn projects_dir() -> Option<PathBuf> {
     if cfg!(test) {
         return Some(test_dir().join("home-magoagent"));
@@ -224,16 +226,27 @@ fn secrets(prefs: &mut Prefs) -> [(&'static str, &mut String); 2] {
 }
 
 /// The preferences as the file gets them: each key that is in the keychain (put there now if it changed)
-/// is left out. A keychain that refuses keeps its key in the file, so no one loses it.
+/// is left out. A keychain that refuses keeps its key in the file, so no one loses it. A key known to be there (put or
+/// read back by this run) is not asked for again: each write would go to the keychain (D-Bus, Keychain) for nothing.
 pub(crate) fn prefs_for_file(prefs: &Prefs, before: &Prefs) -> Prefs {
+    static IN_KEYCHAIN: std::sync::Mutex<Vec<(&str, String)>> = std::sync::Mutex::new(Vec::new());
+    let known = |id: &str, field: &str| IN_KEYCHAIN.lock().is_ok_and(|kept| kept.iter().any(|(at, key)| *at == id && key == field));
+    let remember = |id: &'static str, field: Option<&str>| {
+        if let Ok(mut kept) = IN_KEYCHAIN.lock() {
+            kept.retain(|(at, _)| *at != id);
+            kept.extend(field.map(|field| (id, field.to_string())));
+        }
+    };
     let (mut copy, mut old) = (prefs.clone(), before.clone());
     for ((id, field), (_, previous)) in secrets(&mut copy).into_iter().zip(secrets(&mut old)) {
         let changed = *field != *previous;
         if field.is_empty() {
             if changed {
                 let _ = remove_secret(id);
+                remember(id, None);
             }
-        } else if if changed { set_secret(id, field).is_ok() } else { take_secret(id).as_deref() == Some(field.as_str()) } {
+        } else if (!changed && known(id, field)) || if changed { set_secret(id, field).is_ok() } else { take_secret(id).as_deref() == Some(field.as_str()) } {
+            remember(id, Some(field));
             field.clear();
         }
     }

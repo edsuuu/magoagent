@@ -109,9 +109,8 @@ pub(crate) fn spot_rect(ctx: &Context, spot: Spot) -> Option<Rect> {
     found.map(|rect| rect.intersect(screen)).filter(|rect| rect.is_positive() && rect.width() >= 4.0 && rect.height() >= 4.0)
 }
 
-/// Where the balloon of `size` goes: in the middle of the screen, only the hole moving from step to step (asked: "o modal
-/// pode ficar centralizado e só muda o foco de onde está, pois preciso ir clicando em cada canto"); when the middle would
-/// cover the hole, under it if it fits, else over it, else beside it.
+/// Where the balloon of `size` goes: in the middle of the screen, only the hole moving from step to step; when the middle
+/// would cover the hole, under it if it fits, else over it, else beside it.
 pub(crate) fn tip_place(hole: Option<Rect>, size: Vec2, screen: Rect) -> Rect {
     let middle = Rect::from_center_size(screen.center(), size);
     let Some(hole) = hole.filter(|hole| hole.intersects(middle.expand(GAP))) else { return middle };

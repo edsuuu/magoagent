@@ -146,7 +146,7 @@ pub(crate) struct Shared {
     /// It ended without hearing anything: no program to listen with, or no device.
     failed: AtomicBool,
     /// The song changed: the thread hears the next one from scratch (its loudness and tempo), not measured against the
-    /// last one (asked: "quando troca de música a frequência fica bugada e depois de uns 20 segundos volta fluido").
+    /// last one.
     pub(crate) new_song: AtomicBool,
     latest: Mutex<Option<(Groove, Instant)>>,
 }
@@ -268,9 +268,41 @@ impl Dancer {
         self.listening = Some(shared);
     }
 
+    /// Tests: the listening heard `groove` just now, as its thread would have published it.
+    #[cfg(test)]
+    pub(crate) fn hear(&mut self, groove: Groove) {
+        let asked = &self.asked;
+        self.listening.get_or_insert_with(|| Arc::new(Shared::new(asked.clone()))).publish(groove);
+    }
+
     /// What Luna dances to now, `playing` or not, asking for the listening (`ask`).
     pub(crate) fn groove(&self, playing: bool) -> Groove {
         self.ask();
+        self.peek(playing)
+    }
+
+    /// The same without asking.
+    pub(crate) fn peek(&self, playing: bool) -> Groove {
+        self.ear().peek(playing)
+    }
+
+    /// What is heard as it is now, for what is drawn without the app (the island at rest, `island/replay.rs`).
+    pub(crate) fn ear(&self) -> Ear {
+        Ear { asked: self.asked.clone(), listening: self.listening.clone() }
+    }
+}
+
+/// The listening as a dancer drawn without the app reads it: asking for it, and what it heard.
+#[derive(Clone, Default)]
+pub(crate) struct Ear {
+    asked: Arc<AtomicU64>,
+    listening: Option<Arc<Shared>>,
+}
+
+impl Ear {
+    /// What Luna dances to now, `playing` or not, asking for the listening (as `Dancer::ask`).
+    pub(crate) fn groove(&self, playing: bool) -> Groove {
+        self.asked.store(stamp(), Ordering::Relaxed);
         self.peek(playing)
     }
 

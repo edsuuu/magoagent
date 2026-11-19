@@ -173,15 +173,23 @@ impl DrawingApp {
                 continue;
             }
             self.chat_starts.remove(i);
-            if self.is_chat(&id) {
-                self.chat_send(ctx, &id, &prompt);
+            // what it says at the end of it goes to the chat that recruited it (ask.rs)
+            if self.is_chat(&id) && self.chat_send(ctx, &id, &prompt) {
+                self.task_sent(&id, &prompt);
             }
         }
-        // what was written while a chat answered, once it is done (`chat_send`)
+        // what was written while a chat answered, once it is done (`chat_send`); while WSL's first probe runs, it waits
         let (chats, runs) = (&self.chats, &self.chat_runs);
-        let free: Vec<(String, String)> = self.chat_queue.extract_if(.., |(id, _)| chats.iter().any(|c| &c.id == id) && !runs.contains_key(id)).collect();
-        for (id, prompt) in free {
-            self.chat_send(ctx, &id, &prompt);
+        let waits_for_chat = |id: &String| chats.iter().any(|chat| &chat.id == id) && !runs.contains_key(id);
+        if self.chat_queue.iter().any(|(id, _)| waits_for_chat(id)) {
+            if wsl_settling() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            } else {
+                let free: Vec<(String, String)> = self.chat_queue.extract_if(.., |(id, _)| waits_for_chat(id)).collect();
+                for (id, prompt) in free {
+                    self.chat_send(ctx, &id, &prompt);
+                }
+            }
         }
         // a text file's card clicked in a conversation: its note on the canvas (notes/file.rs); a file the note can't
         // hold opens in the system's program, as before
@@ -191,6 +199,7 @@ impl DrawingApp {
             self.toast(why);
             crate::app::browser::open_external(&path.to_string_lossy());
         }
+        self.file_links_tick(ctx);
         self.chat_asks_tick(ctx);
         self.recruit_popups_tick();
     }
@@ -335,7 +344,7 @@ impl DrawingApp {
             let ink = if preview.is_some() { light.gamma_multiply(0.85) } else { muted };
             let text = preview.unwrap_or_else(|| "Sem mensagens ainda. Clique duplo para abrir o chat.".into());
             // in the chat's Markdown (no ** nor ` painted), in the card's own ink
-            let colors = UiColors { text: ink, surface_low: light.gamma_multiply(0.1), ..self.colors() };
+            let colors = UiColors { text: ink, surface_low: light.gamma_multiply(0.1), code: crate::app::ui::code_ink(light), ..self.colors() };
             let galleys = md_galleys(&painter, &text, 10.5 * zoom, ink, width, rows as usize, &colors);
             paint_md(&painter, Pos2::new(text_left, body.top() + line + gap), galleys, ink);
         }

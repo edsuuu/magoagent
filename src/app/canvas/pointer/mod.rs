@@ -93,6 +93,7 @@ impl DrawingApp {
             });
         } else if let Some((index, corner, free)) = self.window_grip(pos) {
             // a window's edge or corner resizes it from the band, selected or not, before its body or title
+            let index = self.raise_card(index);
             let from = local_bounds(&self.scene.elements[index]);
             let corners = [from.left_top(), from.right_top(), from.right_bottom(), from.left_bottom()];
             self.selected = self.with_card_text(&[index]);
@@ -109,7 +110,12 @@ impl DrawingApp {
                 pin: corners[corner],
             });
         } else if let Some(index) = self.hit(world) {
-            let index = self.raise_note(index);
+            let index = self.raise_card(index);
+            // another card, though inside the frame of the terminal with the keyboard (a note in front of it): the keys
+            // are no longer the terminal's (terminal/overlay.rs only lets go of them for a press outside its frame)
+            if self.terminal_focus.as_ref().is_some_and(|focused| *focused != self.scene.elements[index].id) {
+                self.terminal_focus = None;
+            }
             if !self.drags(index, world, modifiers.shift) {
                 let element = &self.scene.elements[index];
                 if element.terminal.is_some() {
@@ -158,11 +164,12 @@ impl DrawingApp {
         }
     }
 
-    /// A pressed sticky note comes to the front with its text, as a node does in the reference app
-    /// (a fichário's pages keep their order); the note's new index.
-    pub(crate) fn raise_note(&mut self, index: usize) -> usize {
+    /// A pressed card (a window or a note) comes to the front with its text, as a node does in the reference app, when
+    /// a later card covers it (the drawings lie under the cards anyway; a fichário's pages keep their order); its new
+    /// index.
+    pub(crate) fn raise_card(&mut self, index: usize) -> usize {
         let element = &self.scene.elements[index];
-        if element.created.is_none() || element.note.stacked {
+        if !element.is_card() || element.note.stacked {
             return index;
         }
         let mine = self.with_card_text(&[index]);
@@ -174,15 +181,21 @@ impl DrawingApp {
             .iter()
             .enumerate()
             .skip(index + 1)
-            .any(|(position, other)| !mine.contains(&position) && element_bounds(other).intersects(bounds));
+            .any(|(position, other)| !mine.contains(&position) && other.is_card() && element_bounds(other).intersects(bounds));
         if !covered {
             return index;
         }
+        // what is worked on goes by its place in the drawing too: the text typed in, the note pressed, the arrow whose
+        // points are edited, the line being drawn point by point (a press on a card's live parts ends none of them)
+        let id_at = |app: &Self, place: Option<usize>| place.and_then(|place| app.scene.elements.get(place)).map(|element| element.id.clone());
+        let worked_on = [self.editing, self.note_press, self.line_editor, self.multi].map(|place| id_at(self, place));
         self.keeping_selection(|app| {
             let (raised, rest): (Vec<_>, Vec<_>) =
                 std::mem::take(&mut app.scene.elements).into_iter().enumerate().partition(|(position, _)| mine.contains(position));
             app.scene.elements = rest.into_iter().chain(raised).map(|(_, element)| element).collect();
         });
+        let place_of = |app: &Self, id: Option<String>| id.and_then(|id| app.scene.elements.iter().position(|element| element.id == id));
+        [self.editing, self.note_press, self.line_editor, self.multi] = worked_on.map(|id| place_of(self, id));
         self.dirty = true;
         self.scene.elements.iter().position(|element| element.id == id).unwrap_or(index)
     }

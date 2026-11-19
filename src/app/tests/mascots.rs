@@ -1,5 +1,4 @@
-//! Who is who among the agents (mascot/identity.rs): asked "os mascotes ... precisam mudar a cor para não ficar igual, ou
-//! ele ter nome, cada um precisa ter um nome diferente" and, of the sessions outside the app, "fica sempre com o prefixo
+//! Who is who among the agents (mascot/identity.rs): and, of the sessions outside the app, "fica sempre com o prefixo
 //! claude code".
 
 use super::*;

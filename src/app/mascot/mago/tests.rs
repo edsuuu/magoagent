@@ -394,8 +394,7 @@ mod dancing {
     }
 }
 
-/// Speaking, the mouth sits under the eyes and between them, wherever she looks (asked: "a boca da luna nessa intro
-/// ficou horrível": a dash fixed in the middle showed under one eye while she looked at her bubble).
+/// Speaking, the mouth sits under the eyes and between them, wherever she looks.
 #[test]
 fn the_mouth_follows_the_eyes() {
     let mut motion = MagoMotion::default();
@@ -441,7 +440,7 @@ fn a_small_luna_has_bigger_eyes_up_to_a_minis() {
     assert_eq!(draw::small_eyes(10.0), (1.8, 1.3));
 }
 
-/// Asked ("por que as expressões dela não mudam aqui?"): the chat's band showed one face for the whole turn.
+/// The chat's band showed one face for the whole turn.
 #[test]
 fn in_its_turn_the_agent_talks_while_it_writes_and_shows_the_error_of_a_step() {
     use crate::transcript::{ChatItem, Step};
@@ -462,8 +461,8 @@ fn in_its_turn_the_agent_talks_while_it_writes_and_shows_the_error_of_a_step() {
     assert_eq!(state(AgentState::Waiting, &[user, step(true)]), MagoState::NeedsYou);
 }
 
-/// Asked: "se a Luna está dançando eu não consigo clicar nela para ela ficar tonta". The pokes while she dances (no
-/// drawing of her plain motion) still count: four quick ones and she is dizzy, which stops the dance (island/paint.rs).
+/// The pokes while she dances (no drawing of her plain motion) still count: four quick ones and she is dizzy, which
+/// stops the dance (island/paint.rs).
 #[test]
 fn pokes_while_dancing_make_her_dizzy_too() {
     let id = "tests-dancing-poke";

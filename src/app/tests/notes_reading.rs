@@ -30,7 +30,7 @@ fn a_text_file_opens_in_a_note_sized_to_read_beside_its_chats_card() {
     let note = notes(&app)[0];
     let bounds = local_bounds(&app.scene.elements[note]);
     // beside the chat's card, wide enough to read and as tall as most of the view (600 here)
-    assert_eq!(bounds.min, Pos2::new(card.right() + 40.0, card.top()));
+    assert_eq!(bounds.min, Pos2::new(card.right() + 60.0, card.top()));
     assert_eq!(bounds.size(), Vec2::new(560.0, 480.0));
     assert_eq!(app.note_text(note), long_text(200));
     assert!(!app.scene.elements[note].note.raw, "markdown is formatted");
@@ -141,8 +141,9 @@ fn the_wheel_scrolls_a_long_notes_text_and_leaves_its_header_and_ctrl_to_the_can
                 took |= app.note_wheel(&ctx);
             });
             output.textures_delta.clear();
+            // the first line painted (only those in sight are): its number and where it was
             first = output.shapes.iter().find_map(|shape| match &shape.shape {
-                Shape::Text(text) if text.galley.text().starts_with("Linha 1:") => Some(text.pos.y),
+                Shape::Text(text) => text.galley.text().strip_prefix("Linha ")?.split(':').next()?.parse::<usize>().ok().map(|line| (line, text.pos.y)),
                 _ => None,
             });
         }
@@ -157,7 +158,8 @@ fn the_wheel_scrolls_a_long_notes_text_and_leaves_its_header_and_ctrl_to_the_can
     assert_eq!(offset(&app), 0.0);
     let (took, scrolled) = wheel(&mut app, body, Modifiers::NONE);
     assert!(took && offset(&app) > 0.0, "the wheel scrolled the text: {}", offset(&app));
-    assert!(scrolled.unwrap() < top.unwrap() - 1.0, "its lines went up: {top:?} → {scrolled:?}");
+    let ((line, y), (line_after, y_after)) = (top.unwrap(), scrolled.unwrap());
+    assert!(line_after > line || y_after < y - 1.0, "its lines went up: {top:?} → {scrolled:?}");
     // never past its end
     for _ in 0..40 {
         wheel(&mut app, body, Modifiers::NONE);

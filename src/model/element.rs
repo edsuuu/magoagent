@@ -76,6 +76,10 @@ pub(crate) struct Element {
     /// Some makes a rectangle a chat's card; its id is the chat's (app/chat/node.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) chat: Option<ChatSpec>,
+    /// A file this drawing points to (`src/x.rs` or `src/x.rs:120`; an address on the web too): a mark at its corner
+    /// opens it in a tree on the canvas.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) link: Option<String>,
     #[serde(flatten)]
     pub(crate) style: Style,
 }
@@ -134,6 +138,13 @@ impl Element {
     /// Terminals, portals, file trees and chats: live windows on the canvas, never rotated.
     pub(crate) fn is_node(&self) -> bool {
         self.terminal.is_some() || self.portal.is_some() || self.filetree.is_some() || self.chat.is_some()
+    }
+
+    /// The live windows and the sticky notes: the cards stack among themselves in the drawing's order, all of them over
+    /// the drawings, their live parts and a portal's page included (canvas/paint.rs, canvas/cover.rs), and a press
+    /// brings one to the front (`raise_card`).
+    pub(crate) fn is_card(&self) -> bool {
+        self.is_node() || self.created.is_some()
     }
 
     /// Double-click on its title enlarges it (terminals have their own double-click).

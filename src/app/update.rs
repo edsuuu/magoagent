@@ -9,6 +9,13 @@ pub(crate) fn frame_spacing() -> std::time::Duration {
     spacing(FRAME_RATE.load(std::sync::atomic::Ordering::Relaxed))
 }
 
+/// The time between two frames of what moves by itself while nobody touches it: the wizards at work, the minis, the
+/// chat's pulses while an agent works, Luna's dance and the song's bars. Every frame paints the whole app (the island's
+/// window is drawn in the app's own pass, but at rest, when it draws itself: `island/replay.rs`): the island's wizard at
+/// the screen's rate kept an empty canvas at 34% of a core. All of them ask for this same spacing, so their frames fall
+/// together; the pointer, the keys and the springs ask for theirs.
+pub(crate) const AMBIENT: std::time::Duration = std::time::Duration::from_millis(33);
+
 /// The time between two frames at `rate` a second (kept between 15 and 480).
 fn spacing(rate: u16) -> std::time::Duration {
     std::time::Duration::from_secs_f64(1.0 / f64::from(rate.clamp(15, 480)))
@@ -70,7 +77,12 @@ impl eframe::App for DrawingApp {
     /// window paints its whole background anyway (canvas and chat).
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
         // the windows with see-through corners (the avatar's, the call's, the mini chat's) need it; the app's paints all of itself
-        if self.avatar.shown || self.voice.on || self.mini.on { [0.0; 4] } else { visuals.window_fill().to_normalized_gamma_f32() }
+        // and the island's while it draws itself (`island/replay.rs`): eframe clears that window with this colour then
+        if self.avatar.shown || self.voice.on || self.mini.on || self.island.draws_itself() {
+            [0.0; 4]
+        } else {
+            visuals.window_fill().to_normalized_gamma_f32()
+        }
     }
 
     /// Minimized (Windows) or covered (macOS), eframe stops calling `ui`, where the bridge and the
@@ -103,12 +115,21 @@ impl eframe::App for DrawingApp {
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        // the island's window drawing itself (`island/replay.rs`): its input is its own, and the script's steps the app's
+        if raw.viewport_id != egui::ViewportId::ROOT {
+            return;
+        }
         if let Some(script) = &mut self.script {
             script.feed(ctx, raw);
         }
         if TITLE_BAR > 0.0 {
             edge_resize(ctx, raw);
             self.caption_drag(ctx, raw);
+        }
+        // Ctrl + wheel over the window while another has the keyboard (canvas/wheel.rs); a script's keys are its own
+        if self.script.is_none() {
+            let current = ctx.input(|input| input.modifiers);
+            crate::app::canvas::wheel::wheel_modifiers(&mut raw.events, raw.focused, current, crate::app::canvas::wheel::system_modifiers);
         }
         // Tab on the bare canvas moves no focus: egui would hand the keys to the first button, and
         // the shortcuts and Space would stop until the next click
@@ -139,24 +160,6 @@ impl eframe::App for DrawingApp {
         self.handle_shortcuts(&ctx);
         self.sync_filetrees(&ctx);
         self.sync_terminals(&ctx);
-        self.memory.update(
-            self.terminals
-                .iter()
-                .filter_map(|(id, session)| {
-                    let session = session.as_ref().ok()?;
-                    let name = self
-                        .scene
-                        .elements
-                        .iter()
-                        .find(|e| e.id == *id)
-                        .and_then(|e| e.terminal.as_ref())
-                        .or(self.away.get(id).map(|(_, spec)| spec))
-                        .map(|t| t.name.clone())
-                        .unwrap_or_else(|| id.clone());
-                    Some((name, session.shell_pid))
-                })
-                .collect(),
-        );
         self.voice_tick(&ctx);
         self.dictation_tick(&ctx);
         wsl_choose(&self.prefs.wsl);
@@ -191,42 +194,8 @@ impl eframe::App for DrawingApp {
             let response = ui.allocate_rect(rect, Sense::CLICK | Sense::DRAG);
             let painter = ui.painter_at(rect);
             self.handle_canvas(&response, rect);
-            // Ctrl + wheel over a window on the canvas (a file tree, an IDE, a terminal) zooms the
-            // canvas too: the window's own wheel only scrolls
-            let over_window = !response.hovered()
-                && ctx.input(|i| i.modifiers.command && i.zoom_delta() != 1.0)
-                && ctx.pointer_hover_pos().is_some_and(|p| rect.contains(p))
-                && self.terminal_elevated.is_none()
-                && !egui::Popup::is_any_open(&ctx)
-                && self.focus(&ctx) != crate::app::canvas::shortcuts::Focus::Dialog;
-            // the wheel over a long note's text scrolls it, not the canvas (notes/scroll.rs)
-            let note_took = response.hovered() && !self.chat_open && ctx.current_pass_index() == 0 && self.note_wheel(&ctx);
-            if (response.hovered() || over_window) && !self.chat_open && ctx.current_pass_index() == 0 && !note_took {
-                let (scroll, zoom, pointer) = ctx.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.pointer.hover_pos()));
-                let shift = ctx.input(|i| i.modifiers.shift);
-                if let Some(mouse) = ctx.input(|i| wheel_from_mouse(&i.raw.events)) {
-                    self.wheel_is_mouse = mouse;
-                }
-                let wheel_zooms = if self.prefs.wheel_auto { self.wheel_is_mouse } else { self.prefs.mouse_wheel_zooms };
-                if zoom != 1.0 && ctx.input(|i| i.modifiers.command) {
-                    // Ctrl + wheel: egui makes a notch a factor of e^0.2 (40 points at 1/200); the
-                    // reference app adds a step per notch instead
-                    self.wheel_step(zoom.ln() / 0.2, pointer.unwrap_or(rect.center()));
-                } else if zoom != 1.0 {
-                    // a pinch
-                    self.wheel_zoom(zoom, pointer.unwrap_or(rect.center()));
-                } else if scroll != Vec2::ZERO && wheel_zooms && !shift {
-                    // a mouse: the wheel zooms, a notch (40 points) a step; the side wheel (tilt) pans sideways
-                    self.glide = None;
-                    self.pan.x += scroll.x;
-                    if scroll.y != 0.0 {
-                        self.wheel_step(scroll.y / 40.0, pointer.unwrap_or(rect.center()));
-                    }
-                } else if scroll != Vec2::ZERO {
-                    self.glide = None;
-                    self.pan += scroll;
-                }
-            }
+            // the wheel and the pinch: the canvas's, a long note's or a window's (canvas/wheel.rs)
+            self.canvas_wheel(&ctx, &response, rect);
             self.update_cursor(&ctx, &response);
             self.paint_stage(&ctx, &painter, rect);
         });
@@ -279,6 +248,8 @@ impl eframe::App for DrawingApp {
             self.cover_live_parts(&ctx);
             self.portal_chrome(&ctx);
             self.dock_grip(&ctx);
+            self.element_links_ui(&ctx);
+            self.link_back_ui(&ctx);
         }
         self.welcome_ui(&ctx);
         self.tour_ui(&ctx);
@@ -299,13 +270,7 @@ impl eframe::App for DrawingApp {
         }
         let _ = frame;
         let idle = !self.in_gesture() && self.multi.is_none() && self.editing.is_none();
-        if self.prefs != self.saved_prefs {
-            // beside this drawing (`prefs_path` in the app): a test with a drawing of its own never writes the person's
-            if let Some(path) = self.autosave.as_ref().map(|autosave| autosave.with_file_name("preferences.json")) {
-                let _ = serde_json::to_string_pretty(&prefs_for_file(&self.prefs, &self.saved_prefs)).map(|json| write_atomic(&path, json));
-            }
-            self.saved_prefs = self.prefs.clone();
-        }
+        self.save_prefs_when_due(&ctx);
         let now = ctx.input(|i| i.time);
         self.laser.retain(|(_, t)| now - *t < 1.0);
         if let Some(id) = self.reveal.front() {

@@ -1,7 +1,6 @@
-//! Início: the summary of every tab (asked: "aba aq de incio deixa os mais recentes, ou oq está ativo, com opção de eu
-//! remover ou ocultar algo do tipo, então tela principal seria o resumo"). At the left a card with the counts and the Luna
-//! under them; at the right one list of what is on and what changed last, what needs the person first. A line opens its
-//! tab; its × hides it until it changes again, and "Mostrar ocultos" brings them all back.
+//! Início: the summary of every tab. At the left a card with the counts and the Luna under them; at the right one list of
+//! what is on and what changed last, what needs the person first. A line opens its tab; its × hides it until it changes
+//! again, and "Mostrar ocultos" brings them all back.
 
 use super::music::GREEN;
 use super::paint::{AMBER, CARD, DIM, DIM_3, HOVER, INK, Out, View, aim, font, semi, shoulder_mark};
@@ -103,7 +102,7 @@ impl DrawingApp {
         for card in [left, right] {
             ui.painter().rect(card, 20, CARD, Stroke::new(1.0, Color32::from_white_alpha(9)), StrokeKind::Inside);
         }
-        // the summary, the Luna under it (asked: "ali a luna pode ficar embaixo ao inves de ficar ao lado do resumo")
+        // the summary, the Luna under it
         let failing = self
             .integrations
             .github
@@ -223,8 +222,7 @@ impl DrawingApp {
                 Tab::Home => self.feed_press(&line.id),
                 tab => {
                     (out.focus, out.tab, out.picked) = (Some(line.id.clone()), Some(tab), true);
-                    // asked ("clicar numa linha que é um chat ou sessão precisa abrir a conversa dela na hora"): a
-                    // second click would open it as its Abrir does; here the first does too
+                    // a second click would open it as its Abrir does; here the first does too
                     if opens(line) {
                         out.open_agent = Some(line.id.clone());
                     }

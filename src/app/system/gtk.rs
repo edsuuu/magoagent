@@ -4,13 +4,16 @@
 //! window hidden too, when eframe stops calling the app) and runs what the app sends it, in the order sent.
 
 use crate::prelude::*;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 
 const STARTING: u8 = 0;
 const READY: u8 = 1;
 const FAILED: u8 = 2;
 
 static STATE: AtomicU8 = AtomicU8::new(STARTING);
+
+/// The jobs sent to GTK's thread since the app started: MAGOAGENT_PERF writes how many went each second (`Perf`).
+pub(crate) static JOBS: AtomicU64 = AtomicU64::new(0);
 
 thread_local! {
     /// Whether this thread is GTK's: a job sent from there runs at once (waiting for it would wait forever).
@@ -60,6 +63,7 @@ pub(crate) fn run(job: impl FnOnce() + Send + 'static) -> bool {
     if !alive() {
         return false;
     }
+    JOBS.fetch_add(1, Ordering::Relaxed);
     if ON_GTK.with(|on| on.get()) {
         job();
         return true;

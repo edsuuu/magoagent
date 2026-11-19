@@ -1,9 +1,13 @@
 //! Ajustes › Sobre: a versão, a verificação de atualizações (updates.rs), o botão Atualizar, as
-//! notas da última release (changelog) e a privacidade, que fica só aqui.
+//! notas da última release (changelog), o autor e a privacidade, que fica só aqui.
 
 use super::kit::*;
 use crate::app::system::updates::{CLOSES_AND_REOPENS, RELEASES_PAGE, UpdateState, installs_in_place, plain_notes};
 use crate::prelude::*;
+
+/// Who made the app, as on GitHub, and the page its button opens.
+pub(crate) const AUTHOR: &str = "edsuuu";
+const AUTHOR_PAGE: &str = "https://github.com/edsuuu";
 
 impl DrawingApp {
     pub(super) fn settings_about(&mut self, ui: &mut egui::Ui, k: &K) {
@@ -68,6 +72,11 @@ impl DrawingApp {
             });
         } else if block(ui, k, |ui| button(ui, k, "Ver as releases no GitHub").clicked()) {
             crate::app::browser::open_external(RELEASES_PAGE);
+        }
+        divider(ui, k);
+        title(ui, k, "AUTOR");
+        if row(ui, k, &format!("Criado por {AUTHOR}"), "github.com/edsuuu", |ui| button(ui, k, "Abrir no GitHub").clicked()) {
+            crate::app::browser::open_external(AUTHOR_PAGE);
         }
         divider(ui, k);
         title(ui, k, "PRIVACIDADE");

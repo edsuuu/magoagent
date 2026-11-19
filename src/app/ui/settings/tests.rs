@@ -239,6 +239,20 @@ fn agentes_has_no_accounts_and_keeps_the_memory_apart() {
     assert!(!window.has("Chaves de API"), "the chats run on the agents' own logins only");
 }
 
+/// On by default; its switch is the preference the agents' instructions read.
+#[test]
+fn agentes_keeps_the_agents_work_out_of_the_temp_folder() {
+    let mut window = Window::at(tab_of("Agentes"));
+    window.scroll_to("Trabalho fora da pasta temporária");
+    assert!(window.has_under("ONDE OS AGENTES TRABALHAM", "Trabalho fora da pasta temporária"), "{:?}", window.texts);
+    assert!(window.app.prefs.work_outside_temp, "on by default");
+    let switch = window.switch_of("Trabalho fora da pasta temporária");
+    window.click(switch);
+    assert!(!window.app.prefs.work_outside_temp, "its switch is the real preference");
+    window.app.act("set_setting", &json!({ "name": "work_outside_temp", "value": "on" })).unwrap();
+    assert!(window.app.prefs.work_outside_temp, "and the MCP's");
+}
+
 #[test]
 fn the_usage_pill_opens_agentes_uso() {
     let mut window = Window::at(0);
@@ -253,8 +267,7 @@ fn the_usage_pill_opens_agentes_uso() {
     }
 }
 
-/// The hooks of the sessions outside the app live in Integrações, first on the page (asked: easier to find), with the
-/// services after them.
+/// The hooks of the sessions outside the app live in Integrações, first on the page, with the services after them.
 #[test]
 fn the_outside_hooks_are_in_integracoes() {
     let window = Window::at(tab_of("Integrações"));
@@ -266,10 +279,11 @@ fn the_outside_hooks_are_in_integracoes() {
     assert!(window.texts.iter().any(|(text, _)| text.contains("Os hooks das sessões de fora")), "the page's line says so");
 }
 
+/// Off the menu, their code kept and the others in their places.
 #[test]
-fn the_voice_tab_is_back_with_the_call_and_the_others_keep_their_places() {
+fn voz_and_ok_mago_are_off_the_menu_and_the_others_keep_their_places() {
     let window = Window::at(0);
-    assert!(window.has("Voz"), "{:?}", window.texts);
+    assert!(!window.has("Voz") && !window.has("Ok Mago"), "{:?}", window.texts);
     assert_eq!(SETTINGS_TABS[4], "Voz");
     let (atalhos, sobre) = (Window::at(tab_of("Atalhos")), Window::at(tab_of("Sobre")));
     assert!(atalhos.has("Atalhos") && sobre.has("Sobre"));
@@ -406,7 +420,7 @@ fn integracoes_has_the_spotify_account_with_its_redirect_uri() {
     assert!(!window.app.integrations.spotify.account.linked());
 }
 
-/// Soloist has its own switch beside Spotify's (asked: "deixa as duas opções"); what it plays shows on its card only.
+/// Soloist has its own switch beside Spotify's; what it plays shows on its card only.
 #[test]
 fn integracoes_has_a_switch_of_its_own_for_soloist() {
     use crate::app::integrations::spotify::{Now, Player, Track};
@@ -684,7 +698,7 @@ fn chat_has_its_own_tab_with_the_new_chat_defaults() {
 #[test]
 fn every_page_is_in_the_sidebar_at_once() {
     let window = Window::at(SETTINGS_TABS.len() - 1);
-    for name in SETTINGS_TABS {
+    for name in SETTINGS_TABS.into_iter().filter(|name| !super::HIDDEN_TABS.contains(name)) {
         assert!(window.has(name), "{name}: {:?}", window.texts);
     }
 }
@@ -715,8 +729,8 @@ fn ok_mago_comes_off_by_default_even_in_old_prefs() {
     assert!(chosen.ok_mago && chosen.speak_answers, "a choice saved stays");
 }
 
-/// Email and Dicionário left Ajustes (asked): no page in the sidebar. What they set stays: the mail bridge through the
-/// MCP's `email`, the dictionary through its `dictionary`, and Ditar still writes with it.
+/// Email and Dicionário left Ajustes: no page in the sidebar. What they set stays: the mail bridge through the MCP's
+/// `email`, the dictionary through its `dictionary`, and Ditar still writes with it.
 #[test]
 fn email_and_dicionario_are_no_pages_of_ajustes() {
     assert!(!SETTINGS_TABS.contains(&"Email") && !SETTINGS_TABS.contains(&"Dicionário"));
@@ -727,8 +741,8 @@ fn email_and_dicionario_are_no_pages_of_ajustes() {
     assert_eq!(dictionary.apply("abre o cloud code"), "abre o Claude Code");
 }
 
-/// The hooks say whether they are installed (asked: "Instalar hooks" stayed there after installing): not installed,
-/// Instalar…; installed, "Instalados" with Reinstalar… and Remover. The question says so too, over Ajustes and a veil.
+/// The hooks say whether they are installed: not installed, Instalar…; installed, "Instalados" with Reinstalar… and
+/// Remover. The question says so too, over Ajustes and a veil.
 #[test]
 fn the_hooks_say_they_are_installed_and_offer_to_reinstall_or_remove() {
     use crate::app::maestro::claude_hooks::{merged, relay_path, settings_path};
@@ -783,7 +797,7 @@ fn the_hooks_question_names_what_it_will_do() {
     assert_eq!(hooks::hooks_row(HooksState::Installed, false), ("Instalados", &["Reinstalar", "Remover"][..]));
 }
 
-/// Dados in three groups, in this order (asked): where the canvas is saved, the app's data, where the chats are.
+/// Dados in three groups, in this order: where the canvas is saved, the app's data, where the chats are.
 #[test]
 fn dados_says_where_the_canvas_the_data_and_the_chats_are() {
     let mut window = Window::at(tab_of("Dados"));
@@ -800,7 +814,7 @@ fn dados_says_where_the_canvas_the_data_and_the_chats_are() {
     assert!(window.texts.iter().any(|(text, _)| text.contains(&file)), "the drawing's own path: {:?}", window.texts);
 }
 
-/// Privacy lives in Sobre only (asked): Dados has none, Sobre lists what talks to whom.
+/// Privacy lives in Sobre only: Dados has none, Sobre lists what talks to whom.
 #[test]
 fn privacy_is_in_sobre_only() {
     let dados = Window::at(tab_of("Dados"));
@@ -815,15 +829,23 @@ fn privacy_is_in_sobre_only() {
     }
 }
 
-/// No credits row in Sobre (asked).
+/// No credits row in Sobre.
 #[test]
 fn sobre_has_no_credits() {
     let sobre = Window::at(tab_of("Sobre"));
     assert!(!sobre.has("CRÉDITOS") && !sobre.has("Ver os avisos"), "{:?}", sobre.texts);
 }
 
-/// Sobre's buttons sit inside their card's padding (asked: "Ver as releases no GitHub" was stuck to its edge), whatever
-/// the update's state: no release read yet, a release with its notes, the warning before Atualizar on Windows.
+/// Sobre says who made the app, under VERSÃO and above PRIVACIDADE, with a button to the GitHub profile.
+#[test]
+fn sobre_names_the_author() {
+    let sobre = Window::at(tab_of("Sobre"));
+    assert!(sobre.has_under("VERSÃO", "AUTOR") && sobre.has_under("AUTOR", "Criado por edsuuu"), "{:?}", sobre.texts);
+    assert!(sobre.has_under("AUTOR", "Abrir no GitHub") && sobre.has_under("Criado por edsuuu", "PRIVACIDADE"), "{:?}", sobre.texts);
+}
+
+/// Sobre's buttons sit inside their card's padding, whatever the update's state: no release read yet, a release with
+/// its notes, the warning before Atualizar on Windows.
 #[test]
 fn sobre_buttons_keep_the_cards_padding() {
     use crate::app::system::updates::{Release, UpdateState};

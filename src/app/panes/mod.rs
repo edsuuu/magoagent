@@ -6,6 +6,7 @@
 //! back the 340. X, Esc or the same button close it; the MCP's `panel` opens, closes and widens them for the Maestro.
 
 pub(crate) mod changes;
+mod quick_note;
 
 use crate::prelude::*;
 
@@ -22,10 +23,12 @@ const HEAD: f32 = 46.0;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Pane {
     Changes,
+    QuickNote,
 }
 
 /// Each panel: its id (MCP), its name (screen) and its button's icon, in the buttons' order.
-pub(crate) const PANES: [(Pane, &str, &str, Icon); 1] = [(Pane::Changes, "changes", "Alterações", Icon::Diff)];
+pub(crate) const PANES: [(Pane, &str, &str, Icon); 2] =
+    [(Pane::Changes, "changes", "Alterações", Icon::Diff), (Pane::QuickNote, "note", "Nota rápida", Icon::Tool(Tool::Sticky))];
 
 impl Pane {
     pub(crate) fn name(self) -> &'static str {
@@ -40,6 +43,8 @@ pub(crate) struct Panes {
     /// Where the title bar's buttons are (none while hidden): the caption leaves them alone.
     pub(crate) buttons: Option<Rect>,
     pub(crate) changes: changes::ChangesPane,
+    /// Nota rápida just opened: its text takes the keys.
+    pub(crate) focus_note: bool,
     /// The width while the edge is pulled: the prefs take it when it is let go (not at every frame of the pull).
     pub(crate) pulled: Option<f32>,
     /// The window's width beside the sidebar, last frame: what the panel and the canvas share.
@@ -73,6 +78,7 @@ impl DrawingApp {
         if pane.is_some() && pane != self.panes.open {
             // what it shows is read again on opening
             self.panes.changes.read_at = None;
+            self.panes.focus_note = pane == Some(Pane::QuickNote);
         }
         self.panes.open = pane;
     }
@@ -81,14 +87,14 @@ impl DrawingApp {
     /// opens or closes its panel. Hidden over the chat, which the panels don't cover.
     pub(crate) fn pane_buttons(&mut self, ui: &mut egui::Ui) {
         self.panes.buttons = None;
-        // over the chat, which the panels don't cover, and on the welcome (asked: "eles nem devem aparecer na intro")
+        // over the chat, which the panels don't cover, and on the welcome
         if self.chat_open || self.welcome.is_some() {
             return;
         }
         let (dark, width) = (self.dark(), ui.ctx().content_rect().width());
         let ink = glass_ink(dark);
         let p = ui.painter().clone();
-        let counts = [self.changed_file_count()];
+        let counts = PANES.map(|(pane, ..)| if pane == Pane::Changes { self.changed_file_count() } else { 0 });
         for (k, (pane, _, name, icon)) in PANES.into_iter().enumerate() {
             let rect = self.pane_button(width, k);
             self.panes.buttons = Some(self.panes.buttons.map_or(rect, |span| span.union(rect)));
@@ -171,19 +177,27 @@ impl DrawingApp {
                 self.set_pane(None);
                 return;
             }
-            // Alterações' comment on the lines picked: a bar pinned to the bottom, the rest scrolling above it
-            let bar = if pane == Pane::Changes { self.comment_bar_height() } else { 0.0 };
+            // Alterações' comment on the lines picked, Nota rápida's Levar para o canvas: a bar pinned to the bottom, the
+            // rest scrolling above it
+            let bar = match pane {
+                Pane::Changes => self.comment_bar_height(),
+                Pane::QuickNote => 48.0,
+            };
             let body = Rect::from_min_max(Pos2::new(rect.left() + 12.0, head.bottom() + 12.0), rect.max - Vec2::new(12.0, bar));
             if bar > 0.0 {
                 let strip = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - bar), rect.max);
                 p.hline(strip.x_range(), strip.top(), Stroke::new(1.0, line));
-                ui.scope_builder(egui::UiBuilder::new().max_rect(strip.shrink(12.0)), |ui| self.review_comment_bar(ui));
+                ui.scope_builder(egui::UiBuilder::new().max_rect(strip.shrink2(Vec2::new(12.0, 8.0))), |ui| match pane {
+                    Pane::Changes => self.review_comment_bar(ui),
+                    Pane::QuickNote => self.quick_note_bar(ui),
+                });
             }
             ui.scope_builder(egui::UiBuilder::new().max_rect(body), |ui| {
                 egui::ScrollArea::vertical().id_salt(("pane_scroll", pane.name())).auto_shrink(false).show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 10.0;
                     match pane {
                         Pane::Changes => self.changes_pane(ui),
+                        Pane::QuickNote => self.quick_note_pane(ui, body.height() - 12.0),
                     }
                     ui.add_space(12.0);
                 });
@@ -191,7 +205,7 @@ impl DrawingApp {
         });
     }
 
-    /// The MCP's `panel`: opens `name` (changes), closes it with `open`
+    /// The MCP's `panel`: opens `name` (changes, note), closes it with `open`
     /// false, toggles it with no `open`; no name with `open` false closes whichever is open. `width` pulls the
     /// panel's edge (0: back to the default); `worktree` shows Alterações on that worktree ("todos": all the trees).
     pub(crate) fn act_panel(&mut self, args: &Value) -> Result<String, String> {
@@ -223,10 +237,10 @@ impl DrawingApp {
                 self.set_pane(None);
                 return Ok("Painel fechado.".into());
             }
-            return Err("Diga qual painel (name): changes.".into());
+            return Err("Diga qual painel (name): changes ou note.".into());
         }
         let pane = PANES.iter().find(|p| p.1 == name || p.2.to_lowercase() == name).map(|p| p.0);
-        let pane = pane.ok_or_else(|| format!("Painel desconhecido: {name}. Use changes."))?;
+        let pane = pane.ok_or_else(|| format!("Painel desconhecido: {name}. Use changes ou note."))?;
         let wanted = open.unwrap_or(self.panes.open != Some(pane));
         if wanted {
             self.chat_open = false;

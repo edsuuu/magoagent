@@ -50,6 +50,8 @@ pub(crate) struct Mini {
     pub(crate) window: bool,
     /// The panel is drawn inside the island (island/paint.rs): the island sizes it, not the system.
     pub(crate) in_island: bool,
+    /// Inside the island, the island as painted: the chips' menus stay in it (`footer::menu_height`).
+    pub(crate) island_rect: Option<Rect>,
     /// Its close or expand was clicked this frame: inside the island, the island folds.
     pub(crate) left: bool,
     /// Where its window opened: the window is built with it for as long as it is open (a builder that
@@ -315,7 +317,7 @@ impl DrawingApp {
         let time = ctx.input(|i| i.time);
         let working = matches!(row.state, AgentState::Working(_));
         if (working || row.state == AgentState::Waiting) && ctx.input(|i| i.viewport().visible()) != Some(false) {
-            ctx.request_repaint_after(std::time::Duration::from_millis(33));
+            ctx.request_repaint_after(crate::app::update::AMBIENT);
         }
         let unread = !self.mini.open && !working && self.talk_len(&id) > self.mini.seen;
         let area = self.mini_area(ctx);
@@ -511,7 +513,7 @@ impl DrawingApp {
             }
             stopped = grip.drag_stopped();
             // the header's buttons take their press (the grip under them would move the window), and in the island no
-            // tip covers the conversation under them (asked: "tem o tooltip que atrapalha")
+            // tip covers the conversation under them
             let in_island = self.mini.in_island;
             let tip = |hit: egui::Response, text: &str| if in_island { hit } else { hit.tip(text) };
             // close, at the left like the reference's panels
@@ -536,7 +538,7 @@ impl DrawingApp {
             let maestro = self.is_chat(&id) && row.spec.maestro;
             let crown = if maestro { 16.0 } else { 0.0 };
             let name = clipped(ui.painter(), self.chat_short_name(row), FontId::proportional(14.0), look.text, big.left() - left - 8.0 - room - crown);
-            // one line: the name alone, without a state under it (asked)
+            // one line: the name alone, without a state under it
             let top = cy - name.size().y / 2.0;
             let name_w = name.size().x;
             ui.painter().galley(Pos2::new(left + 1.0 / ui.painter().pixels_per_point(), top), name.clone(), look.text);
@@ -632,8 +634,7 @@ impl DrawingApp {
         self.mini.left = switch.is_none() && (expand || close);
         if let Some(other) = switch {
             // another chat in the same panel: the Maestro's agent, or back to the Maestro. In the island it is the
-            // island's conversation that changes: no mini chat opens over the screen besides it (asked: "quando ele sai o
-            // chat fica em popover")
+            // island's conversation that changes: no mini chat opens over the screen besides it
             self.chat_agent = Some(other);
             if !self.mini.in_island {
                 self.mini_set(true);

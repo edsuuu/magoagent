@@ -87,7 +87,7 @@ pub(crate) struct Task {
     /// The agent doing it (a terminal's or a chat's id; empty: nobody yet) and its name then.
     pub(crate) owner: String,
     pub(crate) owner_name: String,
-    /// Who asked: "você" (the panel), the Maestro, an agent's name.
+    /// Who (the panel), the Maestro, an agent's name.
     pub(crate) requester: String,
     /// The task this one is part of; empty: none.
     pub(crate) parent: String,

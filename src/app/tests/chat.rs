@@ -507,8 +507,10 @@ fn the_card_has_the_words_on_top_and_its_buttons_under_them() {
     assert_eq!(keys, Rect::NOTHING, "no keys' hint under it");
 }
 
+/// The header's last button is no longer Abrir em miniatura: a click at the header's right end opens no panel over the
+/// canvas.
 #[test]
-fn abrir_em_miniatura_leaves_the_chat_for_its_panel_over_the_canvas() {
+fn the_header_has_no_abrir_em_miniatura() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();
     let id = push_chat(&mut app, "Claude");
@@ -521,8 +523,10 @@ fn abrir_em_miniatura_leaves_the_chat_for_its_panel_over_the_canvas() {
     chat_frame(&mut app, &ctx, size, vec![]);
     // the header's last button, at its right end
     let at = Pos2::new(size.x - 16.0 - 16.0, TOP_ROW.max(TITLE_BAR) + 27.0);
+    let texts = chat_frame(&mut app, &ctx, size, vec![]);
+    assert!(painted(&texts, "Ver no canvas").is_some_and(|rect| rect.right() > size.x - 60.0), "Ver no canvas is the last button");
     click(&mut app, &ctx, size, at);
-    assert!(!app.chat_open && app.mini.open && app.mini.on, "the chat closed and its panel, not the pill, is open");
+    assert!(!app.mini.open, "no panel over the canvas");
 }
 
 #[test]
@@ -545,9 +549,8 @@ fn a_long_chat_lays_out_only_what_is_on_screen() {
     assert!(texts.iter().filter(|(t, _)| t.starts_with("mensagem")).count() < 60);
 }
 
-/// Asked: "só cria o chat se enviar a primeira mensagem". The chat screen with nothing to talk to opens a draft: no card
-/// on the canvas, nothing saved, not among the agents. Its first message makes it a chat; one never sent goes when
-/// another chat is picked.
+/// The chat screen with nothing to talk to opens a draft: no card on the canvas, nothing saved, not among the agents.
+/// Its first message makes it a chat; one never sent goes when another chat is picked.
 #[test]
 fn the_chat_screen_makes_a_chat_only_with_its_first_message() {
     // an agent that starts and ends at once
@@ -676,4 +679,32 @@ fn a_table_in_the_chat_takes_the_columns_width_with_nothing_cut() {
         let (_, rows, cut, rect) = find(&texts, header);
         assert!(rows > 1 && !cut && rect.right() <= column + 1.0, "{header}: {rows} rows, cut {cut}, {rect:?} past {column}");
     }
+}
+
+/// Remover chat asks first, saying the conversation goes for good; Esc keeps the chat, Enter (Remover) removes it.
+#[test]
+fn remover_chat_asks_first_and_only_remover_deletes_it() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    app.chats = vec![chat("a", "claude", "Claude Code · loja")];
+    app.chat_open = true;
+    let size = Vec2::new(1200.0, 800.0);
+    // the row's ⋯ › Remover chat
+    app.chat_listing.removing = Some("a".into());
+    // a new area takes its size in its first frame
+    chat_frame(&mut app, &ctx, size, vec![]);
+    let shown = chat_frame(&mut app, &ctx, size, vec![]);
+    assert!(painted(&shown, "Remover chat").is_some(), "the dialog asks");
+    assert!(shown.iter().any(|(text, _)| text.contains("excluídos permanentemente")), "and says it is for good");
+    chat_frame(&mut app, &ctx, size, vec![key_press(Key::Escape)]);
+    chat_frame(&mut app, &ctx, size, vec![]);
+    assert_eq!((app.chats.len(), app.chat_listing.removing.as_deref()), (1, None), "Esc keeps it");
+    // the box keeps what is written: the Enter is the dialog's
+    app.chat_listing.removing = Some("a".into());
+    app.chat_draft = "não envia".into();
+    ctx.memory_mut(|memory| memory.request_focus(egui::Id::unique("chat_draft")));
+    chat_frame(&mut app, &ctx, size, vec![]);
+    chat_frame(&mut app, &ctx, size, vec![key_press(Key::Enter)]);
+    assert!(app.chats.iter().all(|chat| chat.id != "a"), "Remover removes it");
+    assert_eq!(app.chat_draft, "não envia");
 }
