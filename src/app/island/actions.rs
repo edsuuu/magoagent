@@ -111,7 +111,8 @@ impl DrawingApp {
         }
 
         if out.open_app_settings {
-            self.open_settings_at("Geral");
+            // its own page: the island's settings left Geral
+            self.open_settings_at("Ilha");
             self.raise_window = true;
             // the app took it: the island folds back
             self.island.settings = false;

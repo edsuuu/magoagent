@@ -162,7 +162,7 @@ fn spotify_is_on_the_island_while_it_plays_and_its_buttons_ask_the_player() {
     let ctx = Context::default();
 
     app.integrations.spotify.now = playing("A");
-    assert!(app.integration_items().is_empty() && !app.spotify_control(Command::Next), "off: no pill, nothing asked");
+    assert!(app.integration_items().is_empty() && app.spotify_do(Command::Next).is_err(), "off: no pill, nothing asked");
     app.prefs.integrations.spotify = true;
     let item = app.integration_items().remove(0);
 
@@ -177,7 +177,7 @@ fn spotify_is_on_the_island_while_it_plays_and_its_buttons_ask_the_player() {
     assert_eq!(app.integration_items()[0].chips[1].0, "Tocar");
     // closed: no pill; off: nothing is kept
     app.integrations.spotify.now = None;
-    assert!(app.integration_items().is_empty() && !app.spotify_control(Command::PlayPause));
+    assert!(app.integration_items().is_empty() && app.spotify_do(Command::PlayPause).is_err());
     app.integrations.spotify.now = playing("A");
     app.prefs.integrations.spotify = false;
     app.integrations_tick(&ctx);

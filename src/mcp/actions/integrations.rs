@@ -69,15 +69,17 @@ impl DrawingApp {
             }
             ("soloist", _) if cfg!(any(windows, target_os = "macos")) => Err("o Soloist do Spotify só existe no Linux".into()),
             ("soloist", "" | "status") => Ok(format!("Soloist: {}", self.soloist_report())),
+            // one switch for every player
             ("soloist", "on" | "off") => {
-                self.prefs.integrations.soloist = action == "on";
-                Ok(format!("Soloist {}.", if action == "on" { "ligado" } else { "desligado" }))
+                self.prefs.integrations.spotify = action == "on";
+                Ok(format!("Spotify e Soloist {}.", if action == "on" { "ligados" } else { "desligados" }))
             }
             // Configurar (integrations/spotify/setup): its steps, and what the person presses there; never the key
             ("soloist", "setup") => Ok(self.soloist_setup_report()),
-            ("soloist", "key") => {
-                Err("a chave do Soloist nunca passa pelo MCP: a pessoa gera no painel do Spotify e cola em Ajustes › Integrações › Soloist › Configurar".into())
-            }
+            ("soloist", "key") => Err(
+                "a chave do Soloist nunca passa pelo MCP: a pessoa gera no painel do Spotify e cola em Ajustes › Integrações › Spotify › Configurar o Soloist"
+                    .into(),
+            ),
             ("soloist", "update" | "install") => self.soloist_setup_run(Job::Download),
             ("soloist", "enable") => {
                 let name = self.integrations.soloist_setup.name_field.clone();

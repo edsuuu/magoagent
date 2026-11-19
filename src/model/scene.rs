@@ -148,7 +148,8 @@ pub(crate) struct Prefs {
     pub(crate) chat_autocompact: String,
     /// The program of a new chat's agent: "claude" or "codex".
     pub(crate) chat_agent: String,
-    /// The person's style skill (a SKILL.md) that the flow's Padronização step reads; `<home>/Skill/SKILL.md` at first.
+    /// The person's style skill (a SKILL.md) that the flow's Padronização step reads; at first
+    /// `<home>/.magoagent/Skills/estilo/SKILL.md` (Ajustes › Skills).
     pub(crate) style_skill: String,
     /// The avatar, the wizard in a window of its own above everything on the screen (avatar.rs).
     pub(crate) avatar: bool,
@@ -215,8 +216,9 @@ pub(crate) struct Prefs {
     /// `codex_voice`; not on Linux, which has no page for its sound.
     pub(crate) voice_codex: bool,
     pub(crate) codex_voice: String,
-    /// The Claude Code the app starts reports each step to it by hooks (events.rs); off by default.
-    pub(crate) agent_hooks: bool,
+    /// GNOME on Wayland: the extension that tells the island's eyes where the pointer is (island/gnome.rs), put in at
+    /// the start while this is on; Ajustes › Ilha turns it off (and takes it out).
+    pub(crate) gnome_cursor: bool,
     /// The workspaces' sidebar folded away (ui/sidebar.rs).
     pub(crate) sidebar_hidden: bool,
     /// The sidebar's "Agentes deste espaço" folded to its heading (ui/attention.rs).
@@ -242,6 +244,27 @@ pub(crate) struct Prefs {
     pub(crate) dictionary: crate::voice::dictionary::Dictionary,
     /// Ajustes › Integrações: the switches and what is not secret (a token lives in the keychain).
     pub(crate) integrations: crate::app::integrations::IntegrationPrefs,
+}
+
+/// A SKILL.md under the person's folder: `<home>/.magoagent/Skills/<folders…>/SKILL.md`, as text.
+fn style_skill_at(folders: &[&str]) -> String {
+    let Some(home) = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }) else { return String::new() };
+    let mut path = PathBuf::from(home).join(".magoagent").join("Skills");
+
+    path.extend(folders);
+    path.join("SKILL.md").to_string_lossy().into_owned()
+}
+
+impl Prefs {
+    /// An earlier build's first style skill (`<home>/Skill/SKILL.md`) becomes today's; one the person chose stays.
+    pub(crate) fn move_old_defaults(&mut self) {
+        let old = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+            .map(|home| PathBuf::from(home).join("Skill").join("SKILL.md").to_string_lossy().into_owned());
+
+        if old.is_some_and(|old| old == self.style_skill) {
+            self.style_skill = style_skill_at(&["estilo"]);
+        }
+    }
 }
 
 impl Default for Prefs {
@@ -283,9 +306,7 @@ impl Default for Prefs {
             chat_panel: false,
             chat_autocompact: String::new(),
             chat_agent: "claude".into(),
-            style_skill: std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
-                .map(|home| PathBuf::from(home).join("Skill").join("SKILL.md").to_string_lossy().into_owned())
-                .unwrap_or_default(),
+            style_skill: style_skill_at(&["estilo"]),
             avatar: false,
             avatar_at: None,
             island: true,
@@ -318,7 +339,7 @@ impl Default for Prefs {
             voice_studio_voice: crate::voice::studio::STUDIO_VOICE.into(),
             voice_codex: true,
             codex_voice: "juniper".into(),
-            agent_hooks: false,
+            gnome_cursor: true,
             sidebar_hidden: false,
             sidebar_agents_closed: false,
             sidebar_clear_hidden: false,

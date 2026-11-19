@@ -1,4 +1,5 @@
-//! Ajustes › Chat: what a new chat starts with (agent, folder, leave), the style skill and the context panel.
+//! Ajustes › Chat: what a new chat starts with (agent, folder, leave) and the context panel. The style skill is in
+//! Skills (`skills.rs`).
 
 use super::kit::*;
 use crate::prelude::*;
@@ -27,7 +28,6 @@ impl DrawingApp {
             self.prefs.chat_mode = i;
         }
 
-        self.style_skill_row(ui, k);
         divider(ui, k);
         title(ui, k, "CONTEXTO");
         // "Padrão" is the model's own; the others are `claude --autocompact`
@@ -42,33 +42,6 @@ impl DrawingApp {
         }
 
         toggle(ui, k, "Painel Contexto aberto", "O painel ao lado do chat com o uso da janela, as ferramentas e os MCPs.", &mut self.prefs.chat_panel);
-        divider(ui, k);
-        title(ui, k, "ILHA");
-        let hint = "O Claude Code que o app inicia avisa a ilha de cada passo (perguntas, permissões, fim da tarefa) pelos hooks. Vale para as sessões que começarem depois.";
-
-        toggle(ui, k, "Hooks nos agentes do app", hint, &mut self.prefs.agent_hooks);
-
-        if !self.prefs.island {
-            let hint = "A ilha está desligada: sem ela, nada disso aparece. É a mesma chave de Ajustes › Geral.";
-
-            toggle(ui, k, "Mostrar a ilha", hint, &mut self.prefs.island);
-        }
-    }
-
-    /// "Skill de estilo": the file the flow's Padronização step reads, and Abrir to show it in a file tree on the canvas.
-    fn style_skill_row(&mut self, ui: &mut egui::Ui, k: &K) {
-        let path = &mut self.prefs.style_skill;
-        let hint = "O SKILL.md com o seu estilo de código: a etapa Padronização do fluxo da Luna manda o agente lê-lo e conferir o diff regra a regra.";
-        let mut open = false;
-
-        row(ui, k, "Skill de estilo", hint, |ui| {
-            open = button(ui, k, "Abrir").clicked();
-            input(ui, k, egui::Id::unique("settings_style_skill"), "Skill de estilo", path, "~/Skill/SKILL.md", 230.0, false);
-        });
-
-        if open && let Err(why) = self.show_in_tree(&self.prefs.style_skill.clone()) {
-            self.toast(why);
-        }
     }
 
     /// "Pasta de trabalho": the path, Recentes (once there are folders to offer) and Procurar…

@@ -290,6 +290,8 @@ pub(crate) fn read_prefs(path: &std::path::Path) -> (Option<Prefs>, Option<PathB
         Ok(mut prefs) => {
             let in_file = prefs.clone();
 
+            prefs.move_old_defaults();
+
             for (id, field) in secrets(&mut prefs) {
                 if field.is_empty() {
                     *field = take_secret(id).unwrap_or_default();

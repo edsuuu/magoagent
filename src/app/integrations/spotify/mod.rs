@@ -756,11 +756,11 @@ impl Spotify {
 }
 
 impl DrawingApp {
-    /// The players Ajustes turned on: the Spotify app, and Soloist (only on Linux).
+    /// The players Ajustes turned on, by Spotify's one switch: the Spotify app, and Soloist (only on Linux).
     pub(crate) fn spotify_sources(&self) -> Sources {
-        let integrations = &self.prefs.integrations;
+        let on = self.prefs.integrations.spotify;
 
-        Sources { app: integrations.spotify, soloist: integrations.soloist && cfg!(not(any(windows, target_os = "macos"))) }
+        Sources { app: on, soloist: on && cfg!(not(any(windows, target_os = "macos"))) }
     }
 
     /// Each frame: on, the thread that asks the players runs and its news are taken; off, it ends and nothing stays. A

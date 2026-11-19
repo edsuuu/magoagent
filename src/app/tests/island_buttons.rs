@@ -644,8 +644,8 @@ fn the_spotify_tab_plays_what_is_pressed() {
     use crate::app::integrations::spotify::{Command, Now, Playback, Player, QueueItem, Track};
     let (mut app, ctx, mut time) = opened();
 
-    // Soloist only counts on Linux: the Spotify switch keeps the integration on elsewhere
-    (app.prefs.integrations.soloist, app.prefs.integrations.spotify) = (true, true);
+    // one switch for every player (Soloist only counts on Linux)
+    app.prefs.integrations.spotify = true;
     let playback = Playback { shuffle: Some(false), position_ms: Some(10_000), duration_ms: Some(200_000), ..Default::default() };
 
     app.integrations.spotify.now =

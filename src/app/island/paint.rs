@@ -836,7 +836,8 @@ impl DrawingApp {
         // 3: the hooks of Claude Code, the API, and the app's settings
         let mut x = left;
 
-        for (name, color) in [("Claude Code", if self.prefs.agent_hooks { GREEN } else { RED }), ("API", RED)] {
+        // the Claude Code the app starts always has the hooks (maestro/demands.rs `hook_settings`)
+        for (name, color) in [("Claude Code", GREEN), ("API", RED)] {
             ui.painter().circle_filled(Pos2::new(x + 3.0, centers[2]), 3.0, color);
             let text = ui.painter().text(Pos2::new(x + 10.0, centers[2]), egui::Align2::LEFT_CENTER, name, font(11.0), DIM);
 

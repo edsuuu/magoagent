@@ -194,8 +194,8 @@ fn a_drag_on_the_settings_veil_leaves_its_buttons_answering() {
     frame(&mut app, vec![button(Pos2::new(120.0, 100.0), false)]);
     frame(&mut app, vec![]);
     assert!(app.settings_open, "a drag on the veil doesn't close it");
-    // Terminal, the second row of the sidebar (34 high, 2 apart, from 68 under the top of the 880 x 688 window)
-    let tab = Pos2::new(600.0 - 440.0 + 60.0, 400.0 - 344.0 + 68.0 + 36.0 + 17.0);
+    // Terminal, the fifth row of the sidebar (34 high, 2 apart, from 68 under the top of the 880 x 688 window)
+    let tab = Pos2::new(600.0 - 440.0 + 60.0, 400.0 - 344.0 + 68.0 + 4.0 * 36.0 + 17.0);
 
     frame(&mut app, vec![egui::Event::PointerMoved(tab)]);
     frame(&mut app, vec![button(tab, true)]);
