@@ -1,7 +1,7 @@
 # Junta sozinho o pull request para a main quando o CI dele passa inteiro (formatação, clippy, auditoria, testes no
 # Windows e no Linux, ponta a ponta). Fica de fora: rascunho, PR de fork e PR com o rótulo "segurar" (para o dono validar
 # antes). Depois do merge, se a versão do Cargo.toml mudou e a tag ainda não existe, cria a tag v<versão> e dispara a
-# release (release.yml), que gera o MSI e os pacotes do Linux em rascunho.
+# release (release.yml), que gera o MSI e os pacotes do Linux e publica a release.
 # O merge feito pelo GITHUB_TOKEN não dispara outros workflows por push; por isso a release vai por workflow_dispatch.
 name: Auto-merge
 on:
