@@ -804,7 +804,9 @@ impl DrawingApp {
             && time >= island.celebrate_until
             && !voice
             && !fading
-            && (!cfg!(windows) || island.plain >= 3);
+            // Windows: once its own window is shown without the border (`plain`); drawn in the app's (embedded) there is
+            // no window to wait for
+            && (!cfg!(windows) || ctx.embed_viewports() || island.plain >= 3);
         let colors = self.colors();
         let look = crate::app::chat::list::Look::new(true, &colors);
         let mut form = self.island.form.take();
