@@ -9,7 +9,7 @@ pub(crate) struct Entry {
 }
 
 /// (name, argument, what it does, Codex has it too)
-pub(super) const DEFS: [(&str, &str, &str, bool); 13] = [
+pub(super) const DEFS: [(&str, &str, &str, bool); 14] = [
     ("login", "[console|sso]", "Entrar na sua conta (abre o navegador)", true),
     ("logout", "", "Sair da conta", true),
     ("status", "", "Mostra quem está logado e os ajustes do chat", true),
@@ -23,6 +23,7 @@ pub(super) const DEFS: [(&str, &str, &str, bool); 13] = [
     ("btw", "<pergunta>", "Pergunta à parte, mesmo com o agente trabalhando; não entra na conversa", false),
     ("usage", "", "Mostra o consumo do plano: 5 horas e 7 dias", true),
     ("context", "", "Abre o painel Contexto", false),
+    ("parar", "", "Para todos os agentes e esvazia a fila: nada continua sem uma mensagem sua", true),
 ];
 
 /// The commands the chat answers itself, for `agent`; /compact is the agent's own.
@@ -53,11 +54,17 @@ pub(crate) enum Local {
     Btw(String),
     Usage,
     Context,
+    /// Parar tudo (chat/stop.rs): also "para tudo" written alone.
+    StopAll,
 }
 
 /// What the box's text means: None, it goes to the agent as a message; Some(Err), a local command
 /// this agent doesn't have.
 pub(crate) fn parse(text: &str, agent: &str) -> Option<Result<Local, String>> {
+    if crate::app::chat::stop::stop_words(text) {
+        return Some(Ok(Local::StopAll));
+    }
+
     let rest = text.trim().strip_prefix('/')?;
     let (word, arg) = rest.split_once(char::is_whitespace).map_or((rest, ""), |(w, a)| (w, a.trim()));
     let arg = arg.to_string();
@@ -76,6 +83,7 @@ pub(crate) fn parse(text: &str, agent: &str) -> Option<Result<Local, String>> {
         "btw" => Local::Btw(arg),
         "usage" => Local::Usage,
         "context" => Local::Context,
+        "parar" => Local::StopAll,
         _ => return None,
     };
 

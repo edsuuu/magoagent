@@ -33,7 +33,7 @@ impl DrawingApp {
         match parsed {
             Err(error) => self.chat_note(id, error),
             Ok(local) => {
-                if self.chat_cmds.contains_key(id) && local != Local::Clear {
+                if self.chat_cmds.contains_key(id) && !matches!(local, Local::Clear | Local::StopAll) {
                     self.toast("Um comando ainda está rodando neste chat: espere ou pare com Esc.");
 
                     return false;
@@ -65,6 +65,11 @@ impl DrawingApp {
             Local::Model(arg) => self.chat_set_model(id, &arg),
             Local::Effort(arg) => self.chat_set_effort(id, &arg),
             Local::Context => self.prefs.chat_panel = true,
+            Local::StopAll => {
+                let said = self.stop_all();
+
+                self.chat_note(id, said);
+            }
             Local::Usage => {
                 let note = self.usage_note();
 

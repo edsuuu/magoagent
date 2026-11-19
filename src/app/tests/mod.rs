@@ -53,6 +53,7 @@ mod session;
 mod shapes;
 mod sidebar;
 mod stacking;
+mod stop_all;
 mod team;
 mod terminals;
 mod tools;

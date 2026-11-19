@@ -8,7 +8,7 @@ use crate::app::chat::direct::{ChatRun, NewChat};
 use crate::transcript::{ChatItem, Step, Transcript};
 
 /// A boss chat (its card on the canvas) and a recruit it made in chat mode: (boss, recruit, the recruit's name).
-fn team(app: &mut DrawingApp, ctx: &Context) -> (String, String, String) {
+pub(super) fn team(app: &mut DrawingApp, ctx: &Context) -> (String, String, String) {
     frame(app, ctx, vec![]);
     app.create_chat(&NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &[Preset::new("Chefe", "mago-agente-que-nao-existe")]);
     let boss = app.chat_agent.clone().unwrap();

@@ -118,6 +118,19 @@ impl DrawingApp {
         }
     }
 
+    /// Parar tudo (stop.rs): every question between agents ends unanswered, and no answer goes to the chat that asked
+    /// (it would start it again); how many there were.
+    pub(crate) fn end_asks(&mut self, why: &str) -> usize {
+        let asks = std::mem::take(&mut self.chat_asks);
+        let count = asks.len();
+
+        for ask in asks {
+            let _ = ask.reply.send(Err(why.into()));
+        }
+
+        count
+    }
+
     /// Question `i` went to its chat: its answer is what that run says. Kept as the asker's, so the
     /// chat shows it as that agent's and not the person's, and an event says who asked whom.
     pub(crate) fn ask_sent(&mut self, i: usize) {

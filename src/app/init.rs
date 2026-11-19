@@ -95,6 +95,7 @@ impl Default for DrawingApp {
             window_back: f64::NEG_INFINITY,
             raising: None,
             quitting: false,
+            close_ask: false,
             #[cfg(windows)]
             caption_hooked: false,
             chat_popup: false,

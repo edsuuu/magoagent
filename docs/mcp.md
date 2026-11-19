@@ -2,7 +2,7 @@
 
 <!-- gerado por docs/mcp.py a partir do tools/list do app: não edite à mão -->
 
-O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.35) e tem **110 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
+O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.37) e tem **111 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
 
 ## Ligar
 
@@ -1081,6 +1081,12 @@ Abre na tela a apresentação do MagoAgent (a mesma de Ajustes › Geral › Ver
 | `step` | integer | o passo em que começa (0 a 6); sem ele, o primeiro |
 
 ## Outras
+
+### `stop_all`
+
+Parar tudo: todos os agentes param onde estão. Os chats param a resposta, os agentes em terminal recebem Esc, a fila e as mensagens que esperavam são descartadas, e as perguntas entre agentes acabam sem resposta (nenhuma resposta acorda quem recrutou). Depois, nada continua sem uma mensagem nova da pessoa. Use sempre que a pessoa pedir para parar tudo ou parar os agentes; você também para, então não chame mais nada depois.
+
+Sem parâmetros.
 
 ### `doubts`
 
