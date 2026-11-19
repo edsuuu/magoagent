@@ -255,6 +255,10 @@ pub(super) fn new_tab_view(
     });
     match made {
         Some(Ok(holder)) => {
+            // wry leaves the window that holds the page in the app's, 200×200 at its corner and shown though the page is
+            // not: being the app's own depth (with alpha) and drawing nothing, it was a hole in the app there until the
+            // page was first placed (never, with the canvas out of sight). Cut away until `sync` places and cuts it
+            crate::app::island::x11::veil(holder);
             let webview = GtkPage { number: uid, url: seen, holder, parent: parent as u32, placed: Default::default(), visible: Default::default() };
             Ok(TabView { webview, uid, url: url.into(), loading: true, secret: None })
         }
