@@ -14,6 +14,18 @@ struct ChatsSnapshot: Decodable, Equatable {
     /// A chip or a search picks what shows: the teams show open, with no fold.
     let looking: Bool
     let groups: [ChatGroup]
+    /// Exibição (list/display.rs): one line a row, grouped by space, the order (created, recent, name) and whose chats
+    /// (all, claude, codex).
+    let compact: Bool
+    let bySpace: Bool
+    let order: String
+    let agentFilter: String
+
+    enum CodingKeys: String, CodingKey {
+        case open, current, show, filter, counts, running, waiting, looking, groups, compact, order
+        case bySpace = "by_space"
+        case agentFilter = "agent_filter"
+    }
 }
 
 struct ChatGroup: Decodable, Equatable, Identifiable {
@@ -27,6 +39,8 @@ struct ChatEntry: Decodable, Equatable, Identifiable {
     let id: String
     let name: String
     let state: String
+    /// Its mini wizard's state (LunaState's names).
+    let mago: String
     let ended: Bool
     let last: String
     let ago: String
@@ -38,7 +52,7 @@ struct ChatEntry: Decodable, Equatable, Identifiable {
     let teamOpen: Bool
 
     enum CodingKeys: String, CodingKey {
-        case id, name, state, ended, last, ago, color, chat, answers, team
+        case id, name, state, mago, ended, last, ago, color, chat, answers, team
         case teamSummary = "team_summary"
         case teamOpen = "team_open"
     }
@@ -59,6 +73,11 @@ struct ChatAnswer: Decodable, Equatable {
 struct ChatSnapshot: Decodable, Equatable {
     let id: String
     let title: String
+    /// The agent's colour: its wizard over an empty conversation.
+    let color: [Int]
+    /// The context ring (a Claude Code chat) and the share of the window in use, nil before any reading.
+    let ring: Bool
+    let context: Double?
     let agent: String
     let folder: String
     let claude: Bool
@@ -86,7 +105,7 @@ struct ChatSnapshot: Decodable, Equatable {
     let attachedTotal: String
 
     enum CodingKeys: String, CodingKey {
-        case id, title, agent, folder, claude, state, status, fresh, providers, earlier, items, band, ask, waiting, queue, team, draft, hint, slash, chips, query,
+        case id, title, color, ring, context, agent, folder, claude, state, status, fresh, providers, earlier, items, band, ask, waiting, queue, team, draft, hint, slash, chips, query,
             attached
         case isChat = "is_chat"
         case draftSeq = "draft_seq"

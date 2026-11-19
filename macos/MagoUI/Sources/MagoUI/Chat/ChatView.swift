@@ -75,6 +75,7 @@ struct ChatHeader: View {
                 }
             }
             Spacer(minLength: 8)
+            if snapshot.ring { ContextRing(share: snapshot.context) }
             if searching {
                 HStack(spacing: 6) {
                     TextField("", text: $query, prompt: Text("Buscar na conversa").foregroundStyle(look.muted))
@@ -123,6 +124,29 @@ struct ChatHeader: View {
     }
 }
 
+/// The context ring (header.rs `ring`): the share of the window in use in blue over a grey track, from the top, with the
+/// percentage beside it once read.
+// ponytail: shows the share only; egui's click opens the Contexto panel (context_view.rs), not in SwiftUI yet
+private struct ContextRing: View {
+    let share: Double?
+    @Environment(\.chatLook) private var look
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                Circle().stroke(look.raised, lineWidth: 2.4)
+                Circle().trim(from: 0, to: min(max((share ?? 0) / 100, 0), 1)).stroke(ChatLook.blue, lineWidth: 2.4).rotationEffect(.degrees(-90))
+            }
+            .frame(width: 11.2, height: 11.2)
+            if let share { Text("\(Int(share.rounded()))%").font(.app(13)).foregroundStyle(look.soft) }
+        }
+        .padding(.leading, 12.4).padding(.trailing, share == nil ? 12.4 : 10)
+        .frame(height: 32)
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(look.line))
+        .help(share.map { "Contexto: \(Int($0.rounded()))% da janela em uso" } ?? "Contexto e conectores")
+    }
+}
+
 /// The messages, kept at the bottom as new words come (the egui chat's `stick_to_bottom`).
 struct Conversation: View {
     let snapshot: ChatSnapshot
@@ -159,7 +183,7 @@ struct Conversation: View {
                 .frame(width: width)
                 .frame(maxWidth: .infinity)
             }
-            .defaultScrollAnchor(.bottom)
+            .defaultScrollAnchor(snapshot.items.isEmpty ? .top : .bottom)
             // ponytail: always follows the end as words stream, even when scrolled up; keep the place once macOS 15's
             // onScrollGeometryChange can tell the bottom is off screen
             .onChange(of: snapshot.items.last) { _, _ in reader.scrollTo("end", anchor: .bottom) }
@@ -194,9 +218,19 @@ struct Welcome: View {
     @Environment(\.chatLook) private var look
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 8) {
             if snapshot.claude {
-                Image(systemName: "asterisk").font(.system(size: 64, weight: .bold)).foregroundStyle(ChatLook.claude).frame(height: 130)
+                // the agent's wizard, 130 tall, at rest (conversation.rs `paint_agent_mago`)
+                let (key, color) = ("\(snapshot.id)-welcome", Color(rgba: snapshot.color))
+                TimelineView(.animation) { timeline in
+                    let time = timeline.date.timeIntervalSinceReferenceDate
+                    Canvas { context, size in
+                        let motion = Luna.motion(key)
+                        motion.advance(.idle, time, gaze: motion.glance(time))
+                        Luna.paint(&context, center: CGPoint(x: size.width / 2, y: size.height / 2), size: 130, motion: motion, time: time, color: color)
+                    }
+                }
+                .frame(height: 130)
             }
             HStack(spacing: 6) {
                 ForEach(snapshot.providers) { provider in

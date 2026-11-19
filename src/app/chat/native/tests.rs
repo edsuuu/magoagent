@@ -144,3 +144,31 @@ fn the_amber_card_and_the_search_answer_as_the_egui_chat() {
     app.native_chat_act("search", &json!({ "chat": "c1", "query": "" })).expect("search");
     assert_eq!(app.native_chat_snapshot("c1").map(|snapshot| snapshot.items.len()), Some(4));
 }
+
+#[test]
+fn the_list_follows_exibicao_and_the_header_names_the_agent() {
+    let mut app = app_with_chat();
+    let snapshot = app.native_chat_snapshot("c1").expect("the chat");
+
+    // the header's name is the chat's before " · folder"; Claude Code's chat has the context ring
+    assert_eq!(snapshot.title, "Claude Code");
+    assert!(snapshot.ring);
+    let list = app.native_chats_snapshot();
+
+    assert!(!list.compact && list.by_space && list.order == "created" && list.agent_filter == "all");
+    assert!(list.groups.iter().all(|group| !group.name.is_empty()));
+    assert!(list.groups.iter().flat_map(|group| &group.entries).all(|entry| !entry.mago.is_empty()));
+    app.prefs.chat_list.set("chat_list_density", "compact").unwrap();
+    app.prefs.chat_list.set("chat_list_group", "off").unwrap();
+    let list = app.native_chats_snapshot();
+
+    // ungrouped: one list with no space's name over it
+    assert!(list.compact && !list.by_space);
+    assert!(list.groups.len() == 1 && list.groups[0].name.is_empty());
+    app.prefs.chat_list.set("chat_list_agent", "codex").unwrap();
+    let list = app.native_chats_snapshot();
+
+    // only Codex's chats: the Claude Code one leaves the list and the counts
+    assert_eq!((list.agent_filter, list.counts[0]), ("codex", 0));
+    assert!(list.groups.iter().all(|group| group.entries.is_empty()));
+}

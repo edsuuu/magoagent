@@ -160,7 +160,7 @@ private struct AgentRowView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            AgentMini(agent: agent).frame(width: 38)
+            MiniMago(key: "sidebar-\(agent.id)", color: agent.color, mago: agent.mago).frame(width: 30, height: 36).frame(width: 38)
             VStack(alignment: .leading, spacing: 0) {
                 Text(agent.name).font(.app(14)).foregroundStyle(Tones.text).lineLimit(1).frame(height: 16)
                 Text([agent.label, agent.note].compactMap { $0 }.joined(separator: " · ")).font(.app(12)).foregroundStyle(Tones.muted).lineLimit(1).frame(height: 16)
@@ -172,12 +172,16 @@ private struct AgentRowView: View {
     }
 }
 
-/// The mini wizard (`mascot/mago::paint_mini`): still at rest, so a quiet sidebar asks for no frames; alive otherwise.
-private struct AgentMini: View {
-    let agent: AgentRow
+/// An agent's mini wizard (`mascot/mago::paint_mini`) in its colour, `size` across, centred in its frame; `key` keeps its
+/// motion. Still at rest, so a quiet list asks for no frames; alive otherwise.
+struct MiniMago: View {
+    let key: String
+    let color: [Int]
+    let mago: String
+    var size: Double = 20
 
     var body: some View {
-        if ["idle", "sleeping"].contains(agent.mago) {
+        if ["idle", "sleeping"].contains(mago) {
             mini(time: 0, still: true)
         } else {
             TimelineView(.animation) { timeline in mini(time: timeline.date.timeIntervalSinceReferenceDate, still: false) }
@@ -185,12 +189,11 @@ private struct AgentMini: View {
     }
 
     private func mini(time: Double, still: Bool) -> some View {
-        let (id, color, state) = (agent.id, Color(rgba: agent.color), LunaState(rawValue: agent.mago) ?? .idle)
-        return Canvas { context, size in
-            let motion = still ? LunaMotion(seed: UInt32(truncatingIfNeeded: id.hashValue)) : Luna.motion("sidebar-\(id)")
+        let (key, color, state, size) = (key, Color(rgba: color), LunaState(rawValue: mago) ?? .idle, size)
+        return Canvas { context, room in
+            let motion = still ? LunaMotion(seed: UInt32(truncatingIfNeeded: key.hashValue)) : Luna.motion(key)
             motion.advance(state, time, gaze: still ? .zero : motion.glance(time))
-            Luna.paintMini(&context, center: CGPoint(x: size.width / 2, y: size.height / 2), body: 20, color: color, motion: motion, time: time)
+            Luna.paintMini(&context, center: CGPoint(x: room.width / 2, y: room.height / 2), body: size, color: color, motion: motion, time: time)
         }
-        .frame(width: 30, height: 36)
     }
 }

@@ -21,7 +21,13 @@ use std::path::Path;
 #[derive(Serialize, PartialEq, Debug)]
 pub(crate) struct ChatSnapshot {
     pub(super) id: String,
+    /// The header's name: a chat's before its " · folder" (header.rs `header_facts`).
     pub(super) title: String,
+    /// The agent's colour: its wizard over an empty conversation.
+    pub(super) color: [u8; 3],
+    /// The context ring (a Claude Code chat): the share of the window in use, None before any reading.
+    pub(super) ring: bool,
+    pub(super) context: Option<f64>,
     pub(super) agent: String,
     pub(super) folder: String,
     /// Claude Code: its asterisk in the header's square and its orange in the band; else the terminal's mark.
@@ -473,7 +479,14 @@ impl DrawingApp {
 
         Some(ChatSnapshot {
             id: id.to_string(),
-            title: self.chat_title(&row),
+            title: self.header_facts(&row).0,
+            color: {
+                let color = self.agent_color(id);
+
+                [color.r(), color.g(), color.b()]
+            },
+            ring: self.context_wanted(id),
+            context: self.context_percent(id),
             agent,
             folder: if crate::app::chat::direct::no_folder(&folder_path) { "Nenhuma pasta".into() } else { short_home(&folder_path) },
             claude,

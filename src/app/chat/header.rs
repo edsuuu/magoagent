@@ -104,7 +104,7 @@ fn ring(p: &Painter, at: Pos2, share: f32, look: &Look) {
 
 impl DrawingApp {
     /// The agent's name (a chat's before its " · folder"), its folder and model, as the bar shows them.
-    fn header_facts(&self, row: &AgentRow) -> (String, Option<String>, Option<String>) {
+    pub(crate) fn header_facts(&self, row: &AgentRow) -> (String, Option<String>, Option<String>) {
         match self.chats.iter().find(|c| c.id == row.id) {
             Some(chat) => {
                 let name = chat.name.split(" · ").next().unwrap_or(&chat.name).to_string();

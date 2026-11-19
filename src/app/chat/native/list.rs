@@ -23,6 +23,11 @@ pub(crate) struct ChatsSnapshot {
     /// A chip or a search picks what shows: the teams show open, with no fold.
     pub(super) looking: bool,
     pub(super) groups: Vec<GroupSnapshot>,
+    /// Exibição (list/display.rs): one line a row, grouped by space, the order and whose chats, by the MCP's names.
+    pub(super) compact: bool,
+    pub(super) by_space: bool,
+    pub(super) order: &'static str,
+    pub(super) agent_filter: &'static str,
 }
 
 #[derive(Serialize, PartialEq, Debug)]
@@ -38,6 +43,8 @@ pub(super) struct EntrySnapshot {
     pub(super) name: String,
     /// working, waiting or ready.
     pub(super) state: &'static str,
+    /// Its mini wizard's state (`entry_mago`).
+    pub(super) mago: &'static str,
     pub(super) ended: bool,
     pub(super) last: String,
     pub(super) ago: String,
@@ -58,16 +65,24 @@ impl DrawingApp {
         let entries = self.running_entries();
         let (running, waiting) = running_counts(entries.iter().map(|entry| entry.state));
         let show = self.chat_listing.show;
-        let shown = kept(&entries, show, &self.chat_listing.filter.to_lowercase());
+        let display = &self.prefs.chat_list;
+        // as view.rs: the chips count only the agents Exibição shows
+        let pool: Vec<&Entry> = entries.iter().filter(|entry| display.agent.keeps(&entry.program)).collect();
+        let mut shown = kept(pool.iter().copied(), show, &self.chat_listing.filter.trim().to_lowercase());
+
+        display.order.sort(&mut shown);
         let looking = show != Show::All || !self.chat_listing.filter.trim().is_empty();
         let keyed: Vec<(&str, Option<&AgentRow>)> = shown.iter().map(|entry| (entry.id.as_str(), entry.row.as_ref())).collect();
         let parents = self.team_parents(&keyed);
         let order: Vec<String> = self.spaces.list.iter().map(|space| space.id.clone()).collect();
 
-        let groups = space_groups(&shown, &order)
+        let groups = if display.by_space { space_groups(&shown, &order) } else { vec![(String::new(), (0..shown.len()).collect())] };
+
+        let groups = groups
             .into_iter()
             .map(|(space, members)| {
-                let (name, color) = self.group_look(&space);
+                // ungrouped, one list with no space's name over it
+                let (name, color) = if display.by_space { self.group_look(&space) } else { (String::new(), Color32::TRANSPARENT) };
 
                 let entries = under_maestros(&members, &parents)
                     .into_iter()
@@ -95,11 +110,15 @@ impl DrawingApp {
             current: self.chat_agent.clone(),
             show: show.key(),
             filter: self.chat_listing.filter.clone(),
-            counts: counts(&entries),
+            counts: counts(pool.iter().copied()),
             running,
             waiting,
             looking,
             groups,
+            compact: display.compact,
+            by_space: display.by_space,
+            order: display.order.key(),
+            agent_filter: display.agent.key(),
         }
     }
 
@@ -110,6 +129,7 @@ impl DrawingApp {
             id: entry.id.clone(),
             name: entry.name.clone(),
             state: state_key(&entry.state),
+            mago: crate::app::island::native::mago_name(self.entry_mago(entry)),
             ended: entry.state == AgentState::Ended,
             last: entry.last.clone(),
             ago: entry.ago.map(crate::app::ui::agents::ago).unwrap_or_default(),

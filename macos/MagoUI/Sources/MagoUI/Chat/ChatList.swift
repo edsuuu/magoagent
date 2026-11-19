@@ -22,6 +22,7 @@ struct ChatList: View {
             // the window buttons' row: + and « at its right
             HStack(spacing: 4) {
                 Spacer()
+                if let list { DisplayMenu(list: list) }
                 Button { store.send("ui.chat.new") } label: { glyph("plus") }
                     .buttonStyle(HoverGround(radius: 7, color: look.hover))
                     .help("Nova conversa")
@@ -55,7 +56,8 @@ struct ChatList: View {
             .padding(.top, 8)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    if list?.groups.isEmpty ?? true {
+                    // ungrouped (Exibição), an empty list is one group with no rows
+                    if list?.groups.allSatisfy(\.entries.isEmpty) ?? true {
                         Text((list?.counts.first ?? 0) == 0 ? "Nada rodando agora." : "Nada com esse filtro.")
                             .font(.app(13))
                             .foregroundStyle(look.muted)
@@ -122,15 +124,17 @@ struct ChatList: View {
         .buttonStyle(HoverGround(radius: 13, color: on ? .clear : look.hover))
     }
 
-    /// A space's head: its dot and its name in capitals, spaced.
-    private func groupHead(_ group: ChatGroup) -> some View {
-        HStack(spacing: 5) {
-            Circle().fill(Color(rgba: group.color)).frame(width: 8, height: 8)
-            Text(group.name.uppercased()).font(.app(12)).tracking(0.7).foregroundStyle(look.muted)
+    /// A space's head: its dot and its name in capitals, spaced; none ungrouped (Exibição).
+    @ViewBuilder private func groupHead(_ group: ChatGroup) -> some View {
+        if !group.name.isEmpty {
+            HStack(spacing: 5) {
+                Circle().fill(Color(rgba: group.color)).frame(width: 8, height: 8)
+                Text(group.name.uppercased()).font(.app(12)).tracking(0.7).foregroundStyle(look.muted)
+            }
+            .padding(.leading, 7)
+            .padding(.bottom, 5)
+            .frame(height: 28, alignment: .bottom)
         }
-        .padding(.leading, 7)
-        .padding(.bottom, 5)
-        .frame(height: 28, alignment: .bottom)
     }
 
     /// The fold of a Maestro's agents: "3 agentes · 1 esperando", the chevron turned when open.
@@ -151,7 +155,7 @@ struct ChatList: View {
     }
 
     private func row(_ entry: ChatEntry, indent: CGFloat) -> some View {
-        ListRow(entry: entry, indent: indent, on: list?.current == entry.id, rename: {
+        ListRow(entry: entry, indent: indent, compact: list?.compact ?? false, on: list?.current == entry.id, rename: {
             newName = entry.name
             renaming = entry
         }, remove: { removing = entry })
@@ -162,6 +166,8 @@ struct ChatList: View {
 private struct ListRow: View {
     let entry: ChatEntry
     let indent: CGFloat
+    /// Exibição's Compacta: one line, a smaller wizard, a dot for the state; the state and the last line in the tip.
+    let compact: Bool
     let on: Bool
     let rename: () -> Void
     let remove: () -> Void
@@ -177,7 +183,11 @@ private struct ListRow: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Thick(text: entry.name, size: 14, color: entry.ended ? look.soft : look.strong).lineLimit(1)
-                Text(word).font(.app(12)).foregroundStyle(tagInk).padding(.horizontal, 7).frame(height: 20).background(Capsule().fill(color.opacity(0.16))).fixedSize()
+                if compact {
+                    Circle().fill(color).frame(width: 7, height: 7).padding(.leading, 0.5)
+                } else {
+                    Text(word).font(.app(12)).foregroundStyle(tagInk).padding(.horizontal, 7).frame(height: 20).background(Capsule().fill(color.opacity(0.16))).fixedSize()
+                }
                 Spacer(minLength: 4)
                 if entry.chat && hovered {
                     Menu { menu } label: {
@@ -191,9 +201,9 @@ private struct ListRow: View {
                     Text(entry.ago).font(.app(12)).foregroundStyle(look.muted).fixedSize()
                 }
             }
-            .frame(height: 24)
+            .frame(height: compact ? 22 : 24)
             .padding(.top, 5)
-            Text(entry.last).font(.app(12)).foregroundStyle(look.soft).lineLimit(1).frame(height: 18).padding(.top, 2)
+            if !compact { Text(entry.last).font(.app(12)).foregroundStyle(look.soft).lineLimit(1).frame(height: 18).padding(.top, 2) }
             if !entry.answers.isEmpty {
                 Flow(spacing: 6, lineSpacing: 6) {
                     ForEach(Array(entry.answers.enumerated()), id: \.offset) { index, answer in
@@ -210,10 +220,17 @@ private struct ListRow: View {
                 .padding(.bottom, 8)
             }
         }
-        .padding(.leading, indent + 40)
+        .padding(.leading, indent + (compact ? 30 : 40))
         .padding(.trailing, 10)
-        .frame(minHeight: 54, alignment: .top)
-        .overlay(alignment: .topLeading) { mini.padding(.leading, indent + 9).padding(.top, 15) }
+        .frame(minHeight: compact ? 32 : 54, alignment: .top)
+        // the wizard's middle 19 in and 25 down (compact: 15 and 16, smaller)
+        .overlay(alignment: .topLeading) {
+            MiniMago(key: "chat-list-\(entry.id)", color: entry.color, mago: entry.mago, size: compact ? 15 : 20)
+                .frame(width: 30, height: 30)
+                .padding(.leading, indent + (compact ? 0 : 4))
+                .padding(.top, compact ? 1 : 10)
+        }
+        .help(compact ? (entry.last.isEmpty ? word : "\(word) · \(entry.last)") : "")
         .background(RoundedRectangle(cornerRadius: 10).fill(on ? look.surface : hovered ? look.hover : .clear))
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
@@ -221,19 +238,55 @@ private struct ListRow: View {
         .contextMenu { menu }
     }
 
-    /// The agent's mini wizard in its colour: here its hat, breathing while it works.
-    private var mini: some View {
-        Image(systemName: "wand.and.stars")
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(Color(rgba: entry.color))
-            .frame(width: 20, height: 20)
-            .phaseAnimator([1.0, 0.5]) { hat, phase in hat.opacity(entry.state == "working" ? phase : 1) } animation: { _ in .easeInOut(duration: 0.8) }
-    }
-
     @ViewBuilder private var menu: some View {
         if entry.chat { Button("Renomear", systemImage: "pencil", action: rename) }
         Button("Mostrar no canvas", systemImage: "map") { store.send("ui.chat.on_canvas", ["chat": entry.id]) }
         if entry.chat { Button("Remover chat", systemImage: "trash", role: .destructive, action: remove) }
+    }
+}
+
+/// Exibição (list/display.rs): Densidade, Agrupar por espaço, Ordenar and Agente, the current one checked; each choice is
+/// the MCP's `set_setting` (`chat_list_*`). A dot on the button while a filter hides some agents' chats.
+private struct DisplayMenu: View {
+    let list: ChatsSnapshot
+    private let store = MagoStore.shared
+    @Environment(\.chatLook) private var look
+
+    var body: some View {
+        Menu {
+            Section("Densidade") {
+                choice("Confortável", on: !list.compact, "chat_list_density", "comfortable")
+                choice("Compacta", on: list.compact, "chat_list_density", "compact")
+            }
+            Section { choice("Agrupar por espaço", on: list.bySpace, "chat_list_group", list.bySpace ? "off" : "on") }
+            Section("Ordenar") {
+                ForEach([("created", "Criação"), ("recent", "Recentes"), ("name", "Nome")], id: \.0) { key, label in
+                    choice(label, on: list.order == key, "chat_list_order", key)
+                }
+            }
+            Section("Agente") {
+                ForEach([("all", "Todos"), ("claude", "Claude Code"), ("codex", "Codex")], id: \.0) { key, label in
+                    choice(label, on: list.agentFilter == key, "chat_list_agent", key)
+                }
+            }
+        } label: {
+            Image(systemName: "slider.horizontal.3").font(.system(size: 14, weight: .medium)).foregroundStyle(look.soft).frame(width: 28, height: 28)
+                .overlay(alignment: .topTrailing) {
+                    if list.agentFilter != "all" { Circle().fill(ChatLook.blue).frame(width: 6, height: 6).padding(3) }
+                }
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(HoverGround(radius: 7, color: look.hover))
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Exibição")
+    }
+
+    private func choice(_ label: String, on: Bool, _ name: String, _ value: String) -> some View {
+        Button { store.send("set_setting", ["name": name, "value": value]) } label: {
+            if on { Label(label, systemImage: "checkmark") } else { Text(label) }
+        }
     }
 }
 
