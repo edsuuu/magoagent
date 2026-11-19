@@ -64,7 +64,8 @@ func paintEntry(_ context: inout GraphicsContext, _ entry: CanvasEntry, hand: St
         context.translateBy(x: -rect.midX, y: -rect.midY)
     }
     if let node = drawing.node {
-        paintNodeFrame(&context, rect: rect, node: node, dark: dark)
+        // a terminal's card is its own view's, strips and outline included
+        if node.kind != "terminal" { paintNodeFrame(&context, rect: rect, node: node, dark: dark) }
         return
     }
     if drawing.image {

@@ -61,12 +61,14 @@ struct CanvasView: View {
     private func hosted(_ entry: CanvasEntry, camera: CanvasViewport, seen: CGRect) -> some View {
         let rect = canvasRect(entry.drawing.rect)
         if let node = entry.drawing.node, rect.intersects(seen), let view = CanvasArea.view(kind: node.kind, id: entry.id) {
-            let inner = CGSize(width: rect.width, height: max(rect.height - node.header, 0))
-            let at = camera.screen(rect.minX, rect.minY + node.header)
+            // a terminal's view has its own strip, so it covers the whole card
+            let header = node.kind == "terminal" ? 0 : node.header
+            let inner = CGSize(width: rect.width, height: max(rect.height - header, 0))
+            let at = camera.screen(rect.minX, rect.minY + header)
             view.frame(width: inner.width, height: inner.height)
                 .scaleEffect(camera.zoom, anchor: .topLeading)
                 .frame(width: inner.width * camera.zoom, height: inner.height * camera.zoom, alignment: .topLeading)
-                .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 8 * camera.zoom, bottomTrailingRadius: 8 * camera.zoom))
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: header == 0 ? 8 * camera.zoom : 0, bottomLeadingRadius: 8 * camera.zoom, bottomTrailingRadius: 8 * camera.zoom, topTrailingRadius: header == 0 ? 8 * camera.zoom : 0))
                 .offset(x: at.x, y: at.y)
         }
     }

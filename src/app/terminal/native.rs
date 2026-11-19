@@ -70,6 +70,8 @@ struct State {
     icon: String,
     tint: Option<u32>,
     maestro: bool,
+    /// "Sonnet 5.5 · Alto": the model and effort of a recruit, beside its name.
+    tag: Option<String>,
     /// The agent's state: working, active, waiting, idle or ended; none for a shell with no agent.
     state: Option<&'static str>,
     /// The dot of the strip: the state's color, red while it waits for the person.
@@ -192,6 +194,7 @@ impl DrawingApp {
             icon: icon_of(&spec),
             tint: spec.color.map(|[r, g, b]| u32::from_be_bytes([0, r, g, b])),
             maestro: spec.maestro,
+            tag: crate::app::terminal::card::recruit_tag(&spec),
             state,
             dot,
             status,
@@ -395,7 +398,7 @@ mod tests {
         assert_eq!(state["look"]["bg"], 0x181818);
         let labels: Vec<&str> = state["entries"].as_array().unwrap().iter().filter_map(|e| e["label"].as_str()).collect();
         assert!(labels.starts_with(&["Copiar", "Colar", "Selecionar Tudo"]), "{labels:?}");
-        assert!(state["find"].is_null() && state["composer"].is_null());
+        assert!(state["find"].is_null() && state["composer"].is_null() && state["tag"].is_null());
         // the message box and the search show in it
         app.act("terminal_menu", &json!({ "name": id, "action": "message_box" })).unwrap();
         app.act("terminal_find", &json!({ "name": id, "query": "world" })).unwrap();

@@ -33,7 +33,7 @@ public struct TerminalView: View {
         let state = MagoStore.shared.decode(TerminalState.self, topic: "terminal:\(id)")
         let look = state?.look ?? TerminalLook(bg: 0x181818, fg: 0xd8d8d8, cursor: 0xaaaaaa)
         VStack(spacing: 0) {
-            if let state { header(state, look) }
+            Color.clear.frame(height: Self.headerHeight)
             ZStack(alignment: .topTrailing) {
                 Color(rgb: look.bg)
                 if let state {
@@ -47,6 +47,7 @@ public struct TerminalView: View {
         .background(Color(rgb: look.bg))
         .clipShape(RoundedRectangle(cornerRadius: Self.radius))
         .overlay(RoundedRectangle(cornerRadius: Self.radius).strokeBorder(look.isDefault ? Color(white: 0x3a / 255) : Color(rgb: look.fg, opacity: 0.2)))
+        .overlay(alignment: .top) { if let state { header(state, look) } }
         .overlay(alignment: .bottom) {
             if let state, let draft = state.composer {
                 TerminalComposer(id: id, name: state.name, remote: draft, onClose: { handle.focus() })
@@ -61,48 +62,32 @@ public struct TerminalView: View {
     // MARK: title strip
 
     private func header(_ state: TerminalState, _ look: TerminalLook) -> some View {
-        HStack(spacing: 4.875) {
-            Image(systemName: Self.symbol(state.icon))
-                .font(.system(size: 11))
-                .foregroundStyle(Color(rgb: state.tint ?? look.fg))
-                .frame(width: 11)
-            Text(state.name).font(.system(size: 9.75)).foregroundStyle(Color(rgb: look.fg)).lineLimit(1)
-            if state.maestro {
-                Image(systemName: "crown.fill").font(.system(size: 8)).foregroundStyle(Color(rgb: 0xf0a020))
+        let ink = Color(rgb: look.fg)
+        return HStack(spacing: 4.875) {
+            TerminalMark(icon: state.icon, color: Color(rgb: state.tint ?? look.fg)).frame(width: 11)
+            Text(state.name).font(.app(9.75)).foregroundStyle(ink).lineLimit(1)
+            if state.maestro { TerminalCrown().frame(width: 13, height: 10).padding(.leading, -1.5) }
+            if let tag = state.tag {
+                Text(tag).font(.app(9.75)).foregroundStyle(ink.opacity(0.6)).lineLimit(1).padding(.leading, 4.875)
             }
             Spacer(minLength: 0)
             if let dot = state.dot {
-                Circle().fill(Color(rgb: dot)).frame(width: 6.5, height: 6.5).help(Self.stateLabel(state.state))
-            }
-            if state.elevated {
-                Button { MagoStore.shared.send("resize_window", ["target": id, "state": "shrink"]) } label: {
-                    Image(systemName: "arrow.down.right.and.arrow.up.left").font(.system(size: 10)).foregroundStyle(Color(rgb: look.fg))
-                }
-                .buttonStyle(.plain)
-                .help("Voltar ao canvas")
+                Circle().fill(Color(rgb: dot)).frame(width: 6.5, height: 6.5).padding(.trailing, state.elevated ? 34 : 0).help(Self.stateLabel(state.state))
             }
         }
         .padding(.horizontal, 8.125)
         .frame(height: Self.headerHeight)
         .background(Color(rgb: look.strip))
         .overlay(alignment: .bottom) { Rectangle().fill(Color(rgb: look.fg, opacity: 0.14)).frame(height: 1) }
-        .contextMenu { EntryItems(entries: state.entries, state: state) }
-    }
-
-    private static func symbol(_ icon: String) -> String {
-        switch icon {
-        case "claude": "sparkle"
-        case "codex": "chevron.left.forwardslash.chevron.right"
-        case "opencode": "curlybraces"
-        case "agents": "person.2"
-        case "monitor": "display"
-        case "search": "magnifyingglass"
-        case "composer": "text.bubble"
-        case "palette": "paintpalette"
-        case "grid": "square.grid.2x2"
-        case "eye": "eye"
-        case "map": "map"
-        default: "terminal"
+        .overlay(alignment: .trailing) {
+            if state.elevated {
+                Button { MagoStore.shared.send("resize_window", ["target": id, "state": "shrink"]) } label: {
+                    TerminalMark(icon: "expand", color: ink).frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 7)
+                .help("Voltar ao canvas")
+            }
         }
     }
 
@@ -136,10 +121,10 @@ public struct TerminalView: View {
     private func footer(_ state: TerminalState, _ look: TerminalLook) -> some View {
         let muted = Color(rgb: look.fg, opacity: 0.6)
         return HStack(spacing: 4.875) {
-            Text(state.folder).font(.system(size: 10, design: .monospaced)).foregroundStyle(muted).lineLimit(1).truncationMode(.head)
+            Text(state.folder).font(.custom("Hack", size: 10)).foregroundStyle(muted).lineLimit(1).truncationMode(.head)
             Spacer(minLength: 0)
             if let note = state.note {
-                Text(note).font(.system(size: 10, design: .monospaced)).foregroundStyle(Color(rgb: look.fg)).lineLimit(1)
+                Text(note).font(.custom("Hack", size: 10)).foregroundStyle(Color(rgb: look.fg)).lineLimit(1)
                     .onTapGesture { if state.status == "exited" { MagoStore.shared.send("terminal_restart", ["name": id]) } }
             }
             if state.status == "running" {
