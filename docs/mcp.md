@@ -2,7 +2,7 @@
 
 <!-- gerado por docs/mcp.py a partir do tools/list do app: não edite à mão -->
 
-O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.33) e tem **109 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
+O servidor MCP vem no próprio executável (`magoagent mcp`, magoagent 0.0.35) e tem **109 ferramentas**. Ele fala com o app aberto pela ponte local (com token) e com o desenho pelo arquivo da cena; o que a IA desenha aparece traço a traço com o nome do agente.
 
 ## Ligar
 
@@ -220,7 +220,7 @@ Troca o texto de uma nota conectada. Mudar a primeira linha muda o nome da nota.
 
 ### `note`
 
-Cria uma nota no canvas (sem `id`) ou muda uma (com `id`): `text` (markdown), `title` (a primeira linha), `color` (Amarelo, Rosa, Azul, Verde, Laranja, Roxo, Branco, Carvão, Ardósia, Meia-noite; o texto acompanha), x, y, width, height e `buttons`: [{label, action, args}], botões no pé da nota que a pessoa clica para rodar uma ação do app (substituem os que ela tem).
+Cria uma nota no canvas (sem `id`) ou muda uma (com `id`). A nova nasce ao seu lado, no lugar livre mais perto, ligada a você por corda; com o mesmo título de uma nota sua, muda essa em vez de abrir outra igual. `text` (markdown), `title` (a primeira linha), `color` (Amarelo, Rosa, Azul, Verde, Laranja, Roxo, Branco, Carvão, Ardósia, Meia-noite; o texto acompanha), x, y, width, height e `buttons`: [{label, action, args}], botões no pé da nota que a pessoa clica para rodar uma ação do app (substituem os que ela tem).
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|

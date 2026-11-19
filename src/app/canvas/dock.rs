@@ -67,6 +67,31 @@ impl DrawingApp {
         Some((right, kept.unwrap_or(width)))
     }
 
+    /// The sides of the note in focus (`frame`, under its header `head` tall): dragged, the width the person wants, kept
+    /// in Prefs for the next note lifted. It used to stay 720 wide in the middle of a wide screen.
+    fn note_lift_sides(&mut self, ctx: &Context, frame: Rect, head: f32, at: Option<Pos2>) {
+        let room = self.note_lift_room();
+        let height = (frame.height() - head).max(1.0);
+
+        for (side, edge) in [("left", frame.left()), ("right", frame.right())] {
+            let handle = Rect::from_min_size(Pos2::new(edge - 4.0, frame.top() + head), Vec2::new(8.0, height));
+
+            let response = egui::Area::new(egui::Id::unique(("note_lift_side", side)))
+                .order(egui::Order::Foreground)
+                .fixed_pos(handle.min)
+                .show(ctx, |ui| ui.allocate_exact_size(handle.size(), Sense::drag()).1)
+                .inner
+                .on_hover_cursor(CursorIcon::ResizeHorizontal);
+
+            if let (true, Some(pointer)) = (response.dragged(), at) {
+                let wanted = 2.0 * (pointer.x - room.center().x).abs();
+
+                self.prefs.note_lift_width = Some(crate::app::terminal::note_lift_width(wanted, room.width()));
+                ctx.request_repaint();
+            }
+        }
+    }
+
     /// A docked width dragged to `width`: on the canvas grid, back to the kind's own within 28.
     pub(crate) fn dock_resized(&self, width: f32, element: &Element) -> f32 {
         let default = self.dock_width(element);
@@ -146,6 +171,13 @@ impl DrawingApp {
             }
 
             ctx.request_repaint();
+        }
+
+        // a note in focus in the middle: its two sides pull it wider or narrower together, and it stays in the middle
+        if element.created.is_some() && self.dock.is_none() && self.dock_drag.is_none() {
+            self.note_lift_sides(ctx, frame, head, at);
+
+            return;
         }
 
         // docked: the inner edge sets the width

@@ -2,6 +2,10 @@
 
 use crate::prelude::*;
 
+/// A selection in a note: a blue behind the letters, which keep their ink, on every paper (egui 0.37 paints the
+/// selected letters in the theme's selection color, and its own blue is the dark theme's: dark on the paper).
+const SELECTION: Color32 = Color32::from_rgba_unmultiplied_const(30, 120, 255, 90);
+
 impl DrawingApp {
     /// A note's text being typed: the card's text box, the same markdown, scrolling in place.
     pub(crate) fn note_editor(&mut self, ctx: &Context, index: usize, note: usize) {
@@ -56,16 +60,30 @@ impl DrawingApp {
                         .then(|| egui::TextEdit::load_state(ui.ctx(), id).and_then(|state| state.cursor.char_range()).map(caret_of))
                         .flatten();
 
-                    // the last text laid out, kept for the bold and the ornaments painted after it
+                    // the last text laid out, kept for the code's boxes and the ornaments painted with it
                     let mut laid: Option<std::sync::Arc<markdown::LiveText>> = None;
+                    let bold = crate::app::ui::note_bold(ui.ctx());
+                    // the text the caret was read on: changed in this frame, the caret is where the change ended
+                    let before = caret.map(|_| value.clone());
 
                     let mut layouter = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap: f32| {
-                        let live = live_text_of(ui.ctx(), text.as_str(), size, ink, wrap, caret);
+                        let caret = match &before {
+                            Some(before) if before != text.as_str() => Some(markdown::caret_after_edit(before, text.as_str())),
+                            _ => caret,
+                        };
+
+                        let live = live_text_of(ui.ctx(), text.as_str(), size, ink, wrap, caret, &bold);
                         let galley = ui.ctx().fonts_mut(|fonts| fonts.layout_job(live.job.clone()));
 
                         laid = Some(live);
                         galley
                     };
+
+                    let selection = &mut ui.visuals_mut().selection;
+
+                    (selection.bg_fill, selection.stroke.color) = (SELECTION, ink);
+                    // the code's boxes go behind the text: their place in the painting is kept before the editor's
+                    let behind = ui.painter().add(egui::Shape::Noop);
 
                     let output = egui::TextEdit::multiline(value)
                         .id(id)
@@ -82,8 +100,11 @@ impl DrawingApp {
 
                     let response = output.response.response;
 
-                    // the bold text again, and the bullets, boxes, bars and rules over their hidden marks
+                    // the code's boxes behind it, and the bullets, boxes, bars and rules over their hidden marks
                     if let Some(live) = laid.filter(|live| live.job.text == *value) {
+                        let boxes = markdown::code_boxes(&output.galley, &live.code);
+
+                        ui.painter().set(behind, egui::Shape::Vec(markdown::code_shapes(&boxes, output.galley_pos, 1.0, ink)));
                         paint_live(ui, &output.galley, output.galley_pos, screen.width(), &live, ink, zoom);
                     }
 
@@ -145,35 +166,32 @@ impl DrawingApp {
 
 /// The note's text for the editor, built again only when the text, the caret, the size or the width changed: egui asks
 /// for it every frame the note is on screen.
-fn live_text_of(ctx: &Context, text: &str, size: f32, ink: Color32, wrap: f32, caret: Option<markdown::Caret>) -> std::sync::Arc<markdown::LiveText> {
+fn live_text_of(
+    ctx: &Context,
+    text: &str,
+    size: f32,
+    ink: Color32,
+    wrap: f32,
+    caret: Option<markdown::Caret>,
+    bold: &egui::FontFamily,
+) -> std::sync::Arc<markdown::LiveText> {
     let key = egui::Id::unique("note_live_text");
-    let hash = egui::util::hash((text, size.to_bits(), ink, wrap.to_bits(), caret));
+    let hash = egui::util::hash((text, size.to_bits(), ink, wrap.to_bits(), caret, bold));
 
     if let Some((_, live)) = ctx.data(|data| data.get_temp::<(u64, std::sync::Arc<markdown::LiveText>)>(key)).filter(|(at, _)| *at == hash) {
         return live;
     }
 
-    let live = std::sync::Arc::new(markdown::live_text(text, size, ink, wrap, caret));
+    let live = std::sync::Arc::new(markdown::live_text(text, size, ink, wrap, caret, bold));
 
     ctx.data_mut(|data| data.insert_temp(key, (hash, live.clone())));
     live
 }
 
-/// What the editor paints over its text, as the resting note does: the bold text half a point to the right, and a
-/// bullet, a task's box, a quote's bar or a rule (across the text box's `width`) where the mark is hidden.
+/// What the editor paints over its text, as the resting note does: a bullet, a task's box, a quote's bar or a rule
+/// (across the text box's `width`) where the mark is hidden.
 fn paint_live(ui: &egui::Ui, galley: &egui::Galley, at: Pos2, width: f32, live: &markdown::LiveText, ink: Color32, zoom: f32) {
     let painter = ui.painter();
-
-    if !live.ornaments.is_empty() || live.bold.sections.iter().any(|section| section.format.color != Color32::TRANSPARENT) {
-        let bold = ui.fonts_mut(|fonts| fonts.layout_job(live.bold.clone()));
-
-        if bold.rows.len() == galley.rows.len() {
-            for dx in [0.0, 0.5 * zoom] {
-                painter.galley(at + Vec2::new(dx, 0.0), bold.clone(), ink);
-            }
-        }
-    }
-
     let faint = ink.gamma_multiply(0.4);
 
     for ornament in &live.ornaments {

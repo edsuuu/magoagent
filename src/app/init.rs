@@ -92,6 +92,7 @@ impl Default for DrawingApp {
             tray: None,
             tray_tried: false,
             raise_window: false,
+            window_back: f64::NEG_INFINITY,
             raising: None,
             quitting: false,
             #[cfg(windows)]

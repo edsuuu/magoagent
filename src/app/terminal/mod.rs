@@ -15,6 +15,7 @@ use alacritty_terminal::term::TermMode;
 use std::collections::HashMap;
 mod focus;
 mod overlay;
+pub(crate) use overlay::note_lift_width;
 mod ropes;
 mod sync;
 

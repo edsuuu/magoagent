@@ -3,6 +3,7 @@
 //! their block look, and bold, italic, strike, code and links work inside a line.
 
 use crate::prelude::*;
+use egui::FontFamily;
 use egui::text::{LayoutJob, TextFormat};
 
 /// Body text size and line height (CSS line-height 1.5), in points.
@@ -175,34 +176,92 @@ fn link(rest: &str) -> Option<(&str, &str)> {
     Some((&inner[..mid], &inner[close + 1..]))
 }
 
-/// The spans as one layout, `size` and `wrap` in screen points. `bold_only` keeps just the bold
-/// spans in `ink` and makes the rest transparent: egui has no bold face, so the caller paints
-/// that layer twice, slightly apart.
-pub(crate) fn job(spans: &[Span], size: f32, ink: Color32, wrap: f32, bold_only: bool) -> LayoutJob {
+/// The spans as one layout, `size` and `wrap` in screen points; the bold ones in `bold` (the notes' bold face,
+/// `crate::app::ui::note_bold`). Inline code has no background here: its box is `code_boxes`, painted behind.
+pub(crate) fn job(spans: &[Span], size: f32, ink: Color32, wrap: f32, bold: &FontFamily) -> LayoutJob {
     let mut job = LayoutJob::default();
 
     job.wrap.max_width = wrap;
 
     for s in spans {
-        let color = if bold_only && !s.bold { Color32::TRANSPARENT } else { ink };
+        let family = if s.bold { bold.clone() } else { FontFamily::Monospace };
 
         job.append(
             &s.text,
             0.0,
             TextFormat {
-                font_id: FontId::monospace(if s.code { size * 0.95 } else { size }),
-                color,
+                font_id: FontId::new(if s.code { size * 0.95 } else { size }, family),
+                color: ink,
                 italics: s.italic,
                 line_height: Some(size * NOTE_LINE),
-                strikethrough: if s.strike { Stroke::new(1.0, color) } else { Stroke::NONE },
+                strikethrough: if s.strike { Stroke::new(1.0, ink) } else { Stroke::NONE },
                 underline: if s.link { Stroke::new(1.0, ink.gamma_multiply(0.4)) } else { Stroke::NONE },
-                background: if s.code { ink.gamma_multiply(0.1) } else { Color32::TRANSPARENT },
                 ..Default::default()
             },
         );
     }
 
     job
+}
+
+/// The characters of `spans` that are inline code, counted across them.
+pub(crate) fn code_chars(spans: &[Span]) -> Vec<std::ops::Range<usize>> {
+    let mut at = 0;
+    let mut code = Vec::new();
+
+    for span in spans {
+        let count = span.text.chars().count();
+
+        if span.code {
+            code.push(at..at + count);
+        }
+
+        at += count;
+    }
+
+    code
+}
+
+/// The boxes behind inline code (`code`, characters of `galley`'s text), relative to the galley: from the first letter
+/// to the last on each row it is on, as tall as the letters with a fifth of a letter of room on each side. egui's own
+/// background was the whole line's height (its spacing all below the letters) and flush with the last letter.
+pub(crate) fn code_boxes(galley: &egui::Galley, code: &[std::ops::Range<usize>]) -> Vec<Rect> {
+    let mut boxes = Vec::new();
+    let mut at = 0;
+
+    for placed in &galley.rows {
+        let mut open: Option<Rect> = None;
+
+        // egui's own cursor counts one glyph per character (`Row::x_offset`)
+        for (column, glyph) in placed.row.glyphs.iter().enumerate() {
+            if code.iter().any(|range| range.contains(&(at + column))) {
+                let top = glyph.pos.y - glyph.font_ascent;
+                let letter = Rect::from_min_max(Pos2::new(glyph.pos.x, top), Pos2::new(glyph.max_x(), top + glyph.font_height));
+
+                open = Some(open.map_or(letter, |run| run.union(letter)));
+            } else if let Some(run) = open.take() {
+                boxes.push(run.translate(placed.pos.to_vec2()));
+            }
+        }
+
+        boxes.extend(open.take().map(|run| run.translate(placed.pos.to_vec2())));
+        at += placed.row.glyphs.len() + usize::from(placed.ends_with_newline);
+    }
+
+    boxes.into_iter().filter(|run| run.width() > 0.5).map(|run| run.expand2(Vec2::new(run.height() * 0.2, 0.0))).collect()
+}
+
+/// The shapes of `boxes` (`code_boxes`, the galley at `at` on screen, times `scale`): the code's shade of `ink`, with
+/// round corners.
+pub(crate) fn code_shapes(boxes: &[Rect], at: Pos2, scale: f32, ink: Color32) -> Vec<egui::Shape> {
+    boxes
+        .iter()
+        .map(|run| {
+            let run = Rect::from_min_max(at + run.min.to_vec2() * scale, at + run.max.to_vec2() * scale);
+
+            egui::Shape::rect_filled(run, run.height() * 0.2, ink.gamma_multiply(0.1))
+        })
+        .collect()
 }
 
 /// The raw text while the editor types over it: each line at its heading's size, the markers as typed.
@@ -227,6 +286,20 @@ pub(crate) struct Caret {
     pub(crate) anchor: usize,
 }
 
+/// Where the caret is once `before` became `after` in the frame: at the end of what changed (after what was typed or
+/// pasted, where a Backspace or Ctrl+Backspace took text out). The editor lays the text out again in the frame of the
+/// change with the caret it read before it, and that one, pointing past a deleted word, fell on the next line's bold
+/// and showed its marks for a frame: the bold below flickered while words were deleted.
+pub(crate) fn caret_after_edit(before: &str, after: &str) -> Caret {
+    let (old, new): (Vec<char>, Vec<char>) = (before.chars().collect(), after.chars().collect());
+    let prefix = old.iter().zip(&new).take_while(|(a, b)| a == b).count();
+    let room = old.len().min(new.len()) - prefix;
+    let suffix = old.iter().rev().zip(new.iter().rev()).take(room).take_while(|(a, b)| a == b).count();
+    let at = new.len() - suffix;
+
+    Caret { head: at, anchor: at }
+}
+
 /// What the editor draws over a hidden mark, as the resting note does (at the mark's character).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Ornament {
@@ -239,12 +312,12 @@ pub(crate) enum Ornament {
 
 /// The typed text as the reference's live preview shows it: the marks of headings, bold, italic, strike, code and links
 /// hide unless the caret is on them; a list's, a task's or a quote's mark gives way to the resting note's bullet, box or
-/// bar, a rule to its line. Only what is being typed shows its markdown. `bold` is the same layout with only the bold
-/// text inked (egui has no bold face: it is painted again half a point to the right).
+/// bar, a rule to its line. Only what is being typed shows its markdown. `code` is where inline code is (characters),
+/// for its boxes (`code_boxes`).
 pub(crate) struct LiveText {
     pub(crate) job: LayoutJob,
-    pub(crate) bold: LayoutJob,
     pub(crate) ornaments: Vec<Ornament>,
+    pub(crate) code: Vec<std::ops::Range<usize>>,
 }
 
 /// One character's look in the editor.
@@ -267,8 +340,9 @@ struct Look {
     hidden: bool,
 }
 
-/// The note's text for the editor, `size` and `wrap` in screen points, `caret` while the editor has the keys.
-pub(crate) fn live_text(text: &str, size: f32, ink: Color32, wrap: f32, caret: Option<Caret>) -> LiveText {
+/// The note's text for the editor, `size` and `wrap` in screen points, `caret` while the editor has the keys; the
+/// bold in `bold` (`crate::app::ui::note_bold`).
+pub(crate) fn live_text(text: &str, size: f32, ink: Color32, wrap: f32, caret: Option<Caret>, bold: &FontFamily) -> LiveText {
     let chars: Vec<(usize, char)> = text.char_indices().collect();
     let mut looks = vec![Look::default(); chars.len()];
     let mut ornaments = Vec::new();
@@ -360,25 +434,33 @@ pub(crate) fn live_text(text: &str, size: f32, ink: Color32, wrap: f32, caret: O
         start = end + 1;
     }
 
-    let build = |bold_only: bool| {
-        let mut job = LayoutJob::default();
+    let mut job = LayoutJob::default();
 
-        job.wrap.max_width = wrap;
-        let mut from = 0;
+    job.wrap.max_width = wrap;
+    let mut from = 0;
 
-        while from < chars.len() {
-            let look = looks[from];
-            let to = (from..chars.len()).find(|&i| looks[i] != look).unwrap_or(chars.len());
-            let bytes = chars[from].0..chars.get(to).map_or(text.len(), |(byte, _)| *byte);
+    while from < chars.len() {
+        let look = looks[from];
+        let to = (from..chars.len()).find(|&i| looks[i] != look).unwrap_or(chars.len());
+        let bytes = chars[from].0..chars.get(to).map_or(text.len(), |(byte, _)| *byte);
 
-            job.append(&text[bytes], 0.0, format_of(look, size, ink, bold_only));
-            from = to;
+        job.append(&text[bytes], 0.0, format_of(look, size, ink, bold));
+        from = to;
+    }
+
+    // the code that shows: its letters, not its hidden ticks
+    let shows = |look: &Look| look.code && !look.hidden && !look.clear;
+    let mut code: Vec<std::ops::Range<usize>> = Vec::new();
+
+    for (index, look) in looks.iter().enumerate().take(chars.len()) {
+        match code.last_mut() {
+            Some(run) if shows(look) && run.end == index => run.end += 1,
+            _ if shows(look) => code.push(index..index + 1),
+            _ => {}
         }
+    }
 
-        job
-    };
-
-    LiveText { job: build(false), bold: build(true), ornaments }
+    LiveText { job, ornaments, code }
 }
 
 /// A block's mark (a heading's hashes, a list's dash): shown faint while the caret is on its line, out of the line otherwise.
@@ -468,7 +550,7 @@ fn inline_looks(chars: &[(usize, char)], looks: &mut [Look], from: usize, to: us
 }
 
 /// A character's format: its heading's size and line, faint, faded or out of sight.
-fn format_of(look: Look, size: f32, ink: Color32, bold_only: bool) -> TextFormat {
+fn format_of(look: Look, size: f32, ink: Color32, bold: &FontFamily) -> TextFormat {
     let line_size = size_of(look.level, size);
 
     let mut color = match look.fade {
@@ -477,7 +559,7 @@ fn format_of(look: Look, size: f32, ink: Color32, bold_only: bool) -> TextFormat
         None => ink,
     };
 
-    if look.clear || look.hidden || (bold_only && !look.bold) {
+    if look.clear || look.hidden {
         color = Color32::TRANSPARENT;
     }
 
@@ -489,22 +571,18 @@ fn format_of(look: Look, size: f32, ink: Color32, bold_only: bool) -> TextFormat
         line_size
     };
 
-    let painted = !bold_only && !look.hidden && !look.clear;
+    let painted = !look.hidden && !look.clear;
+    let family = if look.bold && !look.hidden { bold.clone() } else { FontFamily::Monospace };
 
     TextFormat {
-        font_id: FontId::monospace(font),
+        font_id: FontId::new(font, family),
         color,
         italics: look.italic,
         line_height: Some(line_size * NOTE_LINE),
         strikethrough: if painted && look.strike { Stroke::new(1.0, color) } else { Stroke::NONE },
         underline: if painted && look.link { Stroke::new(1.0, ink.gamma_multiply(0.4)) } else { Stroke::NONE },
-        background: if painted && look.code {
-            ink.gamma_multiply(0.1)
-        } else if painted && look.block {
-            ink.gamma_multiply(0.05)
-        } else {
-            Color32::TRANSPARENT
-        },
+        // inline code's box is painted behind the text (`code_boxes`); a code block shades its whole lines
+        background: if painted && look.block { ink.gamma_multiply(0.05) } else { Color32::TRANSPARENT },
         ..Default::default()
     }
 }

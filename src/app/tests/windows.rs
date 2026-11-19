@@ -134,3 +134,97 @@ fn only_an_agent_waiting_on_the_person_brings_the_window_to_the_front() {
     app.ask_person(&other, &json!({ "tool_name": "Bash", "input": { "command": "ls" } }), reply);
     assert!(raised(&mut app) && app.chat_open, "a permission too, on its chat");
 }
+
+/// The press that brings the window back from another program lands wherever the pointer was: the note in focus (and
+/// its typing) stays as the person left it. It used to end the typing, and getting back to it took a double-click more.
+#[test]
+fn coming_back_from_another_program_keeps_the_note_in_focus() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+
+    frame(&mut app, &ctx, vec![]);
+    let [note, text] = app.new_note(Rect::from_min_size(Pos2::new(300.0, 250.0), Vec2::splat(160.0)), "Oi".into());
+
+    app.scene.elements = vec![note, text];
+    frame(&mut app, &ctx, vec![]);
+    let id = app.scene.elements[0].id.clone();
+    let header = app.to_screen(Pos2::new(380.0, 260.0));
+
+    double_click(&mut app, &ctx, header, 1.0);
+    assert_eq!(app.terminal_elevated.as_ref(), Some(&id));
+    frame_at(&mut app, &ctx, Some(2.0), vec![]);
+    let lifted = app.terminal_frame(&app.scene.elements[0]).0;
+    let margin = Pos2::new(lifted.left() / 2.0, lifted.center().y);
+
+    assert!(lifted.left() > 8.0, "{lifted:?}");
+
+    let press = |app: &mut DrawingApp, at: f64| {
+        app.now = at;
+        frame_at(app, &ctx, Some(at), vec![egui::Event::PointerMoved(margin), button(margin, true)]);
+        frame_at(app, &ctx, Some(at + 0.05), vec![button(margin, false)]);
+    };
+
+    // back from another program: its press on the margin only brings the window
+    app.window_back = 3.0;
+    press(&mut app, 3.1);
+    assert_eq!(app.terminal_elevated.as_ref(), Some(&id));
+    assert!(app.editing.is_some(), "still typing");
+    // a press later is the person's: it ends the typing, and the next one puts the note back on the canvas
+    press(&mut app, 5.0);
+    assert_eq!((app.terminal_elevated.as_ref(), app.editing), (Some(&id), None));
+    press(&mut app, 6.0);
+    assert_eq!(app.terminal_elevated, None);
+}
+
+/// The note in focus stays in the middle, and its sides pull it wider or narrower together; the width stays for the
+/// next note lifted.
+#[test]
+fn the_note_in_focus_widens_by_its_sides() {
+    use crate::app::terminal::note_lift_width;
+
+    assert_eq!(note_lift_width(2000.0, 1400.0), 1400.0 - 96.0, "the canvas around it stays in sight");
+    assert_eq!(note_lift_width(100.0, 1400.0), 320.0);
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+
+    frame(&mut app, &ctx, vec![]);
+    let [note, text] = app.new_note(Rect::from_min_size(Pos2::new(300.0, 250.0), Vec2::splat(160.0)), "Oi".into());
+
+    app.scene.elements = vec![note, text];
+    app.enlarge(0);
+    app.now = 10.0;
+    let lifted = app.terminal_frame(&app.scene.elements[0]).0;
+    let clock = std::cell::Cell::new(10.0);
+
+    let grip = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+        clock.set(clock.get() + 0.05);
+
+        let raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
+            time: Some(clock.get()),
+            events,
+            ..Default::default()
+        };
+
+        let _ = ctx.run_ui(raw, |_| app.dock_grip(&ctx));
+    };
+
+    // the right side pulled 100 in: 200 narrower, still in the middle
+    let (from, to) = (Pos2::new(lifted.right(), lifted.center().y), Pos2::new(lifted.right() - 100.0, lifted.center().y));
+
+    // a new area sizes itself on its first frame, and takes the pointer from the next
+    grip(&mut app, vec![]);
+    grip(&mut app, vec![egui::Event::PointerMoved(from)]);
+    grip(&mut app, vec![button(from, true)]);
+
+    for step in 1..=5 {
+        grip(&mut app, vec![egui::Event::PointerMoved(from.lerp(to, step as f32 / 5.0))]);
+    }
+
+    grip(&mut app, vec![button(to, false)]);
+    let narrower = app.terminal_frame(&app.scene.elements[0]).0;
+
+    assert!((narrower.width() - (lifted.width() - 200.0)).abs() < 1.0, "{lifted:?} → {narrower:?}");
+    assert!((narrower.center().x - lifted.center().x).abs() < 1.0, "still in the middle");
+    assert_eq!(app.prefs.note_lift_width, Some(narrower.width()), "kept for the next one");
+}

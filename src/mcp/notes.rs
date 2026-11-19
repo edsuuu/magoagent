@@ -67,7 +67,8 @@ fn same_note(scene: &Scene, caller: Option<&str>, title: &str) -> Option<String>
     (0..scene.elements.len())
         .filter(|index| scene.elements[*index].created.is_some() && tied(&scene.elements[*index].id))
         .find(|index| {
-            note_label(&scene.elements, *index).is_some_and(|label| matches!(&scene.elements[label].kind, ElementKind::Text { value, .. } if title_of(value) == title))
+            note_label(&scene.elements, *index)
+                .is_some_and(|label| matches!(&scene.elements[label].kind, ElementKind::Text { value, .. } if title_of(value) == title))
         })
         .map(|index| scene.elements[index].id.clone())
 }

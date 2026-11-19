@@ -44,8 +44,8 @@ src/
   voice/         microfone (cpal), voz pelo VoiceStudio (servidor do usuário) e pela OpenAI, e pelo Codex (realtime); nada de voz é baixado
   install/       o instalador (`MagoAgent-Instalador` / `magoagent instalar`); no Windows é o MSI de installer/
   tests/         testes gerais: formatos, exportação, desenho, transcrições, shells
-assets/          fontes (mão = Excalifont do Excalidraw, interface = Assistant; licenças OFL), editor-icons/ (JetBrains,
-                 Apache 2.0, com NOTICE), mascot/, ícones do app
+assets/          fontes (mão = Excalifont do Excalidraw, interface = Assistant; licenças OFL; o negrito das notas = Hack
+                 Bold, MIT), editor-icons/ (JetBrains, Apache 2.0, com NOTICE), mascot/, ícones do app
 installer/       MSI do Windows (WiX 3: build-msi.sh, magoagent.wxs)
 docs/            imagens do README e o exemplo arquitetura.mago
 build-macos-app.sh  gera MagoAgent.app (bundle com.edsuuu.magoagent)

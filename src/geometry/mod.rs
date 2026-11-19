@@ -261,6 +261,12 @@ pub(crate) fn fingerprint(bytes: &[u8]) -> u64 {
 /// Excalidraw's hand-drawn font, Excalifont (OFL 1.1, assets/Excalifont-license.txt), whole in one file.
 pub(crate) const HAND_FACE: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/Excalifont-Regular.ttf"));
 pub(crate) const ASSISTANT_FONT: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/Assistant.ttf"));
+/// The notes' bold: Hack Bold (MIT and Bitstream Vera, assets/Hack-license.txt), the version of egui's own Hack and as
+/// wide letter for letter, so a bold word keeps its place in the line. Before it the bold was the text painted again
+/// half a point to the right, smeared at every zoom.
+pub(crate) const NOTE_BOLD_FACE: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/Hack-Bold.ttf"));
+/// The family `install_fonts` binds `NOTE_BOLD_FACE` to.
+pub(crate) const NOTE_BOLD: &str = "note-bold";
 
 /// Advance width of one line in the hand font, from the bundled faces in egui's fallback order,
 /// so the box of a text is the width it is painted. Characters no face has (emoji, system

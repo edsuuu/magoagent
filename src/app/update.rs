@@ -164,6 +164,10 @@ impl eframe::App for DrawingApp {
         // edge was a frame behind the sidebar sliding beside it, and the window's ground showed between them
         self.now = ctx.input(|i| i.time);
 
+        if ctx.input(|i| i.events.iter().any(|event| matches!(event, egui::Event::WindowFocused(true)))) {
+            self.window_back = self.now;
+        }
+
         if let Some(perf) = &mut self.perf {
             perf.frame(ctx.input(|i| i.time), frame.info().cpu_usage, &ctx.repaint_causes());
         }

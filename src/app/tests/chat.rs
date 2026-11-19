@@ -845,3 +845,17 @@ fn remover_chat_asks_first_and_only_remover_deletes_it() {
     assert!(app.chats.iter().all(|chat| chat.id != "a"), "Remover removes it");
     assert_eq!(app.chat_draft, "não envia");
 }
+
+/// The context band's words before its amount shorten in a narrow panel instead of running into the Compactar button.
+#[test]
+fn the_compact_band_says_less_in_a_narrow_panel() {
+    use crate::app::chat::context_view::band_words;
+
+    // seven points a letter
+    let width = |words: &str| words.chars().count() as f32 * 7.0;
+
+    assert_eq!(band_words(200.0, width), Some("Compacta sozinho em "));
+    assert_eq!(band_words(100.0, width), Some("Sozinho em "));
+    assert_eq!(band_words(30.0, width), Some("Em "));
+    assert_eq!(band_words(10.0, width), None);
+}
