@@ -10,6 +10,7 @@ struct TerminalState: Decodable {
     var icon: String
     var tint: UInt32?
     var maestro: Bool
+    var tag: String?
     var state: String?
     var dot: UInt32?
     var status: String
@@ -27,7 +28,7 @@ struct TerminalState: Decodable {
     var composer: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, folder, icon, tint, maestro, state, dot, status, note, font, look, blurred, locked, focused, elevated
+        case id, name, folder, icon, tint, maestro, tag, state, dot, status, note, font, look, blurred, locked, focused, elevated
         case copyOnSelect = "copy_on_select"
         case grid, find, entries, composer
     }

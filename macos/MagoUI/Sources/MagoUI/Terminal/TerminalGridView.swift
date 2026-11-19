@@ -21,14 +21,12 @@ final class TerminalGridView: NSView, @preconcurrency NSTextInputClient {
     private var cursor: TerminalCursor?
     private var offset = 0
     private var history = 0
-    private var cursorOn = true
     private var marked = ""
     private var requestedFocus = false
     private var reportedGrid: (Int, Int)?
     private var dragging = false
     private var dragCell: GridPoint?
     private var scrollRemainder: CGFloat = 0
-    private var blinkTimer: Timer?
     private var dragTimer: Timer?
 
     /// A cell and which half of it the pointer is on.
@@ -82,7 +80,6 @@ final class TerminalGridView: NSView, @preconcurrency NSTextInputClient {
         if newCursor != cursor {
             invalidateCursor()
             cursor = newCursor
-            cursorOn = true
             invalidateCursor()
         }
         if new.grid?.offset != offset || new.grid?.history != history {
@@ -90,7 +87,6 @@ final class TerminalGridView: NSView, @preconcurrency NSTextInputClient {
             history = new.grid?.history ?? 0
             needsDisplay = true
         }
-        updateBlink()
         // the app moved the keys here (an agent, a menu)
         if new.focused != requestedFocus {
             requestedFocus = new.focused
@@ -142,7 +138,6 @@ final class TerminalGridView: NSView, @preconcurrency NSTextInputClient {
         }
         drawCursor(in: context)
         drawMarked(in: context)
-        if offset > 0, history > 0 { drawScrollbar(in: context) }
     }
 
     private func drawRow(_ index: Int, in context: CGContext) {
@@ -210,31 +205,19 @@ final class TerminalGridView: NSView, @preconcurrency NSTextInputClient {
         CGRect(x: Self.padX + CGFloat(cursor.col) * cellSize.width, y: Self.padY + CGFloat(cursor.row) * cellSize.height, width: cellSize.width, height: cellSize.height)
     }
 
+    /// As the egui terminal: a block over the cell (the letter under it is covered), hollow while the terminal has no keys;
+    /// whatever shape or blink the program asks for.
     private func drawCursor(in context: CGContext) {
-        guard let cursor, cursor.row < rows.count, !cursor.blink || cursorOn || !isFocused else { return }
+        guard let cursor, cursor.row < rows.count else { return }
         let rect = cursorRect(cursor)
         let color = NSColor(rgb: look.cursor)
-        context.setFillColor(color.cgColor)
-        context.setStrokeColor(color.cgColor)
-        context.setLineWidth(1)
-        guard isFocused else {
-            context.stroke(rect.insetBy(dx: 0.5, dy: 0.5))
-            return
-        }
-        switch cursor.shape {
-        case "underline": context.fill(CGRect(x: rect.minX, y: rect.maxY - 2, width: rect.width, height: 2))
-        case "beam": context.fill(CGRect(x: rect.minX, y: rect.minY, width: 2, height: rect.height))
-        case "hollow": context.stroke(rect.insetBy(dx: 0.5, dy: 0.5))
-        default:
+        if isFocused {
+            context.setFillColor(color.cgColor)
             context.fill(rect)
-            // the character under it, in the background's color
-            for run in rows[cursor.row].runs where cursor.col >= run.col && cursor.col < run.col + run.cells {
-                let ascii = run.text.utf8.allSatisfy { $0 < 128 }
-                let index = cursor.col - run.col
-                guard ascii ? index < run.text.count : index == 0 else { continue }
-                let character = ascii ? String(run.text[run.text.index(run.text.startIndex, offsetBy: index)]) : run.text
-                drawText(character, col: cursor.col, cells: ascii ? 1 : run.cells, style: run.style & 3, color: NSColor(rgb: look.bg), top: rect.minY, in: context)
-            }
+        } else {
+            context.setStrokeColor(color.cgColor)
+            context.setLineWidth(1)
+            context.stroke(rect.insetBy(dx: 0.5, dy: 0.5))
         }
     }
 
@@ -248,49 +231,17 @@ final class TerminalGridView: NSView, @preconcurrency NSTextInputClient {
         drawText(marked, col: cursor.col, cells: cells, style: 4, color: NSColor(rgb: look.fg), top: rect.minY, in: context)
     }
 
-    /// A thin bar at the right while scrolled up into the history.
-    private func drawScrollbar(in context: CGContext) {
-        let total = CGFloat(rows.count + history)
-        let barHeight = max(16, bounds.height * CGFloat(rows.count) / total)
-        let top = (bounds.height - barHeight) * (1 - CGFloat(offset) / CGFloat(history))
-        context.setFillColor(NSColor(rgb: look.fg, alpha: 0.3).cgColor)
-        context.fill(CGRect(x: bounds.width - 5, y: top, width: 3, height: barHeight))
-    }
-
-    // MARK: cursor blink
-
-    private func updateBlink() {
-        if let cursor, cursor.blink, isFocused {
-            guard blinkTimer == nil else { return }
-            blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.53, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    self?.cursorOn.toggle()
-                    self?.invalidateCursor()
-                }
-            }
-        } else {
-            blinkTimer?.invalidate()
-            blinkTimer = nil
-            if !cursorOn {
-                cursorOn = true
-                invalidateCursor()
-            }
-        }
-    }
-
     // MARK: focus
 
     override func becomeFirstResponder() -> Bool {
         MagoStore.shared.send("ui.terminal.focus", ["id": id, "focused": true])
         invalidateCursor()
-        updateBlink()
         return true
     }
 
     override func resignFirstResponder() -> Bool {
         MagoStore.shared.send("ui.terminal.focus", ["id": id, "focused": false])
         invalidateCursor()
-        updateBlink()
         return true
     }
 
@@ -473,7 +424,6 @@ final class TerminalGridView: NSView, @preconcurrency NSTextInputClient {
     }
 
     isolated deinit {
-        blinkTimer?.invalidate()
         dragTimer?.invalidate()
     }
 }
