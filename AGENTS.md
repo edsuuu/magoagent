@@ -62,6 +62,8 @@ build-macos-app.sh  gera MagoAgent.app (bundle com.edsuuu.magoagent)
 - Arquivo passando de ~600 linhas: divida por assunto.
 - Nomes por extenso (`index`, `response`, `colors`), nada de variáveis de uma letra fora de fechamentos curtos.
 - Atalho deliberado com limite conhecido leva `// ponytail: <limite>, <como evoluir>`.
+- Comentário explica o código, não conta a história do pedido: nada de citar o dono (`Asked: "…"`, `(asked: "…")`). O
+  pedido vai na descrição do PR.
 - Toda ação que a pessoa faz no app tem a sua ferramenta no MCP (o Maestro faz tudo pela voz): a ferramenta em
   `mcp/calls/tools.rs`, o despacho em `mcp/calls/mod.rs`, e a ação do app em `mcp/actions/` (um caso a mais) com a
   entrada em `mcp/app_tools.rs`.

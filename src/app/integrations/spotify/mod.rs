@@ -52,8 +52,7 @@ pub(crate) use read::*;
 const EVERY: std::time::Duration = std::time::Duration::from_secs(2);
 const SETTLE: std::time::Duration = std::time::Duration::from_millis(350);
 /// After a control, and while a new song's cover is still owed, the player is asked this often, for `QUICK_FOR` after a
-/// control (asked: a song picked on the page showed on the player's card some 10 s later: 2 s to see it, then its cover
-/// asked once every 2 s).
+/// control.
 const QUICK: std::time::Duration = std::time::Duration::from_millis(300);
 const QUICK_FOR: std::time::Duration = std::time::Duration::from_secs(5);
 /// The biggest cover read (Spotify's are 640 px JPEGs, about 100 KB), and how many polls a track's cover is asked for.
@@ -61,9 +60,8 @@ pub(crate) const COVER_LIMIT: usize = 3 * 1024 * 1024;
 const COVER_TRIES: u8 = 20;
 /// Spotify's green (the island's music page too).
 pub(crate) const GREEN: Color32 = Color32::from_rgb(0x1e, 0xd7, 0x60);
-/// How long the cover now takes to replace the one before it on the island's pill (asked: the change between songs was
-/// abrupt), and how long that one is kept while the new cover is still to come (past it, a song without a cover shows
-/// the placeholder, as it always did).
+/// How long the cover now takes to replace the one before it on the island's pill, and how long that one is kept while
+/// the new cover is still to come (past it, a song without a cover shows the placeholder, as it always did).
 const FADE: f64 = 0.3;
 const COVER_WAIT: f64 = 4.0;
 
@@ -316,10 +314,10 @@ pub(crate) fn accent(rgba: &[u8]) -> Color32 {
     accents(rgba).0
 }
 
-/// The cover's two colours, left to right for the island's bars (asked: "o degradê traz cores que nem estão na capa"):
-/// the colour most of its coloured pixels have, and the most present one of another hue (at least 40° away), each the
-/// mean of real pixels of it; a lighter tone of the first when the cover has only one colour. Greys, near blacks and
-/// see-through pixels give none: a grey cover gives grey.
+/// The cover's two colours, left to right for the island's bars: the colour most of its coloured pixels have, and the
+/// most present one of another hue (at least 40° away), each the mean of real pixels of it; a lighter tone of the
+/// first when the cover has only one colour. Greys, near blacks and see-through pixels give none: a grey cover gives
+/// grey.
 pub(crate) fn accents(rgba: &[u8]) -> (Color32, Color32) {
     let mut boxes = vec![(0u32, [0.0f32; 3]); LEVELS * LEVELS * LEVELS];
     let mut coloured = 0u32;
@@ -393,8 +391,8 @@ fn lightness(colour: Color32) -> f32 {
 /// The least lightness Luna's body needs on the dark island: about her own blue's.
 const LUNA_LIGHT: f32 = 0.55;
 
-/// `colour` as Luna can wear it (asked: "deixa a Luna trocar de cor, mas com contraste: roxo escuro não tem"): its
-/// brightest channel brought to full, and then toward white until she is as light as `LUNA_LIGHT`, its hue kept.
+/// `colour` as Luna can wear it: its brightest channel brought to full, and then toward white until she is as
+/// light as `LUNA_LIGHT`, its hue kept.
 pub(crate) fn readable(colour: Color32) -> Color32 {
     let most = colour.r().max(colour.g()).max(colour.b()).max(1);
     let lift = |channel: u8| (u16::from(channel) * 255 / u16::from(most)) as u8;
@@ -554,7 +552,7 @@ impl Spotify {
     }
 
     /// What the island shows of the song at `time` (the context's clock): playing, or paused for less than
-    /// `PAUSED_SHOWN` (asked: "se a música não está tocando por 30 segundos, a capa e a frequência somem").
+    /// `PAUSED_SHOWN`.
     pub(crate) fn shown(&self, time: f64) -> Option<&Now> {
         self.now.as_ref().filter(|now| now.playing || self.paused_since.is_none_or(|since| time - since < PAUSED_SHOWN))
     }
@@ -574,8 +572,7 @@ impl Spotify {
                 match &now {
                     // closed: nothing of the cover stays
                     None => self.cover_gone(),
-                    // another song: the cover and the colours before stay, under the new song's once it comes (asked:
-                    // the change between songs was abrupt)
+                    // another song: the cover and the colours before stay, under the new song's once it comes
                     Some(_) if changed => {
                         (self.previous, self.before) = (self.cover.take(), self.colours.take());
                         // the colour before stays too (the bars without the fade fall back to it), until the new cover gives its own

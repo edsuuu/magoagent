@@ -14,9 +14,8 @@ impl DrawingApp {
 
     /// The zoom the canvas's text is laid out at (notes, texts, terminals' grids), drawn scaled to `zoom`. At rest it is
     /// the zoom itself, crisp; while the zoom moves it holds still (until the text would grow or shrink past a quarter),
-    /// so a zoom's frames scale what is laid out instead of laying out and rasterizing every line at every new size,
-    /// and no line wraps again under the eye (asked: "dar zoom no Linux dá uma sensação de estar travado, em notebooks
-    /// que não têm placa de vídeo" and "o conteúdo de alguns elementos fica tremendo, como notas").
+    /// so a zoom's frames scale what is laid out instead of laying out and rasterizing every line at every new size, and
+    /// no line wraps again under the eye.
     pub(crate) fn text_zoom(&self) -> f32 {
         let held = self.held_text_zoom.get();
         let moving = self.now - self.zoomed_at < ZOOM_SETTLES;

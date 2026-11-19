@@ -334,10 +334,9 @@ pub(crate) fn menu_height(chip: Rect, room: Rect) -> f32 {
     (chip.top() - room.top() - 2.0 * crate::app::ui::menu_look::MENU_PAD - 12.0).max(120.0)
 }
 
-/// A chip's menu (asked: "quando eu clico em trocar o modelo no chat completo, ele fica bugado"): over the chip (the
-/// chips sit under the conversation, the room is above them), as tall as `menu_height` lets it be, what is past it
-/// scrolling; under it, the island's went out of the island's window, cut and out of the click's reach. A click in it
-/// leaves it open (egui's menu closed at Mais modelos): a pick closes it.
+/// A chip's menu: over the chip (the chips sit under the conversation, the room is above them), as tall as
+/// `menu_height` lets it be, what is past it scrolling; under it, the island's went out of the island's window, cut
+/// and out of the click's reach. A click in it leaves it open (egui's menu closed at Mais modelos): a pick closes it.
 fn chip_menu(chip: &egui::Response, dark: bool) -> egui::Popup<'_> {
     egui::Popup::menu(chip)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
@@ -422,9 +421,8 @@ fn folder_menu(ui: &mut egui::Ui, chip: &egui::Response, cwd: &str, folders: &Fo
     act
 }
 
-/// Whether two paths are the same folder, whatever their slashes, a trailing one and (off Linux) their case.
-/// The folder chip's words: "Nenhuma pasta" for the app's own, not its name (asked: "no chat fica .magoagent, não é para
-/// ter, é para ficar Nenhuma pasta").
+/// Whether two paths are the same folder, whatever their slashes, a trailing one and (off Linux) their case. The folder
+/// chip's words: "Nenhuma pasta" for the app's own, not its name.
 pub(crate) fn chip_folder(cwd: &str) -> String {
     if no_folder(cwd) { "Nenhuma pasta".into() } else { folder_label(cwd) }
 }

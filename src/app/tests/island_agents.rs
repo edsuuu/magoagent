@@ -103,9 +103,9 @@ impl Island {
     }
 }
 
-/// Asked ("Botão de ver agentes da Luna está todo bugado e quando ele sai o chat fica em popover"): in the island's
-/// conversation, compact or whole, the Agentes button sits in a room of its own, over no word of the conversation; an agent
-/// picked in it shows in the island itself, and no mini chat opens over the screen; the way back to Luna does the same.
+/// In the island's conversation, compact or whole, the Agentes button sits in a room of its own, over no word of the
+/// conversation; an agent picked in it shows in the island itself, and no mini chat opens over the screen; the way back to
+/// Luna does the same.
 #[test]
 fn the_agents_button_has_its_own_room_and_shows_an_agent_in_the_island_not_in_a_window() {
     for full in [false, true] {
@@ -137,8 +137,8 @@ fn the_agents_button_has_its_own_room_and_shows_an_agent_in_the_island_not_in_a_
     }
 }
 
-/// Asked ("cada agente no chat precisa ter um nome, pois na tab não conseguimos ver quem é quem"): the island's
-/// conversation says over its log who it is with: Luna (her crown, her chat's title) or the agent by its own name.
+/// The island's conversation says over its log who it is with: Luna (her crown, her chat's title) or the agent by
+/// its own name.
 #[test]
 fn the_islands_conversation_names_who_it_is_with() {
     let mut island = Island::open(false);
@@ -169,9 +169,9 @@ fn the_islands_conversation_names_who_it_is_with() {
     assert!(frame.place_of("Pergunta de Ana").is_some() && frame.place_of("posso subir?").is_some(), "{:?}", frame.texts);
 }
 
-/// Asked ("o cursor fica em modo visual como move e não com cursor pointer"): over every button of the island's header
-/// and of its conversation the hand shows, and a press on one that moves a little stays the button's: never the drag
-/// that takes the island's window (or the mini chat's header) away. No tip covers the conversation.
+/// Over every button of the island's header and of its conversation the hand shows, and a press on one that moves a
+/// little stays the button's: never the drag that takes the island's window (or the mini chat's header) away. No tip
+/// covers the conversation.
 #[test]
 fn the_islands_buttons_show_the_hand_and_their_press_never_drags_the_window() {
     for full in [false, true] {
@@ -210,9 +210,9 @@ fn the_islands_buttons_show_the_hand_and_their_press_never_drags_the_window() {
     }
 }
 
-/// What an agent sends to another chat by the MCP's chat_send goes signed with its name (asked: "precisa avisar 'Agente
-/// tal aqui: estou parado'"), once; the person's own (no asker) and a chat's to itself as they are. `chat_open` with place
-/// island shows the chat in the island's conversation, as the Agentes button does.
+/// What an agent sends to another chat by the MCP's chat_send goes signed with its name, once; the person's own (no asker)
+/// and a chat's to itself as they are. `chat_open` with place island shows the chat in the island's conversation, as the
+/// Agentes button does.
 #[test]
 fn an_agents_message_to_a_chat_goes_signed_and_chat_open_shows_one_in_the_island() {
     let mut app = DrawingApp::default();
@@ -240,9 +240,8 @@ fn an_agents_message_to_a_chat_goes_signed_and_chat_open_shows_one_in_the_island
     assert!(app.act("chat_open", &json!({ "chat": "projeto", "place": "island" })).is_err(), "no island on: said so");
 }
 
-/// Asked ("As opções no chat, quando digito /c, não aparece um select para aparecer as opções que eu tenho"): the island's
-/// own box opens the / menu as it is typed, filtered; Esc closes the menu, not the island, and Enter completes the
-/// picked command instead of sending it.
+/// The island's own box opens the / menu as it is typed, filtered; Esc closes the menu, not the island, and Enter
+/// completes the picked command instead of sending it.
 #[test]
 fn the_islands_box_opens_the_slash_menu_and_esc_closes_only_the_menu() {
     let mut island = Island::open(false);

@@ -69,8 +69,8 @@ const CREATE: usize = 5;
 /// The slide with the note on the agents' CLIs under its line.
 const AGENTS: usize = 4;
 const DISCLAIMER: &str = "O MagoAgent usa os CLIs de agentes (Claude Code, Codex) já instalados e com assinatura ativa ou chave de API.";
-/// How long a slide takes to give way to the next (asked: "pode ter uma animação de transição, achei muito seco"): the
-/// leaving one slides off and fades, the coming one slides in from the other side, the gradient and the button follow.
+/// How long a slide takes to give way to the next: the leaving one slides off and fades, the coming one slides in from
+/// the other side, the gradient and the button follow.
 const TRANSITION: f64 = 0.45;
 /// How far a slide travels in it.
 const TRAVEL: f32 = 90.0;
@@ -299,7 +299,7 @@ fn paint_slide(ui: &egui::Ui, rect: Rect, index: usize, k: &K, time: f64, elapse
         paint_story(&painter, slide.story, stage, scale, k, slide.luna, time, elapsed);
     }
     let mut y = top + art + 28.0;
-    // the hand font of the site's titles (asked: "a fonte a gente pode usar a fonte que usamos no site")
+    // the hand font of the site's titles
     let title_font = FontId::new(32.0, egui::FontFamily::Name(HAND_FONT.into()));
     painter.text(Pos2::new(middle, y), egui::Align2::CENTER_TOP, slide.title, title_font, k.fg);
     y += 44.0;
@@ -415,8 +415,8 @@ mod tests {
         assert_eq!(scenes::presence(0.99, 0.1, 0.9), 0.0);
     }
 
-    /// Continuar is no cut (asked: "pode ter uma animação de transição, achei muito seco"): for a moment both slides
-    /// show, the leaving one going off to the left and fading, the new one coming from the right; then only the new.
+    /// Continuar is no cut: for a moment both slides show, the leaving one going off to the left and fading, the new
+    /// one coming from the right; then only the new.
     #[test]
     fn a_slide_gives_way_to_the_next() {
         let mut welcome = Welcome::default();

@@ -12,9 +12,8 @@ pub(crate) fn frame_spacing() -> std::time::Duration {
 /// The time between two frames of what moves by itself while nobody touches it: the wizards at work, the minis, the
 /// chat's pulses while an agent works, Luna's dance and the song's bars. Every frame paints the whole app (the island's
 /// window is drawn in the app's own pass, but at rest, when it draws itself: `island/replay.rs`): the island's wizard at
-/// the screen's rate kept an empty canvas at 34% of a core (asked: "o App consome mais processador está entre 34 e às
-/// vezes 100, precisa rever isso"). All of them ask for this same spacing, so their frames fall together; the pointer,
-/// the keys and the springs ask for theirs.
+/// the screen's rate kept an empty canvas at 34% of a core. All of them ask for this same spacing, so their frames fall
+/// together; the pointer, the keys and the springs ask for theirs.
 pub(crate) const AMBIENT: std::time::Duration = std::time::Duration::from_millis(33);
 
 /// The time between two frames at `rate` a second (kept between 15 and 480).

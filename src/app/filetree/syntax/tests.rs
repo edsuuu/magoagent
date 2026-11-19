@@ -54,8 +54,7 @@ fn blade() {
     assert!(!found("blade", "@if ($a >)\n@endif\n").is_empty());
 }
 
-/// Asked: "sintaxe do blade está bugada, `@foreach` sem `@endforeach` mas tem": what Blade itself takes as text or as a
-/// whole directive is no block left open.
+/// What Blade itself takes as text or as a whole directive is no block left open.
 #[test]
 fn blade_escapes_and_one_line_directives_open_no_block() {
     assert_eq!(found("blade", "Escreva @@foreach para mostrar a diretiva\n"), vec![], "`@@` is Blade's escape");

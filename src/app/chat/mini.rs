@@ -513,7 +513,7 @@ impl DrawingApp {
             }
             stopped = grip.drag_stopped();
             // the header's buttons take their press (the grip under them would move the window), and in the island no
-            // tip covers the conversation under them (asked: "tem o tooltip que atrapalha")
+            // tip covers the conversation under them
             let in_island = self.mini.in_island;
             let tip = |hit: egui::Response, text: &str| if in_island { hit } else { hit.tip(text) };
             // close, at the left like the reference's panels
@@ -538,7 +538,7 @@ impl DrawingApp {
             let maestro = self.is_chat(&id) && row.spec.maestro;
             let crown = if maestro { 16.0 } else { 0.0 };
             let name = clipped(ui.painter(), self.chat_short_name(row), FontId::proportional(14.0), look.text, big.left() - left - 8.0 - room - crown);
-            // one line: the name alone, without a state under it (asked)
+            // one line: the name alone, without a state under it
             let top = cy - name.size().y / 2.0;
             let name_w = name.size().x;
             ui.painter().galley(Pos2::new(left + 1.0 / ui.painter().pixels_per_point(), top), name.clone(), look.text);
@@ -634,8 +634,7 @@ impl DrawingApp {
         self.mini.left = switch.is_none() && (expand || close);
         if let Some(other) = switch {
             // another chat in the same panel: the Maestro's agent, or back to the Maestro. In the island it is the
-            // island's conversation that changes: no mini chat opens over the screen besides it (asked: "quando ele sai o
-            // chat fica em popover")
+            // island's conversation that changes: no mini chat opens over the screen besides it
             self.chat_agent = Some(other);
             if !self.mini.in_island {
                 self.mini_set(true);

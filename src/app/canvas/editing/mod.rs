@@ -379,11 +379,10 @@ impl DrawingApp {
         self.tidy_last = Some((ids, layout));
     }
 
-    /// Organizar o canvas (asked: "cria uma tela para organizar o canvas ou um MCP para isso, para
-    /// o Claude organizar"): every window, note, group and drawing of the canvas (or of `only`) in
-    /// rows WINDOW_GAP apart, those tied by a rope or an arrow next to each other, as one undo
-    /// step, then the whole in view. Strokes and shapes near each other or tied by an arrow are one
-    /// drawing and keep their shape; a canvas group moves whole. Ropes and bound arrows follow their ends. How many it moved.
+    /// Organizar o canvas: every window, note, group and drawing of the canvas (or of `only`) in rows WINDOW_GAP apart, those
+    /// tied by a rope or an arrow next to each other, as one undo step, then the whole in view. Strokes and shapes near each
+    /// other or tied by an arrow are one drawing and keep their shape; a canvas group moves whole. Ropes and bound arrows
+    /// follow their ends. How many it moved.
     // ponytail: locked elements stay where they are and the rows may cover them; leaving room around them is the next step
     pub(crate) fn arrange_canvas(&mut self, only: Option<&[usize]>) -> usize {
         let elements = &self.scene.elements;

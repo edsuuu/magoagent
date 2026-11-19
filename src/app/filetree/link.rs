@@ -1,7 +1,6 @@
 //! Links to files: a path a chat's words name (`src/app/x.rs:120`) or a drawing carries (`Element::link`), opened in a
 //! file tree on the canvas at its line, the tree in view and with the keys, and a "Voltar" button back to where the
-//! person was (asked: "links para arquivos que abrem na árvore de arquivos dentro do canvas: ele já me leva para o
-//! arquivo e a árvore de arquivos em foco, com um botão para eu poder voltar").
+//! person was.
 
 use crate::app::chat::direct::folder;
 use crate::app::chat::segments::{is_local, resolve};

@@ -20,8 +20,7 @@ pub(crate) const REDIRECT_PORT: u16 = 8990;
 pub(crate) const REDIRECT_URI: &str = "http://127.0.0.1:8990/callback";
 /// Where the person makes the app and finds its Client ID.
 pub(crate) const DASHBOARD: &str = "https://developer.spotify.com/dashboard";
-/// The form of a new app, straight (asked: "a opção para abrir o link direto onde pega o client id"): its Client ID
-/// shows on the app's page once it is saved.
+/// The form of a new app, straight: its Client ID shows on the app's page once it is saved.
 pub(crate) const CREATE_APP: &str = "https://developer.spotify.com/dashboard/create";
 pub(crate) const SCOPES: [&str; 7] = [
     "user-read-playback-state",

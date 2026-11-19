@@ -45,10 +45,9 @@ impl DrawingApp {
         here
     }
 
-    /// What the running answers printed since the last frame; an answer that ended leaves its
-    /// process, and its errors when it failed. A turn over whose output stays open (`ChatRun::over`) ends after
-    /// `RUN_GRACE` all the same: asked "ela finalizou, mas ainda ficou com uma mensagem pendente, rodando há mais de
-    /// 30 minutos".
+    /// What the running answers printed since the last frame; an answer that ended leaves its process, and its
+    /// errors when it failed. A turn over whose output stays open (`ChatRun::over`) ends after `RUN_GRACE` all the
+    /// same:
     pub(crate) fn poll_chats(&mut self) {
         let ids: Vec<String> = self.chat_runs.keys().cloned().collect();
         for id in ids {

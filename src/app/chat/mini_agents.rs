@@ -2,7 +2,7 @@
 //! when it recruited agents, a button that says so ("Agentes 2", the dot pulsing while one works) lists them (who, what
 //! each does) to see one in the same place; seeing an agent, a button goes back to its Maestro. The button has its own
 //! room in the header, its words say what it does (no tip over the conversation), and the press is its own: the header
-//! that drags the window never takes it (asked: "Botão de ver agentes da Luna está todo bugado").
+//! that drags the window never takes it.
 
 use crate::app::chat::list::{AMBER, Look, glyph, pulse_dot};
 use crate::app::ui::agents::{AgentRow, AgentState};

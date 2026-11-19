@@ -402,8 +402,8 @@ mod tests {
     fn the_apps_own_runs_are_not_sessions_outside() {
         let with =
             |pairs: &'static [(&'static str, &'static str)]| move |key: &str| pairs.iter().find(|(name, _)| *name == key).map(|(_, value)| value.to_string());
-        // asked ("cliquei em ver uma sessão fora do app e ela não abre"): the plan's reading of a test instance in its
-        // scene's folder came as a session outside, with no conversation file (--no-session-persistence)
+        // the plan's reading of a test instance in its scene's folder came as a session outside, with no conversation
+        // file (--no-session-persistence)
         assert!(own_run(&with(&[("MAGOAGENT_OWN", "1")])), "a CLI the app ran, with no bridge");
         assert!(own_run(&with(&[("MAGOAGENT_BRIDGE", "127.0.0.1:1"), ("MAGOAGENT_CHAT_ID", "c1")])), "a chat");
         assert!(own_run(&with(&[("MAGOAGENT_BRIDGE", "127.0.0.1:1"), ("MAGOAGENT_TERMINAL_ID", "t1")])), "a terminal");

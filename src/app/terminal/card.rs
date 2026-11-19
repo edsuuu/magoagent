@@ -69,7 +69,7 @@ impl DrawingApp {
         if spec.maestro && zoom >= 0.6 {
             maestro_crown(&painter, name.right_center() + Vec2::new(HEAD_GAP + 5.0, 0.0) * zoom, zoom, crate::app::ui::agents::AMBER);
         }
-        // a recruit's model and effort beside its name (asked: "precisa ficar descritível o modelo e o effort que o Maestro escolhe")
+        // a recruit's model and effort beside its name
         if let Some(tuning) = (zoom >= 0.6).then(|| recruit_tag(&spec)).flatten() {
             painter.text(
                 name.right_center() + Vec2::new(HEAD_GAP * 2.0 * zoom, 0.0),

@@ -85,7 +85,7 @@ pub(crate) struct Prefs {
     pub(crate) box_overlap: bool,
     pub(crate) mouse_wheel_zooms: bool,
     /// Dispositivo de entrada = Automático: each scroll says whether a mouse wheel or a touchpad sent it
-    /// (`wheel_from_mouse`), and `mouse_wheel_zooms` is not looked at. Off by default: Trackpad (asked).
+    /// (`wheel_from_mouse`), and `mouse_wheel_zooms` is not looked at. Off by default: Trackpad.
     pub(crate) wheel_auto: bool,
     /// Snap to the 20 px grid while drawing and moving (Cmd+').
     pub(crate) grid: bool,
@@ -199,7 +199,7 @@ pub(crate) struct Prefs {
     /// The microphone the call and Ditar hear, by name; empty: the system's, unless that is a virtual cable.
     pub(crate) voice_mic: String,
     /// Ajustes › Ok Mago: "Ok Mago, …" calls the Maestro in a call, even on standby; and the call says the answers out loud (off:
-    /// it starts with the speakers off, as the button does). Both off by default (asked), an old prefs.json without them too.
+    /// it starts with the speakers off, as the button does). Both off by default, an old prefs.json without them too.
     pub(crate) ok_mago: bool,
     pub(crate) speak_answers: bool,
     /// The call hears and speaks on OpenAI's API (voice/openai.rs), in `openai_voice`; off, it is the

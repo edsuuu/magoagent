@@ -5,7 +5,7 @@ use super::kit::*;
 use crate::app::system::updates::{CLOSES_AND_REOPENS, RELEASES_PAGE, UpdateState, installs_in_place, plain_notes};
 use crate::prelude::*;
 
-/// Who made the app (asked: "no sobre pode colocar o meu nome"), as on GitHub, and the page its button opens.
+/// Who made the app, as on GitHub, and the page its button opens.
 pub(crate) const AUTHOR: &str = "edsuuu";
 const AUTHOR_PAGE: &str = "https://github.com/edsuuu";
 

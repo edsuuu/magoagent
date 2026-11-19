@@ -1,8 +1,7 @@
 //! How the Maestro recruits: the way the person set the agents to run (Ajustes › Agentes › Invocação dos agentes), and
-//! the model and the effort it picks for each recruit (asked: "Sempre que disparar um agente precisa ficar descritível o
-//! modelo e o effort que o Maestro escolhe"). `recruit_agent`'s `model` and `effort` go into the recruit's command as its
-//! agent's own flags, right after the program; a chat recruit reads them back (`recruit_flags`), a terminal runs them;
-//! and the dispatch says them: "modelo Sonnet 5.5 · esforço Alto".
+//! the model and the effort it picks for each recruit. `recruit_agent`'s `model` and `effort` go into the recruit's
+//! command as its agent's own flags, right after the program; a chat recruit reads them back (`recruit_flags`), a
+//! terminal runs them; and the dispatch says them: "modelo Sonnet 5.5 · esforço Alto".
 
 use crate::app::chat::footer::{agent_default, claude_alias, effort_name, label, models, more_models, tuning_args};
 use crate::prelude::*;
@@ -63,10 +62,9 @@ pub(crate) fn describe(agent: &str, model: &str, effort: &str) -> String {
     format!("modelo {model} · esforço {effort}")
 }
 
-/// What the Maestro is told about recruiting (asked: "Mesmo com a flag de chat, quando disparar um agente, e se eu não
-/// explicar que eu quero em modo chat, ele abre via terminal"): how the person set the agents to run, followed unless
-/// they ask for the other way in so many words; that an agent is always a recruit (a terminal it opens by hand with
-/// `claude` would skip the setting); and that it picks every recruit's model and effort and says them.
+/// What the Maestro is told about recruiting: how the person set the agents to run, followed unless they ask for the
+/// other way in so many words; that an agent is always a recruit (a terminal it opens by hand with `claude` would skip
+/// the setting); and that it picks every recruit's model and effort and says them.
 pub(crate) fn recruit_brief(prefs: &Prefs) -> String {
     let (mode, other) = match prefs.agent_mode {
         AgentMode::Chat => ("num chat do app (um cartão no canvas)", "terminal"),
@@ -86,7 +84,6 @@ pub(crate) fn recruit_brief(prefs: &Prefs) -> String {
 mod tests {
     use super::*;
 
-    /// Asked: "Sempre que disparar um agente precisa ficar descritível o modelo e o effort que o Maestro escolhe".
     #[test]
     fn the_model_and_effort_go_in_as_the_agents_own_flags_and_read_back_by_name() {
         assert_eq!(with_tuning("claude", "sonnet", "high"), "claude --model sonnet --effort high");
@@ -110,9 +107,8 @@ mod tests {
         assert_eq!(names("claude", "haiku", "low"), ("Haiku 5.5".into(), "Baixo".into()));
     }
 
-    /// Asked: "Mesmo com a flag de chat, quando disparar um agente, e se eu não explicar que eu quero em modo chat, ele
-    /// abre via terminal". What the Maestro sends with no mode follows Invocação dos agentes, and the dispatch says the
-    /// model and effort it picked: in its answer, on the timeline and on a terminal recruit's header.
+    /// What the Maestro sends with no mode follows Invocação dos agentes, and the dispatch says the model and effort it
+    /// picked: in its answer, on the timeline and on a terminal recruit's header.
     #[test]
     fn a_recruit_follows_the_setting_and_says_its_model_and_effort() {
         let mut app = DrawingApp::default();

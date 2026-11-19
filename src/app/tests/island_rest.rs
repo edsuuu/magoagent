@@ -26,8 +26,7 @@ fn quiet() -> Groove {
     Groove { bands: Some([0.1; BANDS]), dance: Dance::Sway, ..loud() }
 }
 
-/// Asked: "a ilha ainda tem uns problemas, meio travada ou algo assim, em notebook que não tem placa de vídeo dedicada":
-/// each frame of the island at rest painted the whole app. At rest it is taken down with what moves in it (Luna and the
+/// Each frame of the island at rest painted the whole app. At rest it is taken down with what moves in it (Luna and the
 /// bars), and drawn again it shows as the app drew it, the bars following what is heard at that frame.
 #[test]
 fn at_rest_the_island_is_drawn_again_with_its_song_moving() {

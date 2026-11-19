@@ -1,8 +1,6 @@
-//! Text that holds still while the canvas zooms (asked: "o conteúdo de alguns elementos fica tremendo, como notas", and
-//! "dar zoom no Linux dá uma sensação de estar travado, em notebooks que não têm placa de vídeo"): laid out at the zoom
-//! the app holds while the zoom moves (`DrawingApp::text_zoom`) and drawn scaled to the frame's zoom. A note's lines
-//! break where they break at 100%, whatever the zoom, and only the lines on screen are laid out: its plan keeps where
-//! each line is (asked: "deixar só o que está na visual da tela, o restante vai aparecendo").
+//! Text that holds still while the canvas zooms: laid out at the zoom the app holds while the zoom moves
+//! (`DrawingApp::text_zoom`) and drawn scaled to the frame's zoom. A note's lines break where they break at 100%,
+//! whatever the zoom, and only the lines on screen are laid out: its plan keeps where each line is.
 
 use crate::prelude::*;
 use std::sync::Arc;

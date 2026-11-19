@@ -316,8 +316,8 @@ fn a_search_across_lines_finds_what_one_line_cannot() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Asked: "na Árvore, se eu aperto Ctrl+Z para voltar, o foco vai para a última linha do arquivo". The first undo step is
-/// kept with the caret egui puts at the text's end; the caret goes instead to what the undo put back.
+/// The first undo step is kept with the caret egui puts at the text's end; the caret goes instead to what the undo put
+/// back.
 #[test]
 fn ctrl_z_in_the_editor_leaves_the_caret_where_the_change_was() {
     use crate::app::filetree::code::changed_at;

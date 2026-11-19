@@ -130,8 +130,8 @@ fn asker(ui: &mut egui::Ui, label: &str, width: f32) {
     ui.painter().galley(Pos2::new(rect.right() - galley.size().x, rect.top()), galley, REPLY);
 }
 
-/// `job` at `at` as text the person can select and copy (asked: "o texto que o Claude retornar eu preciso poder
-/// selecionar, até as minhas mensagens"): the same job that was measured, wrapped at its own width, from the left.
+/// `job` at `at` as text the person can select and copy: the same job that was measured, wrapped at its own width,
+/// from the left.
 fn selectable(ui: &mut egui::Ui, at: Pos2, job: LayoutJob) {
     let room = Rect::from_min_size(at, Vec2::new(job.wrap.max_width, f32::INFINITY));
     ui.scope_builder(egui::UiBuilder::new().max_rect(room).layout(egui::Layout::top_down(egui::Align::LEFT)), |ui| {

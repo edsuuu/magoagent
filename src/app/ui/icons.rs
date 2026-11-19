@@ -280,8 +280,7 @@ pub(crate) fn paint_icon(p: &Painter, icon: Icon, c: Pos2, color: Color32) {
             p.circle_filled(at(0.0, 7.0), 1.4, color);
         }
         // as Recarregar in the menus (menu_look's Reload on its 24 grid, here 9 → 6.5): the circle turning right, its
-        // arrow at the top right. The arrow at the arc's start, across it, read as a hook (asked: "o ícone de recarregar
-        // está bugado")
+        // arrow at the top right. The arrow at the arc's start, across it, read as a hook
         Icon::Restart => {
             let mut pts: Vec<(f32, f32)> = (0..=18)
                 .map(|k| {

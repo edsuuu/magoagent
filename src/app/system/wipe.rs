@@ -1,8 +1,7 @@
-//! Ajustes › Dados › Limpar todos os dados (asked: "cria uma opção de limpar todos os dados do magoagent"). The app
-//! stops its agents and terminals and closes; `magoagent limpar`, a copy of itself, waits for it to be gone (so nothing
-//! the closing app writes is left), takes the app's secrets out of the system keychain, deletes its folders and opens
-//! it again, as new. The development build only cleans its own folder: the keychain and `~/.magoagent` are the
-//! installed app's too.
+//! Ajustes › Dados › Limpar todos os dados. The app stops its agents and terminals and closes; `magoagent limpar`, a
+//! copy of itself, waits for it to be gone (so nothing the closing app writes is left), takes the app's secrets out of
+//! the system keychain, deletes its folders and opens it again, as new. The development build only cleans its own
+//! folder: the keychain and `~/.magoagent` are the installed app's too.
 
 use crate::app::browser::vault::{read_vault, remove_secret};
 use crate::file::{data_dir, development, legacy_data_dir, projects_dir};

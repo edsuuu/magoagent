@@ -108,10 +108,9 @@ pub(super) fn drawn(app: &DrawingApp) -> Rect {
 const LEFT: [f32; 2] = [0.0, 400.0];
 const RIGHT: [f32; 2] = [ISLAND_SCREEN.x - 1.0, 400.0];
 
-/// Asked: "na ilha, se ela está com o balão de pensamento, a frequência de música não aparece". An agent at work puts
-/// the island compact with Luna thinking in her balloon (she does not dance when told not to): the cover and the bars
-/// show beside her all the same, the bars up with the song heard, and the balloon on none of them; on the top edge and
-/// standing up on either side.
+/// An agent at work puts the island compact with Luna thinking in her balloon (she does not dance when told not to):
+/// the cover and the bars show beside her all the same, the bars up with the song heard, and the balloon on none of
+/// them; on the top edge and standing up on either side.
 #[test]
 fn with_lunas_balloon_the_cover_and_the_bars_still_show() {
     for anchor in [None, Some(LEFT), Some(RIGHT)] {
@@ -135,9 +134,8 @@ fn with_lunas_balloon_the_cover_and_the_bars_still_show() {
     }
 }
 
-/// Asked: "quando está na lateral, não funciona o card e a frequência". Standing up on a side, the closed notch had
-/// neither the cover nor the bars: it has them as on the top edge, turned, the cover at the top, Luna in the middle and
-/// the bars at the bottom, each lying down, inside the notch.
+/// Standing up on a side, the closed notch had neither the cover nor the bars: it has them as on the top edge, turned,
+/// the cover at the top, Luna in the middle and the bars at the bottom, each lying down, inside the notch.
 #[test]
 fn on_a_side_the_closed_notch_shows_the_cover_and_the_bars_standing_up() {
     for anchor in [LEFT, RIGHT] {
@@ -155,8 +153,7 @@ fn on_a_side_the_closed_notch_shows_the_cover_and_the_bars_standing_up() {
     }
 }
 
-/// Asked ("se eu clicar na música ele me leva para a tab da música"), on a side too: a click on the cover of the closed
-/// notch standing up opens the island on Música.
+/// On a side too: a click on the cover of the closed notch standing up opens the island on Música.
 #[test]
 fn on_a_side_a_click_on_the_songs_cover_opens_the_music() {
     let (mut app, ctx) = playing(Some(LEFT), true);

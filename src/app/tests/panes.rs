@@ -131,8 +131,7 @@ fn the_buttons_are_no_place_to_move_the_window() {
     assert_eq!(raw.events.len(), 2, "the press stays the button's");
 }
 
-/// Asked: "se eu tô na intro e clico e arrasto a janela no meio ela deve deixar eu arrastar, mesma coisa com os botões
-/// … eles nem devem aparecer na intro". On the welcome the panels' buttons are gone and the bar's middle moves the window.
+/// On the welcome the panels' buttons are gone and the bar's middle moves the window.
 #[cfg(not(target_os = "macos"))]
 #[test]
 fn on_the_welcome_the_panel_buttons_hide_and_the_top_moves_the_window() {
@@ -150,8 +149,7 @@ fn on_the_welcome_the_panel_buttons_hide_and_the_top_moves_the_window() {
     assert_eq!(raw.events.len(), 1, "the press in the middle of the top moves the window");
 }
 
-/// Asked: "a aba de tarefas, ali no canvas remove por favor". Only Alterações and Nota rápida have a button; the tasks
-/// still reach the agents.
+/// Only Alterações and Nota rápida have a button; the tasks still reach the agents.
 #[test]
 fn the_tasks_panel_is_gone_and_the_tasks_stay() {
     assert_eq!(PANES.map(|pane| pane.2), ["Alterações", "Nota rápida"]);
@@ -219,9 +217,8 @@ fn a_narrow_window_keeps_the_toolbar_clear_of_the_panel_buttons() {
     assert!(tools.left() > app.sidebar_width(), "still over the canvas: {tools:?}");
 }
 
-/// Asked: "uma nota rápida de fácil acesso, ali no botão de alteração … um botão a gente leva essa nota para dentro do
-/// canvas … não quero que esteja em markdown". Its button opens it ready to type; what is typed stays as typed (the
-/// canvas's letter keys don't take it); Levar para o canvas makes it a note shown as typed, selected, and empties it.
+/// Its button opens it ready to type; what is typed stays as typed (the canvas's letter keys don't take it); Levar
+/// para o canvas makes it a note shown as typed, selected, and empties it.
 #[test]
 fn nota_rapida_keeps_plain_text_and_goes_to_the_canvas_as_a_note() {
     let (ctx, mut app, shown) = opened(Pane::QuickNote);

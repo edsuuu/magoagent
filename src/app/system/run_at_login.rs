@@ -1,6 +1,5 @@
-//! Ajustes › Geral › "Iniciar com o sistema" (asked: "o MagoAgent iniciar com o sistema, Linux, Windows e Mac"): the
-//! app opens when the person logs in. Windows: the account's Run key; Linux: an XDG autostart entry
-//! (`~/.config/autostart`); macOS: a LaunchAgent (`~/Library/LaunchAgents`).
+//! Ajustes › Geral › "Iniciar com o sistema": the app opens when the person logs in. Windows: the account's Run key;
+//! Linux: an XDG autostart entry (`~/.config/autostart`); macOS: a LaunchAgent (`~/Library/LaunchAgents`).
 
 use crate::prelude::*;
 

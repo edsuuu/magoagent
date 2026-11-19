@@ -141,9 +141,9 @@ fn diagram_with_labels_and_bound_arrow() {
     assert!(add_elements(&mut scene, json!([{ "id": "a", "type": "rectangle" }]).as_array().unwrap()).is_err());
 }
 
-/// Asked: "quando desenhou no canvas ele vinculou apenas um e outro não, mas desenhou corretamente". Each end binds
-/// whichever way the agent names its element (`{id}`, a bare id, `{elementId}`, the file format's binding), an arrow
-/// listed before its shapes still finds them, and an end naming no element is an error, not an end left loose.
+/// Each end binds whichever way the agent names its element (`{id}`, a bare id, `{elementId}`, the file format's
+/// binding), an arrow listed before its shapes still finds them, and an end naming no element is an error, not an
+/// end left loose.
 #[test]
 fn every_way_of_naming_an_end_binds_both_ends() {
     let shapes = || {
@@ -478,8 +478,8 @@ fn the_caller_is_the_terminal_else_the_chat() {
     assert_eq!(caller_from(env(&[])), None);
 }
 
-/// Asked: "a posição dos terminais, às vezes ele junta tudo na direita". Windows an agent stacks on the same spot (it
-/// reads the canvas from a list) go to the free places around it, each with its label; a shape stays where it was put.
+/// Windows an agent stacks on the same spot (it reads the canvas from a list) go to the free places around it, each
+/// with its label; a shape stays where it was put.
 #[test]
 fn windows_an_agent_stacks_go_around_it() {
     let mut scene = Scene::default();

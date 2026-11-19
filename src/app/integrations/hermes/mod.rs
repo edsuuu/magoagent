@@ -11,8 +11,8 @@ use std::path::Path;
 #[cfg(test)]
 mod tests;
 
-/// Hermes is off for now (the owner asked): out of Ajustes › Integrações, what its plugin says never reaches the island
-/// and the MCP says so. The tests still go through all of it.
+/// Hermes is off for now: out of Ajustes › Integrações, what its plugin says never reaches the island and the MCP says
+/// so. The tests still go through all of it.
 pub(crate) const AVAILABLE: bool = false;
 
 /// Whether Hermes is offered: `AVAILABLE`, and always in the tests.

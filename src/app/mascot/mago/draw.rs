@@ -243,7 +243,7 @@ pub(super) fn paint(painter: &Painter, center: Pos2, size: f32, color: Color32, 
 }
 
 /// How much bigger and farther apart the eyes are on a small Luna (the island's notch is 18): from as drawn at 26 and
-/// up to a mini one's at 14, so her faces still read (asked: "no notch os olhos da Luna somem").
+/// up to a mini one's at 14, so her faces still read.
 pub(super) fn small_eyes(size: f32) -> (f32, f32) {
     let small = ((26.0 - size) / 12.0).clamp(0.0, 1.0);
     (1.0 + (MINI_EYES - 1.0) * small, 1.0 + (MINI_SPREAD - 1.0) * small)
@@ -364,8 +364,7 @@ fn tube(painter: &Painter, start: Pos2, finish: Pos2, width: f32, fill: Color32)
 }
 
 /// No mouth at rest. While it speaks, a small "D" under the eyes and between them (it turns with the look, as they do),
-/// opening and closing with the words (asked: "a boca da luna nessa intro ficou horrível": it was a dash fixed in the
-/// middle, under one eye when she looked aside).
+/// opening and closing with the words.
 fn paint_mouth(pen: &Pen, motion: &MagoMotion) {
     let open = (motion.mouth_open.value / 0.03).min(1.0);
     let Some(mouth) = motion.mouth().filter(|_| open > 0.01) else { return };

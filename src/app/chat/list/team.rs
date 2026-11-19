@@ -1,8 +1,7 @@
-//! A Maestro's team in the lists (asked: "Um botão para ser como acordeão para deixar fechado os agentes que foram
-//! disparados"): the agents it recruited go right under it, folded behind one line with a chevron and how many they are
-//! ("› 3 agentes · 1 esperando") that opens and shuts them. Folded until opened, and remembered (`Prefs::teams_open`).
-//! Conversas (list/view.rs) and Agentes deste espaço (ui/attention.rs) share it; the MCP's `chats_view` and `sidebar`
-//! open and shut it too.
+//! A Maestro's team in the lists: the agents it recruited go right under it, folded behind one line with a chevron and
+//! how many they are ("› 3 agentes · 1 esperando") that opens and shuts them. Folded until opened, and remembered
+//! (`Prefs::teams_open`). Conversas (list/view.rs) and Agentes deste espaço (ui/attention.rs) share it; the MCP's
+//! `chats_view` and `sidebar` open and shut it too.
 
 use super::*;
 use crate::app::chat::accordion::chevron;

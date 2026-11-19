@@ -10,7 +10,7 @@ use egui::Galley;
 use egui::text::LayoutJob;
 use std::sync::Arc;
 
-/// The size of a message's words, the interface's 14 (asked smaller than 16; the user's bubble too).
+/// The size of a message's words, the interface's 14 (the user's bubble too).
 pub(crate) const PROSE: f32 = 14.0;
 
 /// `prose` with `media` drawing the pictures and files (chat/media.rs), never wider than `width`.
@@ -373,9 +373,9 @@ const CELL_MARGIN: egui::Margin = egui::Margin::symmetric(10, 6);
 const COLUMN_LEAST: f32 = 90.0;
 
 /// A Markdown table as a grid: the header muted and bold, the rows striped, all in one thin frame of radius 8. As wide
-/// as the conversation's column may be (asked: "pode pegar a largura inteira do chat para não ficar espremido"): its
-/// columns as wide as their words when it fits, a narrow table at its own width; wider, the wide columns share what is
-/// left and their cells wrap, nothing cut; wider still, it scrolls sideways.
+/// as the conversation's column may be: its columns as wide as their words when it fits, a narrow table at its own
+/// width; wider, the wide columns share what is left and their cells wrap, nothing cut; wider still, it scrolls
+/// sideways.
 fn table(ui: &mut egui::Ui, rows: &[&str], c: &UiColors, dark: bool) {
     let cells = table_cells(rows);
     let ink = |n: usize| if n == 0 { tint(dark, 140) } else { c.text };

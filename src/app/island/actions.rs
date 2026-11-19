@@ -94,7 +94,7 @@ impl DrawingApp {
         if out.open_app_settings {
             self.open_settings_at("Geral");
             self.raise_window = true;
-            // the app took it: the island folds back (asked: "ao abrir o app ele precisa voltar para a ilha")
+            // the app took it: the island folds back
             self.island.settings = false;
             self.island.machine.force_petit(time);
         }

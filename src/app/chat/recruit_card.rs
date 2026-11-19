@@ -122,7 +122,7 @@ impl DrawingApp {
                     let width = inner.width() - 14.0;
                     ui.set_max_width(width);
                     ui.spacing_mut().item_spacing.y = 4.0;
-                    // with the model and effort the Maestro picked (asked: "precisa ficar descritível o modelo e o effort que o Maestro escolhe")
+                    // with the model and effort the Maestro picked
                     let tuning =
                         self.chats.iter().find(|chat| chat.id == id).map(|chat| crate::app::maestro::tuning::describe(&chat.agent, &chat.model, &chat.effort));
                     ui.label(egui::RichText::new(tuning.map_or("Tarefa".into(), |tuning| format!("Tarefa · {tuning}"))).size(12.0).color(look.muted));

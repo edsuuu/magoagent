@@ -59,7 +59,7 @@ impl DrawingApp {
     }
 
     /// `slash_entries` for the box of chat `id` holding `draft`: the island's own box and a card's on the canvas have
-    /// theirs (asked: "quando digito /c, não aparece um select para aparecer as opções que eu tenho").
+    /// theirs.
     pub(crate) fn slash_entries_of(&mut self, id: &str, draft: &str) -> Option<Vec<Entry>> {
         let query = draft.strip_prefix('/')?;
         if query.contains(char::is_whitespace) || self.slash.off.as_deref() == Some(draft) {

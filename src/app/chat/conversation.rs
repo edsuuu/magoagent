@@ -132,8 +132,7 @@ impl DrawingApp {
     }
 
     /// The agents `id` recruited (`boss_of`) at work now, a line each at the end of its conversation: who, for how long
-    /// and the step it is on, as it happens; what each says at the end comes in as its answer (ask.rs; asked: "quando
-    /// recebe uma mensagem dos agentes, não aparece na hora").
+    /// and the step it is on, as it happens; what each says at the end comes in as its answer.
     pub(crate) fn team_rows(&self, ui: &mut egui::Ui, id: &str, look: &Look, time: f64) {
         let working: Vec<(String, f64)> = self
             .chats

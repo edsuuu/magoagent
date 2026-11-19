@@ -138,7 +138,6 @@ impl DrawingApp {
         ui.painter().rect_stroke(rect, 10, Stroke::new(1.0, edge), StrokeKind::Inside);
         let response = response.on_hover_cursor(CursorIcon::PointingHand).tip("Clique para ampliar");
         if response.clicked() {
-            // asked: "ela deveria abrir dentro do canvas e não no app do meu PC"
             let (path, data) = (path.clone(), data_uri(src).map(str::to_string));
             let shown = Shown::new(ui.ctx(), key, move || match (path, data) {
                 (Some(path), _) => fs::read(path).ok(),
@@ -149,9 +148,8 @@ impl DrawingApp {
         }
     }
 
-    /// A file named by the agent: a card with its name, kind and weight; a click opens it (a text file in a note on the
-    /// canvas, asked: "abrir no canvas em uma nota"), a right click copies its path, shows its folder or opens it in the
-    /// system's program. `label` empty: the file's own name.
+    /// A file named by the agent: a card with its name, kind and weight; a click opens it, a right click copies its
+    /// path, shows its folder or opens it in the system's program. `label` empty: the file's own name.
     pub(crate) fn chat_file_card(&self, ui: &mut egui::Ui, path: &Path, label: &str, c: &UiColors) {
         let meta = fs::metadata(path).ok();
         let name =

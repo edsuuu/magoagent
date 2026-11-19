@@ -77,8 +77,7 @@ pub(crate) struct Element {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) chat: Option<ChatSpec>,
     /// A file this drawing points to (`src/x.rs` or `src/x.rs:120`; an address on the web too): a mark at its corner
-    /// opens it in a tree on the canvas (filetree/link.rs; asked: "nos desenhos do canvas, cria um link para os arquivos
-    /// [...] ele cria um link no desenho que já me leva lá").
+    /// opens it in a tree on the canvas.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) link: Option<String>,
     #[serde(flatten)]

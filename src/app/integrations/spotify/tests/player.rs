@@ -268,7 +268,7 @@ fn soloists_queue_is_read_from_its_json_and_from_its_text() {
 #[test]
 fn the_bars_take_the_covers_liveliest_colour() {
     let cover = |pixels: &[[u8; 4]]| pixels.iter().flatten().copied().collect::<Vec<u8>>();
-    // mostly dark grey with a red patch: the red wins, as it is (asked: "traz cores que nem estão na capa")
+    // mostly dark grey with a red patch: the red wins, as it is
     let red = super::super::accent(&cover(&[[30, 30, 30, 255], [30, 30, 30, 255], [30, 30, 30, 255], [150, 20, 20, 255]]));
     assert_eq!(red, Color32::from_rgb(150, 20, 20));
     // a dark colour is lifted to be seen on black, its mix kept
@@ -282,8 +282,8 @@ fn the_bars_take_the_covers_liveliest_colour() {
     assert_eq!(grey, Color32::from_gray(0xa8), "a grey cover: grey dots, as the Dynamic Island's");
 }
 
-/// Asked ("as cores podem ter um degradê"): the bars go from the cover's liveliest colour to another one of it, and a
-/// cover of a single colour goes to a lighter tone of it.
+/// The bars go from the cover's liveliest colour to another one of it, and a cover of a single colour goes to a
+/// lighter tone of it.
 #[test]
 fn the_bars_take_two_colours_of_the_cover() {
     let cover = |pixels: &[[u8; 4]]| pixels.iter().flatten().copied().collect::<Vec<u8>>();
@@ -302,8 +302,8 @@ fn the_bars_take_two_colours_of_the_cover() {
     assert!(lighter.g() > grey.g(), "a lighter grey after it: {lighter:?}");
 }
 
-/// Asked ("a transição entre músicas está ruim na ilha"): the bars' colour goes from the pair before to the new one in
-/// the middle of the fade, and the cover before stays until the new one comes.
+/// The bars' colour goes from the pair before to the new one in the middle of the fade, and the cover before stays
+/// until the new one comes.
 #[test]
 fn the_bars_colour_goes_from_the_old_one_to_the_new_one() {
     use crate::app::integrations::spotify::{CoverFade, FADE};
@@ -347,8 +347,7 @@ fn a_new_songs_cover_fades_in_over_the_one_before_it() {
     assert_eq!(CoverFade::read(&ctx), fading, "the pill reads what the tick left");
 }
 
-/// Asked ("deixa a Luna trocar de cor, mas com contraste: roxo escuro não tem"): the cover's colour on Luna is always light
-/// enough for the dark island, its hue kept; a light one stays as it is.
+/// The cover's colour on Luna is always light enough for the dark island, its hue kept; a light one stays as it is.
 #[test]
 fn luna_wears_the_covers_colour_light_enough_to_be_seen() {
     use super::super::readable;

@@ -28,9 +28,8 @@ const DRAG_WAIT: f64 = 0.3;
 
 /// X11: whether the drag asked at `since` starts now, at `time`: once the system has the window (`placed`, last frame) at
 /// the drag size and where it was put (`origin`, `size`), or after `DRAG_WAIT` whatever it has. The system resizes and
-/// moves the window in two steps, and a drag begun between them took the window where it was: the island, at the left
-/// of the big window's room, jumped off to the left of the cursor (asked: "eu tento mover às vezes e ela salta para a
-/// esquerda").
+/// moves the window in two steps, and a drag begun between them took the window where it was: the island, at the left of
+/// the big window's room, jumped off to the left of the cursor.
 pub(crate) fn drag_ready(placed: Option<Rect>, origin: Pos2, size: Vec2, since: f64, time: f64) -> bool {
     let there = placed.is_some_and(|rect| (rect.min - origin).abs().max_elem() < 1.5 && (rect.size() - size).abs().max_elem() < 1.5);
     there || time - since > DRAG_WAIT
@@ -482,7 +481,7 @@ impl DrawingApp {
                 let old = self.island.anchor.unwrap_or([origin.x + size.x / 2.0, origin.y + TOP_PAD]);
                 let island = island_in(old, self.island.dock, origin, size, self.island.anim).translate(placed.min.to_vec2());
                 // the monitor the cursor let it go on: by the island's centre, one dropped by the edge between two
-                // monitors went to the other one (asked: "na lateral que tem outro monitor, ela não gruda")
+                // monitors went to the other one
                 let work = crate::app::chat::mini::screen_work(ctx, grab.unwrap_or(island.center()));
                 let island = pushed_to_top(island, placed.top(), work);
                 let anchor = keep_on_screen(dropped(island, work), work);
@@ -536,8 +535,8 @@ impl DrawingApp {
 mod tests {
     use super::*;
 
-    /// Asked: "eu tento mover às vezes e ela salta para a esquerda". The drag waits for the window to be where and as big
-    /// as it was put: resized but not yet moved (at the big window's left), it would carry the island off to the left.
+    /// The drag waits for the window to be where and as big as it was put: resized but not yet moved (at the big window's
+    /// left), it would carry the island off to the left.
     #[test]
     fn the_drag_waits_for_the_window_to_be_where_it_was_put() {
         let (origin, size) = (Pos2::new(866.0, 0.0), Vec2::new(188.0, 32.0));
@@ -737,7 +736,7 @@ mod tests {
         assert_eq!(pulled_to(rect, Dock::Right, Pos2::new(rect.left() - 100.0, 0.0), true, false), Vec2::new(740.0, 360.0));
     }
 
-    /// Asked ("eu arrasto pra cima ele fica pulando ate o final"): the system stops a window at the top bar.
+    /// The system stops a window at the top bar.
     #[test]
     fn a_dragged_island_has_a_window_of_its_size_until_it_opens_once_let_go() {
         let closed = Vec2::new(288.0, 40.0);
@@ -749,7 +748,6 @@ mod tests {
         assert_eq!(slim_kept(None, closed, true), None);
     }
 
-    /// Asked ("ele nao está identificando quando a ilha está em um monitor ou está em outro").
     #[test]
     fn the_island_goes_by_the_monitor_it_is_on() {
         let first = Rect::from_min_max(Pos2::new(0.0, 32.0), Pos2::new(1920.0, 1017.0));
@@ -765,8 +763,8 @@ mod tests {
         let anchor = dropped(Rect::from_min_size(Pos2::new(2600.0, 1000.0), Vec2::new(288.0, 40.0)), second);
         assert_eq!(anchor[1], 1079.0);
         assert_eq!(keep_on_screen(anchor, second), [2744.0, 1079.0], "kept where it is, on the second monitor");
-        // asked ("na lateral que tem outro monitor, ela não gruda"): held by Luna, at its left, the island let go by the
-        // first's right edge has its centre on the second; the cursor's monitor is the first, and it sticks to its side
+        // held by Luna, at its left, the island let go by the first's right edge has its centre on the second; the
+        // cursor's monitor is the first, and it sticks to its side
         let across = Rect::from_min_size(Pos2::new(1880.0, 480.0), Vec2::new(188.0, 38.5));
         let grab = Pos2::new(1900.0, 500.0);
         assert_eq!(work_at(&works, across.center()), Some(second), "by its centre, the other monitor");
@@ -774,8 +772,7 @@ mod tests {
         assert_eq!(Dock::of(anchor, first), Dock::Right, "on the first's right side: {anchor:?}");
     }
 
-    /// Asked ("tento pegar para arrastar ... ele trava, preciso soltar o click e fazer novamente"): a pause in the middle
-    /// of a drag must not move the window; sticking to an edge waits longer.
+    /// A pause in the middle of a drag must not move the window; sticking to an edge waits longer.
     #[test]
     fn a_pause_in_a_drag_does_not_move_the_window_until_it_has_been_still_a_while() {
         let placed = Pos2::new(600.0, 90.0);
