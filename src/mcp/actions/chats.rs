@@ -16,10 +16,10 @@ impl DrawingApp {
         self.chats.iter().map(line).collect::<Vec<_>>().join("\n")
     }
 
-    /// The Chats area (`chats_view`): open on the chip `filter` and the search `query` (None keeps it), with what it lists,
-    /// each Maestro's agents under it; `team` opens or folds a Maestro's agents (chat/list/team.rs) first. Or the canvas back.
-    pub(super) fn act_chats_view(&mut self, state: &str, filter: &str, query: Option<&str>, team: Option<(&str, bool)>) -> Result<String, String> {
-        use crate::app::chat::list::running::{Show, chip, kept, running_counts, space_groups};
+    /// The Chats area (`chats_view`): open on the search `query` (None keeps it), with what it lists, each Maestro's
+    /// agents under it; `team` opens or folds a Maestro's agents (chat/list/team.rs) first. Or the canvas back.
+    pub(super) fn act_chats_view(&mut self, state: &str, query: Option<&str>, team: Option<(&str, bool)>) -> Result<String, String> {
+        use crate::app::chat::list::running::{chip, kept, running_counts, space_groups};
         use crate::app::chat::list::team::{team_summary, under_maestros};
 
         let folded = match team {
@@ -33,10 +33,6 @@ impl DrawingApp {
             return Ok(format!("{folded}De volta ao canvas."));
         }
 
-        if !filter.is_empty() {
-            self.chat_listing.show = Show::named(filter).ok_or_else(|| format!("Filtro desconhecido: {filter}. Use all, working, waiting ou ready."))?;
-        }
-
         if let Some(query) = query {
             self.chat_listing.filter = query.trim().to_string();
         }
@@ -44,12 +40,11 @@ impl DrawingApp {
         self.show_chat();
         let entries = self.running_entries();
         let (running, waiting) = running_counts(entries.iter().map(|entry| entry.state));
-        let show = self.chat_listing.show;
-        let shown = kept(&entries, show, &self.chat_listing.filter.to_lowercase());
-        let mut report = format!("{folded}Chats · {running} rodando · {waiting} esperando (filtro: {})", show.label());
+        let shown = kept(&entries, &self.chat_listing.filter.to_lowercase());
+        let mut report = format!("{folded}Chats · {running} rodando · {waiting} esperando");
 
         if !self.chat_listing.filter.is_empty() {
-            report += &format!(", busca: {}", self.chat_listing.filter);
+            report += &format!(" (busca: {})", self.chat_listing.filter);
         }
 
         let order: Vec<String> = self.spaces.list.iter().map(|space| space.id.clone()).collect();

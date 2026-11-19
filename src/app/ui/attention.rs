@@ -241,15 +241,12 @@ impl DrawingApp {
         let clipped = painter.with_clip_rect(text);
 
         clipped.text(Pos2::new(text.left(), rect.top() + 12.0), egui::Align2::LEFT_CENTER, name, FontId::proportional(14.0), t.text);
-        let last = row.mission.clone().or_else(|| self.state_note(row));
+        // the state is a dot of its colour (blue at work, amber waiting, green done), in words in the row's tip
+        let last = row.mission.clone().or_else(|| self.state_note(row)).unwrap_or_default();
 
-        let sub = match last {
-            Some(last) => format!("{} · {last}", state_word(row.state)),
-            None => state_word(row.state).to_string(),
-        };
-
-        clipped.text(Pos2::new(text.left(), rect.top() + 28.0), egui::Align2::LEFT_CENTER, sub, FontId::proportional(12.0), t.muted);
-        response.on_hover_cursor(CursorIcon::PointingHand).clicked()
+        clipped.circle_filled(Pos2::new(text.left() + 3.5, rect.top() + 28.0), 3.5, crate::app::chat::list::running::chip(&row.state).1);
+        clipped.text(Pos2::new(text.left() + 12.0, rect.top() + 28.0), egui::Align2::LEFT_CENTER, last, FontId::proportional(12.0), t.muted);
+        response.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(state_word(row.state)).clicked()
     }
 
     /// Does what the top of the list asked for.

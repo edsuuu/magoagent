@@ -181,7 +181,7 @@ impl DrawingApp {
         let cap = 200f32.min(area.height() * 0.35);
         // everything running in every space, and the agent whose conversation is open (list/running.rs)
         let listed = self.running_entries();
-        let (mut filter, mut show) = (std::mem::take(&mut self.chat_listing.filter), self.chat_listing.show);
+        let mut filter = std::mem::take(&mut self.chat_listing.filter);
 
         egui::Area::new(egui::Id::unique("chat_screen")).fixed_pos(area.min).order(egui::Order::Middle).show(ctx, |ui| {
             ui.set_min_size(area.size());
@@ -189,7 +189,7 @@ impl DrawingApp {
             ui.painter().rect_filled(area.with_min_y(0.0).with_max_x(ctx.content_rect().right()), 0, look.bg);
 
             if full && !narrow {
-                self.chat_list(ui, side, &listed, &look, time, &mut act, &mut filter, &mut show);
+                self.chat_list(ui, side, &listed, &look, time, &mut act, &mut filter);
             } else {
                 self.chat_column(ui, side, &self.chat_rows(), &look, time, &mut act);
             }
@@ -332,7 +332,7 @@ impl DrawingApp {
             let over = Rect::from_min_size(side.min, Vec2::new(LIST, side.height()));
 
             egui::Area::new(egui::Id::unique("chat_list_over")).fixed_pos(over.min).order(egui::Order::Foreground).show(ctx, |ui| {
-                self.chat_list(ui, over, &listed, &look, time, &mut act, &mut filter, &mut show);
+                self.chat_list(ui, over, &listed, &look, time, &mut act, &mut filter);
             });
 
             // picking one closes it
@@ -371,7 +371,7 @@ impl DrawingApp {
 
         self.chat_draft = draft;
         self.chat_search = search;
-        (self.chat_listing.filter, self.chat_listing.show) = (filter, show);
+        self.chat_listing.filter = filter;
 
         // Nova conversa: a draft, made a chat by its first message
         if act.new_chat {

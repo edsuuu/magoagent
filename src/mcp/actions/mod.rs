@@ -135,7 +135,7 @@ impl DrawingApp {
             "chats_view" => {
                 let team = Some(text("team")).filter(|team| !team.is_empty());
 
-                self.act_chats_view(&text("state"), &text("filter"), args["query"].as_str(), team.as_deref().map(|team| (team, args["team_open"] != false)))
+                self.act_chats_view(&text("state"), args["query"].as_str(), team.as_deref().map(|team| (team, args["team_open"] != false)))
             }
             "chat_new" => self.act_chat_new(&text("agent"), &text("folder")),
             "chat_provider" => {
