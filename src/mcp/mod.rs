@@ -62,6 +62,41 @@ vault_fill digita a senha (ou o e-mail, num login via Google/Apple) no campo foc
 você veja o segredo. Quando um site tem mais de uma conta, pergunte à pessoa qual usar antes de vault_fill; nunca peça a \
 senha em texto nem tente lê-la da página.";
 
+/// Set (to "1") in a recruit's environment, its chat's or its terminal's: the agent recruits no one, only the Maestro does.
+pub(crate) const RECRUIT_ENV: &str = "MAGOAGENT_RECRUIT";
+
+fn recruited() -> bool {
+    std::env::var_os(RECRUIT_ENV).is_some_and(|value| !value.is_empty())
+}
+
+/// The tools an agent sees: a recruit's without recruit_agent.
+pub(crate) fn tools_for(recruit: bool) -> Value {
+    let mut tools = tools();
+
+    if let (true, Some(list)) = (recruit, tools.as_array_mut()) {
+        list.retain(|tool| tool["name"] != "recruit_agent");
+    }
+
+    tools
+}
+
+/// What the server tells an agent: a recruit hears that recruiting is the Maestro's, not how to do it.
+pub(crate) fn instructions(recruit: bool) -> String {
+    if !recruit {
+        return INSTRUCTIONS.into();
+    }
+
+    INSTRUCTIONS
+        .replace(
+            "um agente novo para uma tarefa é recruit_agent, que segue o ajuste Invocação dos agentes (um chat do app ou um terminal), não um terminal com claude.",
+            "só a Luna (o Maestro) recruta agentes novos: você é um agente recrutado e não recruta outros.",
+        )
+        .replace(
+            "Para montar um time: recruit_agent cria um agente abaixo de você já ligado a você (com o model e o effort que você escolher), create_portal",
+            "Com o time: create_portal",
+        )
+}
+
 pub fn run() {
     let stdin = std::io::stdin();
     let mut out = std::io::stdout();
@@ -125,11 +160,11 @@ pub(crate) fn handle(message: &Value) -> Option<Value> {
                 "protocolVersion": params["protocolVersion"].as_str().unwrap_or(PROTOCOL_VERSION),
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "magoagent", "version": env!("CARGO_PKG_VERSION") },
-                "instructions": INSTRUCTIONS,
+                "instructions": instructions(recruited()),
             }))
         }
         "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({ "tools": tools() })),
+        "tools/list" => Ok(json!({ "tools": tools_for(recruited()) })),
         "tools/call" => Ok(call(params["name"].as_str().unwrap_or_default(), &params["arguments"])),
         other => Err(json!({ "code": -32601, "message": format!("método desconhecido: {other}") })),
     };

@@ -114,6 +114,19 @@ fn agent_names_are_readable() {
 }
 
 #[test]
+fn a_recruit_neither_sees_recruit_agent_nor_hears_how_to_recruit() {
+    let names = |recruit| tools_for(recruit).as_array().unwrap().iter().map(|tool| tool["name"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+
+    assert!(names(false).iter().any(|name| name == "recruit_agent"));
+    assert!(!names(true).iter().any(|name| name == "recruit_agent") && names(true).len() == names(false).len() - 1);
+    assert_eq!(instructions(false), INSTRUCTIONS);
+    // the sentences that teach recruiting are gone, the rest stays
+    let told = instructions(true);
+
+    assert!(!told.contains("recruit_agent") && told.contains("só a Luna (o Maestro) recruta") && told.contains("create_portal abre"), "{told}");
+}
+
+#[test]
 fn base64_matches_rfc4648() {
     assert_eq!(base64(b""), "");
     assert_eq!(base64(b"f"), "Zg==");

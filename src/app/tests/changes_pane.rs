@@ -80,6 +80,7 @@ fn chat(id: &str, name: &str, cwd: &Path) -> crate::app::chat::direct::Chat {
         effort: String::new(),
         recruit: false,
         named: false,
+        space: String::new(),
         draft: false,
     }
 }

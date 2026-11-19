@@ -258,6 +258,7 @@ fn a_window_a_chats_agent_draws_is_roped_to_its_card() {
         effort: String::new(),
         recruit: false,
         named: false,
+        space: String::new(),
         draft: false,
     }];
 

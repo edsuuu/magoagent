@@ -42,6 +42,10 @@ pub(crate) struct Chat {
     /// Renamed by the person (Renomear on its row): `name` is its title, not the conversation's own.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) named: bool,
+    /// The workspace a recruit was born in (its recruiter's, the one on screen): the lists group it there with its card
+    /// off view. Empty: the space whose canvas shows its card.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) space: String,
     /// Opened by the chat screen and not talked to yet: only that screen shows it, with no card on the canvas and
     /// nothing saved, and it goes when another chat is picked. Its first message makes it a chat.
     #[serde(skip)]
@@ -398,6 +402,7 @@ impl DrawingApp {
             effort: String::new(),
             recruit: false,
             named: false,
+            space: String::new(),
             draft,
         });
 

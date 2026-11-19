@@ -16,7 +16,15 @@ fn luna_with_two(app: &mut DrawingApp) -> (String, Vec<String>) {
     for task in ["claude \"revise o login\"", "claude \"rode os testes\""] {
         let (reply, said) = std::sync::mpsc::channel();
 
-        app.apply_agent_command(UiCommand::Recruit { from: luna.clone(), command: task.into(), worktree: false, mode: Some(AgentMode::Chat), reply });
+        app.apply_agent_command(UiCommand::Recruit {
+            from: luna.clone(),
+            name: String::new(),
+            command: task.into(),
+            worktree: false,
+            mode: Some(AgentMode::Chat),
+            reply,
+        });
+
         assert!(said.recv().unwrap().is_ok());
     }
 

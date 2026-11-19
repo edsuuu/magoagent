@@ -217,12 +217,12 @@ impl DrawingApp {
         entries
     }
 
-    /// The space a row runs in (its id, no floor; "" none): a terminal's, or a chat's, which belongs to none, the one
-    /// whose canvas has its card.
+    /// The space a row runs in (its id, no floor; "" none): a terminal's, or a chat's, the one whose canvas has its card
+    /// (a recruit's off view: the one it was born in).
     pub(crate) fn row_space(&self, row: &AgentRow) -> String {
         let key = match self.is_chat(&row.id) {
             true if self.chat_node(&row.id).is_some() => self.scope_key(),
-            true => String::new(),
+            true => self.chats.iter().find(|chat| chat.id == row.id).map(|chat| chat.space.clone()).unwrap_or_default(),
             false => row.space.clone(),
         };
 
