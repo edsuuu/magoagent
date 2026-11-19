@@ -13,7 +13,7 @@ pub(super) fn squeeze(galley: &mut egui::Galley, rows: &[(usize, bool)], row_h: 
     let mut last = 0.0;
 
     for (line, row) in galley.rows.iter_mut().enumerate() {
-        let (display, shown) = rows.get(line).copied().unwrap_or((after + line - rows.len(), true));
+        let (display, shown) = rows.get(line).copied().unwrap_or_else(|| (after + line - rows.len(), true));
 
         row.pos.y = display as f32 * row_h;
         last = row.pos.y + row_h;
