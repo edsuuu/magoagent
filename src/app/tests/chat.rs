@@ -859,3 +859,41 @@ fn the_compact_band_says_less_in_a_narrow_panel() {
     assert_eq!(band_words(30.0, width), Some("Em "));
     assert_eq!(band_words(10.0, width), None);
 }
+
+/// While the agent works its band says, as Claude Code's status line, how long the turn runs, the tokens written and
+/// the effort the chat thinks with.
+#[test]
+fn the_work_band_says_the_turns_time_tokens_and_effort() {
+    use crate::app::ui::agents::{AgentRow, AgentState};
+
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = push_chat(&mut app, "Luna");
+
+    app.chats[0].effort = "xhigh".into();
+    app.now = 300.0;
+    let spec = TerminalSpec { name: "Luna".into(), command: "claude".into(), ..Default::default() };
+    let row = AgentRow { id: id.clone(), spec, state: AgentState::Working(300.0 - 262.0), mission: None, space: String::new() };
+    let dir = std::env::temp_dir().join(format!("magoagent-band-{}", std::process::id()));
+
+    fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("t.jsonl");
+    let said = json!({"type": "assistant", "message": {"id": "m", "content": [{"type": "text", "text": "ok"}], "usage": {"output_tokens": 23_040}}});
+
+    fs::write(&file, format!("{}\n{said}\n", json!({"type": "user", "message": {"content": "faz"}}))).unwrap();
+    let mut transcript = crate::transcript::Transcript::new(file);
+
+    transcript.poll();
+    let look = crate::app::chat::list::Look::new(true, &app.colors());
+    let screen = Rect::from_min_size(Pos2::ZERO, Vec2::new(1000.0, 200.0));
+
+    let output = ctx.run_ui(egui::RawInput { screen_rect: Some(screen), ..Default::default() }, |ui| {
+        app.work_band(ui, &row, Some(&transcript), &look, false, 0.0);
+    });
+
+    let texts: Vec<String> =
+        output.shapes.iter().filter_map(|shape| if let egui::Shape::Text(text) = &shape.shape { Some(text.galley.text().to_string()) } else { None }).collect();
+
+    assert!(texts.iter().any(|text| text == "4m 22s · 23k tokens · esforço Extra"), "{texts:?}");
+    let _ = fs::remove_dir_all(dir);
+}

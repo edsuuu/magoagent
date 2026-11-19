@@ -35,6 +35,7 @@ pub(crate) mod music;
 pub(crate) mod paint;
 pub(crate) mod picture;
 pub(crate) mod pill;
+pub(crate) mod plan;
 mod prompt;
 pub(crate) mod replay;
 mod session;

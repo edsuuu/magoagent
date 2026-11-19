@@ -321,7 +321,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "chat_command",
-            "description": "Roda um comando com barra do chat, como se a pessoa o digitasse na caixa: login (abre o navegador; console ou sso depois), logout, status, mcp, doctor, update, clear (conversa nova no mesmo chat; a anterior fica na lista Conversas, com o título dela, para ler e continuar), model e effort (com o nome ou nível), help. A saída aparece no chat, sem ir ao modelo. Outros /comandos (compact, os de .claude/commands) são mensagens ao agente: use chat_send.",
+            "description": "Roda um comando com barra do chat, como se a pessoa o digitasse na caixa: login (abre o navegador; console ou sso depois), logout, status, mcp, doctor, update, clear (conversa nova no mesmo chat; a anterior fica na lista Conversas, com o título dela, para ler e continuar), model e effort (com o nome ou nível), help, btw <pergunta> (pergunta à parte ao Claude Code, mesmo trabalhando, sem entrar na conversa), usage (o consumo do plano: 5 horas e 7 dias), context (abre o painel Contexto). A saída aparece no chat, sem ir ao modelo. Outros /comandos (compact, os de .claude/commands) são mensagens ao agente: use chat_send.",
             "inputSchema": { "type": "object", "properties": { "chat": chat, "command": { "type": "string", "description": "Ex.: \"status\", \"/model opus\", \"login sso\"" } }, "required": ["command"] },
         }),
         json!({

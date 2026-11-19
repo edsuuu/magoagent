@@ -155,7 +155,12 @@ impl DrawingApp {
         let parents = self.team_parents(&keyed);
         let looking = *show != Show::All || !filter.trim().is_empty();
         let order: Vec<String> = self.spaces.list.iter().map(|space| space.id.clone()).collect();
-        let list = Rect::from_min_max(Pos2::new(inner.left(), field.bottom() + 4.0), inner.max);
+        // the plans' use at the foot (the sidebar that says it on the canvas is hidden here)
+        let usage = self.usage_readings();
+        let foot = inner.bottom() - crate::app::usage::foot::glance_height(&usage);
+        let list = Rect::from_min_max(Pos2::new(inner.left(), field.bottom() + 4.0), Pos2::new(inner.right(), foot));
+
+        crate::app::usage::foot::glance_block(ui, Rect::from_min_max(Pos2::new(inner.left(), foot), inner.max), &usage, look, now_ms() / 1000);
 
         ui.scope_builder(egui::UiBuilder::new().max_rect(list), |ui| {
             egui::ScrollArea::vertical().id_salt("chat_agents").auto_shrink(false).show(ui, |ui| {
@@ -452,7 +457,18 @@ impl DrawingApp {
         glyph(ui.painter(), unfold.center(), 16.0, 2.0, look.soft, UNFOLD);
         act.toggle |= response.clicked();
         ui.painter().hline(Rect::from_center_size(unfold.center(), Vec2::new(28.0, 0.0)).x_range(), unfold.bottom() + 8.0, Stroke::new(1.0, look.line));
-        let list = Rect::from_min_max(Pos2::new(side.left(), unfold.bottom() + 15.0), side.max - Vec2::new(0.0, 8.0));
+        // the plans' use at the foot, in short
+        let usage = self.usage_readings();
+        let foot = side.bottom() - 8.0 - crate::app::usage::foot::glance_column_height(&usage);
+        let list = Rect::from_min_max(Pos2::new(side.left(), unfold.bottom() + 15.0), Pos2::new(side.right(), foot - 6.0));
+
+        crate::app::usage::foot::glance_column(
+            ui,
+            Rect::from_min_max(Pos2::new(side.left() + 4.0, foot), Pos2::new(side.right() - 4.0, side.bottom() - 8.0)),
+            &usage,
+            look,
+            now_ms() / 1000,
+        );
 
         ui.scope_builder(egui::UiBuilder::new().max_rect(list), |ui| {
             egui::ScrollArea::vertical().id_salt("chat_initials").auto_shrink(false).show(ui, |ui| {

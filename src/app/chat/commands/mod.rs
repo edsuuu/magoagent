@@ -35,6 +35,8 @@ enum Kind {
     Status(String),
     /// The output as it comes, under the command's name.
     Plain(&'static str),
+    /// `/btw`: the answer under its question.
+    Btw(String),
 }
 
 /// A command's process running hidden: what it prints comes when it ends.

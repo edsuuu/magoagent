@@ -50,6 +50,22 @@ pub(crate) fn line(name: &str, since: f64, elapsed: f64) -> String {
     pool[(step - 1) % pool.len()].clone()
 }
 
+/// What the band says of the turn at its right, as Claude Code's status line: how long it has run, the tokens the agent
+/// wrote and the effort it thinks with ("4m 22s · 23k tokens · esforço Extra"); what isn't known is left out.
+pub(crate) fn turn_stats(seconds: f64, tokens: u64, effort: &str) -> String {
+    let mut parts = vec![crate::app::chat::list::elapsed(seconds)];
+
+    if tokens > 0 {
+        parts.push(format!("{} tokens", crate::app::chat::context::short(tokens).replace('.', ",")));
+    }
+
+    if !effort.is_empty() {
+        parts.push(format!("esforço {effort}"));
+    }
+
+    parts.join(" · ")
+}
+
 /// Claude Code's spinner at `center`: `·` `✢` `✳` `✶` `✻` `✽` and back, drawn as spokes so no font
 /// has to carry the glyphs.
 pub(crate) fn spinner(p: &Painter, center: Pos2, size: f32, color: Color32, t: f64) {
@@ -118,6 +134,14 @@ pub(crate) fn shimmer(p: &Painter, left: Pos2, text: &str, font: FontId, base: C
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The band's right side, as Claude Code's status line, in Portuguese; what isn't known is left out.
+    #[test]
+    fn the_turn_says_its_time_tokens_and_effort() {
+        assert_eq!(turn_stats(262.0, 23_040, "Extra"), "4m 22s · 23k tokens · esforço Extra");
+        assert_eq!(turn_stats(8.0, 1_260, ""), "8 s · 1,3k tokens");
+        assert_eq!(turn_stats(8.0, 0, ""), "8 s");
+    }
 
     #[test]
     fn the_line_opens_with_the_name_then_turns_and_keeps_its_order_in_a_turn() {

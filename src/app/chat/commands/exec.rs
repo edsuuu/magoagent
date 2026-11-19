@@ -64,6 +64,23 @@ impl DrawingApp {
             }
             Local::Model(arg) => self.chat_set_model(id, &arg),
             Local::Effort(arg) => self.chat_set_effort(id, &arg),
+            Local::Context => self.prefs.chat_panel = true,
+            Local::Usage => {
+                let note = self.usage_note();
+
+                self.chat_note(id, note);
+            }
+            Local::Btw(question) => match (question.is_empty(), chat.session.clone()) {
+                (true, _) => self.chat_note(id, "Use /btw <pergunta>: o agente responde à parte, mesmo trabalhando, e a pergunta não entra na conversa."),
+                (false, None) => self.chat_note(id, "A conversa ainda não começou: mande uma mensagem antes do /btw."),
+                (false, Some(session)) => {
+                    let mut args: Vec<String> = ["-p", "--output-format", "text", "--no-session-persistence", "--resume", &session].map(String::from).to_vec();
+
+                    args.extend(crate::app::chat::footer::tuning_args(&chat.agent, &chat.model, &chat.effort));
+                    args.push(btw_prompt(&question));
+                    self.start_cmd(ctx, id, args, Kind::Btw(question));
+                }
+            },
             other => {
                 match cli_args(&chat.agent, &other) {
                     Err(error) => self.chat_note(id, error),
@@ -85,6 +102,23 @@ impl DrawingApp {
                 }
             }
         }
+    }
+
+    /// `/usage`: each agent's 5 hours and 7 days and when they renew, as the sidebar's foot reads them; not read yet,
+    /// a read now.
+    pub(super) fn usage_note(&mut self) -> String {
+        let now = now_ms() / 1000;
+        let shown = self.usage_readings();
+
+        if shown.is_empty() {
+            self.usage_ui.probe.next = 0.0;
+
+            return "O consumo do plano ainda não foi lido: tente /usage de novo em alguns segundos.".into();
+        }
+
+        let agents: Vec<String> = shown.iter().map(|(agent, reading)| crate::app::usage::foot::glance_tip(*agent, reading, now)).collect();
+
+        format!("Consumo do plano\n{}", agents.join("\n"))
     }
 
     pub(super) fn chat_summary(&self, chat: &Chat) -> String {
@@ -217,6 +251,7 @@ Clique em Mandar de novo para reenviar a última mensagem."
                 },
                 Kind::Status(summary) => format!("{summary}{}", status(&said).1),
                 Kind::Plain(title) => format!("{title}\n{}", if said.is_empty() { "(sem saída)" } else { &said }),
+                Kind::Btw(question) => format!("Pergunta à parte: {question}\n{}", if said.is_empty() { "(sem resposta)" } else { &said }),
             };
 
             self.chat_note(&id, note);

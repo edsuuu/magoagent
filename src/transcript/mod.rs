@@ -363,6 +363,9 @@ pub(crate) struct Transcript {
     /// The person's messages shown the moment they were sent, before the agent wrote them down:
     /// the file's copy of each, when it comes, is not shown twice.
     pub(crate) echoes: usize,
+    /// The tokens the agent wrote since the person's last message, by its messages (each line of a message says the
+    /// same usage, or a part of it on its first blocks: the largest counts).
+    turn: std::collections::HashMap<String, u64>,
 }
 
 impl Transcript {
@@ -377,7 +380,16 @@ impl Transcript {
             running: Vec::new(),
             first_read: FIRST_READ,
             echoes: 0,
+            turn: std::collections::HashMap::new(),
         }
+    }
+
+    /// The tokens the agent wrote in this turn (since the person's last message), as Claude Code's status line counts
+    /// them: what the chat's band shows while it works.
+    // ponytail: grows at each block the file gets (thinking, text, a tool), not at each token as the terminal's
+    // estimate does; a live count would estimate from the stream's text deltas (`--include-partial-messages`).
+    pub(crate) fn turn_tokens(&self) -> u64 {
+        self.turn.values().sum()
     }
 
     /// Reads only what is appended from now on (an ask over the bridge waits for its answer).
@@ -461,6 +473,15 @@ impl Transcript {
                 // killed mid-call) is over
                 if said.iter().any(|item| matches!(item, ChatItem::User(_))) {
                     self.running.clear();
+                    self.turn.clear();
+                }
+
+                if let (Some(message), Some(written)) = (value["message"]["id"].as_str(), value["message"]["usage"]["output_tokens"].as_u64())
+                    && value["type"] == "assistant"
+                {
+                    let counted = self.turn.entry(message.to_string()).or_default();
+
+                    *counted = (*counted).max(written);
                 }
 
                 for item in said {
