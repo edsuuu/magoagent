@@ -4,7 +4,7 @@
 use super::*;
 use crate::app::mascot::identity::own_color;
 
-/// Two chats of one program ("Agente WhatsApp" and "Luna", both Codex's), their ids chosen so they want the same colour.
+/// Two chats of one program ("Agente Telegram" and "Luna", both Codex's), their ids chosen so they want the same colour.
 fn twins() -> (String, String) {
     let first = "c-0".to_string();
     let second = (1..500).map(|index| format!("c-{index}")).find(|id| own_color(id) == own_color(&first)).unwrap();
@@ -24,7 +24,7 @@ fn two_agents_of_one_program_get_two_colours_that_stay() {
     let (first, second) = twins();
     let mut app = DrawingApp::default();
 
-    app.chats = vec![chat(&first, "codex", "Agente WhatsApp"), chat(&second, "codex", "Luna")];
+    app.chats = vec![chat(&first, "codex", "Agente Telegram"), chat(&second, "codex", "Luna")];
     let colors = |app: &DrawingApp| app.running_entries().iter().map(|entry| (entry.id.clone(), entry.color)).collect::<Vec<_>>();
     let shown = colors(&app);
 
@@ -35,7 +35,7 @@ fn two_agents_of_one_program_get_two_colours_that_stay() {
     // from one run to the next and whatever the order of the list
     let mut again = DrawingApp::default();
 
-    again.chats = vec![chat(&second, "codex", "Luna"), chat(&first, "codex", "Agente WhatsApp")];
+    again.chats = vec![chat(&second, "codex", "Luna"), chat(&first, "codex", "Agente Telegram")];
     assert_eq!((again.agent_color(&first), again.agent_color(&second)), (shown[0].1, shown[1].1));
     // a third comes: the two keep theirs
     app.chats.push(chat("c-novo", "claude", "Faísca"));

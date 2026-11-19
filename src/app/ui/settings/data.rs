@@ -126,7 +126,7 @@ impl DrawingApp {
             ];
 
             if plan.keychain {
-                lines.push("• o cofre de senhas do navegador e os tokens do GitHub, do Spotify e do WhatsApp".into());
+                lines.push("• o cofre de senhas do navegador e os tokens do GitHub e do Spotify".into());
                 lines.push("• a pasta ~/.magoagent, onde trabalham os chats sem pasta escolhida".into());
             } else {
                 lines.push("Esta é a versão de desenvolvimento: só a pasta dela é apagada (o cofre e o ~/.magoagent são do app instalado).".into());
