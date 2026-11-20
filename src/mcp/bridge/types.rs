@@ -182,6 +182,14 @@ pub(crate) enum UiCommand {
         text: String,
         reply: mpsc::Sender<Result<String, String>>,
     },
+    /// A question for a terminal that stayed busy past the asker's wait: it waits in that terminal's line and goes once
+    /// it is free; a chat that asked gets the answer when the terminal's turn ends (app/chat/queue.rs).
+    QueueAsk {
+        from: String,
+        to: String,
+        asker: String,
+        text: String,
+    },
     /// `check` on a chat: its state and the end of its conversation.
     CheckChat {
         id: String,

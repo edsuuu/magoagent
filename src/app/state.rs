@@ -259,6 +259,8 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_asks: Vec<chat::ask::ChatAsk>,
     /// The first message of each recruit chat, sent when the chat can take it (maestro/mod.rs).
     pub(crate) chat_starts: Vec<(String, String)>,
+    /// Chats moving to another folder (`set_folder`), by id: each moves once it answers nothing (chat/moving.rs).
+    pub(crate) chat_moves: Vec<(String, String)>,
     /// Who each agent answers to (agent → the chat or terminal that recruited it, or last sent it a task): a chat recruit's
     /// boss when its card's rope is in a workspace off view, and the chat a terminal's last words go to when its turn
     /// ends (chat/ask.rs).

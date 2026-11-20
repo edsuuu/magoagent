@@ -32,11 +32,13 @@ fn terminal(app: &mut DrawingApp, name: &str) -> String {
 }
 
 #[test]
-fn a_recruits_answer_says_the_space_it_was_born_in_and_warns_when_the_folder_is_anothers() {
+fn a_recruit_is_born_in_the_workspace_of_the_chats_folder_even_off_view() {
     let (mut app, dir, folder) = two_spaces("nasce");
     let boss = push_chat(&mut app, "Chefe");
 
     app.chats[0].cwd = folder.clone();
+    // the chat's card is on the canvas shown (INV-184), its folder is INV-163's
+    app.add_chat_node(&boss, None);
 
     let recruit = |app: &mut DrawingApp| {
         let (reply, said) = std::sync::mpsc::channel();
@@ -53,16 +55,26 @@ fn a_recruits_answer_says_the_space_it_was_born_in_and_warns_when_the_folder_is_
     };
 
     let said = recruit(&mut app);
-
-    assert!(said.contains("Nasceu no espaço \"INV-184\""), "{said}");
-    assert!(said.contains(&format!("a sua pasta ({folder}) é do espaço \"INV-163\"")), "{said}");
-    // in the space of its folder there is nothing to warn about
     let home = app.space_named("INV-163").unwrap();
 
+    assert!(said.contains("no espaço \"INV-163\", o da sua pasta (fora da tela)"), "{said}");
+    // not on the canvas shown: running off view in INV-163, its shell started by the next frame
+    assert!(!app.scene.elements.iter().any(|element| element.terminal.is_some()));
+    let (id, (key, spec)) = app.away.iter().next().map(|(id, entry)| (id.clone(), entry.clone())).unwrap();
+
+    assert_eq!((key.as_str(), spec.cwd.as_str()), (home.as_str(), folder.as_str()));
+    assert_eq!(app.recruit_boss.get(&id), Some(&boss));
+    // in that space's drawing, under the chat's card there, roped to it
     app.switch_space(&home).unwrap();
+    let card = app.chat_node(&boss).expect("the chat's card in INV-163");
+    let agent = app.scene.elements.iter().position(|element| element.id == id).expect("the recruit in INV-163");
+
+    assert!(local_bounds(&app.scene.elements[agent]).min.y > local_bounds(&app.scene.elements[card]).max.y, "below the card");
+    assert!(app.links().get(&boss).is_some_and(|links| links.contains(&id)), "roped to the chat's card");
+    // there now, the next one is born on screen
     let said = recruit(&mut app);
 
-    assert!(said.contains("Nasceu no espaço \"INV-163\"") && !said.contains("Atenção"), "{said}");
+    assert!(said.contains("(no espaço \"INV-163\", o que está na tela)"), "{said}");
     app.terminals.clear();
     let _ = fs::remove_dir_all(&dir);
 }
@@ -111,18 +123,74 @@ fn a_chats_card_moves_to_another_workspace_and_show_says_which_canvas_it_is_on()
 }
 
 #[test]
-fn the_task_list_says_when_an_owner_is_gone() {
+fn the_open_tasks_of_an_agent_closed_go_back_to_no_owner() {
+    let ctx = Context::default();
     let (mut app, dir, _) = two_spaces("dono");
-    let id = terminal(&mut app, "Cometa");
 
+    terminal(&mut app, "Cometa");
     app.act("tasks", &json!({ "action": "create", "title": "rodar os testes", "owner": "Cometa" })).unwrap();
-    assert!(!app.act("tasks", &json!({ "action": "list" })).unwrap().contains("não existe mais"));
+    app.act("tasks", &json!({ "action": "create", "title": "revisar", "owner": "Cometa" })).unwrap();
+    app.act("tasks", &json!({ "action": "update", "id": "t1", "state": "in_progress" })).unwrap();
+    app.act("tasks", &json!({ "action": "update", "id": "t2", "state": "done" })).unwrap();
     app.act("close_window", &json!({ "name": "Cometa" })).unwrap();
-    app.terminals.remove(&id);
-    let list = app.act("tasks", &json!({ "action": "list" })).unwrap();
+    // the shell ends with the frame that sees the terminal gone
+    app.sync_terminals(&ctx);
+    let list = app.act("tasks", &json!({ "action": "list", "state": "pending" })).unwrap();
 
-    assert!(list.contains("atenção: o responsável Cometa não existe mais"), "{list}");
+    assert!(list.contains("t1 · Pendente · sem responsável") && list.contains("Cometa foi fechado"), "{list}");
+    // a task already done keeps who did it
+    assert!(app.act("tasks", &json!({ "action": "list", "state": "done" })).unwrap().contains("t2 · Concluída · Cometa"));
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_terminal_ends_with_what_it_left_running_in_the_background() {
+    if cfg!(windows) {
+        // the same tree on Windows (taskkill), started another way: `start /b` keeps no pid to look at here
+        return;
+    }
+
+    let dir = std::env::temp_dir().join(format!("mago-arvore-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+
+    fs::create_dir_all(&dir).unwrap();
+    let pid_file = dir.join("pid");
+    let script = format!("nohup sleep 300 >/dev/null 2>&1 & echo $! > '{}'; sleep 300", pid_file.display());
+    let session = crate::terminal::TerminalSession::spawn("", "", (40, 5), None, vec![], Some(("sh", &["-c", script.as_str()][..])), 10_000).unwrap();
+    let started = std::time::Instant::now();
+
+    while fs::read_to_string(&pid_file).map_or(true, |pid| pid.trim().is_empty()) && started.elapsed() < std::time::Duration::from_secs(5) {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+
+    let background: u32 = fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
+
+    assert!(crate::transcript::process::alive(background));
+    drop(session);
+    let ended = std::time::Instant::now();
+
+    while crate::transcript::process::alive(background) && ended.elapsed() < std::time::Duration::from_secs(5) {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+
+    assert!(!crate::transcript::process::alive(background), "what was left in the background ends with the terminal");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_container_command_is_read_from_its_exec_line() {
+    use crate::app::terminal::procs::container_command;
+
+    let read = |line: &str| container_command(line).map(|(program, container, command)| format!("{program}|{container}|{command}"));
+
+    assert_eq!(read("docker exec -it -w /app hdtb-php php artisan test").as_deref(), Some("docker|hdtb-php|php artisan test"));
+    assert_eq!(read("/usr/local/bin/docker exec --user=www -e APP_ENV=testing app vendor/bin/pest").as_deref(), Some("docker|app|vendor/bin/pest"));
+    assert_eq!(read(r#""C:\Program Files\Docker\docker.exe" exec -i web npm test"#).as_deref(), Some("docker|web|npm test"));
+    assert_eq!(read("podman exec db psql").as_deref(), Some("podman|db|psql"));
+    // not an exec, or no command: nothing to stop inside
+    assert_eq!(read("docker run -it php"), None);
+    assert_eq!(read("docker exec app"), None);
+    assert_eq!(read("php artisan test"), None);
 }
 
 #[test]
@@ -267,5 +335,51 @@ fn a_page_stays_loaded_off_view_and_comes_back_where_the_agent_took_it() {
     app.remove_space(&back).unwrap();
     app.prune_away_portals();
     assert!(app.away_portals.is_empty());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_question_queued_for_a_busy_terminal_goes_once_it_is_free_and_its_answer_to_the_chat() {
+    let (mut app, dir, _) = two_spaces("fila");
+    let boss = push_chat(&mut app, "Chefe");
+    let dev = terminal(&mut app, "Dev");
+
+    app.apply_agent_command(UiCommand::QueueAsk { from: boss.clone(), to: dev.clone(), asker: "Luna".into(), text: "e o lint?".into() });
+    let queued = app.chat_queue.iter().find(|(to, _)| to == &dev).map(|(_, text)| text.clone()).unwrap();
+
+    assert_eq!(crate::app::chat::ask::asked_by(&queued), Some(("Luna", "e o lint?")));
+    // the answer comes to the chat when its turn ends
+    app.take_hook(&dev, &json!({ "hook_event_name": "Stop", "last_assistant_message": "Lint limpo." }), None);
+    assert!(app.chat_queue.iter().any(|(to, text)| to == &boss && text.contains("Lint limpo.")), "{:?}", app.chat_queue);
+    app.terminals.clear();
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn set_folder_moves_the_conversation_and_its_card_once_the_answer_ends() {
+    let (mut app, dir, folder) = two_spaces("pasta");
+    let chat = push_chat(&mut app, "Chefe");
+
+    app.chats[0].session = Some("s1".into());
+    app.chat_agent = Some(chat.clone());
+    app.add_chat_node(&chat, None);
+    // the agent asks it mid-turn: the move waits for that answer
+    app.chat_runs.insert(chat.clone(), crate::app::chat::direct::ChatRun::held(app.now));
+    let said = app.maestro_set_folder(&folder).unwrap();
+
+    assert!(said.contains("assim que esta resposta terminar") && said.contains("todo o contexto"), "{said}");
+    assert_eq!(app.chats.len(), 1, "no second chat");
+    assert_ne!(app.chats[0].cwd, folder);
+    app.apply_chat_moves();
+    assert_ne!(app.chats[0].cwd, folder, "still answering");
+    app.chat_runs.clear();
+    app.apply_chat_moves();
+    // the same conversation (its session) in the new folder, its card in that folder's workspace
+    assert_eq!((app.chats[0].cwd.as_str(), app.chats[0].session.as_deref()), (folder.as_str(), Some("s1")));
+    assert!(app.chat_node(&chat).is_none(), "off the canvas shown (INV-184)");
+    let home = app.space_named("INV-163").unwrap();
+
+    app.switch_space(&home).unwrap();
+    assert!(app.chat_node(&chat).is_some(), "on INV-163's");
     let _ = fs::remove_dir_all(&dir);
 }

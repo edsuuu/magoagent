@@ -166,6 +166,17 @@ impl DrawingApp {
         self.message_event(&boss, id, tool_summary("tarefa", &json!({ "prompt": text })));
     }
 
+    /// A question for terminal `to` that stayed busy past the asker's wait (the bridge's `QueueAsk`): in its line as the
+    /// asker's, going once it is free (`flush_chat_queue`); a chat that asked gets the answer when its turn ends.
+    pub(crate) fn queue_ask(&mut self, from: &str, to: &str, asker: &str, text: &str) {
+        if self.is_chat(from) {
+            self.recruit_boss.insert(to.to_string(), from.to_string());
+        }
+
+        self.queue_message(to, format!("Pergunta de \"{asker}{RETURNS}{text}"));
+        self.message_event(from, to, tool_summary("pergunta", &json!({ "prompt": text })));
+    }
+
     /// A task chat `from` gives chat `id` (`tasks … send`): it waits its turn in that chat's line, as it was written, and
     /// what the chat says at the end of that turn comes back to `from` (`bring_answer`), as a recruit's first task does.
     pub(crate) fn task_to_chat(&mut self, id: &str, from: &str, text: &str) {

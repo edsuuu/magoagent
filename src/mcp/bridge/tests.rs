@@ -485,12 +485,21 @@ fn a_question_to_a_busy_terminal_goes_when_it_is_free() {
     let shared = std::sync::Arc::new(team_off_view());
 
     shared.lock().unwrap().states.insert("Varinha".into(), AgentState::Working(0.0));
-    let (sender, _commands) = mpsc::channel();
-    let ask = |timeout: f64| handle(&json!({ "cmd": "ask", "from": "Papo", "name": "Varinha", "text": "oi", "timeout": timeout }), &shared, &sender);
-    let busy = ask(1.0).unwrap_err();
+    let (sender, commands) = mpsc::channel();
+    let ask = |timeout: f64| handle(&json!({ "cmd": "ask", "from": "Papo", "name": "Varinha", "text": " oi ", "timeout": timeout }), &shared, &sender);
+    let busy = ask(1.0).unwrap();
 
-    assert!(busy.contains("não ficou livre em 1 s") && busy.contains("não foi entregue"), "{busy}");
+    // busy past the wait: in its line, the answer coming to the chat by itself
+    assert!(busy.contains("ficou na fila dele") && busy.contains("chega neste chat sozinha"), "{busy}");
     assert!(shared.lock().unwrap().asking.is_empty());
+
+    match commands.try_recv() {
+        Ok(UiCommand::QueueAsk { from, to, asker, text }) => {
+            assert_eq!((from.as_str(), to.as_str(), asker.as_str(), text.as_str()), ("Papo", "Varinha", "Luna", "oi"))
+        }
+        other => panic!("{other:?}"),
+    }
+
     // free within the asker's wait: the question goes on (as far as the shell, which this test has none of)
     let freed = shared.clone();
 

@@ -211,9 +211,13 @@ fn an_agent_answers_one_question_at_a_time() {
     // nor while it works on something else (an ask that timed out included); keys still go
     shared.lock().unwrap().asking.clear();
     shared.lock().unwrap().states.insert("filho".into(), crate::app::ui::agents::AgentState::Working(0.0));
-    let busy = handle(&json!({ "cmd": "ask", "name": "filho", "text": "oi", "from": "eu", "timeout": 1 }), &shared, &sender).unwrap_err();
+    let busy = handle(&json!({ "cmd": "ask", "name": "filho", "text": "oi", "from": "eu", "timeout": 1 }), &shared, &sender).unwrap();
 
-    assert_eq!(busy, "\"filho\" está trabalhando e não ficou livre em 1 s: a pergunta não foi entregue. Leia a tela com check e pergunte de novo depois.");
+    assert_eq!(
+        busy,
+        "\"filho\" continua trabalhando: a pergunta ficou na fila dele e vai assim que ele ficar livre; leia a resposta depois com check. Não pergunte de novo."
+    );
+
     let keys = handle(&json!({ "cmd": "ask", "name": "filho", "text": "\\e", "raw": true, "from": "eu" }), &shared, &sender).unwrap_err();
 
     assert!(keys.contains("não está rodando"), "{keys}");

@@ -92,7 +92,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "set_folder",
-            "description": "Muda a pasta de trabalho da conversa atual para `path` (uma conversa que já tem sessão continua onde está e outra abre na pasta nova).",
+            "description": "Muda a pasta de trabalho da conversa atual para `path`: a mesma conversa, com todo o contexto, passa a rodar lá (se você pedir no meio de uma resposta, a troca vale a partir da próxima mensagem), e o cartão dela vai para o espaço dessa pasta.",
             "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] },
         },
         {
@@ -121,7 +121,7 @@ pub(crate) fn tools() -> Value {
             "name": "ask_agent",
             "description": "Manda um prompt a um agente conectado (outro terminal do canvas, ou um chat), espera ele terminar e devolve a \
                 tela dele (de um chat, a resposta; a pergunta entra na conversa dele com o seu nome e, se ele estiver ocupado, espera na \
-                fila; a um terminal ocupado ela é entregue quando ele ficar livre, dentro do `timeout`). De um chat, alcança também os \
+                fila; a um terminal ocupado ela é entregue quando ele ficar livre: se o `timeout` passar antes, ela fica na fila dele e a resposta chega ao seu chat sozinha quando ele terminar a vez). De um chat, alcança também os \
                 agentes dos espaços fora da tela. Se o tempo acabar antes, acompanhe com read_terminal; não reenvie o prompt. `raw: true` envia \
                 teclas cruas (\\n Enter, \\t Tab, \\e Esc, \\x03 Ctrl+C) para menus e comandos de shell (só a terminais).",
             "inputSchema": { "type": "object", "properties": {

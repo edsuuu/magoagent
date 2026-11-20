@@ -237,6 +237,7 @@ impl DrawingApp {
         }
 
         self.file_links_tick(ctx);
+        self.apply_chat_moves();
         self.chat_asks_tick(ctx);
         self.recruit_popups_tick();
     }

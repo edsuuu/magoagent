@@ -245,11 +245,17 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                     break shared.transcripts.get(&target.id).cloned();
                 }
 
+                // still busy when the asker stops waiting: the question waits in its line, and goes once it is free
                 if Instant::now() >= deadline {
-                    return Err(format!(
-                        "\"{}\" está trabalhando e não ficou livre em {:.0} s: a pergunta não foi entregue. Leia a tela com check e pergunte de novo depois.",
-                        target.name,
-                        timeout.as_secs_f64()
+                    drop(shared);
+                    send(UiCommand::QueueAsk { from: who.into(), to: target.id.clone(), asker: asker.into(), text: text.trim().into() })?;
+
+                    let back =
+                        if chat.is_some() { "a resposta chega neste chat sozinha quando ele terminar a vez" } else { "leia a resposta depois com check" };
+
+                    return Ok(format!(
+                        "\"{}\" continua trabalhando: a pergunta ficou na fila dele e vai assim que ele ficar livre; {back}. Não pergunte de novo.",
+                        target.name
                     ));
                 }
 

@@ -333,6 +333,36 @@ impl DrawingApp {
         }
     }
 
+    /// Agent `id` was closed: its open tasks go back to no owner (one in progress to pending), saying who had them, so
+    /// that someone takes them.
+    pub(crate) fn release_tasks(&mut self, id: &str) {
+        self.tasks_tick();
+        let now = now_ms();
+        let mut freed = Vec::new();
+
+        for task in self.tasks.list.iter_mut().filter(|task| task.owner == id && !task.state.is_final()) {
+            task.note = format!("{} foi fechado: a tarefa ficou sem responsável", task.owner_name);
+            task.owner.clear();
+            task.updated = now;
+
+            if task.state == TaskState::InProgress {
+                task.state = TaskState::Pending;
+            }
+
+            freed.push(task.clone());
+        }
+
+        if freed.is_empty() {
+            return;
+        }
+
+        for task in &freed {
+            self.task_event(task, &task.note);
+        }
+
+        self.save_tasks();
+    }
+
     fn save_tasks(&mut self) {
         let Some(path) = self.tasks_path() else { return };
         let written = serde_json::to_string_pretty(&self.tasks.list).map_err(std::io::Error::other).and_then(|json| write_atomic(&path, json));

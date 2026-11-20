@@ -123,7 +123,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "close_window",
-            "description": "Fecha (apaga do canvas) um terminal, navegador, árvore de arquivos ou nota pelo nome; dá para desfazer com history undo. Um terminal que roda num espaço fora da tela também fecha, lá (sem desfazer); o resto de um espaço fora da tela pede o espaço aberto. A resposta diz o que ainda rodava no terminal: o que ele iniciou em segundo plano ou dentro de um container pode continuar.",
+            "description": "Fecha (apaga do canvas) um terminal, navegador, árvore de arquivos ou nota pelo nome; dá para desfazer com history undo. Um terminal que roda num espaço fora da tela também fecha, lá (sem desfazer); o resto de um espaço fora da tela pede o espaço aberto. Fechar um terminal encerra tudo o que roda nele, o que ficou em segundo plano e o comando de um docker/podman exec dentro do container inclusive (a resposta diz o quê); as tarefas abertas do agente fechado ficam sem responsável.",
             "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
         }),
         json!({
