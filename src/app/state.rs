@@ -259,6 +259,12 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_asks: Vec<chat::ask::ChatAsk>,
     /// The first message of each recruit chat, sent when the chat can take it (maestro/mod.rs).
     pub(crate) chat_starts: Vec<(String, String)>,
+    /// Chats moving to another folder (`set_folder`), by id: each moves once it answers nothing (chat/moving.rs).
+    pub(crate) chat_moves: Vec<(String, String)>,
+    /// Who each agent answers to (agent → the chat or terminal that recruited it, or last sent it a task): a chat recruit's
+    /// boss when its card's rope is in a workspace off view, and the chat a terminal's last words go to when its turn
+    /// ends (chat/ask.rs).
+    pub(crate) recruit_boss: std::collections::HashMap<String, String>,
     pub(crate) chat_nodes_read: f64,
     /// The areas that paint a card in front over another card's live parts (canvas/cover.rs), this frame's and the last
     /// one's (a page's holes leave out both: egui still counts last frame's areas).
@@ -401,6 +407,9 @@ pub(crate) struct DrawingApp {
     /// space, spec), each space's camera and selection while off view, and the sidebar's cards.
     pub(crate) spaces: workspaces::Workspaces,
     pub(crate) away: std::collections::HashMap<String, (String, TerminalSpec)>,
+    /// The pages of the workspaces off view, by portal id: their scope key and their spec as they left the screen. They
+    /// stay loaded, hidden, so an agent goes on driving them (`sync_portals`); they come back with their space.
+    pub(crate) away_portals: std::collections::HashMap<String, (String, PortalSpec)>,
     pub(crate) space_views: std::collections::HashMap<String, (f32, Vec2, Vec<String>)>,
     pub(crate) space_dialog: Option<workspaces::SpaceDialog>,
     /// The welcome slides over everything (ui/welcome/), while they are on.

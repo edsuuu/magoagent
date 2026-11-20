@@ -405,3 +405,150 @@ fn a_panic_holding_the_shared_state_does_not_poison_the_next_request() {
     assert!(shared.is_poisoned());
     assert!(locked(&shared).asking.is_empty());
 }
+
+/// The canvas shown ("Outro") and a workspace off view where the chat "Papo" has its card, roped to an agent and a page.
+fn team_off_view() -> Mutex<Shared> {
+    let node = |id: &str, kind, links: &[&str]| Node {
+        id: id.into(),
+        kind,
+        name: id.into(),
+        text: String::new(),
+        links: links.iter().map(|l| l.to_string()).collect(),
+        maestro: kind == NodeKind::Chat,
+    };
+
+    let away = vec![
+        node("Papo", NodeKind::Chat, &["Varinha", "QA"]),
+        node("Varinha", NodeKind::Terminal, &["Papo"]),
+        node("QA", NodeKind::Portal, &["Papo"]),
+        node("Cristal", NodeKind::Terminal, &[]),
+    ];
+
+    Mutex::new(Shared {
+        nodes: vec![node("Outro", NodeKind::Terminal, &[])],
+        away: [("inv163".to_string(), ("INV-163".to_string(), away))].into(),
+        chats: [("Papo".to_string(), "Luna".to_string())].into(),
+        ..Default::default()
+    })
+}
+
+#[test]
+fn a_chat_reaches_its_team_in_a_workspace_off_view() {
+    let shared = team_off_view();
+    let (sender, _commands) = mpsc::channel();
+    let run = |from: &str, cmd: &str, name: &str| handle(&json!({ "cmd": cmd, "from": from, "name": name, "text": "oi", "timeout": 1 }), &shared, &sender);
+    let list = run("Papo", "list", "").unwrap();
+
+    // the canvas shown, then the space off view by the ropes of its card there
+    assert!(list.contains("\"Outro\"") && list.contains("Espaço \"INV-163\" (fora da tela):"), "{list}");
+    assert!(list.contains("\"Varinha\"") && list.contains("\"QA\"") && !list.contains("Cristal"), "{list}");
+    // by the rope, and by name: both get as far as the shell (none runs in this test)
+    assert_eq!(run("Papo", "ask", "Varinha"), Err("esse terminal não está rodando".into()));
+    assert_eq!(run("Papo", "check", "cristal"), Err("esse terminal não está rodando".into()));
+    // a terminal stays tied to its own canvas
+    assert!(run("Outro", "ask", "Varinha").unwrap_err().contains("Nenhum agente \"Varinha\" conectado"));
+    // and a name no space has is still not found
+    assert!(run("Papo", "ask", "Ninguém").unwrap_err().contains("Nenhum agente \"Ninguém\" conectado"));
+}
+
+#[test]
+fn a_terminal_off_view_keeps_its_tasks_and_is_told_to_use_another_browser() {
+    let shared = team_off_view();
+    let (sender, commands) = mpsc::channel();
+
+    let ui = std::thread::spawn(move || {
+        let mut actions = Vec::new();
+
+        while let Ok(command) = commands.recv() {
+            let UiCommand::Act { action, reply, .. } = command else { panic!("{command:?}") };
+
+            actions.push(action);
+            let _ = reply.send(Ok("feito".into()));
+        }
+
+        actions
+    });
+
+    let act = |action: &str| handle(&json!({ "cmd": "act", "from": "Varinha", "action": action, "args": {} }), &shared, &sender);
+
+    assert_eq!(act("tasks"), Ok("feito".into()));
+    assert_eq!(act("doubts"), Ok("feito".into()));
+    let tree = act("file_tree").unwrap_err();
+
+    assert!(tree.contains("\"INV-163\"") && tree.contains("file tree"), "{tree}");
+    drop(sender);
+    assert_eq!(ui.join().unwrap(), ["tasks", "doubts"]);
+}
+
+#[test]
+fn a_question_to_a_busy_terminal_goes_when_it_is_free() {
+    let shared = std::sync::Arc::new(team_off_view());
+
+    shared.lock().unwrap().states.insert("Varinha".into(), AgentState::Working(0.0));
+    let (sender, commands) = mpsc::channel();
+    let ask = |timeout: f64| handle(&json!({ "cmd": "ask", "from": "Papo", "name": "Varinha", "text": " oi ", "timeout": timeout }), &shared, &sender);
+    let busy = ask(1.0).unwrap();
+
+    // busy past the wait: in its line, the answer coming to the chat by itself
+    assert!(busy.contains("ficou na fila dele") && busy.contains("chega neste chat sozinha"), "{busy}");
+    assert!(shared.lock().unwrap().asking.is_empty());
+
+    match commands.try_recv() {
+        Ok(UiCommand::QueueAsk { from, to, asker, text }) => {
+            assert_eq!((from.as_str(), to.as_str(), asker.as_str(), text.as_str()), ("Papo", "Varinha", "Luna", "oi"))
+        }
+        other => panic!("{other:?}"),
+    }
+
+    // free within the asker's wait: the question goes on (as far as the shell, which this test has none of)
+    let freed = shared.clone();
+
+    let free = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(400));
+        freed.lock().unwrap().states.clear();
+    });
+
+    assert_eq!(ask(20.0), Err("esse terminal não está rodando".into()));
+    free.join().unwrap();
+}
+
+#[test]
+fn the_pages_of_a_workspace_off_view_are_still_driven() {
+    let shared = team_off_view();
+
+    // Varinha has the page on a rope of its own too
+    for node in shared.lock().unwrap().away.get_mut("inv163").unwrap().1.iter_mut().filter(|node| node.id == "Varinha") {
+        node.links.push("QA".into());
+    }
+
+    let (sender, commands) = mpsc::channel();
+
+    // the app: a page that answers every script, and says which page ran it
+    let ui = std::thread::spawn(move || {
+        let mut pages = Vec::new();
+
+        while let Ok(command) = commands.recv() {
+            match command {
+                UiCommand::PortalEval { id, reply, .. } => {
+                    pages.push(id);
+                    let _ = reply.send(Ok("\"pronto\"".into()));
+                }
+                UiCommand::PortalNavigate { id, .. } => pages.push(format!("{id} navegou")),
+                other => panic!("{other:?}"),
+            }
+        }
+
+        pages
+    });
+
+    let run = |from: &str, cmd: &str| handle(&json!({ "cmd": cmd, "from": from, "name": "QA", "text": "exemplo.com" }), &shared, &sender);
+
+    // the chat, by its card's rope there; the terminal of that space, by its own
+    assert_eq!(run("Papo", "portal_eval"), Ok("pronto".into()));
+    assert_eq!(run("Varinha", "portal_text"), Ok("pronto".into()));
+    assert!(run("Varinha", "portal_navigate").unwrap().contains("abrindo https://exemplo.com"));
+    // making a page still needs the space on screen
+    assert!(run("Varinha", "portal_create").unwrap_err().contains("não está aberto na tela"));
+    drop(sender);
+    assert_eq!(ui.join().unwrap(), ["QA", "QA", "QA navegou"]);
+}

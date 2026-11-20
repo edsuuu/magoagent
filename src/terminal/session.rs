@@ -315,6 +315,8 @@ impl TerminalSession {
 
 impl Drop for TerminalSession {
     fn drop(&mut self) {
+        // what it started ends with it, the background and a container's included (app/terminal/procs.rs)
+        crate::app::terminal::procs::end_tree(self.shell_pid);
         let _ = self.handle.pty.send(Msg::Shutdown);
     }
 }

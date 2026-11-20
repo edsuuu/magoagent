@@ -40,6 +40,18 @@ impl DrawingApp {
             return;
         }
 
+        let rope = self.rope_element(a, from, b, to);
+
+        if undoable {
+            self.snapshot();
+        }
+
+        self.scene.elements.push(rope);
+        self.update_bindings();
+    }
+
+    /// The rope from `a` (its middle at `from`) to `b` (at `to`), for this drawing or another workspace's.
+    pub(crate) fn rope_element(&self, a: &str, from: Pos2, b: &str, to: Pos2) -> Element {
         let mut rope = self.new_element(ElementKind::Line { points: vec![[from.x, from.y], [to.x, to.y]], arrow: true });
         let bind = |id: &str| Some(Binding { element_id: id.into(), fixed: [0.5, 0.5], inside: false });
 
@@ -56,12 +68,7 @@ impl DrawingApp {
             ..rope.style
         };
 
-        if undoable {
-            self.snapshot();
-        }
-
-        self.scene.elements.push(rope);
-        self.update_bindings();
+        rope
     }
 
     /// What an agent opened hangs from it by a rope, as `recruit` hangs its child: from a chat, from its card, put on the

@@ -53,6 +53,7 @@ mod props;
 mod session;
 mod shapes;
 mod sidebar;
+mod spaces_away;
 mod stacking;
 mod stop_all;
 mod team;

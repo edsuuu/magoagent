@@ -84,13 +84,15 @@ impl DrawingApp {
             return;
         }
 
-        let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else {
+        // a chat whose folder is another workspace's: its recruit is born there, off view (workspaces/away.rs)
+        let home = self.chats.iter().find(|chat| chat.id == from).and_then(|chat| self.folder_space(&chat.cwd));
+        let caller = self.scene.elements.iter().find(|e| e.id == from);
+
+        if caller.is_none() && home.is_none() {
             let _ = reply.send(Err("recrute de dentro de um terminal do MagoAgent".into()));
 
             return;
-        };
-
-        let b = local_bounds(caller);
+        }
 
         // the ceiling of agents and the plan's limit hold the Maestro back (usage.rs)
         if let Some(why) = self.recruit_refusal() {
@@ -102,18 +104,26 @@ impl DrawingApp {
         let chat_mode = mode.unwrap_or(self.prefs.agent_mode) == AgentMode::Chat;
         let raw = command;
         let command = crate::app::usage::recruit_command(command, &self.prefs.recruit_model);
-        let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else { return };
+        let caller = self.scene.elements.iter().find(|e| e.id == from).filter(|_| home.is_none());
+        let b = caller.map_or(Rect::NOTHING, local_bounds);
 
         // a chat's card is smaller than any terminal: its recruit is a new terminal's size, in the chat's folder; a
         // recruit in chat mode is a card (its task and what it does, chat/recruit_card.rs), pulled bigger by hand
-        let (mut cwd, size) = match (&caller.terminal, &caller.chat) {
-            (Some(t), _) => (t.cwd.clone(), b.size()),
-            (_, Some(chat)) => (chat.cwd.clone(), self.new_terminal_size()),
-            _ => (String::new(), b.size()),
+        let (mut cwd, size) = match caller.map(|caller| (&caller.terminal, &caller.chat)) {
+            Some((Some(t), _)) => (t.cwd.clone(), b.size()),
+            Some((_, Some(chat))) => (chat.cwd.clone(), self.new_terminal_size()),
+            Some(_) => (String::new(), b.size()),
+            None => (self.chats.iter().find(|chat| chat.id == from).map(|chat| chat.cwd.clone()).unwrap_or_default(), self.new_terminal_size()),
         };
 
         let size = if chat_mode { RECRUIT_CARD } else { size };
-        let at = self.free_spot_near(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), size), b);
+
+        let at = if home.is_some() {
+            Rect::from_min_size(Pos2::ZERO, size)
+        } else {
+            self.free_spot_near(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), size), b)
+        };
+
         let side = side_of(at, b);
         let name = self.agent_name(name);
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
@@ -143,7 +153,11 @@ impl DrawingApp {
         terminal.style = node_style(terminal.style);
         let id = terminal.id.clone();
 
-        self.snapshot();
+        self.recruit_boss.insert(id.clone(), from.to_string());
+
+        if home.is_none() {
+            self.snapshot();
+        }
 
         // the model and effort it runs, said with the dispatch (tuning.rs)
         let (kind, (agent, model, effort)) = if chat_mode {
@@ -170,14 +184,31 @@ impl DrawingApp {
 
         let tuning = crate::app::maestro::tuning::describe(&agent, &model, &effort);
 
-        self.scene.elements.push(terminal);
-        // one Cmd+Z takes back the recruit and its rope together
-        self.rope_between(from, &id, false);
+        let placed = match &home {
+            // in the workspace of the chat's folder, under the chat's card there
+            Some(home) => match self.place_away(home, from, terminal) {
+                Ok(()) => format!("no espaço \"{}\", o da sua pasta (fora da tela), abaixo do seu cartão de lá,", home.name),
+                Err(why) => {
+                    let _ = reply.send(Err(why));
+
+                    return;
+                }
+            },
+            None => {
+                self.scene.elements.push(terminal);
+                // one Cmd+Z takes back the recruit and its rope together
+                self.rope_between(from, &id, false);
+                format!("{side}{}", self.born_here())
+            }
+        };
+
         self.publish_nodes();
         let who = self.speaker(from);
 
         self.agent_event(&id, EventKind::Started, format!("recrutado por {who} ({kind}): {tuning}"));
-        let _ = reply.send(Ok(format!("Agente \"{name}\" criado {side} e conectado ({kind}; {tuning}); fale com ele com `magoagent ask \"{name}\" …`.{own}")));
+
+        let _ =
+            reply.send(Ok(format!("Agente \"{name}\" criado {placed} e conectado ({kind}; {tuning}); fale com ele com `magoagent ask \"{name}\" …`.{own}")));
     }
 
     /// The chat of a recruit (same id as its card), its first message queued: `raw` is the recruit's command, its

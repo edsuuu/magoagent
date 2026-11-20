@@ -57,6 +57,113 @@ pub(crate) fn processes_of(root: u32) -> Vec<Proc> {
         .collect()
 }
 
+/// Ends what runs under shell `root`, its whole tree (what was left in the background too), and, for a `docker exec` or
+/// `podman exec` among them, the command it started inside the container: killing the client leaves that running. The
+/// tree and the clients' command lines are read now, while the shell still holds them (once it ends, its children go
+/// to another parent and the client dies); the stopping runs on a thread.
+pub(crate) fn end_tree(root: u32) {
+    if root == 0 {
+        return;
+    }
+
+    let tree = descendants(&crate::transcript::process::table(), root);
+
+    if tree.is_empty() {
+        return;
+    }
+
+    // a container client's command line too, now: the shell ending takes the client with it
+    let inside: Vec<(String, String, String)> =
+        tree.iter().filter(|(_, name)| container_cli(name)).filter_map(|(pid, _)| command_line(*pid).as_deref().and_then(container_command)).collect();
+
+    std::thread::spawn(move || {
+        for (program, container, command) in &inside {
+            stop_in_container(program, container, command);
+        }
+
+        for (pid, _) in &tree {
+            stop_process(*pid);
+        }
+    });
+}
+
+/// A program that runs commands inside containers.
+pub(crate) fn container_cli(name: &str) -> bool {
+    let name = name.trim().to_lowercase();
+
+    matches!(name.strip_suffix(".exe").unwrap_or(&name), "docker" | "podman")
+}
+
+/// The program, the container and the command of a `docker exec` (or `podman exec`) command line.
+pub(crate) fn container_command(line: &str) -> Option<(String, String, String)> {
+    // Windows quotes a program whose path has spaces ("C:\Program Files\Docker\docker.exe")
+    let (program, rest) = match line.trim().strip_prefix('"') {
+        Some(quoted) => quoted.split_once('"')?,
+        None => line.trim().split_once(char::is_whitespace)?,
+    };
+
+    let mut words = rest.split_whitespace();
+    let program = program.rsplit(['/', '\\']).next()?.to_string();
+
+    if !container_cli(&program) || words.next()? != "exec" {
+        return None;
+    }
+
+    // the options that take the next word as their value
+    const VALUED: [&str; 8] = ["-e", "--env", "-u", "--user", "-w", "--workdir", "--env-file", "--detach-keys"];
+    let mut container = None;
+
+    while let Some(word) = words.next() {
+        match word {
+            option if option.starts_with('-') => {
+                if VALUED.contains(&option) {
+                    words.next();
+                }
+            }
+            name => {
+                container = Some(name.to_string());
+
+                break;
+            }
+        }
+    }
+
+    let command = words.collect::<Vec<_>>().join(" ");
+
+    Some((program.trim_end_matches(".exe").to_string(), container?, command)).filter(|(_, _, command)| !command.is_empty())
+}
+
+/// Ends, inside `container`, the processes whose command line has `command`: with the shell every image has, by
+/// `/proc`, so no `pkill` is needed in it (the shell itself, whose arguments carry the command, is spared).
+fn stop_in_container(program: &str, container: &str, command: &str) {
+    const SCRIPT: &str = r#"for d in /proc/[0-9]*; do p=${d#/proc/}; [ "$p" = "$$" ] && continue; c=$(tr '\0' ' ' < "$d/cmdline" 2>/dev/null); case "$c" in *"$1"*) kill "$p" 2>/dev/null;; esac; done"#;
+
+    let _ = crate::editor::command(program).args(["exec", container, "sh", "-c", SCRIPT, "sh", command]).output();
+}
+
+/// The whole command line of process `pid`.
+#[cfg(target_os = "linux")]
+fn command_line(pid: u32) -> Option<String> {
+    let raw = fs::read(format!("/proc/{pid}/cmdline")).ok()?;
+
+    Some(String::from_utf8_lossy(&raw).split('\0').filter(|word| !word.is_empty()).collect::<Vec<_>>().join(" "))
+}
+
+#[cfg(target_os = "macos")]
+fn command_line(pid: u32) -> Option<String> {
+    let output = crate::editor::command("ps").args(["-o", "args=", "-p", &pid.to_string()]).output().ok()?;
+
+    Some(String::from_utf8_lossy(&output.stdout).trim().to_string()).filter(|line| !line.is_empty())
+}
+
+#[cfg(windows)]
+fn command_line(pid: u32) -> Option<String> {
+    let query = format!("(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine");
+    let output = crate::editor::command("powershell").args(["-NoProfile", "-Command", &query]).output().ok()?;
+
+    Some(String::from_utf8_lossy(&output.stdout).trim().to_string()).filter(|line| !line.is_empty())
+}
+
 /// Ends process `pid`, with no window of its own.
 pub(crate) fn stop_process(pid: u32) -> bool {
     let pid = pid.to_string();

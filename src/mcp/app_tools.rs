@@ -123,7 +123,7 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "close_window",
-            "description": "Fecha (apaga do canvas) um terminal, navegador, árvore de arquivos ou nota pelo nome; dá para desfazer com history undo.",
+            "description": "Fecha (apaga do canvas) um terminal, navegador, árvore de arquivos ou nota pelo nome; dá para desfazer com history undo. Um terminal que roda num espaço fora da tela também fecha, lá (sem desfazer); o resto de um espaço fora da tela pede o espaço aberto. Fechar um terminal encerra tudo o que roda nele, o que ficou em segundo plano e o comando de um docker/podman exec dentro do container inclusive (a resposta diz o quê); as tarefas abertas do agente fechado ficam sem responsável.",
             "inputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] },
         }),
         json!({
@@ -259,10 +259,11 @@ pub(crate) fn app_tools() -> Vec<Value> {
         }),
         json!({
             "name": "chat_node",
-            "description": "O cartão de um chat no canvas: ali o chat é a Luna (list_agents a chama de Luna), e o que se liga a ele por cordas, terminais e outros chats (connect, disconnect), é o time que ele comanda e que o alcança com ask_agent. action show (o padrão) põe o cartão do chat no canvas deste espaço, se ainda não está, e mostra o canvas nele; new cria um chat novo (`agent` e `folder` como em chat_new) já com o cartão, e mostra o canvas; remove tira o cartão do canvas (a conversa continua na lista de chats); fold recolhe o cartão de um agente recrutado em chat ao nome e à tarefa, ou o abre de novo mostrando o que ele faz.",
+            "description": "O cartão de um chat no canvas: ali o chat é a Luna (list_agents a chama de Luna), e o que se liga a ele por cordas, terminais e outros chats (connect, disconnect), é o time que ele comanda e que o alcança com ask_agent. action show (o padrão) põe o cartão do chat no canvas deste espaço, se ainda não está, e mostra o canvas nele; new cria um chat novo (`agent` e `folder` como em chat_new) já com o cartão, e mostra o canvas; remove tira o cartão do canvas (a conversa continua na lista de chats); move leva o cartão para o canvas de outro espaço (`space`, pelo nome), tirando-o deste (as cordas não vão junto); fold recolhe o cartão de um agente recrutado em chat ao nome e à tarefa, ou o abre de novo mostrando o que ele faz.",
             "inputSchema": { "type": "object", "properties": {
                 "chat": chat,
-                "action": { "type": "string", "enum": ["show", "new", "remove", "fold"] },
+                "action": { "type": "string", "enum": ["show", "new", "move", "remove", "fold"] },
+                "space": { "type": "string", "description": "só em move: o espaço de destino, pelo nome" },
                 "agent": { "type": "string", "enum": ["claude", "codex"] },
                 "folder": { "type": "string" },
             } },

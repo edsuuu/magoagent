@@ -7,6 +7,19 @@ pub(crate) const HOOK_GONE: &str = "MagoHookGone";
 const CLIENT_POLL: Duration = Duration::from_millis(100);
 /// How the messages of the outbox reach Claude Code: the reason of the Stop hook's block, over what the person wrote.
 pub(crate) const MESSAGE_FRAME: &str = "Mensagem da pessoa pelo MagoAgent:";
+/// De quanto em quanto tempo um `ask` confere se o terminal ocupado ficou livre.
+const BUSY_POLL: Duration = Duration::from_millis(250);
+
+/// Why a command stops while the caller's workspace is off view. A page lives only while its workspace is on screen: the
+/// agent is told to go on with another browser instead of waiting for the person.
+fn off_view(space: &str, cmd: &str) -> String {
+    // the command as it is typed (`note create`), not the bridge's name for it
+    let typed = cmd.replace('_', " ");
+
+    format!(
+        "O espaço \"{space}\" deste terminal não está aberto na tela: abra-o no MagoAgent para usar {typed}. Com ele fora da tela, list, check, ask, note read, notify, tasks e os navegadores ligados a você continuam funcionando."
+    )
+}
 
 /// O que `magoagent hook` mandou vai para o app. Quando o hook espera a pessoa (`wait`), o pedido ganha um número
 /// (`mago_request`) e a resposta volta por aqui; sem resposta no prazo, ou com o pedido solto pelo app, não há o que
@@ -110,15 +123,36 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         return Err("Só um terminal da Luna (ou um chat) pode usar esse comando.".into());
     }
 
+    // a chat, or an MCP outside the app, is tied to no canvas: what the one shown lacks it finds in the spaces off view
+    let roaming = away.is_none() && (chat.is_some() || who.is_empty());
+
+    // its tasks, its questions and the shared notes are no part of the drawing, and its pages stay loaded off view
+    // (`away_portals`): they go on with the workspace off screen
+    let apart = cmd == "act" && matches!(request["action"].as_str(), Some("tasks" | "doubts" | "memory" | "binder"))
+        || (cmd.starts_with("portal_") && cmd != "portal_create")
+        || cmd == "vault_fill";
+
     if let Some(space) = away
+        && !apart
         && !matches!(cmd, "list" | "check" | "ask" | "note_read" | "notify" | "hook")
     {
-        // the command as it is typed (`note create`), not the bridge's name for it
-        return Err(format!(
-            "O espaço \"{space}\" deste terminal não está aberto na tela: abra-o no MagoAgent para usar {}. Com ele fora da tela, list, check, ask e note read continuam funcionando.",
-            cmd.replace('_', " ")
-        ));
+        // an action by its own name (`file_tree`), not the bridge's `act`
+        return Err(off_view(&space, request["action"].as_str().filter(|_| cmd == "act").unwrap_or(cmd)));
     }
+
+    let elsewhere = |name: &str, kind: NodeKind| if roaming { find_away(&locked(shared).away, who, name, kind) } else { None };
+    // what only reads or talks reaches a space off view
+    let reach = |name: &str, kind: NodeKind| find(&nodes, from, name, kind).or_else(|why| elsewhere(name, kind).map(|(_, node)| node).ok_or(why));
+
+    // what changes the drawing or drives a page needs it on screen: found off view, the answer says where it is
+    let shown = |name: &str, kind: NodeKind| {
+        find(&nodes, from, name, kind).map_err(|why| match elsewhere(name, kind) {
+            Some((space, node)) => {
+                format!("\"{}\" está no espaço \"{space}\", fora da tela: abra-o (workspaces switch) para usar {}.", node.name, cmd.replace('_', " "))
+            }
+            None => why,
+        })
+    };
 
     let handle_of = |node: &Node| locked(shared).terminals.get(&node.id).cloned().ok_or("esse terminal não está rodando");
     let send = |command: UiCommand| sender.send(command).map_err(|_| "o app fechou".to_string());
@@ -140,9 +174,25 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     }
 
     match request["cmd"].as_str().unwrap_or_default() {
-        "list" => Ok(describe(&nodes, from, shared)),
+        "list" => {
+            let mut out = describe(&nodes, from, shared);
+            let mut spaces: Vec<(String, Vec<Node>)> = if roaming { locked(shared).away.values().cloned().collect() } else { Vec::new() };
+
+            spaces.sort_by(|a, b| a.0.cmp(&b.0));
+
+            for (space, nodes) in spaces {
+                // by the ropes of the chat's card there, when it has one
+                let me = if nodes.iter().any(|n| n.id == who) { who } else { "" };
+
+                if !reachable(&nodes, me).is_empty() {
+                    out += &format!("\n\nEspaço \"{space}\" (fora da tela):\n{}", describe(&nodes, me, shared));
+                }
+            }
+
+            Ok(out)
+        }
         "check" => {
-            let target = find(&nodes, from, name, NodeKind::Terminal)?;
+            let target = reach(name, NodeKind::Terminal)?;
 
             if target.kind == NodeKind::Chat {
                 let (reply, rx) = mpsc::channel();
@@ -155,7 +205,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             Ok(handle_of(&target)?.screen_text())
         }
         "ask" => {
-            let target = find(&nodes, from, name, NodeKind::Terminal)?;
+            let target = reach(name, NodeKind::Terminal)?;
 
             if target.id == who {
                 return Err("um agente não pode perguntar a si mesmo".into());
@@ -168,11 +218,12 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             }
 
             let timeout = Duration::from_secs_f64(request["timeout"].as_f64().unwrap_or(600.0).clamp(1.0, 3600.0));
+            let deadline = Instant::now() + timeout;
             let pair = (from.to_string(), target.id.clone());
             // a chat with no card here still asks by its name
             let asker = nodes.iter().find(|n| n.id == from).map(|n| n.name.as_str()).or(chat.as_deref()).unwrap_or("um agente fora do canvas");
 
-            let transcript = {
+            let transcript = loop {
                 let mut shared = locked(shared);
 
                 // two questions at once would mix in its typing box and in its answer
@@ -183,15 +234,37 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 }
 
                 // busy with something else (or an ask that timed out): the words would queue behind
-                // it and its answer mix with that work's; keys (`raw`) still go, to interrupt it.
+                // it and its answer mix with that work's, so the question waits here for it to be free,
+                // as long as the asker waits; keys (`raw`) go at once, to interrupt it.
                 // A busy chat keeps the question in its line instead (app/chat/ask.rs)
-                if !to_chat && request["raw"] != true && matches!(shared.states.get(&target.id), Some(AgentState::Working(_) | AgentState::Active(_))) {
-                    return Err(format!("\"{}\" está trabalhando: espere ou leia a tela com check.", target.name));
+                let busy = !to_chat && request["raw"] != true && matches!(shared.states.get(&target.id), Some(AgentState::Working(_) | AgentState::Active(_)));
+
+                if !busy {
+                    shared.asking.push(pair.clone());
+
+                    break shared.transcripts.get(&target.id).cloned();
                 }
 
-                shared.asking.push(pair.clone());
-                shared.transcripts.get(&target.id).cloned()
+                // still busy when the asker stops waiting: the question waits in its line, and goes once it is free
+                if Instant::now() >= deadline {
+                    drop(shared);
+                    send(UiCommand::QueueAsk { from: who.into(), to: target.id.clone(), asker: asker.into(), text: text.trim().into() })?;
+
+                    let back =
+                        if chat.is_some() { "a resposta chega neste chat sozinha quando ele terminar a vez" } else { "leia a resposta depois com check" };
+
+                    return Ok(format!(
+                        "\"{}\" continua trabalhando: a pergunta ficou na fila dele e vai assim que ele ficar livre; {back}. Não pergunte de novo.",
+                        target.name
+                    ));
+                }
+
+                drop(shared);
+                std::thread::sleep(BUSY_POLL);
             };
+
+            // what is left of the asker's wait, once the question went
+            let timeout = deadline.saturating_duration_since(Instant::now()).max(Duration::from_secs(1));
 
             let _asking = Asking(shared, pair.clone());
 
@@ -233,9 +306,9 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             shared.events.push((target.id.clone(), from.to_string(), what));
             answer.map(|(_, text)| text)
         }
-        "note_read" => Ok(find(&nodes, from, name, NodeKind::Note)?.text),
+        "note_read" => Ok(reach(name, NodeKind::Note)?.text),
         "note_write" => {
-            let note = find(&nodes, from, name, NodeKind::Note)?;
+            let note = shown(name, NodeKind::Note)?;
 
             sender.send(UiCommand::WriteNote { id: note.id, text: text.into() }).map_err(|_| "o app fechou")?;
             Ok(format!("Nota \"{}\" atualizada.", note.name))
@@ -249,7 +322,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             Ok("Nota criada e conectada a este terminal.".into())
         }
         "portal_navigate" => {
-            let portal = find(&nodes, from, name, NodeKind::Portal)?;
+            let portal = reach(name, NodeKind::Portal)?;
             let url = normalize_url(text);
 
             sender.send(UiCommand::PortalNavigate { id: portal.id, url: url.clone() }).map_err(|_| "o app fechou")?;
@@ -262,7 +335,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 return Err("ação de histórico desconhecida: use back, forward ou reload".into());
             };
 
-            let portal = find(&nodes, from, name, NodeKind::Portal)?;
+            let portal = reach(name, NodeKind::Portal)?;
 
             sender.send(UiCommand::PortalHistory { id: portal.id, action: action.into() }).map_err(|_| "o app fechou")?;
             Ok(format!("Navegador \"{}\" {did}.", portal.name))
@@ -270,11 +343,8 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         cmd @ ("portal_text" | "portal_eval" | "portal_console" | "portal_shot" | "portal_click" | "portal_fill" | "vault_fill" | "portal_wait"
         | "portal_scroll") => {
             // a vault login goes to the portal open on that site; the secret in `text` is typed and never kept
-            let portal = if cmd == "vault_fill" {
-                portal_of_site(&nodes, from, request["site"].as_str().unwrap_or_default())?
-            } else {
-                find(&nodes, from, name, NodeKind::Portal)?
-            };
+            let portal =
+                if cmd == "vault_fill" { portal_of_site(&nodes, from, request["site"].as_str().unwrap_or_default())? } else { reach(name, NodeKind::Portal)? };
 
             // a picture is the app's to take, not a script's
             if cmd == "portal_shot" {

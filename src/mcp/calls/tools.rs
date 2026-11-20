@@ -93,7 +93,7 @@ pub(crate) fn tools() -> Value {
         },
         {
             "name": "set_folder",
-            "description": "Muda a pasta de trabalho da conversa atual para `path` (uma conversa que já tem sessão continua onde está e outra abre na pasta nova).",
+            "description": "Muda a pasta de trabalho da conversa atual para `path`: a mesma conversa, com todo o contexto, passa a rodar lá (se você pedir no meio de uma resposta, a troca vale a partir da próxima mensagem), e o cartão dela vai para o espaço dessa pasta.",
             "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] },
         },
         {
@@ -115,14 +115,15 @@ pub(crate) fn tools() -> Value {
             "name": "list_agents",
             "description": "Lista os agentes (terminais e chats do canvas), notas e navegadores ligados a você por uma seta, com o estado \
                 de cada agente (trabalhando, parado, encerrado; um chat é a Luna e diz que é chat). Fora de um terminal do MagoAgent, ou de um \
-                chat ainda sem corda, lista todos.",
+                chat ainda sem corda, lista todos. De um chat, mostra também o que ele alcança nos espaços fora da tela, cada um sob o nome do espaço.",
             "inputSchema": { "type": "object", "properties": {} },
         },
         {
             "name": "ask_agent",
             "description": "Manda um prompt a um agente conectado (outro terminal do canvas, ou um chat), espera ele terminar e devolve a \
                 tela dele (de um chat, a resposta; a pergunta entra na conversa dele com o seu nome e, se ele estiver ocupado, espera na \
-                fila). Se o tempo acabar antes, acompanhe com read_terminal; não reenvie o prompt. `raw: true` envia \
+                fila; a um terminal ocupado ela é entregue quando ele ficar livre: se o `timeout` passar antes, ela fica na fila dele e a resposta chega ao seu chat sozinha quando ele terminar a vez). De um chat, alcança também os \
+                agentes dos espaços fora da tela. Se o tempo acabar antes, acompanhe com read_terminal; não reenvie o prompt. `raw: true` envia \
                 teclas cruas (\\n Enter, \\t Tab, \\e Esc, \\x03 Ctrl+C) para menus e comandos de shell (só a terminais).",
             "inputSchema": { "type": "object", "properties": {
                 "name": agent_name,
@@ -235,9 +236,7 @@ pub(crate) fn tools() -> Value {
             "name": "recruit_agent",
             "description": "Cria um agente novo abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você: \
                 um chat do app ou um terminal com o Claude Code, como a pessoa escolheu em Ajustes › Agentes › Invocação dos agentes. Ele ganha \
-                um nome (o seu name, ou um livre que o app escolhe; a resposta diz qual, o modelo e o esforço): chame-o sempre por esse nome e fale com ele \
-                com ask_agent. Só a Luna (o Maestro) recruta, de dentro de um terminal ou chat do MagoAgent: um agente recrutado não recruta outro. \
-                Escolha sempre model e effort à altura da tarefa e diga à pessoa o que escolheu. \
+                um nome (o seu name, ou um livre que o app escolhe; a resposta diz qual, o modelo, o esforço e, com mais de um espaço, em qual ele nasceu: sempre o que está na tela): chame-o sempre por esse nome e fale com ele \n                com ask_agent. Só a Luna (o Maestro) recruta, de dentro de um terminal ou chat do MagoAgent: um agente recrutado não recruta outro. \n                Escolha sempre model e effort à altura da tarefa e diga à pessoa o que escolheu. \
                 Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para \
                 dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).",
             "inputSchema": { "type": "object", "properties": recruit },

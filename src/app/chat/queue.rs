@@ -33,6 +33,8 @@ impl DrawingApp {
 
             match self.agent_state(&id) {
                 AgentState::Waiting => self.chat_queue.push((id, text)),
+                // another agent's question waits for it to be free: typed now, it would mix with the work it does
+                AgentState::Working(_) | AgentState::Active(_) if crate::app::chat::ask::asked_by(&text).is_some() => self.chat_queue.push((id, text)),
                 AgentState::Ended => {
                     self.toast(format!("{} fechou: a mensagem da fila voltou para a caixa.", self.terminal_name(&id)));
                     let gap = if self.chat_draft.is_empty() { "" } else { "\n" };

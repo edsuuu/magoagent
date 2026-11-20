@@ -166,10 +166,38 @@ impl DrawingApp {
         self.message_event(&boss, id, tool_summary("tarefa", &json!({ "prompt": text })));
     }
 
+    /// A question for terminal `to` that stayed busy past the asker's wait (the bridge's `QueueAsk`): in its line as the
+    /// asker's, going once it is free (`flush_chat_queue`); a chat that asked gets the answer when its turn ends.
+    pub(crate) fn queue_ask(&mut self, from: &str, to: &str, asker: &str, text: &str) {
+        if self.is_chat(from) {
+            self.recruit_boss.insert(to.to_string(), from.to_string());
+        }
+
+        self.queue_message(to, format!("Pergunta de \"{asker}{RETURNS}{text}"));
+        self.message_event(from, to, tool_summary("pergunta", &json!({ "prompt": text })));
+    }
+
+    /// A task chat `from` gives chat `id` (`tasks … send`): it waits its turn in that chat's line, as it was written, and
+    /// what the chat says at the end of that turn comes back to `from` (`bring_answer`), as a recruit's first task does.
+    pub(crate) fn task_to_chat(&mut self, id: &str, from: &str, text: &str) {
+        let (reply, _) = std::sync::mpsc::channel();
+        let asker = self.speaker(from);
+        let ask = ChatAsk { chat: id.into(), from: from.into(), asker, text: text.into(), reply, running: false, answer: None, task: true };
+
+        self.chat_asks.push(ask);
+        self.message_event(from, id, tool_summary("tarefa", &json!({ "prompt": text })));
+    }
+
     /// The chat that recruited chat `id`: the start of a rope that ends on it (`rope_between` ties the recruiter first).
+    /// With its card in a workspace off view there is no rope to read: who recruited it, as kept then.
+    // ponytail: kept in memory, so after a restart an off-view recruit has no boss until its space is shown; upgrade: the boss in chats.json
     pub(crate) fn boss_of(&self, id: &str) -> Option<String> {
         fn end(binding: &Option<Binding>) -> Option<&str> {
             binding.as_ref().map(|binding| binding.element_id.as_str())
+        }
+
+        if !self.scene.elements.iter().any(|element| element.id == id) {
+            return self.recruit_boss.get(id).filter(|boss| self.is_chat(boss)).cloned();
         }
 
         self.scene
@@ -194,27 +222,51 @@ impl DrawingApp {
             return;
         }
 
-        let who = self.speaker(&ask.chat);
-
         let words = match answer {
             Ok(words) if !words.trim().is_empty() => words.trim().to_string(),
             Ok(_) => "Terminei, sem nada a dizer.".into(),
             Err(why) => format!("Não terminei: {why}"),
         };
 
-        let message = answer_message(&who, &words);
+        let message = self.answer_for(&ask.chat, &ask.from, &words);
+
+        self.chat_send(ctx, &ask.from, &message);
+    }
+
+    /// What agent `from` said, as the message chat `to` gets: kept as that agent's (not the person's) for the chat's
+    /// bubbles, with its event and its dot along their rope.
+    fn answer_for(&mut self, from: &str, to: &str, words: &str) -> String {
+        let who = self.speaker(from);
+        let message = answer_message(&who, words);
 
         if let Some(bridge) = &self.bridge {
             let mut shared = locked(&bridge.shared);
 
-            shared.asked.push((ask.from.clone(), message.clone(), who.clone()));
+            shared.asked.push((to.to_string(), message.clone(), who));
             let extra = shared.asked.len().saturating_sub(50);
 
             shared.asked.drain(..extra);
         }
 
-        self.message_event(&ask.chat, &ask.from, tool_summary("resposta", &json!({ "prompt": words })));
-        self.chat_send(ctx, &ask.from, &message);
+        self.message_event(from, to, tool_summary("resposta", &json!({ "prompt": words })));
+        message
+    }
+
+    /// A recruit in a terminal ended its turn (its `Stop` hook, with what it said last): the chat that recruited it
+    /// gets those words, in line when it is answering. Not while that chat's own `ask` waits on the terminal (the
+    /// answer goes back there), nor for a turn that said nothing.
+    // ponytail: every turn end of every terminal recruit is a turn of its Maestro; a setting to turn it off if it costs too much
+    pub(crate) fn recruit_finished(&mut self, from: &str, words: &str) {
+        let Some(boss) = self.recruit_boss.get(from).filter(|boss| self.is_chat(boss)).cloned() else { return };
+        let asked = self.bridge.as_ref().is_some_and(|bridge| locked(&bridge.shared).asking.iter().any(|(_, target)| target == from));
+
+        if asked || self.is_chat(from) || words.trim().is_empty() || crate::transcript::said_nothing(words) {
+            return;
+        }
+
+        let message = self.answer_for(from, &boss, words.trim());
+
+        self.queue_message(&boss, message);
     }
 
     /// A message from `from` to `to` in the log: its dot runs along their rope.

@@ -70,7 +70,7 @@ impl DrawingApp {
         };
 
         if args["send"] == true {
-            said += &format!(" {}", self.deliver_task(&id).unwrap_or_else(|why| why));
+            said += &format!(" {}", self.deliver_task(&id, &text("asker")).unwrap_or_else(|why| why));
         }
 
         Ok(said)
@@ -167,7 +167,7 @@ impl DrawingApp {
         self.save_tasks();
 
         if args["send"] == true {
-            said += &format!(" {}", self.deliver_task(&id).unwrap_or_else(|why| why));
+            said += &format!(" {}", self.deliver_task(&id, &text("asker")).unwrap_or_else(|why| why));
         }
 
         Ok(said)

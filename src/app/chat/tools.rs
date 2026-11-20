@@ -2,7 +2,7 @@
 //! MCP) and a system prompt that says who it is, what it remembers of the person and how to act on
 //! the app; the app answers its show, set_folder, screenshot and review commands.
 
-use crate::app::chat::direct::{CHAT_MODES, Chat, NewChat, folder};
+use crate::app::chat::direct::{Chat, folder};
 use crate::app::maestro::temp_folder::temp_rule;
 use crate::mcp::bridge::UiCommand;
 use crate::prelude::*;
@@ -308,8 +308,8 @@ impl DrawingApp {
         Ok(format!("Mostrando {} no canvas.", if wanted.is_empty() { "o desenho todo" } else { at.trim() }))
     }
 
-    /// set_folder: the conversation moves to `path`; one that already has a session (the agent's
-    /// memory lives in the folder) stays, and a new chat opens there.
+    /// set_folder: the conversation moves to `path`, with its context (chat/moving.rs), and its card to the workspace of
+    /// that folder.
     pub(crate) fn maestro_set_folder(&mut self, path: &str) -> Result<String, String> {
         let path = path.trim().trim_end_matches(['/', '\\']).to_string();
 
@@ -324,17 +324,7 @@ impl DrawingApp {
         let current = self.chat_agent.clone().and_then(|id| self.chats.iter().find(|c| c.id == id).cloned());
 
         match current {
-            Some(chat) if chat.session.is_none() => {
-                self.chat_set_folder(&path);
-                Ok(format!("Esta conversa agora trabalha em {path}."))
-            }
-            Some(chat) => {
-                let installed = self.installed_agents();
-                let agent = installed.iter().position(|p| p.command.starts_with(&chat.agent)).unwrap_or(0);
-
-                self.create_chat(&NewChat { agent, cwd: path.clone(), mode: chat.mode.min(CHAT_MODES.len() - 1) }, &installed);
-                Ok(format!("Abri outro chat em {path}; a conversa segue lá (esta fica na pasta de antes)."))
-            }
+            Some(chat) => Ok(self.move_chat(&chat.id, &path)),
             None => {
                 self.prefs.chat_folder = path.clone();
                 Ok(format!("Os próximos chats começam em {path}."))
@@ -501,22 +491,22 @@ mod tests {
     }
 
     #[test]
-    fn set_folder_moves_a_fresh_chat_and_opens_another_for_one_with_a_session() {
+    fn set_folder_moves_the_chat_whether_or_not_its_conversation_started() {
         let mut app = DrawingApp::default();
         let installed = vec![Preset::new("Claude Code", "claude")];
 
-        app.create_chat(&NewChat { agent: 0, cwd: "~/a".into(), mode: 0 }, &installed);
+        app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: "~/a".into(), mode: 0 }, &installed);
         let dir = std::env::temp_dir();
         let path = dir.to_string_lossy().trim_end_matches(['/', '\\']).to_string();
 
         assert!(app.maestro_set_folder("C:/nao/existe/mesmo").is_err());
         assert!(app.maestro_set_folder(&path).unwrap().contains("agora trabalha"));
         assert_eq!(app.chats[0].cwd, path);
+        // a conversation going: the same chat moves, no second one
         app.chats[0].session = Some("s".into());
-        // no agent installed here: the new chat can't be made, so nothing changes but the answer
-        let answer = app.maestro_set_folder(&path);
-
-        assert!(answer.is_ok(), "{answer:?}");
+        app.chats[0].cwd = "~/a".into();
+        assert!(app.maestro_set_folder(&path).unwrap().contains("todo o contexto"));
+        assert_eq!((app.chats.len(), app.chats[0].cwd.as_str()), (1, path.as_str()));
     }
 
     #[test]
