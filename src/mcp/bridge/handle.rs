@@ -15,16 +15,10 @@ const BUSY_POLL: Duration = Duration::from_millis(250);
 fn off_view(space: &str, cmd: &str) -> String {
     // the command as it is typed (`note create`), not the bridge's name for it
     let typed = cmd.replace('_', " ");
-    let still = "Com ele fora da tela, list, check, ask, note read, notify e tasks continuam funcionando.";
 
-    if cmd.starts_with("portal_") || cmd == "vault_fill" {
-        return format!(
-            "Espaço \"{space}\" fora da tela: a página de um navegador do canvas só existe com o espaço dela aberto, então {typed} não roda agora. \
-             Não espere por ela: siga com outro navegador que você tenha, ou avise quem coordena (notify) para abrir o espaço \"{space}\". {still}"
-        );
-    }
-
-    format!("O espaço \"{space}\" deste terminal não está aberto na tela: abra-o no MagoAgent para usar {typed}. {still}")
+    format!(
+        "O espaço \"{space}\" deste terminal não está aberto na tela: abra-o no MagoAgent para usar {typed}. Com ele fora da tela, list, check, ask, note read, notify, tasks e os navegadores ligados a você continuam funcionando."
+    )
 }
 
 /// O que `magoagent hook` mandou vai para o app. Quando o hook espera a pessoa (`wait`), o pedido ganha um número
@@ -132,8 +126,11 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     // a chat, or an MCP outside the app, is tied to no canvas: what the one shown lacks it finds in the spaces off view
     let roaming = away.is_none() && (chat.is_some() || who.is_empty());
 
-    // its tasks, its questions and the shared notes are no part of the drawing: they go on off view
-    let apart = cmd == "act" && matches!(request["action"].as_str(), Some("tasks" | "doubts" | "memory" | "binder"));
+    // its tasks, its questions and the shared notes are no part of the drawing, and its pages stay loaded off view
+    // (`away_portals`): they go on with the workspace off screen
+    let apart = cmd == "act" && matches!(request["action"].as_str(), Some("tasks" | "doubts" | "memory" | "binder"))
+        || (cmd.starts_with("portal_") && cmd != "portal_create")
+        || cmd == "vault_fill";
 
     if let Some(space) = away
         && !apart
@@ -150,7 +147,6 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
     // what changes the drawing or drives a page needs it on screen: found off view, the answer says where it is
     let shown = |name: &str, kind: NodeKind| {
         find(&nodes, from, name, kind).map_err(|why| match elsewhere(name, kind) {
-            Some((space, node)) if node.kind == NodeKind::Portal => off_view(&space, cmd),
             Some((space, node)) => {
                 format!("\"{}\" está no espaço \"{space}\", fora da tela: abra-o (workspaces switch) para usar {}.", node.name, cmd.replace('_', " "))
             }
@@ -320,7 +316,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
             Ok("Nota criada e conectada a este terminal.".into())
         }
         "portal_navigate" => {
-            let portal = shown(name, NodeKind::Portal)?;
+            let portal = reach(name, NodeKind::Portal)?;
             let url = normalize_url(text);
 
             sender.send(UiCommand::PortalNavigate { id: portal.id, url: url.clone() }).map_err(|_| "o app fechou")?;
@@ -333,7 +329,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
                 return Err("ação de histórico desconhecida: use back, forward ou reload".into());
             };
 
-            let portal = shown(name, NodeKind::Portal)?;
+            let portal = reach(name, NodeKind::Portal)?;
 
             sender.send(UiCommand::PortalHistory { id: portal.id, action: action.into() }).map_err(|_| "o app fechou")?;
             Ok(format!("Navegador \"{}\" {did}.", portal.name))
@@ -342,7 +338,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
         | "portal_scroll") => {
             // a vault login goes to the portal open on that site; the secret in `text` is typed and never kept
             let portal =
-                if cmd == "vault_fill" { portal_of_site(&nodes, from, request["site"].as_str().unwrap_or_default())? } else { shown(name, NodeKind::Portal)? };
+                if cmd == "vault_fill" { portal_of_site(&nodes, from, request["site"].as_str().unwrap_or_default())? } else { reach(name, NodeKind::Portal)? };
 
             // a picture is the app's to take, not a script's
             if cmd == "portal_shot" {

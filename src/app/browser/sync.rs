@@ -41,6 +41,9 @@ impl DrawingApp {
                     {
                         spec.set_tab_url(i, url);
                         self.dirty = true;
+                    } else if let Some((_, spec)) = self.away_portals.get_mut(&portal) {
+                        // a page of a workspace off view: what it shows when its space comes back
+                        spec.set_tab_url(i, url);
                     }
                 }
                 PortalEvent::NewTab { portal, url } => {
@@ -163,6 +166,16 @@ impl DrawingApp {
                 Some((e.id.clone(), urls, spec.active_tab(), rect, zoom, self.cards_in_front(i)))
             })
             .collect();
+
+        // the pages of the workspaces off view stay loaded, hidden (no place on screen)
+        self.prune_away_portals();
+        let mut live = live;
+
+        live.extend(self.away_portals.iter().map(|(id, (_, spec))| {
+            let urls: Vec<String> = spec.tab_urls().iter().map(|u| normalize_url(u)).collect();
+
+            (id.clone(), urls, spec.active_tab(), None, 1.0, Vec::new())
+        }));
 
         self.forget_portals(&live.iter().map(|(id, ..)| id.as_str()).collect::<Vec<_>>());
         let marquee = self.marquee.zip(self.last_pointer).map(|(start, end)| Rect::from_two_pos(self.to_screen(start), end));

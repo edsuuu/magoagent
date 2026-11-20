@@ -403,6 +403,9 @@ pub(crate) struct DrawingApp {
     /// space, spec), each space's camera and selection while off view, and the sidebar's cards.
     pub(crate) spaces: workspaces::Workspaces,
     pub(crate) away: std::collections::HashMap<String, (String, TerminalSpec)>,
+    /// The pages of the workspaces off view, by portal id: their scope key and their spec as they left the screen. They
+    /// stay loaded, hidden, so an agent goes on driving them (`sync_portals`); they come back with their space.
+    pub(crate) away_portals: std::collections::HashMap<String, (String, PortalSpec)>,
     pub(crate) space_views: std::collections::HashMap<String, (f32, Vec2, Vec<String>)>,
     pub(crate) space_dialog: Option<workspaces::SpaceDialog>,
     /// The welcome slides over everything (ui/welcome/), while they are on.

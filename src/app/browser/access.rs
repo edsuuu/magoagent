@@ -55,7 +55,7 @@ impl DrawingApp {
     }
 
     pub(crate) fn open_tab_view_mut(&mut self, id: &str) -> Option<&mut TabView> {
-        let active = self.scene.elements.iter().find(|e| e.id == id)?.portal.as_ref()?.active_tab();
+        let active = self.portal_spec(id)?.active_tab();
 
         self.portals.get_mut(id)?.tabs.get_mut(active)
     }
@@ -83,11 +83,25 @@ impl DrawingApp {
             return;
         }
 
-        let _ = reply.send(Err("esse navegador não está aberto".into()));
+        // a page of a workspace off view lives only if it was loaded when its space left the screen
+        let why = if self.scene.elements.iter().any(|e| e.id == id) {
+            "esse navegador não está aberto"
+        } else {
+            "a página desse navegador não está carregada: o espaço dela não foi aberto desde que o MagoAgent começou (ou a página foi descarregada). Siga com outro navegador, ou peça para abrirem o espaço dela uma vez"
+        };
+
+        let _ = reply.send(Err(why.into()));
+    }
+
+    /// A portal's spec, on the canvas shown or in a workspace off view (`away_portals`).
+    pub(crate) fn portal_spec(&self, id: &str) -> Option<&PortalSpec> {
+        let shown = self.scene.elements.iter().find(|e| e.id == id).and_then(|e| e.portal.as_ref());
+
+        shown.or_else(|| self.away_portals.get(id).map(|(_, spec)| spec))
     }
 
     pub(crate) fn open_tab_view(&self, id: &str) -> Option<&TabView> {
-        let active = self.scene.elements.iter().find(|e| e.id == id)?.portal.as_ref()?.active_tab();
+        let active = self.portal_spec(id)?.active_tab();
 
         self.portals.get(id)?.tabs.get(active)
     }
@@ -121,6 +135,15 @@ impl DrawingApp {
 
     /// An address typed in the bar, or an agent opening one: in the open tab.
     pub(crate) fn portal_navigate(&mut self, id: &str, url: &str) {
+        // off view: the page loads it (`sync_portals`), and its space shows it on return
+        if let Some((_, spec)) = self.away_portals.get_mut(id) {
+            let active = spec.active_tab();
+
+            spec.set_tab_url(active, normalize_url(url));
+
+            return;
+        }
+
         self.snapshot();
 
         if let Some(spec) = self.scene.elements.iter_mut().find(|e| e.id == id).and_then(|e| e.portal.as_mut()) {

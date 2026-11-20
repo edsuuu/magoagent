@@ -231,3 +231,41 @@ fn a_chat_recruit_keeps_its_agents_name_after_its_first_message() {
 
     assert!(chat.named && chat.name == name, "{name}");
 }
+
+#[test]
+fn a_page_stays_loaded_off_view_and_comes_back_where_the_agent_took_it() {
+    let (mut app, dir, _) = two_spaces("pagina");
+    let mut element = app.new_element(ElementKind::Rectangle { x: 0.0, y: 0.0, width: 600.0, height: 400.0 });
+
+    element.portal = Some(PortalSpec { name: "QA INV-163".into(), url: "https://exemplo.com".into(), ..Default::default() });
+    let id = element.id.clone();
+
+    app.scene.elements.push(element);
+    app.dirty = true;
+    let shown = app.scope_key();
+    let home = app.space_named("INV-163").unwrap();
+
+    app.switch_space(&home).unwrap();
+    // kept, with its space: the page loop keeps its webview, hidden
+    assert_eq!(app.away_portals.get(&id).map(|(key, _)| key.as_str()), Some(shown.as_str()));
+    assert!(app.portal_spec(&id).is_some(), "the agents' page commands find it");
+    // an agent takes it elsewhere meanwhile: no undo step in the drawing on screen
+    let undo = app.undo.len();
+
+    app.portal_navigate(&id, "exemplo.com/login");
+    assert_eq!(app.undo.len(), undo);
+    let back = app.space_named("INV-184").unwrap();
+
+    app.switch_space(&back).unwrap();
+    let url = app.scene.elements.iter().find(|element| element.id == id).and_then(|element| element.portal.as_ref()).map(|spec| spec.url.clone());
+
+    assert_eq!(url.as_deref(), Some("https://exemplo.com/login"), "where the agent left it");
+    assert!(app.away_portals.is_empty());
+    // a space removed takes its pages
+    app.switch_space(&home).unwrap();
+    assert!(app.away_portals.contains_key(&id));
+    app.remove_space(&back).unwrap();
+    app.prune_away_portals();
+    assert!(app.away_portals.is_empty());
+    let _ = fs::remove_dir_all(&dir);
+}

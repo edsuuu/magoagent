@@ -36,6 +36,14 @@ impl DrawingApp {
         write_scene_file(&path, &scene).map(drop).map_err(|error| format!("não foi possível salvar: {error}"))
     }
 
+    /// The pages kept off view (`away_portals`) whose workspace (or floor) still exists and that were not unloaded.
+    pub(crate) fn prune_away_portals(&mut self) {
+        let scopes: Vec<String> = self.away_portals.values().map(|(key, _)| key.clone()).collect();
+        let gone: Vec<String> = scopes.into_iter().filter(|key| self.scope_file(key).is_none()).collect();
+
+        self.away_portals.retain(|_, (key, spec)| !gone.contains(key) && !spec.unloaded);
+    }
+
     /// Where a recruit was born, for the answer its Maestro reads: nothing with one workspace; with more, the one on
     /// screen, and a warning when `cwd` (the Maestro's folder) is inside another workspace's root and not this one's.
     pub(crate) fn born_in(&self, cwd: &str) -> String {

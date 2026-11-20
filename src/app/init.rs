@@ -226,6 +226,7 @@ impl Default for DrawingApp {
             panes: Default::default(),
             spaces: Default::default(),
             away: Default::default(),
+            away_portals: Default::default(),
             space_views: Default::default(),
             space_dialog: None,
             welcome: None,
