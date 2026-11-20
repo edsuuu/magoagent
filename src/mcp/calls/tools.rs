@@ -114,14 +114,15 @@ pub(crate) fn tools() -> Value {
             "name": "list_agents",
             "description": "Lista os agentes (terminais e chats do canvas), notas e navegadores ligados a você por uma seta, com o estado \
                 de cada agente (trabalhando, parado, encerrado; um chat é a Luna e diz que é chat). Fora de um terminal do MagoAgent, ou de um \
-                chat ainda sem corda, lista todos.",
+                chat ainda sem corda, lista todos. De um chat, mostra também o que ele alcança nos espaços fora da tela, cada um sob o nome do espaço.",
             "inputSchema": { "type": "object", "properties": {} },
         },
         {
             "name": "ask_agent",
             "description": "Manda um prompt a um agente conectado (outro terminal do canvas, ou um chat), espera ele terminar e devolve a \
                 tela dele (de um chat, a resposta; a pergunta entra na conversa dele com o seu nome e, se ele estiver ocupado, espera na \
-                fila). Se o tempo acabar antes, acompanhe com read_terminal; não reenvie o prompt. `raw: true` envia \
+                fila; a um terminal ocupado ela é entregue quando ele ficar livre, dentro do `timeout`). De um chat, alcança também os \
+                agentes dos espaços fora da tela. Se o tempo acabar antes, acompanhe com read_terminal; não reenvie o prompt. `raw: true` envia \
                 teclas cruas (\\n Enter, \\t Tab, \\e Esc, \\x03 Ctrl+C) para menus e comandos de shell (só a terminais).",
             "inputSchema": { "type": "object", "properties": {
                 "name": agent_name,
@@ -234,7 +235,7 @@ pub(crate) fn tools() -> Value {
             "name": "recruit_agent",
             "description": "Cria um agente novo abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você: \
                 um chat do app ou um terminal com o Claude Code, como a pessoa escolheu em Ajustes › Agentes › Invocação dos agentes. Ele ganha \
-                um nome (a resposta diz qual, o modelo e o esforço) e você fala com ele com ask_agent. Só de dentro de um terminal ou chat do MagoAgent. \
+                um nome (a resposta diz qual, o modelo, o esforço e, com mais de um espaço, em qual ele nasceu: sempre o que está na tela) e você fala com ele com ask_agent. Só de dentro de um terminal ou chat do MagoAgent. \
                 Escolha sempre model e effort à altura da tarefa e diga à pessoa o que escolheu. \
                 Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para \
                 dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).",

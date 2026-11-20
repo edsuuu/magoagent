@@ -82,11 +82,17 @@ impl DrawingApp {
             }
             "resize_window" => self.act_resize(&text("target"), &text("state"), args["width"].as_f64(), args["height"].as_f64()),
             "close_window" => {
-                let index = self.node_named(&text("name"))?;
+                let index = match self.node_named(&text("name")) {
+                    Ok(index) => index,
+                    // not on the canvas shown: a terminal running in a workspace off view closes there
+                    Err(why) => return self.close_away(&text("name")).unwrap_or(Err(why)),
+                };
+
+                let left = self.left_running(&self.scene.elements[index].id);
 
                 self.selected = vec![index];
                 self.delete_selected();
-                Ok(format!("{} fechado (dá para desfazer).", text("name")))
+                Ok(format!("{} fechado (dá para desfazer).{left}", text("name")))
             }
             "create_terminal" => self.act_create_terminal(args),
             "terminal_restart" => {

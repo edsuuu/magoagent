@@ -95,8 +95,6 @@ impl DrawingApp {
             return Some(i);
         }
 
-        let chat = self.chats.iter().find(|c| c.id == id)?;
-        let spec = ChatSpec { name: chat.name.clone(), agent: chat.agent.clone(), cwd: chat.cwd.clone(), folded: None };
         // a canvas not laid out yet (the first frame, a test) has no middle: the drawing's origin
         let middle = if self.canvas_rect.is_positive() { self.to_world(self.canvas_rect.center()) } else { Pos2::ZERO };
 
@@ -105,14 +103,22 @@ impl DrawingApp {
             None => self.chat_spot(middle),
         };
 
+        let node = self.chat_card(id, want)?;
+
+        self.snapshot();
+        self.scene.elements.push(node);
+        Some(self.scene.elements.len() - 1)
+    }
+
+    /// The card of chat `id` as an element at `want`, for this canvas or another workspace's (workspaces/away.rs).
+    pub(crate) fn chat_card(&self, id: &str, want: Rect) -> Option<Element> {
+        let chat = self.chats.iter().find(|c| c.id == id)?;
         let mut node = self.new_element(ElementKind::Rectangle { x: want.min.x, y: want.min.y, width: want.width(), height: want.height() });
 
         node.id = id.to_string();
         node.style = node_style(node.style);
-        node.chat = Some(spec);
-        self.snapshot();
-        self.scene.elements.push(node);
-        Some(self.scene.elements.len() - 1)
+        node.chat = Some(ChatSpec { name: chat.name.clone(), agent: chat.agent.clone(), cwd: chat.cwd.clone(), folded: None });
+        Some(node)
     }
 
     /// "Mostrar no canvas": the canvas, on the chat's card (made now when this canvas has none),
@@ -125,8 +131,10 @@ impl DrawingApp {
         self.selected = vec![i];
         self.glide_to(self.scene.elements[i].center());
         let name = self.agent_label(id);
+        // which canvas, once there is more than one: the card is put on the one shown, whatever the chat's folder
+        let space = self.current_space().filter(|_| self.spaces.list.len() > 1).map_or(String::new(), |w| format!(" do espaço \"{}\"", w.name));
 
-        Ok(if had { format!("Canvas no cartão do chat {name}.") } else { format!("Chat {name} agora tem um cartão no canvas.") })
+        Ok(if had { format!("Canvas{space} no cartão do chat {name}.") } else { format!("Chat {name} agora tem um cartão no canvas{space}.") })
     }
 
     /// The chat is gone (Remover chat): so is its card on this canvas; its ropes follow (`swing_ropes`).
@@ -559,6 +567,11 @@ impl DrawingApp {
                 self.show_chat_on_canvas(&id)?;
                 Ok(format!("Chat novo no canvas: {}.", self.agent_label(&id)))
             }
+            "move" => {
+                let id = self.chat_named(&text("chat"))?;
+
+                self.move_chat_card(&id, &text("space"))
+            }
             "remove" => {
                 let id = self.chat_named(&text("chat"))?;
                 let name = self.agent_label(&id);
@@ -582,7 +595,7 @@ impl DrawingApp {
                     None => Err(format!("O chat {name} não tem cartão neste canvas.")),
                 }
             }
-            other => Err(format!("action é show, new, remove ou fold, não {other}.")),
+            other => Err(format!("action é show, new, move, remove ou fold, não {other}.")),
         }
     }
 

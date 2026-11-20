@@ -102,6 +102,7 @@ impl DrawingApp {
         };
 
         let size = if chat_mode { RECRUIT_CARD } else { size };
+        let born = self.born_in(&cwd);
         let at = self.free_spot_near(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), size), b);
         let side = side_of(at, b);
         let name = self.agent_name();
@@ -132,6 +133,7 @@ impl DrawingApp {
         terminal.style = node_style(terminal.style);
         let id = terminal.id.clone();
 
+        self.recruit_boss.insert(id.clone(), from.to_string());
         self.snapshot();
 
         // the model and effort it runs, said with the dispatch (tuning.rs)
@@ -166,7 +168,9 @@ impl DrawingApp {
         let who = self.speaker(from);
 
         self.agent_event(&id, EventKind::Started, format!("recrutado por {who} ({kind}): {tuning}"));
-        let _ = reply.send(Ok(format!("Agente \"{name}\" criado {side} e conectado ({kind}; {tuning}); fale com ele com `magoagent ask \"{name}\" …`.{own}")));
+
+        let _ = reply
+            .send(Ok(format!("Agente \"{name}\" criado {side} e conectado ({kind}; {tuning}); fale com ele com `magoagent ask \"{name}\" …`.{own}{born}")));
     }
 
     /// The chat of a recruit (same id as its card), its first message queued: `raw` is the recruit's command, its

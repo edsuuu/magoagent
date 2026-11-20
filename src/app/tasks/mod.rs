@@ -448,7 +448,14 @@ impl DrawingApp {
             let note = if t.note.is_empty() { String::new() } else { format!(" — {}", t.note) };
             let when = ago((now - t.updated).max(0) as f64 / 1000.0);
 
-            out += &format!("\n{} · {} · {} · {}{note} · {when}", t.id, t.state.label(), self.task_owner(t), t.title);
+            // an owner closed or ended is said here too: the task goes on with nobody working on it
+            let gone = self
+                .task_points_now(t)
+                .into_iter()
+                .find(|point| point.starts_with("o responsável"))
+                .map_or(String::new(), |point| format!(" · atenção: {point}"));
+
+            out += &format!("\n{} · {} · {} · {}{note} · {when}{gone}", t.id, t.state.label(), self.task_owner(t), t.title);
         }
 
         Ok(out)
