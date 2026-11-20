@@ -1,0 +1,21 @@
+Architectures: amd64
+Date: Fri, 20 Nov 2026 22:45:06 +0000
+Label: MagoAgent
+Origin: MagoAgent
+Suite: stable
+MD5Sum:
+ ed140a2d46bdf0991567dd2a02b51873             1362 Packages
+ 2441dd78f85623c4149b13bbe28961e2              833 Packages.gz
+ b6f8198f946ac0634b32d34e7a92ee2e              108 Release
+SHA1:
+ 677f4a95b51f3b2b7803973b8333b0fbebef9190             1362 Packages
+ c472c1206e88bf862658b2d08266776f956f9bdd              833 Packages.gz
+ 878beebbe0471c54835e8e6859938b2509744ea1              108 Release
+SHA256:
+ 794f5ecc04c02e81ac1c1ad9d936f9f71c98d229f6b794608e80ea7d06b93e68             1362 Packages
+ 5ac5c726c63b59c60309e10b30bf70479a2963ef5eb7e59eaf10fb5bc21bc037              833 Packages.gz
+ aa67260626c77dc3e1156646e29f7f8d6c924cfe1c6fd40d9d174167bac6eb4f              108 Release
+SHA512:
+ d55b0e870b5c07d5c79e1cc3757578b102dbb11f99ee30d4e1390a56ce8e5541ffd6dfb74705ff405b89fa9f6e0e710e910d3c07e293632df7b6dec2e5706e6f             1362 Packages
+ 9166dd0cd7a4f703f80180b9d8c6ea796057eaf89168588736eec5fd2fa9306a06ee6e9e65b8b378e3c8e3489973438e2c9feeb34148e65e9d893f176fcd3561              833 Packages.gz
+ 1ad29c2fe35d542206c9f6f98a41ee225cf3ba732af58f1341a5a69b0bacf80aeea068ed58e08290a29fcf39a7331b45df8ba162fd93801a4f7125c62c7218ef              108 Release

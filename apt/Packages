@@ -1,0 +1,20 @@
+Package: magoagent
+Architecture: amd64
+Version: 0.0.39
+Priority: optional
+Section: devel
+Maintainer: edsuuu <111332935+edsuuu@users.noreply.github.com>
+Installed-Size: 53076
+Depends: libasound2 (>= 1.0.29), libc6 (>= 2.35), libcairo2 (>= 1.2.4), libgcc-s1 (>= 4.2), libgdk-pixbuf-2.0-0 (>= 2.22.0), libglib2.0-0 (>= 2.65.1), libgtk-3-0 (>= 3.21.5), libjavascriptcoregtk-4.1-0, libsoup-3.0-0 (>= 3.0.3), libwebkit2gtk-4.1-0 (>= 2.35.1), libegl1, libgl1, libfontconfig1, libwayland-client0, libwayland-egl1, libx11-6, libx11-xcb1, libxcb1, libxcursor1, libxi6, libxrender1, libxkbcommon0, libxkbcommon-x11-0, libwebkit2gtk-4.1-0
+Recommends: xdg-desktop-portal, git, libayatana-appindicator3-1, gstreamer1.0-libav
+Filename: ./magoagent_0.0.39_amd64.deb
+Size: 15180246
+MD5sum: 6a9c2dbf84fcbd3c3b52af7ad76950dd
+SHA1: f9a7ab7e78846167d6c5decc8893ffdd2eb0ed5c
+SHA256: f11fc678433ba7acb7ca28f18241c6a99fe37f1c955c8e148a23e86046bda2ca
+SHA512: 3d16b634465ea9f8448798448477c36d3cc94c3e6da127087f467bbd200ae05c4050c271dfc88d3b834641a01d24607d7d75bdea2b41f8f9d2524e9a8c5f7fc6
+Homepage: https://github.com/edsuuu/magoagent
+Description: Quadro branco nativo com terminais, chats e agentes de IA
+ MagoAgent é um quadro branco em Rust (egui) com terminais, chats do Claude Code e do
+ Codex, árvore de arquivos com editor, a ilha dos agentes no topo da tela e um servidor MCP.
+
