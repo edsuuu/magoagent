@@ -109,7 +109,7 @@ pub(crate) fn call(name: &str, args: &Value) -> Value {
         "portal_history" => agent(json!({ "cmd": "portal_history", "name": args["name"], "action": args["action"] }), 15.0),
         "portal_scroll" => agent(json!({ "cmd": "portal_scroll", "name": args["name"], "selector": args["selector"], "dy": args["dy"] }), 15.0),
         "recruit_agent" => agent(
-            json!({ "cmd": "recruit", "text": args["command"], "worktree": args["worktree"], "mode": args["mode"], "model": args["model"], "effort": args["effort"] }),
+            json!({ "cmd": "recruit", "name": args["name"], "text": args["command"], "worktree": args["worktree"], "mode": args["mode"], "model": args["model"], "effort": args["effort"] }),
             60.0,
         ),
         "create_portal" => agent(json!({ "cmd": "portal_create", "name": args["name"], "text": args["url"] }), 15.0),

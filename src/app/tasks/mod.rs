@@ -333,6 +333,36 @@ impl DrawingApp {
         }
     }
 
+    /// Agent `id` was closed: its open tasks go back to no owner (one in progress to pending), saying who had them, so
+    /// that someone takes them.
+    pub(crate) fn release_tasks(&mut self, id: &str) {
+        self.tasks_tick();
+        let now = now_ms();
+        let mut freed = Vec::new();
+
+        for task in self.tasks.list.iter_mut().filter(|task| task.owner == id && !task.state.is_final()) {
+            task.note = format!("{} foi fechado: a tarefa ficou sem responsável", task.owner_name);
+            task.owner.clear();
+            task.updated = now;
+
+            if task.state == TaskState::InProgress {
+                task.state = TaskState::Pending;
+            }
+
+            freed.push(task.clone());
+        }
+
+        if freed.is_empty() {
+            return;
+        }
+
+        for task in &freed {
+            self.task_event(task, &task.note);
+        }
+
+        self.save_tasks();
+    }
+
     fn save_tasks(&mut self) {
         let Some(path) = self.tasks_path() else { return };
         let written = serde_json::to_string_pretty(&self.tasks.list).map_err(std::io::Error::other).and_then(|json| write_atomic(&path, json));
@@ -379,15 +409,18 @@ impl DrawingApp {
         self.tasks.list.iter().position(|t| t.id.eq_ignore_ascii_case(id)).ok_or_else(|| format!("Nenhuma tarefa {id}."))
     }
 
-    /// The task, as text, to its owner's terminal (typed as a prompt) or chat.
-    fn deliver_task(&mut self, id: &str) -> Result<String, String> {
+    /// The task, as text, to its owner's terminal (typed as a prompt) or chat. `asker` is who sends it (the bridge's):
+    /// a chat gets the owner's answer back.
+    fn deliver_task(&mut self, id: &str, asker: &str) -> Result<String, String> {
         let task = self.tasks.list[self.task_index(id)?].clone();
 
-        self.deliver_text(id, task_message(&task, &self.tasks.list))
+        self.deliver_text(id, task_message(&task, &self.tasks.list), asker)
     }
 
-    /// `text` to the task's owner, as `deliver_task` does.
-    fn deliver_text(&mut self, id: &str, text: String) -> Result<String, String> {
+    /// `text` to the task's owner, as `deliver_task` does. Sent by a chat (`asker`), what the owner says when it is done
+    /// comes back to that chat: a chat's answer at the end of that turn (chat/ask.rs), a terminal's last words when its
+    /// turn ends (`recruit_finished`).
+    fn deliver_text(&mut self, id: &str, text: String, asker: &str) -> Result<String, String> {
         let task = self.tasks.list[self.task_index(id)?].clone();
 
         if task.owner.is_empty() {
@@ -395,10 +428,22 @@ impl DrawingApp {
         }
 
         let name = self.task_owner(&task);
+        let answers_back = self.is_chat(asker) && asker != task.owner;
+
+        if self.is_chat(&task.owner) && answers_back {
+            self.task_to_chat(&task.owner, asker, &text);
+            self.task_event(&task, &format!("entregue a {name}"));
+
+            return Ok(format!("Entregue a {name}; o que ele disser ao terminar chega neste chat."));
+        }
 
         if self.is_chat(&task.owner) {
             self.chat_outbox.push((task.owner.clone(), text));
         } else if matches!(self.terminals.get(&task.owner), Some(Ok(_))) {
+            if answers_back {
+                self.recruit_boss.insert(task.owner.clone(), asker.to_string());
+            }
+
             // one it can't take now (the trust question of a new folder, a permission menu) waits in the chat queue and
             // goes when it can (`flush_chat_queue`), instead of coming back to the composer
             self.queue_message(&task.owner, text);
@@ -416,7 +461,7 @@ impl DrawingApp {
         }
 
         self.task_event(&task, &format!("entregue a {name}"));
-        Ok(format!("Entregue a {name}."))
+        Ok(format!("Entregue a {name}.{}", if answers_back { " Quando ele terminar a vez, a última fala dele chega neste chat." } else { "" }))
     }
 
     /// The tasks, what needs the person first, then by state; filtered by state and owner.
@@ -448,7 +493,14 @@ impl DrawingApp {
             let note = if t.note.is_empty() { String::new() } else { format!(" — {}", t.note) };
             let when = ago((now - t.updated).max(0) as f64 / 1000.0);
 
-            out += &format!("\n{} · {} · {} · {}{note} · {when}", t.id, t.state.label(), self.task_owner(t), t.title);
+            // an owner closed or ended is said here too: the task goes on with nobody working on it
+            let gone = self
+                .task_points_now(t)
+                .into_iter()
+                .find(|point| point.starts_with("o responsável"))
+                .map_or(String::new(), |point| format!(" · atenção: {point}"));
+
+            out += &format!("\n{} · {} · {} · {}{note} · {when}{gone}", t.id, t.state.label(), self.task_owner(t), t.title);
         }
 
         Ok(out)

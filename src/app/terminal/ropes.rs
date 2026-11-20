@@ -40,6 +40,18 @@ impl DrawingApp {
             return;
         }
 
+        let rope = self.rope_element(a, from, b, to);
+
+        if undoable {
+            self.snapshot();
+        }
+
+        self.scene.elements.push(rope);
+        self.update_bindings();
+    }
+
+    /// The rope from `a` (its middle at `from`) to `b` (at `to`), for this drawing or another workspace's.
+    pub(crate) fn rope_element(&self, a: &str, from: Pos2, b: &str, to: Pos2) -> Element {
         let mut rope = self.new_element(ElementKind::Line { points: vec![[from.x, from.y], [to.x, to.y]], arrow: true });
         let bind = |id: &str| Some(Binding { element_id: id.into(), fixed: [0.5, 0.5], inside: false });
 
@@ -56,12 +68,7 @@ impl DrawingApp {
             ..rope.style
         };
 
-        if undoable {
-            self.snapshot();
-        }
-
-        self.scene.elements.push(rope);
-        self.update_bindings();
+        rope
     }
 
     /// What an agent opened hangs from it by a rope, as `recruit` hangs its child: from a chat, from its card, put on the
@@ -191,13 +198,20 @@ impl DrawingApp {
 
     /// A terminal the Maestro recruits is a new agent: a name from AGENT_NAMES no terminal in any
     /// workspace (the one on screen and the ones off view) nor any chat has, in any case, at random
-    /// ("Fumaça 2" once all are taken).
-    pub(crate) fn agent_name(&self) -> String {
+    /// ("Fumaça 2" once all are taken). `wanted` (the name the Maestro gave), when there is one, goes first, numbered
+    /// ("Aurora 2") when another agent has it.
+    pub(crate) fn agent_name(&self, wanted: &str) -> String {
         use std::hash::BuildHasher;
         let roll = std::collections::hash_map::RandomState::new().hash_one(0u8) as usize;
         let terminals = self.scene.elements.iter().filter_map(|e| e.terminal.as_ref()).chain(self.away.values().map(|(_, spec)| spec));
         let names: Vec<&str> = terminals.map(|t| t.name.as_str()).chain(self.chats.iter().map(|c| c.name.as_str())).collect();
         let taken = |name: &str| names.iter().any(|other| other.to_lowercase() == name.to_lowercase());
+        let wanted = wanted.trim();
+
+        if !wanted.is_empty() {
+            return (1..).map(|count| if count == 1 { wanted.to_string() } else { format!("{wanted} {count}") }).find(|name| !taken(name)).unwrap_or_default();
+        }
+
         let free: Vec<&str> = AGENT_NAMES.iter().copied().filter(|n| !taken(n)).collect();
 
         match free.get(roll % free.len().max(1)) {

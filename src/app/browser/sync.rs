@@ -11,6 +11,10 @@ impl DrawingApp {
         self.portal_snaps.retain(|id, _| alive(id));
         self.portal_painted.get_mut().retain(|id, _| alive(id));
         self.annotations.retain(|id, _| alive(id));
+
+        if self.portal_focus.as_ref().is_some_and(|id| !alive(id)) {
+            self.portal_focus = None;
+        }
     }
 
     /// One webview per tab of every portal, placed over its page box every frame (the open tab
@@ -41,6 +45,9 @@ impl DrawingApp {
                     {
                         spec.set_tab_url(i, url);
                         self.dirty = true;
+                    } else if let Some((_, spec)) = self.away_portals.get_mut(&portal) {
+                        // a page of a workspace off view: what it shows when its space comes back
+                        spec.set_tab_url(i, url);
                     }
                 }
                 PortalEvent::NewTab { portal, url } => {
@@ -164,6 +171,16 @@ impl DrawingApp {
             })
             .collect();
 
+        // the pages of the workspaces off view stay loaded, hidden (no place on screen)
+        self.prune_away_portals();
+        let mut live = live;
+
+        live.extend(self.away_portals.iter().map(|(id, (_, spec))| {
+            let urls: Vec<String> = spec.tab_urls().iter().map(|u| normalize_url(u)).collect();
+
+            (id.clone(), urls, spec.active_tab(), None, 1.0, Vec::new())
+        }));
+
         self.forget_portals(&live.iter().map(|(id, ..)| id.as_str()).collect::<Vec<_>>());
         let marquee = self.marquee.zip(self.last_pointer).map(|(start, end)| Rect::from_two_pos(self.to_screen(start), end));
 
@@ -190,6 +207,10 @@ impl DrawingApp {
             .map(|layer| layer.id)
             .chain([egui::Id::unique("terminal_overlay")])
             .collect();
+
+        // a press the app has (not a page) puts in focus the page it lands on, if any, and takes it from the one that had it
+        let press = ctx.input(|i| i.pointer.any_pressed().then(|| i.pointer.interact_pos()).flatten());
+        let mut focus = if press.is_some() { None } else { self.portal_focus.clone() };
 
         for (id, urls, active, rect, zoom, fronts) in live {
             let events = self.portal_events.0.clone();
@@ -246,6 +267,13 @@ impl DrawingApp {
                 holes.extend(marquee_edges(m).into_iter().map(|e| e.intersect(r)).filter(|e| e.width() >= 1.0 && e.height() >= 1.0));
             }
 
+            if let (Some(at), Some(r)) = (press, rect)
+                && self.tool == Tool::Select
+                && page_pressed(r, &holes, at)
+            {
+                focus = Some(id.clone());
+            }
+
             // ponytail: Windows (a window region) and Linux (an X11 shape) cut a native view; on macOS
             // the page steps aside while anything lies over it. Upgrade: a mask on the NSView's layer
             #[cfg(target_os = "macos")]
@@ -281,7 +309,8 @@ impl DrawingApp {
                     }
                 }
 
-                if moving && self.portal_stills.contains_key(&id) {
+                // under the smallest zoom with no picture yet, the card shows no page rather than a squeezed one
+                if moving && (self.portal_stills.contains_key(&id) || tiny) {
                     for tab in &view.tabs {
                         let _ = tab.webview.set_visible(false);
                     }
@@ -400,6 +429,11 @@ impl DrawingApp {
                         #[cfg(not(target_os = "linux"))]
                         let _ = (tab.webview.set_bounds(bounds(*r)), tab.webview.zoom(*zoom as f64), scale);
 
+                        #[cfg(target_os = "macos")]
+                        if let Some(glass) = &tab.glass {
+                            glass.follow(&tab.webview);
+                        }
+
                         #[cfg(target_os = "linux")]
                         let _ = tab.webview.place(*r, *zoom, *scale);
 
@@ -424,5 +458,22 @@ impl DrawingApp {
                 view.veiled = veiled;
             }
         }
+
+        self.portal_focus = focus;
+        // the page Design draws on takes the pointer too: its overlay is in the page
+        let design = self.design.as_ref().map(|design| &design.portal);
+
+        for (id, view) in &mut self.portals {
+            let on = self.portal_focus.as_ref() == Some(id) || design == Some(id);
+
+            for tab in &mut view.tabs {
+                tab.take_input(on);
+            }
+        }
     }
+}
+
+/// Whether a press at `at` lands on the page in `page`, not on what the app shows over it (`holes`).
+pub(super) fn page_pressed(page: Rect, holes: &[Rect], at: Pos2) -> bool {
+    page.contains(at) && !holes.iter().any(|hole| hole.contains(at))
 }

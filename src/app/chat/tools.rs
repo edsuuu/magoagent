@@ -2,7 +2,7 @@
 //! MCP) and a system prompt that says who it is, what it remembers of the person and how to act on
 //! the app; the app answers its show, set_folder, screenshot and review commands.
 
-use crate::app::chat::direct::{CHAT_MODES, Chat, NewChat, folder};
+use crate::app::chat::direct::{Chat, folder};
 use crate::app::maestro::temp_folder::temp_rule;
 use crate::mcp::bridge::UiCommand;
 use crate::prelude::*;
@@ -84,7 +84,8 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
 
         return format!(
             "Você é {}, um agente do time do MagoAgent, recrutado por outro agente para uma tarefa. Pasta de trabalho: {}. Faça o que for pedido e responda de forma \
-             objetiva. Se outro agente te fizer uma pergunta (ask), a sua resposta volta para ele. Para falar com os outros agentes use `magoagent list|ask|check` \
+             objetiva. Se outro agente te fizer uma pergunta (ask), a sua resposta volta para ele. Você não recruta agentes: só a Luna \
+             recruta; se precisar de mais alguém, peça a ela. Para falar com os outros agentes use `magoagent list|ask|check` \
              (ou o MCP magoagent). Para rodar testes ou uma API e acompanhar, abra um terminal com create_terminal (ou `magoagent terminal <comando>`): ele fica \
              ligado a você por corda e você lê a tela dele com read_terminal (`magoagent check <nome>`). Para dar notícia de como você está \
              (\"estou parado esperando X\", \"terminei\", \"preciso de você\") use notify (`magoagent notify <texto>`); o que você avisa ou manda a \
@@ -111,7 +112,7 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          focus_canvas mostra o canvas centralizado e com zoom no que ela pedir (\"abre o mapa\", \"dá zoom no terminal\"); \
          ide_folder abre uma pasta na Árvore de Arquivos e te dá a estrutura dela; maestro_comment leva ao chat da Luna (o ligado à Árvore) um comentário sobre linhas de um arquivo (o mesmo que a pessoa faz ao selecionar código e escolher \"Comentar para a Luna\"; ele chega como \"Comentário em arquivo:linhas\", com o trecho e o pedido); open_path abre um arquivo na Árvore de Arquivos ou um PDF, \
          imagem ou página num navegador; resize_window amplia, volta ou redimensiona terminais, navegadores e árvores, e maximiza a janela do app; \
-         memory mostra a memória do app e dos agentes por terminal; skills lista as skills que você tem e abre a pasta delas; chat_list, chat_search, chat_new, chat_open e chat_send cuidam dos chats; chats_view abre a área de Chats com tudo o que roda (filtra por estado e busca); voice_call liga, desliga e muta a chamada; file_tree cuida da árvore (arquivos, ramos, conflitos, diffs); portal_tab mexe nas abas; close_window e terminal_restart fecham e \
+         memory mostra a memória do app e dos agentes por terminal; skills lista as skills que você tem e abre a pasta delas; chat_list, chat_search, chat_new, chat_open e chat_send cuidam dos chats; chats_view abre a área de Chats com tudo o que roda (e busca nela); voice_call liga, desliga e muta a chamada; file_tree cuida da árvore (arquivos, ramos, conflitos, diffs); portal_tab mexe nas abas; close_window e terminal_restart fecham e \
          reiniciam janelas; portal_wait espera um elemento, portal_history volta, avança ou recarrega a página, portal_scroll rola até um elemento ou pelos pixels pedidos, portal_console lê os registros e erros da página e portal_screenshot tira uma imagem dela para você ver; set_setting troca tema e voz, mostra o avatar e o deixa parado ou seguindo a janela; history desfaz e refaz; sidebar vai ao próximo agente que precisa da pessoa e abre ou recolhe os Agentes deste espaço e o uso dos planos na lateral; \
          screenshot tira um print do app para você ver como está (\"como está?\" → tire o print e descreva); review abre as \
          mudanças da pasta na Árvore de Arquivos para a pessoa revisar com você; \
@@ -307,8 +308,8 @@ impl DrawingApp {
         Ok(format!("Mostrando {} no canvas.", if wanted.is_empty() { "o desenho todo" } else { at.trim() }))
     }
 
-    /// set_folder: the conversation moves to `path`; one that already has a session (the agent's
-    /// memory lives in the folder) stays, and a new chat opens there.
+    /// set_folder: the conversation moves to `path`, with its context (chat/moving.rs), and its card to the workspace of
+    /// that folder.
     pub(crate) fn maestro_set_folder(&mut self, path: &str) -> Result<String, String> {
         let path = path.trim().trim_end_matches(['/', '\\']).to_string();
 
@@ -323,17 +324,7 @@ impl DrawingApp {
         let current = self.chat_agent.clone().and_then(|id| self.chats.iter().find(|c| c.id == id).cloned());
 
         match current {
-            Some(chat) if chat.session.is_none() => {
-                self.chat_set_folder(&path);
-                Ok(format!("Esta conversa agora trabalha em {path}."))
-            }
-            Some(chat) => {
-                let installed = self.installed_agents();
-                let agent = installed.iter().position(|p| p.command.starts_with(&chat.agent)).unwrap_or(0);
-
-                self.create_chat(&NewChat { agent, cwd: path.clone(), mode: chat.mode.min(CHAT_MODES.len() - 1) }, &installed);
-                Ok(format!("Abri outro chat em {path}; a conversa segue lá (esta fica na pasta de antes)."))
-            }
+            Some(chat) => Ok(self.move_chat(&chat.id, &path)),
             None => {
                 self.prefs.chat_folder = path.clone();
                 Ok(format!("Os próximos chats começam em {path}."))
@@ -419,6 +410,7 @@ mod tests {
             effort: String::new(),
             recruit: false,
             named: false,
+            space: String::new(),
             draft: false,
         }
     }
@@ -499,22 +491,22 @@ mod tests {
     }
 
     #[test]
-    fn set_folder_moves_a_fresh_chat_and_opens_another_for_one_with_a_session() {
+    fn set_folder_moves_the_chat_whether_or_not_its_conversation_started() {
         let mut app = DrawingApp::default();
         let installed = vec![Preset::new("Claude Code", "claude")];
 
-        app.create_chat(&NewChat { agent: 0, cwd: "~/a".into(), mode: 0 }, &installed);
+        app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: "~/a".into(), mode: 0 }, &installed);
         let dir = std::env::temp_dir();
         let path = dir.to_string_lossy().trim_end_matches(['/', '\\']).to_string();
 
         assert!(app.maestro_set_folder("C:/nao/existe/mesmo").is_err());
         assert!(app.maestro_set_folder(&path).unwrap().contains("agora trabalha"));
         assert_eq!(app.chats[0].cwd, path);
+        // a conversation going: the same chat moves, no second one
         app.chats[0].session = Some("s".into());
-        // no agent installed here: the new chat can't be made, so nothing changes but the answer
-        let answer = app.maestro_set_folder(&path);
-
-        assert!(answer.is_ok(), "{answer:?}");
+        app.chats[0].cwd = "~/a".into();
+        assert!(app.maestro_set_folder(&path).unwrap().contains("todo o contexto"));
+        assert_eq!((app.chats.len(), app.chats[0].cwd.as_str()), (1, path.as_str()));
     }
 
     #[test]

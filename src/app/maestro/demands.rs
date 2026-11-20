@@ -317,6 +317,11 @@ impl DrawingApp {
         }
 
         self.record(event);
+
+        // a recruit's turn is over: what it said last goes to the chat that recruited it
+        if kind == EventKind::Finished {
+            self.recruit_finished(from, payload["last_assistant_message"].as_str().unwrap_or_default());
+        }
     }
 
     /// What waits for the person, most urgent first: one demand per agent at most.

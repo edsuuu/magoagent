@@ -85,6 +85,19 @@ pub(super) fn find(nodes: &[Node], from: &str, name: &str, kind: NodeKind) -> Re
     })
 }
 
+/// The node of that name and kind in a workspace off view, with the workspace's name, for a caller tied to no canvas (a
+/// chat, an MCP outside the app): by the ropes of its card there first, then by name in any of them. Never the caller.
+pub(super) fn find_away(away: &HashMap<String, (String, Vec<Node>)>, who: &str, name: &str, kind: NodeKind) -> Option<(String, Node)> {
+    let mut spaces: Vec<&(String, Vec<Node>)> = away.values().collect();
+
+    // the same answer every time two spaces have the name
+    spaces.sort_by(|a, b| a.0.cmp(&b.0));
+    let found = |from: &str, (space, nodes): &(String, Vec<Node>)| Some((space.clone(), find(nodes, from, name, kind).ok().filter(|node| node.id != who)?));
+    let roped = spaces.iter().filter(|(_, nodes)| !who.is_empty() && nodes.iter().any(|n| n.id == who)).find_map(|space| found(who, space));
+
+    roped.or_else(|| spaces.iter().find_map(|space| found("", space)))
+}
+
 /// An agent's path in a tree: relative to its project folder, or absolute inside it; never above it.
 pub(super) fn ide_path(root: &Path, path: &str) -> Result<PathBuf, String> {
     let path = Path::new(path.trim());

@@ -82,6 +82,8 @@ impl DrawingApp {
                     let selection = &mut ui.visuals_mut().selection;
 
                     (selection.bg_fill, selection.stroke.color) = (SELECTION, ink);
+                    // the caret blinks in the note's ink: the dark theme's own is near white, lost on the paper
+                    ui.visuals_mut().text_cursor.stroke = Stroke::new((2.0 * zoom).max(1.0), ink);
                     // the code's boxes go behind the text: their place in the painting is kept before the editor's
                     let behind = ui.painter().add(egui::Shape::Noop);
 

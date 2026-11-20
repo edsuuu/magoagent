@@ -23,12 +23,12 @@ fn hairline() -> Stroke {
     Stroke::new(1.0, Color32::from_white_alpha(9))
 }
 
-/// What an empty page says: its title and what to do, by the tab; Claude Code's knows whether its hooks are
-/// in.
+/// What an empty page says: its title and what to do, by the tab; Chats knows whether the hooks that bring Claude Code
+/// from outside are in.
 pub(crate) fn empty_words(tab: Tab, hooks: bool) -> (&'static str, &'static str) {
     match tab {
-        Tab::Claude if hooks => ("Nenhuma sessão do Claude Code", "Os hooks estão instalados: as sessões aparecem aqui quando começarem"),
-        Tab::Claude => ("Nenhuma sessão do Claude Code", "Instale os hooks em Ajustes › Integrações"),
+        Tab::Chats if hooks => ("Nenhum agente ainda", "Crie um chat em  +: o Claude Code de fora também aparece aqui"),
+        Tab::Chats => ("Nenhum agente ainda", "Crie um chat em  +, ou instale os hooks em Ajustes › Integrações"),
         Tab::GitHub => ("O GitHub está desligado", "Ligue em Ajustes › Integrações"),
         Tab::Music => ("Nada tocando agora", "Ligue o Spotify em Ajustes › Integrações"),
         _ => ("Nenhum agente ainda", "Crie um chat em  +"),
@@ -130,7 +130,7 @@ impl DrawingApp {
             (Some(line), None) => self.idle_card(ui, left, line, out),
             (None, _) => {
                 let text_x = left.left() + 106.0;
-                let hooks = view.tab == Tab::Claude && hooks_installed(ui, time);
+                let hooks = view.tab == Tab::Chats && hooks_installed(ui, time);
                 let (title, hint) = empty_words(view.tab, hooks);
 
                 // on the wizard's middle line, as the wizard
@@ -159,7 +159,7 @@ impl DrawingApp {
                 for pair in lines.chunks(2) {
                     ui.horizontal(|ui| {
                         for line in pair {
-                            pill(ui, line, width, self.opens_on_click(line, view.tab), time, out);
+                            pill(ui, line, width, self.opens_on_click(line), time, out);
                         }
                     });
                 }
@@ -167,14 +167,12 @@ impl DrawingApp {
         });
     }
 
-    /// Whether a click on `line`'s pill opens it, as its Abrir: when the person put it in the card already, and on Claude
-    /// Code's page for the app's own agents (a session of the canvas) at the first click. Not a tool's: its card has its
-    /// own buttons, and its Abrir leaves the app (GitHub's page).
-    fn opens_on_click(&self, line: &Line, tab: Tab) -> bool {
+    /// Whether a click on `line`'s pill opens it, as its Abrir: when the person put it in the card already. Not a tool's:
+    /// its card has its own buttons, and its Abrir leaves the app (GitHub's page).
+    fn opens_on_click(&self, line: &Line) -> bool {
         let tool = line.id.starts_with(crate::app::integrations::ITEM_PREFIX);
-        let canvas = tab == Tab::Claude && !line.id.starts_with(crate::app::maestro::outside::PILL_PREFIX);
 
-        (canvas || self.island.focus.as_deref() == Some(line.id.as_str())) && !tool
+        self.island.focus.as_deref() == Some(line.id.as_str()) && !tool
     }
 
     /// An agent with nothing to say of its turn: its name, its state and the buttons.

@@ -123,7 +123,8 @@ impl DrawingApp {
                         continue;
                     }
 
-                    if button == egui::PointerButton::Middle || space || self.tool == Tool::Hand {
+                    // the hand pans the canvas, but a press on a window (a chat's card) is the window's, as with Seleção
+                    if button == egui::PointerButton::Middle || space || (self.tool == Tool::Hand && !self.window_at(world)) {
                         self.panning = true;
 
                         continue;
@@ -164,7 +165,7 @@ impl DrawingApp {
                         Tool::Fill => self.fill_at(world),
                         Tool::Lasso => self.lasso = Some(vec![world]),
                         // a window is made on the empty canvas: a press on one already there picks it, as Seleção would
-                        Tool::Terminal | Tool::Portal | Tool::FileTree | Tool::Chat | Tool::Sticky if self.window_at(world) => {
+                        Tool::Hand | Tool::Terminal | Tool::Portal | Tool::FileTree | Tool::Chat | Tool::Sticky if self.window_at(world) => {
                             self.select_tool(Tool::Select);
                             self.press_select(pos, world, modifiers);
                         }

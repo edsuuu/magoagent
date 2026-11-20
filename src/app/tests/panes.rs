@@ -170,10 +170,10 @@ fn on_the_welcome_the_panel_buttons_hide_and_the_top_moves_the_window() {
     assert_eq!(raw.events.len(), 1, "the press in the middle of the top moves the window");
 }
 
-/// Only Alterações, Nota rápida and Dúvidas have a button; the tasks still reach the agents.
+/// Only Alterações, Comandos, Nota rápida and Dúvidas have a button; the tasks still reach the agents.
 #[test]
 fn the_tasks_panel_is_gone_and_the_tasks_stay() {
-    assert_eq!(PANES.map(|pane| pane.2), ["Alterações", "Nota rápida", "Dúvidas"]);
+    assert_eq!(PANES.map(|pane| pane.2), ["Alterações", "Comandos", "Nota rápida", "Dúvidas"]);
     let ctx = Context::default();
     let mut app = DrawingApp::default();
 
@@ -251,7 +251,8 @@ fn a_narrow_window_keeps_the_toolbar_clear_of_the_panel_buttons() {
 
     for _ in 0..4 {
         let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, narrow)), ..Default::default() };
-        let _ = ctx.run_ui(raw, |_| app.floating_controls(&ctx));
+
+        ctx.run_ui(raw, |_| app.floating_controls(&ctx)).textures_delta.clear();
     }
 
     let tools = crate::app::ui::tour::spot_rect(&ctx, crate::app::ui::tour::Spot::Toolbar).expect("the toolbar was painted");

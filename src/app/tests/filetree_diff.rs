@@ -40,6 +40,17 @@ fn the_compare_tab_pairs_rows_and_walks_the_changes() {
     let mut c = Compare::new(Path::new("x.rs"), "a\nb\nc\nd\n".into(), "a\nB\nc\nd\nz\n".into());
 
     assert_eq!(c.count(), 2);
+    // colored by kind, as the JetBrains diff: b → B modified (blue), z inserted (green); a removal is gray
+    use crate::app::filetree::compare::{differences, tone};
+    use crate::editor::RowKind;
+
+    assert_eq!(c.blocks.iter().map(|block| block.kind).collect::<Vec<_>>(), [RowKind::Change, RowKind::Insert]);
+    assert_eq!(Compare::new(Path::new("x.rs"), "a\nb\n".into(), "a\n".into()).blocks[0].kind, RowKind::Delete);
+    assert_eq!(tone(RowKind::Change).0, Color32::from_rgb(0x38, 0x55, 0x70));
+    assert_eq!(tone(RowKind::Insert).0, Color32::from_rgb(0x29, 0x44, 0x36));
+    assert_eq!(tone(RowKind::Delete).0, Color32::from_rgb(0x48, 0x4A, 0x4A));
+    assert_eq!(tone(RowKind::Same).0, Color32::TRANSPARENT);
+    assert_eq!([differences(0), differences(1), differences(4)], ["Sem diferenças", "1 diferença", "4 diferenças"]);
     assert_eq!(c.cur, 0);
     c.go(1);
     c.go(1);

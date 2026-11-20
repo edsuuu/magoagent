@@ -219,3 +219,23 @@ fn the_wheel_scrolls_a_long_notes_text_and_leaves_its_header_and_ctrl_to_the_can
     assert!(!wheel(&mut app, beside, Modifiers::NONE).0);
     assert!(!app.note_scroll.borrow().contains_key(&short_id));
 }
+
+/// A note in focus, then the chat opened: the chat is on top, the note leaves the focus and its typing ends (its
+/// editor floats over every window).
+#[test]
+fn opening_the_chat_takes_a_note_out_of_focus() {
+    let ctx = Context::default();
+
+    install_fonts(&ctx, false);
+    let mut app = DrawingApp::default();
+
+    frame(&mut app, &ctx, vec![]);
+    app.scene.elements = app.new_note(Rect::from_min_size(Pos2::new(200.0, 200.0), Vec2::splat(200.0)), "oi".into()).into();
+    app.toggle_lift(0);
+    frame(&mut app, &ctx, vec![]);
+    assert!(app.terminal_elevated.is_some() && app.editing.is_some(), "in focus, typing");
+    app.chat_open = true;
+    frame(&mut app, &ctx, vec![]);
+    assert_eq!((app.terminal_elevated.as_ref(), app.editing), (None, None));
+    assert_eq!(app.scene.elements.len(), 2, "its text stays");
+}

@@ -141,6 +141,7 @@ impl DrawingApp {
             effort: String::new(),
             recruit: false,
             named: false,
+            space: String::new(),
             draft: false,
         };
 

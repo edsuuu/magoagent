@@ -178,3 +178,14 @@ fn a_portal_gone_leaves_nothing_behind() {
     assert_eq!(app.portal_motion.keys().collect::<Vec<_>>(), ["fica"]);
     assert_eq!(app.portal_snaps.keys().collect::<Vec<_>>(), ["fica"]);
 }
+
+/// A press on a page (not on the app's UI over it) puts that page in focus; anywhere else takes the focus away.
+#[test]
+fn a_press_lands_on_a_page_only_outside_what_the_app_shows_over_it() {
+    let page = Rect::from_min_size(Pos2::new(100.0, 100.0), Vec2::new(400.0, 300.0));
+    let menu = Rect::from_min_size(Pos2::new(150.0, 150.0), Vec2::new(80.0, 60.0));
+
+    assert!(super::sync::page_pressed(page, &[menu], Pos2::new(300.0, 300.0)));
+    assert!(!super::sync::page_pressed(page, &[menu], Pos2::new(160.0, 160.0)), "on the menu over the page");
+    assert!(!super::sync::page_pressed(page, &[], Pos2::new(50.0, 300.0)), "beside the page");
+}

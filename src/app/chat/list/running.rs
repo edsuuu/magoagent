@@ -1,7 +1,9 @@
 //! Everything running, for the chat's list: the app's chats, the terminals running Claude Code or Codex (in every space)
-//! and the sessions outside the app (maestro/outside.rs, what the island shows), grouped by space; the filter chips over
-//! them and the answers given right on a row, by the same ways the island and the cards answer.
+//! and the sessions outside the app (maestro/outside.rs, what the island shows), in sections by space, folder or day (as
+//! Exibição says); the search over them and the answers given right on a row, by the same ways the island and the cards
+//! answer.
 
+use super::display::{ListGroup, ListPrefs};
 use super::*;
 use crate::app::chat::decide::PersonAsk;
 use crate::app::maestro::outside::PILL_PREFIX;
@@ -10,55 +12,8 @@ use crate::app::mascot::mago::MagoState;
 /// The group of the sessions outside the app.
 pub(crate) const OUTSIDE: &str = "fora";
 
-/// The filter chips over the list.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) enum Show {
-    #[default]
-    All,
-    Working,
-    Waiting,
-    Ready,
-}
-
-impl Show {
-    pub(crate) const ALL: [Show; 4] = [Show::All, Show::Working, Show::Waiting, Show::Ready];
-
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Show::All => "Todos",
-            Show::Working => "Trabalhando",
-            Show::Waiting => "Esperando",
-            Show::Ready => "Prontos",
-        }
-    }
-
-    /// The MCP's name for it (`chats_view`), or the chip's own.
-    pub(crate) fn named(name: &str) -> Option<Show> {
-        let name = name.trim().to_lowercase();
-
-        Show::ALL.into_iter().find(|show| show.label().to_lowercase() == name || show.key() == name)
-    }
-
-    pub(crate) fn key(self) -> &'static str {
-        match self {
-            Show::All => "all",
-            Show::Working => "working",
-            Show::Waiting => "waiting",
-            Show::Ready => "ready",
-        }
-    }
-
-    pub(crate) fn keeps(self, state: &AgentState) -> bool {
-        match self {
-            Show::All => true,
-            Show::Working => chip(state).0 == "Trabalhando",
-            Show::Waiting => chip(state).0 == "Esperando",
-            Show::Ready => chip(state).0 == "Pronto",
-        }
-    }
-}
-
-/// A state as its chip says it, with its colour: working blue, waiting amber, ready green (an idle or ended agent).
+/// A state in a word (the tip of its dot on a row) and the dot's colour: working blue, waiting amber, ready green (an
+/// idle or ended agent).
 pub(crate) fn chip(state: &AgentState) -> (&'static str, Color32) {
     match state {
         AgentState::Working(_) | AgentState::Active(_) => ("Trabalhando", ACCENT),
@@ -84,24 +39,19 @@ pub(crate) struct Entry {
     pub(crate) program: String,
     /// The space it runs in (its id, no floor); "" none; `OUTSIDE` outside the app.
     pub(crate) space: String,
+    /// The folder it works in (a session outside, its folder's name); "" none.
+    pub(crate) folder: String,
     /// What the conversation and the menus need; none for a session outside.
     pub(crate) row: Option<AgentRow>,
     /// Asleep (a session outside whose turn ended and was seen).
     pub(crate) asleep: bool,
 }
 
-/// `entries` the chip `show` and the search `query` (lowercase) keep.
-pub(crate) fn kept<'a>(entries: impl IntoIterator<Item = &'a Entry>, show: Show, query: &str) -> Vec<&'a Entry> {
+/// `entries` the search `query` (lowercase) keeps.
+pub(crate) fn kept<'a>(entries: impl IntoIterator<Item = &'a Entry>, query: &str) -> Vec<&'a Entry> {
     let says = |entry: &Entry| query.is_empty() || format!("{} {}", entry.name, entry.last).to_lowercase().contains(query);
 
-    entries.into_iter().filter(|entry| show.keeps(&entry.state) && says(entry)).collect()
-}
-
-/// How many of `entries` each chip has.
-pub(crate) fn counts<'a>(entries: impl IntoIterator<Item = &'a Entry>) -> [usize; 4] {
-    let states: Vec<AgentState> = entries.into_iter().map(|entry| entry.state).collect();
-
-    Show::ALL.map(|show| states.iter().filter(|state| show.keeps(state)).count())
+    entries.into_iter().filter(|entry| says(entry)).collect()
 }
 
 /// "N rodando · M esperando" of the title bar: working or waiting, and waiting.
@@ -135,6 +85,50 @@ pub(crate) fn space_groups(entries: &[&Entry], order: &[String]) -> Vec<(String,
 
     groups.sort_by_key(|(space, _)| rank(space));
     groups
+}
+
+/// `entries`' indexes under each `key` of theirs, in the order the keys come first.
+fn grouped_by(entries: &[&Entry], key: impl Fn(&Entry) -> String) -> Vec<(String, Vec<usize>)> {
+    let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
+
+    for (index, entry) in entries.iter().enumerate() {
+        let key = key(entry);
+
+        match groups.iter_mut().find(|(group, _)| *group == key) {
+            Some((_, members)) => members.push(index),
+            None => groups.push((key, vec![index])),
+        }
+    }
+
+    groups
+}
+
+/// The groups of `entries` by folder (its whole path), by the folders' names; the ones of no folder last.
+pub(crate) fn folder_groups(entries: &[&Entry]) -> Vec<(String, Vec<usize>)> {
+    let mut groups = grouped_by(entries, |entry| entry.folder.trim().to_string());
+
+    groups.sort_by_cached_key(|(folder, _)| (folder.is_empty(), crate::app::chat::direct::folder_label(folder).to_lowercase()));
+    groups
+}
+
+/// The groups of `entries` by the local day each last changed (its number since 1970, `now` and `offset` in seconds), the
+/// newest first; the ones that never did last ("").
+pub(crate) fn day_groups(entries: &[&Entry], now: i64, offset: i64) -> Vec<(String, Vec<usize>)> {
+    let day = |entry: &Entry| entry.ago.map_or(String::new(), |ago| (now - ago as i64 + offset).div_euclid(86_400).to_string());
+    let mut groups = grouped_by(entries, day);
+
+    groups.sort_by_key(|(day, _)| std::cmp::Reverse(day.parse::<i64>().unwrap_or(i64::MIN)));
+    groups
+}
+
+/// A day of `day_groups` as its section says it: "Hoje", "Ontem", "12/11/2026"; "Sem data" for none.
+pub(crate) fn day_name(day: &str, today: i64) -> String {
+    match day.parse::<i64>() {
+        Ok(day) if day == today => "Hoje".into(),
+        Ok(day) if day == today - 1 => "Ontem".into(),
+        Ok(day) => crate::app::filetree::annotate::date(day * 86_400, "+0000"),
+        Err(_) => "Sem data".into(),
+    }
 }
 
 /// An answer given on a row.
@@ -186,6 +180,7 @@ impl DrawingApp {
                 color: self.agent_color(&row.id),
                 program: self.row_program(&row).unwrap_or_default().to_string(),
                 space: self.row_space(&row),
+                folder: row.spec.cwd.clone(),
                 row: Some(row),
                 asleep: false,
             })
@@ -202,6 +197,7 @@ impl DrawingApp {
                 last: if pill.kind == "Claude Code" || pill.kind == pill.name { last } else { format!("{} · {last}", pill.kind) },
                 ago: (pill.at > 0).then(|| (now - pill.at).max(0) as f64 / 1000.0),
                 id: pill.id,
+                folder: pill.name.clone(),
                 name: pill.name,
                 state: pill.state,
                 color: pill.color,
@@ -217,12 +213,12 @@ impl DrawingApp {
         entries
     }
 
-    /// The space a row runs in (its id, no floor; "" none): a terminal's, or a chat's, which belongs to none, the one
-    /// whose canvas has its card.
+    /// The space a row runs in (its id, no floor; "" none): a terminal's, or a chat's, the one whose canvas has its card
+    /// (a recruit's off view: the one it was born in).
     pub(crate) fn row_space(&self, row: &AgentRow) -> String {
         let key = match self.is_chat(&row.id) {
             true if self.chat_node(&row.id).is_some() => self.scope_key(),
-            true => String::new(),
+            true => self.chats.iter().find(|chat| chat.id == row.id).map(|chat| chat.space.clone()).unwrap_or_default(),
             false => row.space.clone(),
         };
 
@@ -246,6 +242,43 @@ impl DrawingApp {
             None if space == OUTSIDE => ("Fora do app".into(), grey),
             None => ("Sem espaço".into(), grey),
         }
+    }
+
+    /// The list's sections as Exibição groups `shown`: each with its key, its name, its space's colour (only a space has
+    /// one) and its entries' indexes; ungrouped, one with no name.
+    pub(crate) fn list_sections(&self, shown: &[&Entry], display: &ListPrefs) -> Vec<(String, String, Option<Color32>, Vec<usize>)> {
+        if !display.grouped {
+            return vec![(String::new(), String::new(), None, (0..shown.len()).collect())];
+        }
+
+        let now = now_ms() / 1000;
+        let offset = crate::app::chat::viewer::local_offset(now * 1000);
+
+        let groups = match display.group {
+            ListGroup::Space => space_groups(shown, &self.spaces.list.iter().map(|space| space.id.clone()).collect::<Vec<_>>()),
+            ListGroup::Folder => folder_groups(shown),
+            ListGroup::Day => day_groups(shown, now, offset),
+        };
+
+        let look = |key: &str| match display.group {
+            ListGroup::Space => {
+                let (name, color) = self.group_look(key);
+
+                (name, Some(color))
+            }
+            ListGroup::Folder if key.is_empty() => ("Sem pasta".into(), None),
+            ListGroup::Folder => (crate::app::chat::direct::folder_label(key), None),
+            ListGroup::Day => (day_name(key, (now + offset).div_euclid(86_400)), None),
+        };
+
+        groups
+            .into_iter()
+            .map(|(key, members)| {
+                let (name, color) = look(&key);
+
+                (key, name, color, members)
+            })
+            .collect()
     }
 
     /// What a row says under its name: what waits on the person, else the last words of its conversation, else what its
@@ -379,13 +412,14 @@ mod tests {
             color: GREEN,
             program: "Claude Code".into(),
             space: space.into(),
+            folder: String::new(),
             row: None,
             asleep: false,
         }
     }
 
     #[test]
-    fn the_chips_count_and_keep_their_states_and_the_search_finds_the_name_or_the_last_line() {
+    fn the_search_finds_the_name_or_the_last_line_and_the_counts_say_who_runs_and_waits() {
         let mut entries = vec![
             entry("a", AgentState::Working(0.0), ""),
             entry("b", AgentState::Waiting, ""),
@@ -394,16 +428,34 @@ mod tests {
         ];
 
         entries[2].last = "Testes passaram".into();
-        assert_eq!(counts(&entries), [4, 2, 1, 1]);
-        let ids = |show: Show, query: &str| kept(&entries, show, query).iter().map(|entry| entry.id.clone()).collect::<Vec<_>>();
+        let ids = |query: &str| kept(&entries, query).iter().map(|entry| entry.id.clone()).collect::<Vec<_>>();
 
-        assert_eq!(ids(Show::Working, ""), ["a", "d"]);
-        assert_eq!(ids(Show::Waiting, ""), ["b"]);
-        assert_eq!(ids(Show::Ready, ""), ["c"]);
-        assert_eq!(ids(Show::All, "testes"), ["c"]);
-        assert_eq!(ids(Show::Working, "testes"), Vec::<String>::new());
+        assert_eq!(ids(""), ["a", "b", "c", "d"]);
+        assert_eq!(ids("testes"), ["c"]);
         assert_eq!(running_counts(entries.iter().map(|entry| entry.state)), (3, 1));
-        assert_eq!((Show::named("waiting"), Show::named("Prontos"), Show::named("x")), (Some(Show::Waiting), Some(Show::Ready), None));
+        assert_eq!((chip(&AgentState::Working(0.0)).1, chip(&AgentState::Idle(None)).1), (ACCENT, GREEN), "blue at work, green done");
+    }
+
+    #[test]
+    fn the_folders_go_by_name_and_the_days_the_newest_first() {
+        let mut entries = [entry("a", AgentState::Waiting, ""), entry("b", AgentState::Waiting, ""), entry("c", AgentState::Waiting, "")];
+
+        (entries[0].folder, entries[1].folder) = ("/p/zeta".into(), "/p/Alfa".into());
+        let refs: Vec<&Entry> = entries.iter().collect();
+
+        assert_eq!(folder_groups(&refs), [("/p/Alfa".to_string(), vec![1]), ("/p/zeta".into(), vec![0]), ("".into(), vec![2])], "no folder last");
+        // now is day 20 000 at 10:00 UTC, in a zone 3 h behind: a (1 h ago) is today, b (12 h ago) yesterday, c never changed
+        let now = 20_000 * 86_400 + 10 * 3600;
+
+        (entries[0].ago, entries[1].ago) = (Some(3600.0), Some(12.0 * 3600.0));
+        let refs: Vec<&Entry> = entries.iter().collect();
+        let days = day_groups(&refs, now, -3 * 3600);
+
+        assert_eq!(days, [("20000".to_string(), vec![0]), ("19999".into(), vec![1]), ("".into(), vec![2])]);
+        let names: Vec<String> = days.iter().map(|(day, _)| day_name(day, 20_000)).collect();
+
+        assert_eq!(names, ["Hoje", "Ontem", "Sem data"]);
+        assert_eq!(day_name("19990", 20_000), "24/09/2024");
     }
 
     #[test]

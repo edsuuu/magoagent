@@ -200,7 +200,7 @@ impl DrawingApp {
         if args["send"] == true && !matches!(step, Move::Finished | Move::Blocked) {
             let text = self.flow_brief(&task, &flow);
 
-            said += &format!("\n{}", self.deliver_text(&task.id, text).unwrap_or_else(|why| why));
+            said += &format!("\n{}", self.deliver_text(&task.id, text, args["asker"].as_str().unwrap_or_default()).unwrap_or_else(|why| why));
         }
 
         Ok(said)

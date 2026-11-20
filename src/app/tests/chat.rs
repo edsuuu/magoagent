@@ -695,6 +695,25 @@ fn the_chat_screen_makes_a_chat_only_with_its_first_message() {
 }
 
 #[test]
+fn nova_conversa_starts_in_the_last_folder_worked_in() {
+    let mut app = DrawingApp::default();
+    let recent = std::env::temp_dir().join(format!("mago-ultima-{}", uuid::Uuid::new_v4().simple()));
+
+    fs::create_dir_all(&recent).unwrap();
+    let recent = recent.display().to_string();
+
+    app.chat_installed = Some((app.now, vec![crate::model::Preset::new("Claude Code", "claude")]));
+    app.prefs.chat_folder = "/ajustes".into();
+    app.prefs.folders.remember(&recent);
+    assert!(app.start_draft_chat(true));
+    assert_eq!(app.chats.last().unwrap().cwd, recent, "the last folder worked in");
+    // gone from the disk: Ajustes' folder
+    fs::remove_dir_all(&recent).unwrap();
+    app.start_draft_chat(true);
+    assert_eq!(app.chats.last().unwrap().cwd, "/ajustes");
+}
+
+#[test]
 fn a_recent_folder_picked_in_the_folder_chips_menu_becomes_the_chats_folder() {
     let ctx = Context::default();
     let mut app = DrawingApp::default();

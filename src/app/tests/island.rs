@@ -174,29 +174,31 @@ fn luna_dances_through_the_agents_work_and_stops_for_the_person() {
     }
 }
 
-/// Claude Code's page shows the app's Claude agents, each saying it is on the canvas, and not the others.
+/// Chats shows every agent of the app and the sessions of Claude Code outside it: Claude Code's page joined it.
 #[test]
-fn the_claude_page_has_the_apps_agents_on_the_canvas() {
+fn chats_has_the_apps_agents_and_claude_code_from_outside() {
     let ctx = Context::default();
     let mut app = app_with_island();
+    let hook = serde_json::json!({ "hook_event_name": "UserPromptSubmit", "session_id": "fora", "cwd": "/tmp/oficina", "prompt": "oi" });
 
-    app.island_show_page(Tab::Claude);
+    app.take_outside_hook(&hook, None);
+    app.island_show_page(Tab::Chats);
     run(&mut app, &ctx, 1.0, 1.4, vec![]);
-    assert_eq!(app.island.size().x, EXPANDED_W, "open on Claude Code");
+    assert_eq!(app.island.size().x, EXPANDED_W, "open on Chats");
     let texts = painted(&mut app, &ctx, 1.5);
 
-    assert!(texts.iter().any(|text| text == "Claude Code · no canvas"), "{texts:?}");
-    assert!(texts.iter().any(|text| text == "loja"), "the chat's name in the grid: {texts:?}");
-    assert!(!texts.iter().any(|text| text.contains("site")), "the app's Codex is no Claude Code session ({:?}): {texts:?}", app.island.tab());
+    for name in ["loja", "site", "oficina"] {
+        assert!(texts.iter().any(|text| text == name), "{name} in the grid: {texts:?}");
+    }
 }
 
-/// The empty Claude Code page says so when they are in.
+/// The empty Chats page says whether the hooks that bring Claude Code from outside are in.
 #[test]
-fn the_empty_claude_page_knows_whether_the_hooks_are_in() {
+fn the_empty_chats_page_knows_whether_the_hooks_are_in() {
     use crate::app::island::home::empty_words;
 
-    assert!(empty_words(Tab::Claude, false).1.starts_with("Instale os hooks"));
-    assert!(empty_words(Tab::Claude, true).1.starts_with("Os hooks estão instalados"));
+    assert!(empty_words(Tab::Chats, false).1.contains("instale os hooks"));
+    assert!(empty_words(Tab::Chats, true).1.contains("o Claude Code de fora também aparece aqui"));
 }
 
 #[test]
@@ -478,7 +480,7 @@ fn the_mcp_opens_each_page_and_hides_the_summary() {
 
     run(&mut app, &ctx, 0.0, 0.3, vec![]);
 
-    for (name, tab) in [("claude", Tab::Claude), ("github", Tab::GitHub), ("spotify", Tab::Music), ("chats", Tab::Chats), ("home", Tab::Home)] {
+    for (name, tab) in [("claude", Tab::Chats), ("github", Tab::GitHub), ("spotify", Tab::Music), ("chats", Tab::Chats), ("home", Tab::Home)] {
         let answer = app.act("set_setting", &serde_json::json!({ "name": "island_page", "value": name }));
 
         assert!(answer.is_ok(), "{name}: {answer:?}");

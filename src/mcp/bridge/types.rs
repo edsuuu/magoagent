@@ -107,6 +107,8 @@ pub(crate) enum UiCommand {
     /// things, a notification. What they create is roped to `from`.
     Recruit {
         from: String,
+        /// The name the Maestro gave it; empty: one of AGENT_NAMES.
+        name: String,
         command: String,
         /// In a git worktree of its own (app/environments.rs).
         worktree: bool,
@@ -181,6 +183,14 @@ pub(crate) enum UiCommand {
         asker: String,
         text: String,
         reply: mpsc::Sender<Result<String, String>>,
+    },
+    /// A question for a terminal that stayed busy past the asker's wait: it waits in that terminal's line and goes once
+    /// it is free; a chat that asked gets the answer when the terminal's turn ends (app/chat/queue.rs).
+    QueueAsk {
+        from: String,
+        to: String,
+        asker: String,
+        text: String,
     },
     /// `check` on a chat: its state and the end of its conversation.
     CheckChat {

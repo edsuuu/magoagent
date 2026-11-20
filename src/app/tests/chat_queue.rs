@@ -85,7 +85,7 @@ fn a_queued_and_a_sent_message_stay_inside_the_chat_with_their_lines_at_the_left
     let mut app = DrawingApp::default();
     let id = new_chat(&mut app);
     // a long message with a line of its own, as in the owner's print (the mini chat cut its second line off at the left)
-    let long = "Pode criar o webhook do WhatsApp para mandar as mensagens e seguir no meu número\nE no número da IA também, por favor, com o mesmo texto e os mesmos anexos de antes";
+    let long = "Pode criar o webhook do Telegram para mandar as mensagens e seguir no meu número\nE no número da IA também, por favor, com o mesmo texto e os mesmos anexos de antes";
 
     app.chat_transcript(&id).items = vec![ChatItem::User(long.into()), ChatItem::Agent("ok".into())];
     app.queue_message(&id, long.into());

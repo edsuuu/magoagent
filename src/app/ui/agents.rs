@@ -451,6 +451,13 @@ impl DrawingApp {
             return;
         }
 
+        // a terminal in Comandos opens there, on its row (panes/commands.rs)
+        if self.show_docked(id) {
+            self.terminal_unread.remove(id);
+
+            return;
+        }
+
         let Some(i) = self.scene.elements.iter().position(|e| e.id == id) else { return };
 
         self.glide_to(element_bounds(&self.scene.elements[i]).center());

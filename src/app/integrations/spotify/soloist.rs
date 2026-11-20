@@ -41,7 +41,7 @@ pub(super) fn program() -> Option<PathBuf> {
 }
 
 /// The data folders of the Soloists running with their local API: its download's, then Spotifast's.
-fn running() -> Vec<PathBuf> {
+pub(super) fn running() -> Vec<PathBuf> {
     let spotifast = spotifast_soloist(env).map(|root| inside(&root.join("accounts"))).unwrap_or_default();
 
     soloist_data(env).into_iter().chain(spotifast).filter(|data| data.join("ws.port").is_file()).collect()

@@ -3,6 +3,7 @@
 //! runs: the shells stay in `terminals` (by element id), and the ones whose drawing is off view
 //! are listed in `away` with their space, which is all the loops need to keep them alive.
 
+pub(crate) mod away;
 pub(crate) mod groups;
 pub(crate) mod sidebar;
 
@@ -326,6 +327,11 @@ impl DrawingApp {
             if let (Some(spec), true) = (&e.terminal, self.terminals.contains_key(&e.id)) {
                 self.away.insert(e.id.clone(), (leaving.clone(), spec.clone()));
             }
+
+            // its pages stay loaded, hidden: an agent goes on driving them
+            if let Some(spec) = e.portal.as_ref().filter(|spec| !spec.unloaded) {
+                self.away_portals.insert(e.id.clone(), (leaving.clone(), spec.clone()));
+            }
         }
 
         if let Some(bridge) = &self.bridge {
@@ -348,6 +354,16 @@ impl DrawingApp {
         (self.scene, self.synced, self.synced_stamp, self.dirty) = (Scene::default(), Scene::default(), None, false);
         self.load_autosave();
         self.away.retain(|_, (space, _)| *space != key);
+
+        // its pages, where an agent took them meanwhile (its address, its tabs)
+        for element in &mut self.scene.elements {
+            if let (Some(spec), Some((_, kept))) = (element.portal.as_mut(), self.away_portals.remove(&element.id)) {
+                *spec = kept;
+                self.dirty = true;
+            }
+        }
+
+        self.away_portals.retain(|_, (space, _)| *space != key);
 
         if let Some(bridge) = &self.bridge {
             locked(&bridge.shared).away.remove(&key);
@@ -401,6 +417,7 @@ impl DrawingApp {
         for terminal in &ended {
             self.terminals.remove(terminal);
             self.away.remove(terminal);
+            self.release_tasks(terminal);
         }
 
         if let Some(bridge) = &self.bridge {

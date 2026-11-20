@@ -1,34 +1,26 @@
 use super::fold::CONTEXT;
-use super::{ADDED, ADDED_WORD, Compare, Item, REMOVED, REMOVED_WORD, word_spans};
+use super::{Compare, Item, tone, word_spans};
 use crate::app::filetree::ui::outline;
 use crate::editor::theme as t;
 use crate::editor::{DiffRow, RowKind, highlight, word_marks};
 use crate::prelude::*;
 use std::ops::{Range, RangeInclusive};
 
-/// The text of the counts in the bar: lines removed and added.
-const REMOVED_TEXT: Color32 = Color32::from_rgb(0xF0, 0x71, 0x78);
-const ADDED_TEXT: Color32 = Color32::from_rgb(0x6A, 0xC4, 0x7F);
-
 /// Line `index` of `lines` (empty when there is none).
 fn at(lines: &[String], index: Option<usize>) -> &str {
     index.and_then(|index| lines.get(index)).map_or("", String::as_str)
 }
 
-/// A line's background: the HEAD's side of a change red, the file's green.
+/// A line's background: its change's kind (modified blue, inserted green, deleted gray), the same on both sides.
 fn background(row: DiffRow) -> Color32 {
-    match (row.kind, row.left, row.right) {
-        (RowKind::Same, ..) | (_, None, None) => Color32::TRANSPARENT,
-        (_, Some(_), None) => REMOVED,
-        _ => ADDED,
-    }
+    if row.left.or(row.right).is_none() { Color32::TRANSPARENT } else { tone(row.kind).0 }
 }
 
-/// A change's band across the strip `x`: from its lines in the left column (`spans[0]`, top to bottom) to its lines in
-/// the right one (`spans[1]`), the top and bottom edges easing from one height to the other as the IDE's curves (an
-/// empty span is a point: the band narrows to the line where the lines would be). Filled from the left's color to the
-/// right's, its edges drawn in the stronger ones.
-fn band(painter: &egui::Painter, x: egui::Rangef, spans: [RangeInclusive<f32>; 2], colors: [Color32; 2], edges: [Color32; 2], z: f32) {
+/// A change's band across the strip `x`, as the IDE's divider: from its lines in the left column (`spans[0]`, top to
+/// bottom) to its lines in the right one (`spans[1]`), the top and bottom edges easing from one height to the other (an
+/// empty span is a point: the band narrows to the line where the lines would be). Filled with the change's color, its
+/// edges in the lighter one.
+fn band(painter: &egui::Painter, x: egui::Rangef, spans: [RangeInclusive<f32>; 2], (color, edge): (Color32, Color32), z: f32) {
     const STEPS: usize = 16;
     let mut mesh = egui::Mesh::default();
     let (mut top_edge, mut bottom_edge) = (Vec::with_capacity(STEPS + 1), Vec::with_capacity(STEPS + 1));
@@ -39,7 +31,6 @@ fn band(painter: &egui::Painter, x: egui::Rangef, spans: [RangeInclusive<f32>; 2
         let at = x.min + (x.max - x.min) * along;
         let top = spans[0].start() + (spans[1].start() - spans[0].start()) * eased;
         let bottom = spans[0].end() + (spans[1].end() - spans[0].end()) * eased;
-        let color = lerp_color(colors[0], colors[1], along);
 
         mesh.colored_vertex(Pos2::new(at, top), color);
         mesh.colored_vertex(Pos2::new(at, bottom), color);
@@ -57,20 +48,9 @@ fn band(painter: &egui::Painter, x: egui::Rangef, spans: [RangeInclusive<f32>; 2
 
     painter.add(mesh);
 
-    // each edge in the left's color to the middle, the right's after it
-    for edge in [&top_edge, &bottom_edge] {
-        let middle = edge.len() / 2;
-
-        painter.add(egui::Shape::line(edge[..=middle].to_vec(), Stroke::new(1.0 * z, edges[0])));
-        painter.add(egui::Shape::line(edge[middle..].to_vec(), Stroke::new(1.0 * z, edges[1])));
+    for points in [top_edge, bottom_edge] {
+        painter.add(egui::Shape::line(points, Stroke::new(1.0 * z, edge)));
     }
-}
-
-/// `from` to `to` by `along` (0 to 1), each channel.
-fn lerp_color(from: Color32, to: Color32, along: f32) -> Color32 {
-    let mix = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * along).round() as u8;
-
-    Color32::from_rgba_premultiplied(mix(from.r(), to.r()), mix(from.g(), to.g()), mix(from.b(), to.b()), mix(from.a(), to.a()))
 }
 
 /// The bar's and the arrow's glyphs, on lucide's 24 grid: `u`p, `d`own, `s`ide by side, `o`ne column, `f`old, `r`evert.
@@ -131,6 +111,15 @@ fn tool(ui: &mut egui::Ui, kind: char, label: &str, on: bool, enabled: bool, tip
     response.tip(tip).clicked()
 }
 
+/// The bar's count, as the IDE's "N differences".
+pub(crate) fn differences(count: usize) -> String {
+    match count {
+        0 => "Sem diferenças".into(),
+        1 => "1 diferença".into(),
+        _ => format!("{count} diferenças"),
+    }
+}
+
 /// A thin upright line between the bar's groups.
 fn divider(ui: &mut egui::Ui, z: f32) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(9.0 * z, 16.0 * z), Sense::hover());
@@ -164,20 +153,13 @@ struct Look<'a> {
 impl Look<'_> {
     /// One line in `rect` (the text's room): its background, words that changed and text. Side by side its number goes in
     /// `numbers` (the column's own cell at its left edge); in one column (`numbers` empty) both numbers are inside `rect`.
-    /// `current` marks the change the walk is on; `shift` slides the text sideways.
+    /// `shift` slides the text sideways.
     #[allow(clippy::too_many_arguments)]
-    fn line(&self, ui: &egui::Ui, painter: &egui::Painter, rect: Rect, numbers: Option<Rect>, row: DiffRow, partner: Option<usize>, current: bool, shift: f32) {
+    fn line(&self, ui: &egui::Ui, painter: &egui::Painter, rect: Rect, numbers: Option<Rect>, row: DiffRow, partner: Option<usize>, shift: f32) {
         let color = background(row);
         let whole = numbers.map_or(rect, |cell| cell.union(rect));
 
         painter.rect_filled(whole, 0, color);
-
-        if current {
-            let edge = numbers.map_or(rect.left() + self.lead, |cell| cell.left());
-
-            painter.rect_filled(Rect::from_x_y_ranges(edge..=edge + 2.0 * self.z, rect.y_range()), 0, crate::model::PRIMARY);
-        }
-
         let ink = if row.kind == RowKind::Same { t::LINE_NUMBER } else { t::MUTED };
 
         let number = |right: f32, line: usize| {
@@ -199,7 +181,8 @@ impl Look<'_> {
             _ => vec![],
         };
 
-        let (index, from, word) = if row.left.is_some() { (row.left, self.old, REMOVED_WORD) } else { (row.right, self.new, ADDED_WORD) };
+        let (index, from) = if row.left.is_some() { (row.left, self.old) } else { (row.right, self.new) };
+        let word = tone(row.kind).1;
         let Some(text) = index.and_then(|index| from.get(index)) else { return };
         let spans = word_spans(text, marks);
         // side by side the text is the columns' own text edit (edit.rs, its first row at the room's left + 4), over this
@@ -263,19 +246,15 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, compare: &mut Compare, z
         ui.horizontal_centered(|ui| {
             let count = compare.count();
 
-            if tool(ui, 'u', "Anterior", false, compare.cur > 0, "Mudança anterior (Shift+F7)", z) {
+            // the IDE's arrows, bare
+            if tool(ui, 'u', "", false, compare.cur > 0, "Diferença anterior (Shift+F7)", z) {
                 compare.go(-1);
             }
 
-            if tool(ui, 'd', "Próxima", false, compare.cur + 1 < count, "Próxima mudança (F7)", z) {
+            if tool(ui, 'd', "", false, compare.cur + 1 < count, "Próxima diferença (F7)", z) {
                 compare.go(1);
             }
 
-            ui.add_space(6.0 * z);
-            let label = if count == 0 { "Sem diferenças".to_string() } else { format!("Mudança {} de {count}", compare.cur + 1) };
-
-            ui.label(egui::RichText::new(label).font(small.clone()).color(t::MUTED));
-            ui.add_space(6.0 * z);
             divider(ui, z);
             let side = tool(ui, 's', "Lado a lado", !compare.unified, true, "As duas versões em colunas, cada mudança ligada pelo meio", z);
             let one = tool(ui, 'o', "Unificado", compare.unified, true, "As duas versões numa coluna só", z);
@@ -291,12 +270,14 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, compare: &mut Compare, z
                 compare.set_collapse(!compare.collapse);
             }
 
+            // the IDE's count at the bar's end
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let (removed, added) = compare.totals();
+                let label = differences(count);
+                let tip = format!("Diferença {} de {count}: {added} linha(s) a mais e {removed} a menos que o HEAD", compare.cur + 1);
 
-                ui.label(egui::RichText::new(format!("−{removed}")).font(small.clone()).color(REMOVED_TEXT));
-                ui.add_space(4.0 * z);
-                ui.label(egui::RichText::new(format!("+{added}")).font(small.clone()).color(ADDED_TEXT));
+                ui.add_space(6.0 * z);
+                ui.label(egui::RichText::new(label).font(small.clone()).color(t::MUTED)).tip(tip);
             });
         });
     });
@@ -445,7 +426,6 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, compare: &mut Compare, z
         for (column, area) in columns.iter().enumerate() {
             let full = numbers.get(column).map_or(*area, |cell| area.union(*cell));
             let painter = ui.painter().with_clip_rect(full.intersect(ui.clip_rect()));
-            let current_rows = blocks.get(current).map(|block| block.rows[column].clone());
 
             for index in (scroll[column].floor() as usize)..items[column].len() {
                 let top = top_of(column, index);
@@ -457,9 +437,7 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, compare: &mut Compare, z
                 let row_rect = |rect: Rect| Rect::from_min_size(Pos2::new(rect.left(), top), Vec2::new(rect.width(), row_h));
 
                 if let Item::Line { row, partner } = items[column][index] {
-                    let on = current_rows.as_ref().is_some_and(|rows| rows.contains(&index));
-
-                    look.line(ui, &painter, row_rect(*area), numbers.get(column).map(|cell| row_rect(*cell)), row, partner, on, shifts[column]);
+                    look.line(ui, &painter, row_rect(*area), numbers.get(column).map(|cell| row_rect(*cell)), row, partner, shifts[column]);
                 }
             }
         }
@@ -506,7 +484,7 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, compare: &mut Compare, z
                     let hit = hit.on_hover_cursor(CursorIcon::PointingHand).tip("Mostrar essas linhas");
 
                     painter.rect_filled(rect, 0, if hit.hovered() { t::POPUP_BORDER } else { t::INLINE });
-                    let label = if count == 1 { "1 linha sem mudança".to_string() } else { format!("{count} linhas sem mudança") };
+                    let label = if count == 1 { "1 linha sem alteração".to_string() } else { format!("{count} linhas sem alteração") };
                     let ink = if hit.hovered() { t::TEXT } else { t::MUTED };
 
                     painter.text(rect.center(), egui::Align2::CENTER_CENTER, format!("⋯  {label}"), small.clone(), ink);
@@ -538,34 +516,22 @@ pub(crate) fn compare_ui(ui: &mut egui::Ui, body: Rect, compare: &mut Compare, z
                 continue;
             }
 
-            let has = |column: usize, side: fn(&DiffRow) -> Option<usize>| {
-                items[column][block.rows[column].clone()].iter().any(|item| matches!(item, Item::Line { row, .. } if side(row).is_some()))
-            };
-
-            let (removed, added) = if unified { (has(0, |row| row.left), has(0, |row| row.right)) } else { (has(0, |row| row.left), has(1, |row| row.right)) };
-            let colors = [if removed { REMOVED } else { ADDED }, if added { ADDED } else { REMOVED }];
-            let edges = [if removed { REMOVED_WORD } else { ADDED_WORD }, if added { ADDED_WORD } else { REMOVED_WORD }];
+            let (color, edge) = tone(block.kind);
 
             if unified {
-                // one column: a straight band in the gutter, red over green
+                // one column: a straight band in the gutter, in the change's color
                 let band = Rect::from_x_y_ranges(strip.x_range(), left_top..=left_bottom.max(left_top + row_h)).shrink2(Vec2::new(4.0 * z, 0.0));
-                let (top_half, bottom_half) = band.split_top_bottom_at_fraction(0.5);
 
-                painter.rect_filled(top_half, 0, colors[0]);
-                painter.rect_filled(bottom_half, 0, colors[1]);
+                painter.rect_filled(band, 0, color);
             } else {
-                band(&painter, strip.x_range(), [left_top..=left_bottom, right_top..=right_bottom], colors, edges, z);
+                band(&painter, strip.x_range(), [left_top..=left_bottom, right_top..=right_bottom], (color, edge), z);
 
                 // the column without lines in the change: a line across it where they would be
                 for (side, (top, bottom)) in [(0, (left_top, left_bottom)), (1, (right_top, right_bottom))] {
                     if bottom - top < 0.5 {
                         let across = numbers[side].union(columns[side]);
 
-                        ui.painter().with_clip_rect(across.intersect(view).intersect(ui.clip_rect())).hline(
-                            across.x_range(),
-                            top,
-                            Stroke::new(1.5 * z, edges[1 - side]),
-                        );
+                        ui.painter().with_clip_rect(across.intersect(view).intersect(ui.clip_rect())).hline(across.x_range(), top, Stroke::new(1.5 * z, edge));
                     }
                 }
             }

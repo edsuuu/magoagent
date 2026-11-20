@@ -26,6 +26,10 @@ use std::sync::mpsc::Sender;
 /// 340 x 220 the band went past the card's edge).
 pub(crate) const RECRUIT_CARD: Vec2 = Vec2::new(380.0, 400.0);
 
+/// What a recruit hears when it tries to recruit.
+pub(crate) const ONLY_THE_MAESTRO: &str =
+    "Só a Luna (o Maestro) recruta agentes: um agente recrutado não pode recrutar outro. Se precisar de mais alguém, peça à Luna.";
+
 /// What an agent says, signed with its name so whoever reads it (the person, Luna, another agent) knows who speaks:
 /// "Ana: estou parado". A text that already starts with the name ("Ana aqui: …", "Ana: …", "Agente Ana: …") stays
 /// as it is.
@@ -60,26 +64,35 @@ impl DrawingApp {
     /// The same, around `around` (the window that opens it) when `want` is taken: a team of recruits, the terminals and
     /// the pages an agent opens stay around it instead of piling up on one side.
     pub(crate) fn free_spot_near(&self, want: Rect, around: Rect) -> Rect {
-        free_spot_among(self.scene.elements.iter(), want, around)
+        free_spot_among(self.scene.elements.iter().filter(|e| !e.docked()), want, around)
     }
 
     /// `recruit`: a terminal the caller's size and folder, below it, running `command`, with an agent's name.
     #[cfg(test)]
     pub(crate) fn recruit(&mut self, from: &str, command: &str, reply: Sender<Result<String, String>>) {
-        self.recruit_in(from, command, false, None, reply);
+        self.recruit_in(from, "", command, false, None, reply);
     }
 
     /// The recruit, in the caller's folder or, with `worktree`, in an environment of its own: a git
     /// worktree of the caller's repository on a branch of the recruit's (environments.rs). `mode` (else
-    /// Ajustes' `agent_mode`) says whether it is a terminal or a chat of the app (a card, no Maestro's hands).
-    pub(crate) fn recruit_in(&mut self, from: &str, command: &str, worktree: bool, mode: Option<AgentMode>, reply: Sender<Result<String, String>>) {
-        let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else {
+    /// Ajustes' `agent_mode`) says whether it is a terminal or a chat of the app (a card, no Maestro's hands). `name`: the
+    /// one the Maestro gave it, else one of AGENT_NAMES. Only a Maestro recruits: a recruit asking is refused.
+    pub(crate) fn recruit_in(&mut self, from: &str, name: &str, command: &str, worktree: bool, mode: Option<AgentMode>, reply: Sender<Result<String, String>>) {
+        if self.is_recruit_chat(from) {
+            let _ = reply.send(Err(ONLY_THE_MAESTRO.into()));
+
+            return;
+        }
+
+        // a chat whose folder is another workspace's: its recruit is born there, off view (workspaces/away.rs)
+        let home = self.chats.iter().find(|chat| chat.id == from).and_then(|chat| self.folder_space(&chat.cwd));
+        let caller = self.scene.elements.iter().find(|e| e.id == from);
+
+        if caller.is_none() && home.is_none() {
             let _ = reply.send(Err("recrute de dentro de um terminal do MagoAgent".into()));
 
             return;
-        };
-
-        let b = local_bounds(caller);
+        }
 
         // the ceiling of agents and the plan's limit hold the Maestro back (usage.rs)
         if let Some(why) = self.recruit_refusal() {
@@ -91,20 +104,28 @@ impl DrawingApp {
         let chat_mode = mode.unwrap_or(self.prefs.agent_mode) == AgentMode::Chat;
         let raw = command;
         let command = crate::app::usage::recruit_command(command, &self.prefs.recruit_model);
-        let Some(caller) = self.scene.elements.iter().find(|e| e.id == from) else { return };
+        let caller = self.scene.elements.iter().find(|e| e.id == from).filter(|_| home.is_none());
+        let b = caller.map_or(Rect::NOTHING, local_bounds);
 
         // a chat's card is smaller than any terminal: its recruit is a new terminal's size, in the chat's folder; a
         // recruit in chat mode is a card (its task and what it does, chat/recruit_card.rs), pulled bigger by hand
-        let (mut cwd, size) = match (&caller.terminal, &caller.chat) {
-            (Some(t), _) => (t.cwd.clone(), b.size()),
-            (_, Some(chat)) => (chat.cwd.clone(), self.new_terminal_size()),
-            _ => (String::new(), b.size()),
+        let (mut cwd, size) = match caller.map(|caller| (&caller.terminal, &caller.chat)) {
+            Some((Some(t), _)) => (t.cwd.clone(), b.size()),
+            Some((_, Some(chat))) => (chat.cwd.clone(), self.new_terminal_size()),
+            Some(_) => (String::new(), b.size()),
+            None => (self.chats.iter().find(|chat| chat.id == from).map(|chat| chat.cwd.clone()).unwrap_or_default(), self.new_terminal_size()),
         };
 
         let size = if chat_mode { RECRUIT_CARD } else { size };
-        let at = self.free_spot_near(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), size), b);
+
+        let at = if home.is_some() {
+            Rect::from_min_size(Pos2::ZERO, size)
+        } else {
+            self.free_spot_near(Rect::from_min_size(Pos2::new(b.min.x, b.max.y + 60.0), size), b)
+        };
+
         let side = side_of(at, b);
-        let name = self.agent_name();
+        let name = self.agent_name(name);
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
         // its own environment first: without it there is no recruit
         let mut own = String::new();
@@ -132,7 +153,11 @@ impl DrawingApp {
         terminal.style = node_style(terminal.style);
         let id = terminal.id.clone();
 
-        self.snapshot();
+        self.recruit_boss.insert(id.clone(), from.to_string());
+
+        if home.is_none() {
+            self.snapshot();
+        }
 
         // the model and effort it runs, said with the dispatch (tuning.rs)
         let (kind, (agent, model, effort)) = if chat_mode {
@@ -159,14 +184,31 @@ impl DrawingApp {
 
         let tuning = crate::app::maestro::tuning::describe(&agent, &model, &effort);
 
-        self.scene.elements.push(terminal);
-        // one Cmd+Z takes back the recruit and its rope together
-        self.rope_between(from, &id, false);
+        let placed = match &home {
+            // in the workspace of the chat's folder, under the chat's card there
+            Some(home) => match self.place_away(home, from, terminal) {
+                Ok(()) => format!("no espaço \"{}\", o da sua pasta (fora da tela), abaixo do seu cartão de lá,", home.name),
+                Err(why) => {
+                    let _ = reply.send(Err(why));
+
+                    return;
+                }
+            },
+            None => {
+                self.scene.elements.push(terminal);
+                // one Cmd+Z takes back the recruit and its rope together
+                self.rope_between(from, &id, false);
+                format!("{side}{}", self.born_here())
+            }
+        };
+
         self.publish_nodes();
         let who = self.speaker(from);
 
         self.agent_event(&id, EventKind::Started, format!("recrutado por {who} ({kind}): {tuning}"));
-        let _ = reply.send(Ok(format!("Agente \"{name}\" criado {side} e conectado ({kind}; {tuning}); fale com ele com `magoagent ask \"{name}\" …`.{own}")));
+
+        let _ =
+            reply.send(Ok(format!("Agente \"{name}\" criado {placed} e conectado ({kind}; {tuning}); fale com ele com `magoagent ask \"{name}\" …`.{own}")));
     }
 
     /// The chat of a recruit (same id as its card), its first message queued: `raw` is the recruit's command, its
@@ -192,7 +234,9 @@ impl DrawingApp {
             model,
             effort: flags.effort.unwrap_or_default(),
             recruit: true,
-            named: false,
+            // its name stays: the first message does not title it, the team calls it by that name
+            named: true,
+            space: self.spaces.current.clone(),
             draft: false,
         };
 
@@ -237,9 +281,10 @@ impl DrawingApp {
         let _ = reply.send(Ok(format!("Navegador \"{name}\" aberto {} e conectado.", side_of(at, b))));
     }
 
-    /// The MCP's `create_terminal`: a terminal an agent opens to run what it watches (tests, an API), to its right and
-    /// roped to it (`asker`, the terminal or chat that asked: the bridge says which), in its folder unless `cwd` says
-    /// otherwise, running `command` as if typed. No agent to hang it from, no terminal: it would be loose on the canvas.
+    /// The MCP's `create_terminal`: a terminal an agent opens to run what it watches (tests, an API), roped to it
+    /// (`asker`, the terminal or chat that asked: the bridge says which), in its folder unless `cwd` says otherwise,
+    /// running `command` as if typed. It goes to the Comandos panel (panes/commands.rs), off the canvas; with `canvas`,
+    /// a card to the agent's right. No agent to hang it from, no terminal: it would be loose on the canvas.
     pub(crate) fn act_create_terminal(&mut self, args: &Value) -> Result<String, String> {
         let text = |key: &str| args[key].as_str().unwrap_or_default().trim().to_string();
         let asker = text("asker");
@@ -264,7 +309,9 @@ impl DrawingApp {
         let mut terminal = self.new_element(ElementKind::Rectangle { x: at.min.x, y: at.min.y, width: at.width(), height: at.height() });
 
         terminal.style = node_style(terminal.style);
-        terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command: command.clone(), maestro: false, ..Default::default() });
+        let docked = args["canvas"] != true;
+
+        terminal.terminal = Some(TerminalSpec { name: name.clone(), cwd, command: command.clone(), maestro: false, docked, ..Default::default() });
         let id = terminal.id.clone();
 
         // one Cmd+Z takes back the terminal and its rope together
@@ -273,6 +320,13 @@ impl DrawingApp {
         self.hang_from(&asker, std::slice::from_ref(&id));
         self.publish_nodes();
         let running = if command.is_empty() { String::new() } else { format!(", rodando `{command}`") };
+
+        if docked {
+            self.panes.commands.open.insert(id);
+            self.toast(format!("{} abriu \"{name}\" em Comandos", self.speaker(&asker)));
+        }
+
+        let side = if docked { "no painel Comandos (fora do canvas; a pessoa pode levá-lo ao canvas)" } else { side };
 
         Ok(format!(
             "Terminal \"{name}\" aberto {side}{running} e ligado a você por corda: leia a tela com read_terminal \"{name}\" (ou `magoagent check \"{name}\"`), \

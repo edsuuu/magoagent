@@ -220,7 +220,15 @@ fn the_maestro_comes_onto_the_canvas_when_it_builds_its_team() {
     let (reply, said) = std::sync::mpsc::channel();
 
     // it recruits (the bridge says which chat): its card appears, and the recruit hangs from it, in the chat's folder
-    app.apply_agent_command(UiCommand::Recruit { from: "velho".into(), command: "codex".into(), worktree: false, mode: None, reply: reply.clone() });
+    app.apply_agent_command(UiCommand::Recruit {
+        from: "velho".into(),
+        name: String::new(),
+        command: "codex".into(),
+        worktree: false,
+        mode: None,
+        reply: reply.clone(),
+    });
+
     assert!(said.recv().unwrap().unwrap().contains("criado abaixo de você"));
     let card = app.chat_node("velho").expect("the Maestro's card");
     let recruit = app.scene.elements.iter().find(|e| e.terminal.is_some()).cloned().unwrap();
@@ -237,7 +245,7 @@ fn the_maestro_comes_onto_the_canvas_when_it_builds_its_team() {
     // a portal it opens hangs from the card too; what is no chat still needs a place on the canvas
     app.apply_agent_command(UiCommand::CreatePortal { from: "velho".into(), url: "exemplo.com".into(), name: String::new(), reply: reply.clone() });
     assert!(said.recv().unwrap().is_ok() && app.links()["velho"].len() == 2);
-    app.apply_agent_command(UiCommand::Recruit { from: "ninguém".into(), command: "codex".into(), worktree: false, mode: None, reply });
+    app.apply_agent_command(UiCommand::Recruit { from: "ninguém".into(), name: String::new(), command: "codex".into(), worktree: false, mode: None, reply });
     assert!(said.recv().unwrap().is_err());
     assert_eq!(app.scene.elements.iter().filter(|e| e.chat.is_some()).count(), 1);
 }
@@ -341,7 +349,15 @@ fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() 
     let (reply, said) = std::sync::mpsc::channel();
 
     // Terminal (the default): a terminal, as before
-    app.apply_agent_command(UiCommand::Recruit { from: boss.clone(), command: "codex".into(), worktree: false, mode: None, reply: reply.clone() });
+    app.apply_agent_command(UiCommand::Recruit {
+        from: boss.clone(),
+        name: String::new(),
+        command: "codex".into(),
+        worktree: false,
+        mode: None,
+        reply: reply.clone(),
+    });
+
     assert!(said.recv().unwrap().unwrap().contains("criado abaixo de você"));
     assert_eq!((app.scene.elements.iter().filter(|e| e.terminal.is_some()).count(), app.chats.len()), (1, 1));
 
@@ -349,6 +365,7 @@ fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() 
     // so in the free place nearest it, as the answer says
     app.apply_agent_command(UiCommand::Recruit {
         from: boss.clone(),
+        name: String::new(),
         command: "codex \"revise o diff\"".into(),
         worktree: false,
         mode: Some(AgentMode::Chat),
@@ -382,9 +399,27 @@ fn a_recruit_is_a_terminal_or_a_chat_by_the_setting_and_the_mode_overrides_it() 
     assert!(!crate::app::chat::tools::system_prompt(&app.prefs, &chat).contains("Luna, a assistente do MagoAgent"));
     // the setting alone does it too, and `mode` terminal beats it
     app.prefs.agent_mode = AgentMode::Chat;
-    app.apply_agent_command(UiCommand::Recruit { from: boss.clone(), command: "claude".into(), worktree: false, mode: None, reply: reply.clone() });
+
+    app.apply_agent_command(UiCommand::Recruit {
+        from: boss.clone(),
+        name: String::new(),
+        command: "claude".into(),
+        worktree: false,
+        mode: None,
+        reply: reply.clone(),
+    });
+
     assert!(said.recv().unwrap().is_ok() && app.chats.iter().filter(|c| c.recruit).count() == 2);
-    app.apply_agent_command(UiCommand::Recruit { from: boss, command: "claude".into(), worktree: false, mode: Some(AgentMode::Terminal), reply });
+
+    app.apply_agent_command(UiCommand::Recruit {
+        from: boss,
+        name: String::new(),
+        command: "claude".into(),
+        worktree: false,
+        mode: Some(AgentMode::Terminal),
+        reply,
+    });
+
     assert!(said.recv().unwrap().is_ok() && app.scene.elements.iter().filter(|e| e.terminal.is_some()).count() == 2);
     assert_eq!(app.act("set_setting", &json!({ "name": "agent_mode", "value": "terminal" })).unwrap(), "agent_mode agora é terminal.");
     assert_eq!(app.prefs.agent_mode, AgentMode::Terminal);
@@ -417,6 +452,7 @@ fn a_chat_recruits_flags_fill_its_model_effort_and_permission_and_only_the_rest_
 
     app.apply_agent_command(UiCommand::Recruit {
         from: boss,
+        name: String::new(),
         command: "claude --model sonnet --effort high --permission-mode bypassPermissions \"faça X\"".into(),
         worktree: false,
         mode: Some(AgentMode::Chat),
@@ -440,7 +476,15 @@ fn a_recruit_chat_counts_toward_the_ceiling_while_its_card_is_on_the_canvas() {
     let before = app.running_agents();
     let (reply, said) = std::sync::mpsc::channel();
 
-    app.apply_agent_command(UiCommand::Recruit { from: boss.clone(), command: "claude".into(), worktree: false, mode: Some(AgentMode::Chat), reply });
+    app.apply_agent_command(UiCommand::Recruit {
+        from: boss.clone(),
+        name: String::new(),
+        command: "claude".into(),
+        worktree: false,
+        mode: Some(AgentMode::Chat),
+        reply,
+    });
+
     assert!(said.recv().unwrap().is_ok());
     // it answers nothing, yet it weighs
     assert!(app.chat_runs.is_empty());
@@ -448,7 +492,15 @@ fn a_recruit_chat_counts_toward_the_ceiling_while_its_card_is_on_the_canvas() {
     app.prefs.max_agents = before + 1;
     let (reply, said) = std::sync::mpsc::channel();
 
-    app.apply_agent_command(UiCommand::Recruit { from: boss, command: "claude".into(), worktree: false, mode: Some(AgentMode::Chat), reply });
+    app.apply_agent_command(UiCommand::Recruit {
+        from: boss,
+        name: String::new(),
+        command: "claude".into(),
+        worktree: false,
+        mode: Some(AgentMode::Chat),
+        reply,
+    });
+
     assert!(said.recv().unwrap().unwrap_err().contains("teto"));
 }
 
@@ -464,6 +516,7 @@ fn a_recruits_card_shows_its_task_folds_to_it_and_pops_what_it_does_out_of_sight
 
     app.apply_agent_command(UiCommand::Recruit {
         from: boss.clone(),
+        name: String::new(),
         command: "codex \"revise   o diff\"".into(),
         worktree: false,
         mode: Some(AgentMode::Chat),

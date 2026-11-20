@@ -18,7 +18,7 @@ pub(super) fn team(app: &mut DrawingApp, ctx: &Context) -> (String, String, Stri
     let (reply, said) = std::sync::mpsc::channel();
     let command = "\"rode os testes\"".into();
 
-    app.apply_agent_command(UiCommand::Recruit { from: boss.clone(), command, worktree: false, mode: Some(AgentMode::Chat), reply });
+    app.apply_agent_command(UiCommand::Recruit { from: boss.clone(), name: String::new(), command, worktree: false, mode: Some(AgentMode::Chat), reply });
     assert!(said.recv().unwrap().is_ok());
     let recruit = app.chats.iter().find(|chat| chat.recruit).unwrap().id.clone();
     let name = app.speaker(&recruit);
@@ -104,4 +104,48 @@ fn what_the_boss_sends_its_recruit_and_a_question_past_its_wait_come_back_to_the
     app.chat_runs.insert(boss.clone(), ChatRun::held(app.now));
     app.chat_asks_tick(&ctx);
     assert!(app.chat_queue.contains(&(boss.clone(), answer_message(&name, "Não terminei: falhou: sem crédito"))), "{:?}", app.chat_queue);
+}
+
+#[test]
+fn only_the_maestro_recruits_and_each_recruit_keeps_its_own_name_in_the_space_it_was_born_in() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+
+    app.load_spaces();
+    let (boss, recruit, name) = team(&mut app, &ctx);
+    let chat = app.chats.iter().find(|chat| chat.id == recruit).cloned().unwrap();
+
+    // a free name of the list, kept as its title (its first message names no one), in the space on screen
+    assert!(AGENT_NAMES.contains(&name.as_str()) && chat.name == name && chat.named, "{chat:?}");
+    assert_eq!(chat.space, "principal");
+    // its card off the canvas shown: still listed in that space, not under "Sem espaço"
+    app.scene.elements.retain(|element| element.id != recruit);
+    let row = app.chat_rows().into_iter().find(|row| row.id == recruit).unwrap();
+
+    assert_eq!(app.row_space(&row), "principal");
+    // the Maestro's own chat too, its card off view
+    app.scene.elements.retain(|element| element.id != boss);
+    let row = app.chat_rows().into_iter().find(|row| row.id == boss).unwrap();
+
+    assert_eq!(app.row_space(&row), "principal");
+
+    // a recruit asking for another: refused, nothing made
+    let recruit_with = |app: &mut DrawingApp, from: &str, name: &str| {
+        let (reply, said) = std::sync::mpsc::channel();
+        let command = "\"ajude\"".into();
+
+        app.apply_agent_command(UiCommand::Recruit { from: from.into(), name: name.into(), command, worktree: false, mode: Some(AgentMode::Chat), reply });
+        said.recv().unwrap()
+    };
+
+    let (chats, elements) = (app.chats.len(), app.scene.elements.len());
+
+    assert_eq!(recruit_with(&mut app, &recruit, ""), Err(crate::app::maestro::ONLY_THE_MAESTRO.to_string()));
+    assert_eq!((app.chats.len(), app.scene.elements.len()), (chats, elements), "its card stays off the canvas too");
+
+    // the Maestro names its recruit: that name, numbered when another agent has it
+    for (wanted, given) in [("Pipoca", "Pipoca"), ("pipoca", "pipoca 2")] {
+        assert!(recruit_with(&mut app, &boss, wanted).unwrap().contains(&format!("\"{given}\"")));
+        assert_eq!(app.chats.last().map(|chat| chat.name.as_str()), Some(given));
+    }
 }

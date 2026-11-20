@@ -186,6 +186,7 @@ impl DrawingApp {
         for terminal in &ended {
             self.terminals.remove(terminal);
             self.away.remove(terminal);
+            self.release_tasks(terminal);
         }
 
         if let Some(bridge) = &self.bridge {

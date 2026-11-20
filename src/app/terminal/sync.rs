@@ -4,6 +4,11 @@ impl DrawingApp {
     pub(crate) fn terminal_env(&self, id: &str, name: &str) -> Vec<(String, String)> {
         let mut env = vec![("MAGOAGENT_TERMINAL_ID".to_string(), id.to_string()), ("MAGOAGENT_TERMINAL_NAME".into(), name.into())];
 
+        // a terminal that is no Maestro's (a recruit's) recruits no one: its MCP leaves recruit_agent out (mcp/mod.rs)
+        if self.scene.elements.iter().any(|e| e.id == id && e.terminal.as_ref().is_some_and(|t| !t.maestro)) {
+            env.push((crate::mcp::RECRUIT_ENV.into(), "1".into()));
+        }
+
         if let Some(bridge) = &self.bridge {
             env.push(("MAGOAGENT_BRIDGE".into(), bridge.address.clone()));
             // its own token, which says who it is (mcp/bridge/mod.rs `authorize`): a new shell takes the old one's place
@@ -18,9 +23,11 @@ impl DrawingApp {
             env.push(("WSLENV".into(), wslenv(std::env::var("WSLENV").ok().as_deref())));
         }
 
-        // the MCP in it draws in this drawing, its workspace's, even once another one is on screen
-        // (absolute: the shell may change folder)
-        if let Some(scene) = &self.autosave {
+        // the MCP in it draws in this drawing, its workspace's, even once another one is on screen (one born off view:
+        // that workspace's) (absolute: the shell may change folder)
+        let scene = self.away.get(id).and_then(|(key, _)| self.scope_file(key)).or_else(|| self.autosave.clone());
+
+        if let Some(scene) = scene {
             env.push(("MAGOAGENT_SCENE".into(), scene.to_string_lossy().into()));
         }
 
@@ -61,8 +68,15 @@ impl DrawingApp {
             .cloned()
             .collect();
 
+        // gone from the drawing (not a shell unloaded there): its open tasks have no owner now
+        let closed: Vec<String> = gone.iter().filter(|id| !self.scene.elements.iter().any(|e| &e.id == *id)).cloned().collect();
+
         for id in gone {
             self.terminals.remove(&id);
+        }
+
+        for id in closed {
+            self.release_tasks(&id);
         }
 
         // a terminal's token is good while its shell runs: closed, restarting, ended or never started, it goes;
@@ -80,14 +94,18 @@ impl DrawingApp {
             .scene
             .elements
             .iter()
-            .filter(|e| e.terminal.is_some() && self.terminal_frame(e).0.intersects(shown))
+            .filter(|e| e.terminal.is_some() && !e.docked() && self.terminal_frame(e).0.intersects(shown))
             .map(|e| e.id.clone())
             .chain(self.chat_agent.clone().filter(|_| self.chat_open))
+            // and the ones in Comandos whose row is open (panes/commands.rs)
+            .chain(self.docked_shown())
             .collect();
 
         for (id, spec, size) in &live {
             let (theme, font, shell) = self.prefs.terminal.resolve(&spec.look);
-            let (look, shell, grid) = (Look::of(theme, self.dark()), shell.to_string(), grid_size_at(*size, font));
+            // in Comandos, the panel's width (panes/commands.rs)
+            let grid = if spec.docked { crate::app::panes::commands::docked_grid(self.panel_width(), font) } else { grid_size_at(*size, font) };
+            let (look, shell) = (Look::of(theme, self.dark()), shell.to_string());
 
             match self.terminals.get_mut(id) {
                 Some(Ok(session)) => {
@@ -96,24 +114,27 @@ impl DrawingApp {
                 }
                 Some(Err(_)) => {}
                 None => {
-                    let env = self.terminal_env(id, &spec.name);
-                    // a WSL shell's claude runs the hooks by the exe's Linux path, and gets the paths as Linux sees them
-                    let wsl = is_wsl_shell(&shell);
-                    let command = with_hooks(spec.launch_command(crate::transcript::claude_dir().as_deref()), self.hook_settings(wsl).as_deref());
-                    // the app's skills go to a terminal's claude too (skills.rs); never the real folder in a test
-                    let skills = if cfg!(test) { None } else { crate::app::maestro::skills::skills_path() };
-                    let command = crate::app::maestro::skills::with_skills(command, skills.as_deref());
-                    // and the app's MCP, the one the chats run (chat/tools.rs); no file written in a test
-                    let mcp = if cfg!(test) { None } else { crate::app::chat::tools::mcp_config(&self.prefs, wsl) };
-                    let command = crate::app::maestro::events::with_mcp(command, mcp.as_deref());
-                    let command = if wsl { wsl_quoted_paths(&command) } else { command };
+                    let session = self.spawn_terminal(ctx, id, spec, grid, look, &shell);
 
-                    let session =
-                        TerminalSession::spawn_shell(&shell, &spec.cwd, &command, grid, Some(ctx.clone()), env, None, self.prefs.terminal_history, look);
-
-                    self.terminals.insert(id.clone(), session.map_err(|e| e.to_string()));
+                    self.terminals.insert(id.clone(), session);
                 }
             }
+        }
+
+        // a recruit born in a workspace off view (workspaces/away.rs) starts there, at a new terminal's size
+        let unstarted: Vec<(String, TerminalSpec)> = self
+            .away
+            .iter()
+            .filter(|(id, (_, spec))| !spec.unloaded && !self.terminals.contains_key(*id))
+            .map(|(id, (_, spec))| (id.clone(), spec.clone()))
+            .collect();
+
+        for (id, spec) in unstarted {
+            let (theme, font, shell) = self.prefs.terminal.resolve(&spec.look);
+            let (look, shell, grid) = (Look::of(theme, self.dark()), shell.to_string(), grid_size_at(self.new_terminal_size(), font));
+            let session = self.spawn_terminal(ctx, &id, &spec, grid, look, &shell);
+
+            self.terminals.insert(id, session);
         }
 
         // a shell an undo took (kept for the redo) shows nowhere; with the window hidden, none does
@@ -175,6 +196,24 @@ impl DrawingApp {
         }
     }
 
+    /// The shell of terminal `id`, running what its spec says, with the app's hooks, skills and MCP.
+    fn spawn_terminal(&self, ctx: &Context, id: &str, spec: &TerminalSpec, grid: (usize, usize), look: Look, shell: &str) -> Result<TerminalSession, String> {
+        let env = self.terminal_env(id, &spec.name);
+        // a WSL shell's claude runs the hooks by the exe's Linux path, and gets the paths as Linux sees them
+        let wsl = is_wsl_shell(shell);
+        let command = with_hooks(spec.launch_command(crate::transcript::claude_dir().as_deref()), self.hook_settings(wsl).as_deref());
+        // the app's skills go to a terminal's claude too (skills.rs); never the real folder in a test
+        let skills = if cfg!(test) { None } else { crate::app::maestro::skills::skills_path() };
+        let command = crate::app::maestro::skills::with_skills(command, skills.as_deref());
+        // and the app's MCP, the one the chats run (chat/tools.rs); no file written in a test
+        let mcp = if cfg!(test) { None } else { crate::app::chat::tools::mcp_config(&self.prefs, wsl) };
+        let command = crate::app::maestro::events::with_mcp(command, mcp.as_deref());
+        let command = if wsl { wsl_quoted_paths(&command) } else { command };
+
+        TerminalSession::spawn_shell(shell, &spec.cwd, &command, grid, Some(ctx.clone()), env, None, self.prefs.terminal_history, look)
+            .map_err(|e| e.to_string())
+    }
+
     pub(crate) fn apply_agent_command(&mut self, command: UiCommand) {
         match command {
             UiCommand::PortalNavigate { id, url } => self.portal_navigate(&id, &url),
@@ -205,10 +244,16 @@ impl DrawingApp {
                 self.rope_between(&note_id, &from, false);
             }
             // a chat builds its team from its card: the Maestro comes onto the canvas shown if it
-            // is not there (`add_chat_node` does nothing for what is not a chat)
-            UiCommand::Recruit { from, command, worktree, mode, reply } => {
-                self.add_chat_node(&from, None);
-                self.recruit_in(&from, &command, worktree, mode, reply)
+            // is not there (`add_chat_node` does nothing for what is not a chat); a recruit, refused, stays where it is; one
+            // born in the workspace of the chat's folder hangs from the card there (workspaces/away.rs)
+            UiCommand::Recruit { from, name, command, worktree, mode, reply } => {
+                let elsewhere = self.chats.iter().find(|chat| chat.id == from).and_then(|chat| self.folder_space(&chat.cwd)).is_some();
+
+                if !self.is_recruit_chat(&from) && !elsewhere {
+                    self.add_chat_node(&from, None);
+                }
+
+                self.recruit_in(&from, &name, &command, worktree, mode, reply)
             }
             UiCommand::CreatePortal { from, url, name, reply } => {
                 self.add_chat_node(&from, None);
@@ -221,6 +266,7 @@ impl DrawingApp {
             UiCommand::Notify { from, text } => self.notify(&from, &text),
             UiCommand::Raise => self.raise_window = true,
             UiCommand::AskChat { id, from, asker, text, reply } => self.ask_chat(&id, &from, &asker, &text, reply),
+            UiCommand::QueueAsk { from, to, asker, text } => self.queue_ask(&from, &to, &asker, &text),
             UiCommand::CheckChat { id, reply } => {
                 let _ = reply.send(self.chat_check(&id));
             }
