@@ -379,15 +379,18 @@ impl DrawingApp {
         self.tasks.list.iter().position(|t| t.id.eq_ignore_ascii_case(id)).ok_or_else(|| format!("Nenhuma tarefa {id}."))
     }
 
-    /// The task, as text, to its owner's terminal (typed as a prompt) or chat.
-    fn deliver_task(&mut self, id: &str) -> Result<String, String> {
+    /// The task, as text, to its owner's terminal (typed as a prompt) or chat. `asker` is who sends it (the bridge's):
+    /// a chat gets the owner's answer back.
+    fn deliver_task(&mut self, id: &str, asker: &str) -> Result<String, String> {
         let task = self.tasks.list[self.task_index(id)?].clone();
 
-        self.deliver_text(id, task_message(&task, &self.tasks.list))
+        self.deliver_text(id, task_message(&task, &self.tasks.list), asker)
     }
 
-    /// `text` to the task's owner, as `deliver_task` does.
-    fn deliver_text(&mut self, id: &str, text: String) -> Result<String, String> {
+    /// `text` to the task's owner, as `deliver_task` does. Sent by a chat (`asker`), what the owner says when it is done
+    /// comes back to that chat: a chat's answer at the end of that turn (chat/ask.rs), a terminal's last words when its
+    /// turn ends (`recruit_finished`).
+    fn deliver_text(&mut self, id: &str, text: String, asker: &str) -> Result<String, String> {
         let task = self.tasks.list[self.task_index(id)?].clone();
 
         if task.owner.is_empty() {
@@ -395,10 +398,22 @@ impl DrawingApp {
         }
 
         let name = self.task_owner(&task);
+        let answers_back = self.is_chat(asker) && asker != task.owner;
+
+        if self.is_chat(&task.owner) && answers_back {
+            self.task_to_chat(&task.owner, asker, &text);
+            self.task_event(&task, &format!("entregue a {name}"));
+
+            return Ok(format!("Entregue a {name}; o que ele disser ao terminar chega neste chat."));
+        }
 
         if self.is_chat(&task.owner) {
             self.chat_outbox.push((task.owner.clone(), text));
         } else if matches!(self.terminals.get(&task.owner), Some(Ok(_))) {
+            if answers_back {
+                self.recruit_boss.insert(task.owner.clone(), asker.to_string());
+            }
+
             // one it can't take now (the trust question of a new folder, a permission menu) waits in the chat queue and
             // goes when it can (`flush_chat_queue`), instead of coming back to the composer
             self.queue_message(&task.owner, text);
@@ -416,7 +431,7 @@ impl DrawingApp {
         }
 
         self.task_event(&task, &format!("entregue a {name}"));
-        Ok(format!("Entregue a {name}."))
+        Ok(format!("Entregue a {name}.{}", if answers_back { " Quando ele terminar a vez, a última fala dele chega neste chat." } else { "" }))
     }
 
     /// The tasks, what needs the person first, then by state; filtered by state and owner.

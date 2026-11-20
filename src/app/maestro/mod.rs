@@ -196,7 +196,8 @@ impl DrawingApp {
             model,
             effort: flags.effort.unwrap_or_default(),
             recruit: true,
-            named: false,
+            // its agent's name is how the team calls it: its first message does not rename it
+            named: true,
             draft: false,
         };
 

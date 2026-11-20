@@ -190,7 +190,7 @@ fn a_task_for_an_agent_on_a_menu_waits_in_the_queue_and_goes_when_it_is_ready() 
     app.tasks.list.push(Task { id: "t1".into(), title: "revise o login".into(), owner: id.clone(), ..Default::default() });
     // the trust question of the folder is on its screen: the task stays queued
     app.terminal_waiting.insert(id.clone());
-    let said = app.deliver_task("t1").unwrap();
+    let said = app.deliver_task("t1", "").unwrap();
 
     assert!(said.starts_with("Na fila de Dev"), "{said}");
     assert_eq!(app.chat_queue.len(), 1);

@@ -166,6 +166,17 @@ impl DrawingApp {
         self.message_event(&boss, id, tool_summary("tarefa", &json!({ "prompt": text })));
     }
 
+    /// A task chat `from` gives chat `id` (`tasks … send`): it waits its turn in that chat's line, as it was written, and
+    /// what the chat says at the end of that turn comes back to `from` (`bring_answer`), as a recruit's first task does.
+    pub(crate) fn task_to_chat(&mut self, id: &str, from: &str, text: &str) {
+        let (reply, _) = std::sync::mpsc::channel();
+        let asker = self.speaker(from);
+        let ask = ChatAsk { chat: id.into(), from: from.into(), asker, text: text.into(), reply, running: false, answer: None, task: true };
+
+        self.chat_asks.push(ask);
+        self.message_event(from, id, tool_summary("tarefa", &json!({ "prompt": text })));
+    }
+
     /// The chat that recruited chat `id`: the start of a rope that ends on it (`rope_between` ties the recruiter first).
     /// With its card in a workspace off view there is no rope to read: who recruited it, as kept then.
     // ponytail: kept in memory, so after a restart an off-view recruit has no boss until its space is shown; upgrade: the boss in chats.json

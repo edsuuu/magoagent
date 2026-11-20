@@ -180,3 +180,54 @@ fn a_terminal_recruits_last_words_go_to_the_chat_that_recruited_it_when_its_turn
     app.terminals.clear();
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_task_a_chat_sends_brings_the_owners_answer_back_to_that_chat() {
+    let ctx = Context::default();
+    let (mut app, dir, _) = two_spaces("tarefa");
+    let (boss, recruit, name) = team::team(&mut app, &ctx);
+
+    app.chat_asks.clear();
+    app.chat_runs.clear();
+    // to a chat: the task waits in its line as written, and its answer comes back to the chat that sent it
+    let said = app.act("tasks", &json!({ "action": "create", "title": "rodar o lint", "owner": name, "send": true, "asker": boss })).unwrap();
+
+    assert!(said.contains("chega neste chat"), "{said}");
+    assert!(app.chat_outbox.is_empty() && app.chat_asks.len() == 1 && app.chat_asks[0].chat == recruit);
+    app.chat_runs.insert(recruit.clone(), crate::app::chat::direct::ChatRun::held(app.now));
+    app.ask_sent(0);
+    app.chat_heard(&recruit, &json!({ "type": "result", "is_error": false, "result": "Lint limpo." }), false);
+    app.chat_runs.remove(&recruit);
+    app.chat_runs.insert(boss.clone(), crate::app::chat::direct::ChatRun::held(app.now));
+    app.chat_asks_tick(&ctx);
+    assert!(app.chat_queue.contains(&(boss.clone(), crate::app::chat::ask::answer_message(&name, "Lint limpo."))), "{:?}", app.chat_queue);
+    // to a terminal nobody recruited: its last words when its turn ends go to that chat
+    app.chat_queue.clear();
+    let dev = terminal(&mut app, "Dev");
+    let program = if cfg!(windows) { ("powershell", &["-NoProfile", "-Command", "Start-Sleep 30"][..]) } else { ("sh", &["-c", "sleep 30"][..]) };
+
+    app.terminals.insert(dev.clone(), Ok(crate::terminal::TerminalSession::spawn("", "", (40, 5), None, vec![], Some(program), 10_000).unwrap()));
+    app.act("tasks", &json!({ "action": "create", "title": "revisar", "owner": "Dev" })).unwrap();
+    let said = app.act("tasks", &json!({ "action": "update", "id": "t2", "send": true, "asker": boss })).unwrap();
+
+    assert!(said.contains("chega neste chat"), "{said}");
+    app.take_hook(&dev, &json!({ "hook_event_name": "Stop", "last_assistant_message": "Revisei: dois avisos." }), None);
+    assert!(app.chat_queue.iter().any(|(to, message)| to == &boss && message.contains("Revisei: dois avisos.")), "{:?}", app.chat_queue);
+    // sent by no chat (the person, a terminal): as before, a message with no answer brought back
+    app.chat_asks.clear();
+    app.act("tasks", &json!({ "action": "create", "title": "outra", "owner": name, "send": true })).unwrap();
+    assert!(app.chat_asks.is_empty() && app.chat_outbox.iter().any(|(to, _)| to == &recruit));
+    app.terminals.clear();
+    app.chat_runs.clear();
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_chat_recruit_keeps_its_agents_name_after_its_first_message() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let (_, recruit, name) = team::team(&mut app, &ctx);
+    let chat = app.chats.iter().find(|chat| chat.id == recruit).unwrap();
+
+    assert!(chat.named && chat.name == name, "{name}");
+}

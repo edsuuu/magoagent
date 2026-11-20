@@ -259,8 +259,9 @@ pub(crate) struct DrawingApp {
     pub(crate) chat_asks: Vec<chat::ask::ChatAsk>,
     /// The first message of each recruit chat, sent when the chat can take it (maestro/mod.rs).
     pub(crate) chat_starts: Vec<(String, String)>,
-    /// Who recruited each agent (recruit → recruiter): a chat recruit's boss when its card's rope is in a workspace off
-    /// view, and the chat a terminal recruit's last words go to when its turn ends (chat/ask.rs).
+    /// Who each agent answers to (agent → the chat or terminal that recruited it, or last sent it a task): a chat recruit's
+    /// boss when its card's rope is in a workspace off view, and the chat a terminal's last words go to when its turn
+    /// ends (chat/ask.rs).
     pub(crate) recruit_boss: std::collections::HashMap<String, String>,
     pub(crate) chat_nodes_read: f64,
     /// The areas that paint a card in front over another card's live parts (canvas/cover.rs), this frame's and the last
