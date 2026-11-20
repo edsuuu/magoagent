@@ -105,6 +105,7 @@ fn unreadable_chats_are_set_aside_not_written_over() {
         effort: String::new(),
         recruit: false,
         named: false,
+        space: String::new(),
         draft: false,
     };
 

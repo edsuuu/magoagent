@@ -133,7 +133,7 @@ mod tests {
         let recruit = |app: &mut DrawingApp, command: &str, mode: Option<AgentMode>| {
             let (reply, said) = std::sync::mpsc::channel();
 
-            app.recruit_in(&from, command, false, mode, reply);
+            app.recruit_in(&from, "", command, false, mode, reply);
             said.recv().unwrap().unwrap()
         };
 
@@ -194,6 +194,7 @@ mod tests {
             effort: String::new(),
             recruit,
             named: false,
+            space: String::new(),
             draft: false,
         };
 

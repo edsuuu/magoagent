@@ -71,6 +71,7 @@ fn the_agents_drive_chats_tabs_settings_and_history() {
         effort: String::new(),
         recruit: false,
         named: false,
+        space: String::new(),
         draft: false,
     };
 
@@ -180,7 +181,7 @@ fn the_agents_turn_github_on_read_its_pull_requests_and_never_see_the_token() {
     app.integrations.github = GitHub::with_token("");
     // Soloist (Spotify's Connect receiver) only on Linux
     let soloist = if cfg!(any(windows, target_os = "macos")) { "" } else { "Soloist: desligado.\n" };
-    let all = format!("GitHub: desligado.\nSpotify: desligado.\n{soloist}Hermes Agent: desligado.\nWhatsApp: desligado.");
+    let all = format!("GitHub: desligado.\nSpotify: desligado.\n{soloist}Hermes Agent: desligado.");
 
     assert_eq!(app.act("integrations", &json!({})).unwrap(), all);
     assert!(app.act("integrations", &json!({ "integration": "github", "action": "test" })).is_err(), "off: nothing to test");
@@ -504,6 +505,7 @@ fn a_terminal_an_agent_opens_is_roped_to_it() {
         effort: String::new(),
         recruit: false,
         named: false,
+        space: String::new(),
         draft: false,
     }];
 

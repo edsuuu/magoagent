@@ -55,6 +55,29 @@ impl Paths {
     fn of_this_user() -> Result<Paths, String> {
         std::env::var_os("HOME").filter(|home| !home.is_empty()).map(|home| Paths::under(Path::new(&home))).ok_or_else(|| "sem HOME".to_string())
     }
+
+    /// Pointed at the Soloist already on this computer, however it got there, for a look: when `~/.local/bin` has none,
+    /// the one on the PATH or the one Spotifast downloaded; when its data folder has none running, one that runs with its
+    /// local API (`XDG_DATA_HOME`'s, Spotifast's).
+    #[cfg_attr(any(windows, target_os = "macos"), allow(unused_mut))]
+    fn found(mut self) -> Paths {
+        #[cfg(not(any(windows, target_os = "macos")))]
+        {
+            if !self.program.is_file()
+                && let Some(program) = super::soloist::program()
+            {
+                self.program = program;
+            }
+
+            if !self.data.join("ws.port").is_file()
+                && let Some(data) = super::soloist::running().into_iter().next()
+            {
+                self.data = data;
+            }
+        }
+
+        self
+    }
 }
 
 /// How a command ended.
@@ -132,15 +155,16 @@ impl Mark {
 }
 
 /// The five steps' marks: each done by what was found (`typed`: a key waits in the field, so steps 2 and 3 are filled
-/// in); the first not done is the one to do now.
+/// in); the first not done is the one to do now. A Soloist that answers has its key and runs, set up here or not.
 pub(crate) fn marks(status: &Status, typed: bool) -> [Mark; 5] {
     let saved = status.key != KeyFile::Missing;
+    let answers = status.login != Login::Off;
 
     let done = [
         matches!(status.program, Program::Ready(_)),
-        saved || typed,
-        saved || typed,
-        saved && status.unit && status.enabled && status.running(),
+        saved || typed || answers,
+        saved || typed || answers,
+        answers || (saved && status.unit && status.enabled && status.running()),
         status.login == Login::In,
     ];
 
@@ -161,20 +185,25 @@ pub(crate) const TITLES: [&str; 5] =
 pub(crate) fn hints(status: &Status, typed: bool, name: &str) -> [String; 5] {
     let program = match (&status.foreign, &status.program) {
         (Some(arch), _) => format!("O Soloist só existe para computadores x86_64 (este é {arch})."),
-        (None, Program::Ready(version)) => format!("{version}, em ~/.local/bin/soloist. Cada versão vale 90 dias."),
+        (None, Program::Ready(version)) => format!("{version}. Cada versão vale 90 dias."),
         (None, Program::Expired) => "Esta versão expirou (cada uma vale 90 dias): atualize para baixar a nova.".into(),
         (None, Program::Broken(why)) => format!("O ~/.local/bin/soloist não rodou ({why}): baixe de novo."),
         (None, Program::Missing) => "O programa oficial do Spotify vai para ~/.local/bin/soloist, sem sudo.".into(),
     };
 
+    // a Soloist that answers with nothing of ours: opened another way (Spotifast, a service of the person's own)
+    let elsewhere = status.login != Login::Off && status.key == KeyFile::Missing && !status.unit;
+
     let key = match (status.key, typed) {
         (_, true) => "Chave colada: ela é salva no passo 4.".to_string(),
+        (KeyFile::Missing, false) if elsewhere => "O Soloist já está rodando com a chave dele, configurado fora daqui.".into(),
         (KeyFile::Private, false) => "Já está salva no ~/.config/soloist/soloist.env, que só o seu usuário lê. Para trocar, cole outra.".into(),
         (KeyFile::Open(mode), false) => format!("Já está salva, mas o soloist.env tem a permissão {mode:o}: outros usuários podem ler (o certo é 600)."),
         (KeyFile::Missing, false) => "Abra o painel (precisa do Spotify Premium), gere a chave do Soloist e cole abaixo. Ela não aparece na tela.".into(),
     };
 
     let device = match (status.key, typed) {
+        (KeyFile::Missing, false) if elsewhere => "O nome que o Soloist que está rodando já tem.".to_string(),
         (KeyFile::Missing, _) | (_, true) => "O nome que aparece no Spotify do celular.".to_string(),
         _ => "Já está salvo no soloist.env. Para trocar, cole a chave de novo e salve.".into(),
     };
@@ -184,6 +213,7 @@ pub(crate) fn hints(status: &Status, typed: bool, name: &str) -> [String; 5] {
         (true, _, false) if status.active == "failed" => "O soloist.service falhou. Veja o Status, ou ligue de novo.".into(),
         (true, false, _) => "O soloist.service existe, mas não abre sozinho: ligar o habilita.".into(),
         (true, true, false) => "O soloist.service está parado.".into(),
+        (false, ..) if elsewhere => "O Soloist já está rodando, aberto por outro caminho (o Spotifast ou um serviço seu).".into(),
         (false, ..) => "Grava a chave e o nome (só o seu usuário lê) e o serviço soloist.service do seu usuário, e liga. Sem sudo.".into(),
     };
 
@@ -355,6 +385,8 @@ impl DrawingApp {
         while let Some(message) = setup.channel.as_ref().and_then(|(_, inbox)| inbox.try_recv().ok()) {
             match message {
                 Message::Checked(status) => {
+                    // and the Spotify card's word for it, looked at once when its thread started
+                    self.integrations.spotify.soloist_missing = status.program == Program::Missing;
                     (setup.status, setup.checked, setup.checking) = (Some(status), Some(Instant::now()), false);
                 }
                 Message::Details(text) => (setup.details, setup.busy) = (Some(text), None),
@@ -399,7 +431,7 @@ impl DrawingApp {
         let outbox = setup.sender();
 
         std::thread::spawn(move || {
-            let status = detect::detect(&paths, &System, std::env::consts::ARCH, Path::new("/sys/class/net"));
+            let status = detect::detect(&paths.found(), &System, std::env::consts::ARCH, Path::new("/sys/class/net"));
             let _ = outbox.send(Message::Checked(status));
         });
     }

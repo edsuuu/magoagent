@@ -1,14 +1,14 @@
-# Compila, verifica qualidade e testa no Windows e no Linux: a cada push na main, em cada pull request para a main e
-# dentro do release (release.yml). Os PRs para a dev (o trabalho dos agentes, juntado e testado lá) não rodam o CI: ele
-# roda no PR da dev para a main. Uma vez por commit: o push de uma branch com PR e a tag do release rodavam outro igual ao mesmo
-# tempo, disputando as máquinas. PR em rascunho não roda: o CI começa quando ele fica pronto para revisão.
+# Compila, verifica qualidade e testa no Windows e no Linux: a cada push na main, em cada pull request para a main ou
+# para a dev (o trabalho dos agentes) e dentro do release (release.yml). Uma vez por commit: o push de uma branch com PR e
+# a tag do release rodavam outro igual ao mesmo tempo, disputando as máquinas. PR em rascunho não roda: o CI começa quando
+# ele fica pronto para revisão.
 # O Rust é o do rust-toolchain.toml; a versão das actions dtolnay/rust-toolchain abaixo sobe junto com ele.
 name: CI
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_call:
 # um push novo no mesmo PR cancela o CI do anterior, que já não vale

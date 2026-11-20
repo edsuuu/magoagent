@@ -258,6 +258,7 @@ fn a_window_a_chats_agent_draws_is_roped_to_its_card() {
         effort: String::new(),
         recruit: false,
         named: false,
+        space: String::new(),
         draft: false,
     }];
 
@@ -300,7 +301,7 @@ fn the_windows_an_agent_opens_go_around_it_not_all_to_one_side() {
     let mut sides = vec![];
 
     for command in ["cargo test", "npm run dev", "php artisan serve", "vite"] {
-        let said = app.act("create_terminal", &json!({ "command": command, "asker": luna_id })).unwrap();
+        let said = app.act("create_terminal", &json!({ "command": command, "asker": luna_id, "canvas": true })).unwrap();
 
         sides.push(["à sua direita", "abaixo de você", "à sua esquerda", "acima de você"].into_iter().find(|side| said.contains(side)).unwrap_or("?"));
     }

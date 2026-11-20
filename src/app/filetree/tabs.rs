@@ -2,7 +2,7 @@
 //! on a rounded blue chip, the others bare; the X at the right, an unsaved text's dot in its place.
 
 use crate::app::filetree::menu::{Row, menu_row};
-use crate::app::filetree::pane::{Editor, PaneAct, glyph_x};
+use crate::app::filetree::pane::{Editor, PaneAct, glyph_x, strip_gestures};
 use crate::app::filetree::ui::{Palette, cr, fit};
 use crate::app::ui::menu_look::menu_frame;
 use crate::editor::{icons, theme as t};
@@ -16,8 +16,20 @@ const BEFORE: f32 = 25.0;
 const AFTER: f32 = 22.0;
 
 /// The tabs in `strip` (the pane's top, up to its buttons), painted inside `clip`; `dirty` says which have unsaved text.
+/// A tab dragged or double-clicked is the strip's (`strip_gestures`): it moves the node, or puts it on the full screen.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn tabs_ui(ui: &mut egui::Ui, ed: &Editor, strip: Rect, clip: Rect, z: f32, dark: bool, c: &Palette, dirty: &[bool], acts: &mut Vec<PaneAct>) {
+pub(crate) fn tabs_ui(
+    ui: &mut egui::Ui,
+    ed: &Editor,
+    strip: Rect,
+    clip: Rect,
+    z: f32,
+    dark: bool,
+    c: &Palette,
+    dirty: &[bool],
+    elevated: bool,
+    acts: &mut Vec<PaneAct>,
+) {
     let sp = ui.painter().with_clip_rect(clip);
     let font = FontId::proportional(12.0 * z);
     let names: Vec<String> = ed.tabs.iter().map(|tab| tab.path.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned())).collect();
@@ -47,7 +59,7 @@ pub(crate) fn tabs_ui(ui: &mut egui::Ui, ed: &Editor, strip: Rect, clip: Rect, z
         }
 
         let (active, italic) = (forward == Some(i), preview(i));
-        let r = ui.interact(chip.intersect(clip), ui.scope_id().with(("tab", i)), Sense::click());
+        let r = ui.interact(chip.intersect(clip), ui.scope_id().with(("tab", i)), Sense::click_and_drag());
         let slot = Rect::from_center_size(Pos2::new(chip.right() - 11.0 * z, chip.center().y), Vec2::splat(14.0 * z));
         let over_x = ui.rect_contains_pointer(slot) && r.hovered();
 
@@ -90,6 +102,10 @@ pub(crate) fn tabs_ui(ui: &mut egui::Ui, ed: &Editor, strip: Rect, clip: Rect, z
 
         if r.middle_clicked() {
             acts.push(PaneAct::Close(tab.path.clone()));
+        }
+
+        if (r.double_clicked() && !over_x) || r.dragged() {
+            strip_gestures(&r, elevated, acts);
         }
 
         let unsaved = if dirty[i] { ", alterações não salvas" } else { "" };

@@ -107,6 +107,8 @@ pub(crate) enum UiCommand {
     /// things, a notification. What they create is roped to `from`.
     Recruit {
         from: String,
+        /// The name the Maestro gave it; empty: one of AGENT_NAMES.
+        name: String,
         command: String,
         /// In a git worktree of its own (app/environments.rs).
         worktree: bool,

@@ -83,105 +83,11 @@ impl DrawingApp {
         divider(ui, k);
         block(ui, k, |_| ());
         self.settings_spotify(ui, k);
-        divider(ui, k);
 
         if crate::app::integrations::hermes::available() {
+            divider(ui, k);
             block(ui, k, |_| ());
             self.settings_hermes(ui, k);
-            divider(ui, k);
-        }
-
-        block(ui, k, |_| ());
-        self.settings_whatsapp(ui, k);
-    }
-
-    fn settings_whatsapp(&mut self, ui: &mut egui::Ui, k: &K) {
-        use crate::app::integrations::whatsapp::Link;
-        let (checking, link) = (self.integrations.whatsapp.checking, self.integrations.whatsapp.link.clone());
-        let connected = link == Link::Connected;
-        let hint = "Gateway GOWA local já iniciado por você (o app não baixa nem inicia o gateway). Só loopback: 127.0.0.1 ou localhost.";
-
-        if std::mem::take(&mut self.integrations.scroll_to_whatsapp) {
-            ui.scroll_to_cursor(Some(egui::Align::TOP));
-        }
-
-        head(ui, k, "WhatsApp", hint, connected, &mut self.prefs.integrations.whatsapp);
-
-        if !self.prefs.integrations.whatsapp {
-            return;
-        }
-
-        let (mut save_cred, mut test, mut remove_cred, mut base_changed) = (false, false, false, false);
-
-        row(ui, k, "URL do gateway", "http://127.0.0.1:3000 (padrão GOWA)", |ui| {
-            let field = input(
-                ui,
-                k,
-                egui::Id::unique("settings_whatsapp_base"),
-                "URL do gateway",
-                &mut self.prefs.integrations.whatsapp_base,
-                "http://127.0.0.1:3000",
-                250.0,
-                false,
-            );
-
-            base_changed = field.changed();
-        });
-
-        let hint = "Credencial GOWA no formato usuário:senha, quando o gateway pede; vazio para gateway sem autenticação.";
-
-        row(ui, k, "Credencial", hint, |ui| {
-            save_cred = button(ui, k, "Salvar").clicked();
-
-            let field = input(
-                ui,
-                k,
-                egui::Id::unique("settings_whatsapp_credential"),
-                "Credencial do gateway",
-                &mut self.integrations.whatsapp.credential_field,
-                "user:pass ou vazio",
-                250.0,
-                true,
-            );
-
-            save_cred |= field.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
-        });
-
-        let status = if checking {
-            "Testando…"
-        } else {
-            match link {
-                Link::Unknown => "ainda não testado",
-                Link::Connected => "gateway conectado",
-                Link::NeedsPairing => "gateway disponível; WhatsApp precisa ser pareado nele",
-                Link::Unavailable => "gateway indisponível ou resposta inválida",
-            }
-        };
-
-        row(ui, k, status, "", |ui| {
-            remove_cred = button(ui, k, "Remover credencial").clicked();
-            test = button(ui, k, if checking { "Testando…" } else { "Testar" }).clicked();
-        });
-
-        if base_changed {
-            self.integrations.whatsapp.forget();
-        }
-
-        if save_cred {
-            let credential = std::mem::take(&mut self.integrations.whatsapp.credential_field);
-            let said = self.whatsapp_save_credential(&credential).unwrap_or_else(|why| why);
-
-            self.toast(said);
-            self.integrations.whatsapp.forget();
-        } else if test {
-            if !self.whatsapp_test() {
-                self.toast("URL inválida: precisa ser http://127.0.0.1:porta ou http://localhost:porta");
-            }
-        } else if remove_cred {
-            let said = self.whatsapp_remove_credential().unwrap_or_else(|why| format!("A credencial não foi removida: {why}"));
-
-            self.toast(said);
-            self.integrations.whatsapp.forget();
         }
     }
 

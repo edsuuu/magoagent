@@ -17,11 +17,45 @@ pub(crate) struct Doubt {
     pub(crate) options: Vec<String>,
     #[serde(default)]
     pub(crate) answer: String,
+    /// What the agent would pick: shown apart from the answers, as information.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) recommendation: String,
+    /// The git branch the agent was on when it asked: the panel's section says it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) branch: String,
 }
 
 impl Doubt {
     pub(crate) fn answered(&self) -> bool {
         !self.answer.trim().is_empty()
+    }
+
+    /// The question and the agent's recommendation apart: its own field, else what the question itself says after
+    /// "Recomendação:" or on lines that start with "Recomendo"/"Minha recomendação" (agents that wrote it inside).
+    pub(crate) fn parts(&self) -> (String, String) {
+        let question = self.question.trim();
+
+        if !self.recommendation.trim().is_empty() {
+            return (question.into(), self.recommendation.trim().into());
+        }
+
+        let recommends = |line: &&str| {
+            let line = line.trim_start_matches(|c: char| c.is_whitespace() || "*_->".contains(c)).to_lowercase();
+
+            line.starts_with("recomend") || line.starts_with("minha recomend")
+        };
+
+        let (said, asked): (Vec<&str>, Vec<&str>) = question.lines().partition(recommends);
+        let (mut asked, mut said) = (asked.join("\n").trim().to_string(), said.join("\n").trim().to_string());
+
+        if said.is_empty()
+            && let Some(at) = asked.find("Recomendação:").or_else(|| asked.find("recomendação:"))
+        {
+            said = asked[at..].trim().to_string();
+            asked = asked[..at].trim().to_string();
+        }
+
+        if asked.is_empty() { (question.into(), String::new()) } else { (asked, said) }
     }
 }
 
@@ -53,6 +87,11 @@ impl DoubtBoard {
         agents
     }
 
+    /// The branch `agent` was on when it last asked (empty: none known).
+    pub(crate) fn branch(&self, agent: &str) -> &str {
+        self.list.iter().rev().find(|doubt| doubt.agent == agent && !doubt.branch.is_empty()).map_or("", |doubt| doubt.branch.as_str())
+    }
+
     /// `agent`'s questions.
     pub(crate) fn of<'a>(&'a self, agent: &'a str) -> impl Iterator<Item = &'a Doubt> {
         self.list.iter().filter(move |doubt| doubt.agent == agent)
@@ -79,23 +118,23 @@ pub(crate) fn answers_message(doubts: &[&Doubt], all: bool) -> Option<String> {
     Some(lines.join("\n"))
 }
 
-/// What `add` takes: `questions`, a list of texts or of {question, options}, or one `question` with its `options`.
-pub(crate) fn asked_questions(args: &Value) -> Vec<(String, Vec<String>)> {
+/// What `add` takes: `questions`, a list of texts or of {question, options, recommendation}, or one `question` with its
+/// `options` and `recommendation`.
+pub(crate) fn asked_questions(args: &Value) -> Vec<(String, Vec<String>, String)> {
     let options = |value: &Value| -> Vec<String> {
         value.as_array().into_iter().flatten().filter_map(Value::as_str).map(str::trim).filter(|option| !option.is_empty()).map(String::from).collect()
     };
 
-    let one = |value: &Value, options_of: &Value| {
-        let question = value.as_str().map(str::trim).filter(|question| !question.is_empty())?;
+    // a text, or an object with its question
+    let one = |item: &Value| {
+        let question = item.as_str().or(item["question"].as_str()).map(str::trim).filter(|question| !question.is_empty())?;
 
-        Some((question.to_string(), options(options_of)))
+        Some((question.to_string(), options(&item["options"]), item["recommendation"].as_str().unwrap_or_default().trim().to_string()))
     };
 
     match args["questions"].as_array() {
-        Some(list) => {
-            list.iter().filter_map(|item| if item.is_string() { one(item, &Value::Null) } else { one(&item["question"], &item["options"]) }).collect()
-        }
-        None => one(&args["question"], &args["options"]).into_iter().collect(),
+        Some(list) => list.iter().filter_map(one).collect(),
+        None => one(args).into_iter().collect(),
     }
 }
 
@@ -134,6 +173,14 @@ impl DrawingApp {
                 ctx.request_repaint_after(std::time::Duration::from_secs_f64(1.0 - since));
             }
         }
+    }
+
+    /// The git branch `agent` works on, read once when it asks (empty: no folder, or not a repository).
+    fn agent_branch(&self, agent: &str) -> String {
+        let cwd = self.agent_rows().into_iter().find(|row| row.id == agent).map(|row| row.spec.cwd).filter(|cwd| !cwd.is_empty());
+        let out = cwd.and_then(|cwd| crate::editor::run_git(std::path::Path::new(&cwd), &["branch", "--show-current"]).ok());
+
+        out.map_or(String::new(), |out| out.trim().to_string())
     }
 
     pub(crate) fn save_doubts(&mut self) {
@@ -192,11 +239,14 @@ impl DrawingApp {
 
                 let mut next = self.doubts.list.iter().map(|doubt| doubt.id).max().unwrap_or(0);
                 let mut added = Vec::new();
+                let branch = self.agent_branch(&asker);
 
-                for (question, options) in questions {
+                for (question, options, recommendation) in questions {
                     next += 1;
                     added.push(next);
-                    self.doubts.list.push(Doubt { id: next, agent: asker.clone(), question, options, answer: String::new() });
+                    let (agent, branch) = (asker.clone(), branch.clone());
+
+                    self.doubts.list.push(Doubt { id: next, agent, question, options, answer: String::new(), recommendation, branch });
                 }
 
                 self.save_doubts();

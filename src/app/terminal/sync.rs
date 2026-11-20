@@ -4,6 +4,11 @@ impl DrawingApp {
     pub(crate) fn terminal_env(&self, id: &str, name: &str) -> Vec<(String, String)> {
         let mut env = vec![("MAGOAGENT_TERMINAL_ID".to_string(), id.to_string()), ("MAGOAGENT_TERMINAL_NAME".into(), name.into())];
 
+        // a terminal that is no Maestro's (a recruit's) recruits no one: its MCP leaves recruit_agent out (mcp/mod.rs)
+        if self.scene.elements.iter().any(|e| e.id == id && e.terminal.as_ref().is_some_and(|t| !t.maestro)) {
+            env.push((crate::mcp::RECRUIT_ENV.into(), "1".into()));
+        }
+
         if let Some(bridge) = &self.bridge {
             env.push(("MAGOAGENT_BRIDGE".into(), bridge.address.clone()));
             // its own token, which says who it is (mcp/bridge/mod.rs `authorize`): a new shell takes the old one's place
@@ -80,14 +85,18 @@ impl DrawingApp {
             .scene
             .elements
             .iter()
-            .filter(|e| e.terminal.is_some() && self.terminal_frame(e).0.intersects(shown))
+            .filter(|e| e.terminal.is_some() && !e.docked() && self.terminal_frame(e).0.intersects(shown))
             .map(|e| e.id.clone())
             .chain(self.chat_agent.clone().filter(|_| self.chat_open))
+            // and the ones in Comandos whose row is open (panes/commands.rs)
+            .chain(self.docked_shown())
             .collect();
 
         for (id, spec, size) in &live {
             let (theme, font, shell) = self.prefs.terminal.resolve(&spec.look);
-            let (look, shell, grid) = (Look::of(theme, self.dark()), shell.to_string(), grid_size_at(*size, font));
+            // in Comandos, the panel's width (panes/commands.rs)
+            let grid = if spec.docked { crate::app::panes::commands::docked_grid(self.panel_width(), font) } else { grid_size_at(*size, font) };
+            let (look, shell) = (Look::of(theme, self.dark()), shell.to_string());
 
             match self.terminals.get_mut(id) {
                 Some(Ok(session)) => {
@@ -205,10 +214,13 @@ impl DrawingApp {
                 self.rope_between(&note_id, &from, false);
             }
             // a chat builds its team from its card: the Maestro comes onto the canvas shown if it
-            // is not there (`add_chat_node` does nothing for what is not a chat)
-            UiCommand::Recruit { from, command, worktree, mode, reply } => {
-                self.add_chat_node(&from, None);
-                self.recruit_in(&from, &command, worktree, mode, reply)
+            // is not there (`add_chat_node` does nothing for what is not a chat); a recruit, refused, stays where it is
+            UiCommand::Recruit { from, name, command, worktree, mode, reply } => {
+                if !self.is_recruit_chat(&from) {
+                    self.add_chat_node(&from, None);
+                }
+
+                self.recruit_in(&from, &name, &command, worktree, mode, reply)
             }
             UiCommand::CreatePortal { from, url, name, reply } => {
                 self.add_chat_node(&from, None);

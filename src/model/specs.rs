@@ -33,6 +33,9 @@ pub(crate) struct TerminalSpec {
     /// Its own theme, font size and shell, and Desfocar (terminal.rs).
     #[serde(skip_serializing_if = "TermLook::is_default")]
     pub(crate) look: TermLook,
+    /// In the Comandos panel (panes/commands.rs) instead of on the canvas: the same shell, shown there.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) docked: bool,
 }
 
 impl Default for TerminalSpec {
@@ -51,6 +54,7 @@ impl Default for TerminalSpec {
             claude_folder: String::new(),
             resume: true,
             look: TermLook::default(),
+            docked: false,
         }
     }
 }

@@ -79,6 +79,7 @@ fn terminal_look_round_trips_and_old_files_default_it() {
         claude_session: "0b6c-41".into(),
         claude_folder: "-p".into(),
         resume: false,
+        docked: true,
         ..plain.terminal.clone().unwrap()
     });
 
@@ -94,6 +95,7 @@ fn terminal_look_round_trips_and_old_files_default_it() {
     assert!(old.maestro, "scenes saved before Maestro are Maestros");
     assert!(!old.unloaded && !serde_json::to_string(&TerminalSpec::default()).unwrap().contains("unloaded"), "written only when set");
     assert!(!old.chat && !serde_json::to_string(&TerminalSpec::default()).unwrap().contains("chat"), "chat mode off by default, written only when set");
+    assert!(!old.docked && !serde_json::to_string(&TerminalSpec::default()).unwrap().contains("docked"), "on the canvas by default, written only when set");
     // the conversation it remembers: in the .mago too, written only when there is one; resuming on by default
     let saved: TerminalSpec = serde_json::from_str(&serde_json::to_string(&tinted.terminal).unwrap()).unwrap();
 

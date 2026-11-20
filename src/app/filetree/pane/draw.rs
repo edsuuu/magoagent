@@ -29,6 +29,18 @@ pub(crate) fn glyph_x(p: &Painter, c: Pos2, size: f32, stroke: Stroke) {
     outline(p, c, size, &[(6.0, 6.0), (18.0, 18.0)], false, stroke);
 }
 
+/// What a press on the strip asks, outside its buttons (its bare part, or a tab dragged): a click picks the node, a drag
+/// moves it on the canvas (not while enlarged), a double click puts it on the full screen or, enlarged, back.
+pub(crate) fn strip_gestures(response: &egui::Response, elevated: bool, acts: &mut Vec<PaneAct>) {
+    if response.double_clicked() {
+        acts.push(if elevated { PaneAct::Leave } else { PaneAct::Lift });
+    } else if response.clicked() {
+        acts.push(PaneAct::Focus);
+    } else if response.dragged() && !elevated {
+        acts.push(PaneAct::Drag(response.drag_started(), response.drag_delta()));
+    }
+}
+
 /// The pane of a node: the strip of tabs, its save and close buttons, then the file (or why there is none).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn pane_ui(
@@ -174,12 +186,13 @@ pub(crate) fn pane_ui(
         // the tabs, up to the buttons
         let tabs = Rect::from_min_max(strip.min, Pos2::new(tabs_end, strip.bottom()));
 
-        // its bare part is the node's, as the tree's title: a click picks the node (its bar shows); enlarged, back to the canvas
-        if ui.interact(tabs.intersect(clip), ui.scope_id().with("strip_blank"), Sense::click()).clicked() {
-            acts.push(if elevated { PaneAct::Leave } else { PaneAct::Focus });
-        }
+        // its bare part is the node's, as the tree's title: a click picks the node (its bar shows), a drag moves it on the
+        // canvas, a double click puts it on the full screen and back
+        let blank = ui.interact(tabs.intersect(clip), ui.scope_id().with("strip_blank"), Sense::click_and_drag());
 
-        tabs_ui(ui, ed, tabs, tabs.intersect(clip), z, dark, &c, &tabs_dirty, acts);
+        strip_gestures(&blank, elevated, acts);
+
+        tabs_ui(ui, ed, tabs, tabs.intersect(clip), z, dark, &c, &tabs_dirty, elevated, acts);
         // the file
         let body = Rect::from_min_max(Pos2::new(pane.left(), strip.bottom() + 1.0), pane.max);
         let active = ed.active.clone();

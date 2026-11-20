@@ -1,7 +1,7 @@
-# Junta sozinho o pull request para a main quando o CI dele passa inteiro (formatação, clippy, auditoria, testes no
-# Windows e no Linux, ponta a ponta). Fica de fora: rascunho, PR de fork e PR com o rótulo "segurar" (para o dono validar
-# antes). Depois do merge, se a versão do Cargo.toml mudou e a tag ainda não existe, cria a tag v<versão> e dispara a
-# release (release.yml), que gera o MSI e os pacotes do Linux e publica a release.
+# Junta sozinho o pull request para a main ou para a dev quando o CI dele passa inteiro (formatação, clippy, auditoria,
+# testes no Windows e no Linux, ponta a ponta). Fica de fora: rascunho, PR de fork e PR com o rótulo "segurar" (para o dono
+# validar antes). Só na main: depois do merge, se a versão do Cargo.toml mudou e a tag ainda não existe, cria a tag
+# v<versão> e dispara a release (release.yml), que gera o MSI e os pacotes do Linux e publica a release.
 # O merge feito pelo GITHUB_TOKEN não dispara outros workflows por push; por isso a release vai por workflow_dispatch.
 name: Auto-merge
 on:
@@ -34,21 +34,22 @@ jobs:
           hold=$(jq -r '[.labels[].name] | index("segurar") != null' <<<"$pr")
           head=$(jq -r .head.sha <<<"$pr")
           echo "PR #$number base=$base rascunho=$draft fork=$fork segurar=$hold"
-          if [ "$base" != "main" ] || [ "$draft" = "true" ] || [ "$fork" = "true" ] || [ "$hold" = "true" ]; then exit 0; fi
+          if { [ "$base" != "main" ] && [ "$base" != "dev" ]; } || [ "$draft" = "true" ] || [ "$fork" = "true" ] || [ "$hold" = "true" ]; then exit 0; fi
           # um commit novo no PR depois deste CI: espera o CI dele
           if [ "$head" != "$HEAD_SHA" ]; then echo "o PR andou depois deste CI"; exit 0; fi
           echo "number=$number" >> "$GITHUB_OUTPUT"
-      - name: Juntar na main
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+      - name: Juntar
         if: steps.pr.outputs.number != ''
         run: gh pr merge "${{ steps.pr.outputs.number }}" --repo "$REPO" --merge --match-head-commit "$HEAD_SHA"
       - uses: actions/checkout@v4.2.2
-        if: steps.pr.outputs.number != ''
+        if: steps.pr.outputs.base == 'main'
         with:
           ref: main
           # a tag sai pela API (gh), não por git push: o checkout não precisa guardar o token
           persist-credentials: false
       - name: Tag e release quando a versão mudou
-        if: steps.pr.outputs.number != ''
+        if: steps.pr.outputs.base == 'main'
         run: |
           set -euo pipefail
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
