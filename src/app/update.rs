@@ -237,8 +237,12 @@ impl eframe::App for DrawingApp {
 
         if !self.floors_ui.fx.engaged {
             self.text_editor(&ctx);
-            self.note_buttons_ui(&ctx);
-            self.stack_tabs_ui(&ctx);
+
+            // the chat screen covers the canvas: nothing of a note floats over it
+            if !self.chat_open {
+                self.note_buttons_ui(&ctx);
+                self.stack_tabs_ui(&ctx);
+            }
         }
 
         // under the toolbar: the windows' live parts stack on it (canvas/cover.rs)

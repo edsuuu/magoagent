@@ -276,6 +276,11 @@ impl DrawingApp {
         let mut env =
             vec![("MAGOAGENT_CHAT_ID".to_string(), id.to_string()), ("MAGOAGENT_TERMINAL_ID".into(), String::new()), ("MAGOAGENT_TERMINAL_NAME".into(), name)];
 
+        // a recruit recruits no one: its MCP leaves recruit_agent out (mcp/mod.rs)
+        if self.is_recruit_chat(id) {
+            env.push((crate::mcp::RECRUIT_ENV.into(), "1".into()));
+        }
+
         if let Some(bridge) = &self.bridge {
             env.push(("MAGOAGENT_BRIDGE".into(), bridge.address.clone()));
             env.push(("MAGOAGENT_TOKEN".into(), locked(&bridge.shared).terminal_token(id)));
@@ -335,25 +340,17 @@ impl DrawingApp {
         x += 11.0 * zoom + gap;
         // who it is on the canvas, then which chat
         let recruit = self.is_recruit_chat(&element.id);
-        let who = if recruit { "Agente" } else { "Luna" };
-        let title = painter.text(Pos2::new(x, header.center().y), egui::Align2::LEFT_CENTER, who, FontId::proportional(9.75 * zoom), light);
-
-        x = title.right() + gap;
-
-        if zoom >= 0.6 && !recruit {
-            maestro_crown(&painter, Pos2::new(x + 6.5 * zoom, header.center().y), zoom, AMBER);
-            x += 13.0 * zoom + gap;
-        }
-
         // room left for the mini chat's button (chat/node_ui.rs) before the dot, and a recruit's fold
         let buttons = if recruit { 50.0 } else { 30.0 };
         // as the lists say it: no other chat's name
         let shown = self.chat_card_name(&element.id).unwrap_or_else(|| spec.name.clone());
-        let name = clipped(&painter, shown, FontId::proportional(9.75 * zoom), muted, (header.right() - pad - buttons * zoom - x).max(0.0));
-
-        painter.galley(Pos2::new(x, header.center().y - name.size().y / 2.0), name, muted);
 
         if recruit {
+            // a recruit goes by its own name ("Aurora"), its task under it
+            let name = clipped(&painter, shown, FontId::proportional(9.75 * zoom), light, (header.right() - pad - buttons * zoom - x).max(0.0));
+
+            painter.galley(Pos2::new(x, header.center().y - name.size().y / 2.0), name, light);
+
             // no folder strip: its work goes to the bottom (chat/recruit_card.rs), or its task when small or folded
             if spec.folded.is_some() || !crate::app::chat::node_ui::chat_live(rect, zoom, true) {
                 self.paint_recruit_task(&painter, &element.id, Rect::from_min_max(header.left_bottom(), rect.max).shrink(pad), zoom, light, muted);
@@ -361,6 +358,19 @@ impl DrawingApp {
 
             return;
         }
+
+        let title = painter.text(Pos2::new(x, header.center().y), egui::Align2::LEFT_CENTER, "Luna", FontId::proportional(9.75 * zoom), light);
+
+        x = title.right() + gap;
+
+        if zoom >= 0.6 {
+            maestro_crown(&painter, Pos2::new(x + 6.5 * zoom, header.center().y), zoom, AMBER);
+            x += 13.0 * zoom + gap;
+        }
+
+        let name = clipped(&painter, shown, FontId::proportional(9.75 * zoom), muted, (header.right() - pad - buttons * zoom - x).max(0.0));
+
+        painter.galley(Pos2::new(x, header.center().y - name.size().y / 2.0), name, muted);
 
         let footer = Rect::from_min_max(Pos2::new(rect.left(), rect.bottom() - TERMINAL_FOOTER * zoom), rect.max);
         let body = Rect::from_min_max(header.left_bottom(), footer.right_top()).shrink(pad);

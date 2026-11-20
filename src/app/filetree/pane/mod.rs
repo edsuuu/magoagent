@@ -316,10 +316,14 @@ pub(crate) enum PaneAct {
     Typed(PathBuf, String),
     /// The author over a declaration was pressed: the annotation column of this file turns on, or off.
     Annotate(PathBuf),
-    /// A press on the strip's bare part while the node is enlarged: back to the canvas.
+    /// A double click on the strip while the node is enlarged: back to the canvas.
     Leave,
     /// One on the canvas: the node is picked, as a click on its title picks it.
     Focus,
+    /// A double click there: the node goes to the full screen (enlarged: back to the canvas), as a double click on a title.
+    Lift,
+    /// The strip dragged on the canvas by this many screen points (true on the drag's first frame): the node moves.
+    Drag(bool, Vec2),
 }
 
 impl DrawingApp {
@@ -497,6 +501,25 @@ impl DrawingApp {
                 if let Some(index) = self.scene.elements.iter().position(|e| e.id == id) {
                     (self.selected, self.card_focus, self.terminal_focus) = (vec![index], Some(id.to_string()), None);
                 }
+            }
+            // the canvas may have put an enlarged node back this very frame (a double click on its title): not up again
+            PaneAct::Lift => {
+                if let Some(index) = self.scene.elements.iter().position(|e| e.id == id).filter(|_| !self.elevate_animating()) {
+                    self.toggle_lift(index);
+                }
+            }
+            PaneAct::Drag(started, delta) => {
+                let Some(index) = self.scene.elements.iter().position(|e| e.id == id) else { return };
+
+                if started {
+                    self.snapshot();
+                    (self.selected, self.card_focus, self.terminal_focus) = (vec![index], Some(id.to_string()), None);
+                }
+
+                let zoom = self.terminal_frame(&self.scene.elements[index]).1;
+
+                self.scene.elements[index].move_by(delta / zoom);
+                self.dirty = true;
             }
             PaneAct::Seam(width) => {
                 if let Some(spec) = self.ft_spec_mut(id) {

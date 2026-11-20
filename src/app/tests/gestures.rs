@@ -439,7 +439,7 @@ fn agents_draw_free_names_and_number_them_once_all_are_taken() {
     let mut app = DrawingApp::default();
 
     for n in 0..AGENT_NAMES.len() {
-        let name = app.agent_name();
+        let name = app.agent_name("");
 
         assert!(AGENT_NAMES.contains(&name.as_str()), "{name}");
         let mut e = app.new_element(ElementKind::Rectangle { x: n as f32 * 500.0, y: 0.0, width: 400.0, height: 300.0 });
@@ -454,7 +454,7 @@ fn agents_draw_free_names_and_number_them_once_all_are_taken() {
     names.sort();
     names.dedup();
     assert_eq!(names.len(), AGENT_NAMES.len());
-    let next = app.agent_name();
+    let next = app.agent_name("");
 
     assert!(next.ends_with(" 2") && AGENT_NAMES.contains(&next.trim_end_matches(" 2")), "{next}");
 }

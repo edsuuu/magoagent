@@ -140,6 +140,11 @@ impl Element {
         }
     }
 
+    /// A terminal kept in the Comandos panel: not on the canvas, its shell still running.
+    pub(crate) fn docked(&self) -> bool {
+        self.terminal.as_ref().is_some_and(|terminal| terminal.docked)
+    }
+
     /// Terminals, portals, file trees and chats: live windows on the canvas, never rotated.
     pub(crate) fn is_node(&self) -> bool {
         self.terminal.is_some() || self.portal.is_some() || self.filetree.is_some() || self.chat.is_some()

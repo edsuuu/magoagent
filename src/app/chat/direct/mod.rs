@@ -42,6 +42,10 @@ pub(crate) struct Chat {
     /// Renamed by the person (Renomear on its row): `name` is its title, not the conversation's own.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) named: bool,
+    /// The workspace a recruit was born in (its recruiter's, the one on screen): the lists group it there with its card
+    /// off view. Empty: the space whose canvas shows its card.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) space: String,
     /// Opened by the chat screen and not talked to yet: only that screen shows it, with no card on the canvas and
     /// nothing saved, and it goes when another chat is picked. Its first message makes it a chat.
     #[serde(skip)]
@@ -60,10 +64,12 @@ pub(crate) struct NewChat {
 }
 
 impl NewChat {
-    /// As Ajustes presets it: the agent (among the installed ones), the folder and the leave.
+    /// As Ajustes presets it: the agent (among the installed ones), the folder and the leave. The folder is the last one
+    /// the person worked in (the first of the recent ones, while it is there), else Ajustes'.
     pub(crate) fn from_prefs(prefs: &Prefs, installed: &[Preset]) -> NewChat {
         let agent = installed.iter().position(|p| p.command.starts_with(&prefs.chat_agent)).unwrap_or(0);
-        let cwd = if OLD_FOLDERS.contains(&prefs.chat_folder.trim()) { "" } else { prefs.chat_folder.trim() };
+        let last = prefs.folders.recent.first().map(String::as_str).filter(|path| folder(path).is_some_and(|dir| dir.is_dir()));
+        let cwd = last.unwrap_or(if OLD_FOLDERS.contains(&prefs.chat_folder.trim()) { "" } else { prefs.chat_folder.trim() });
         let cwd = if cwd.is_empty() { projects_dir().map(|d| d.display().to_string()).unwrap_or_default() } else { cwd.to_string() };
         // the agent's own default leave (Claude Code's defaultMode) before Ajustes'
         let program = installed.get(agent).and_then(|p| p.command.split_whitespace().next()).unwrap_or("claude");
@@ -398,6 +404,8 @@ impl DrawingApp {
             effort: String::new(),
             recruit: false,
             named: false,
+            // the space it was made in: with its card off view the list still groups it there, not in "Sem espaço"
+            space: self.spaces.current.clone(),
             draft,
         });
 

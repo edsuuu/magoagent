@@ -217,7 +217,7 @@ impl DrawingApp {
                     chat: self.is_chat(&row.id),
                     canvas: self.scene.elements.iter().any(|element| element.id == row.id) || self.away.contains_key(&row.id),
                     badge: None,
-                    // where it is: the two kinds of session Claude Code's page shows
+                    // where it is: a session of the canvas, beside the ones outside the app on Chats
                     kind: if program == "claude" { format!("{} · no canvas", stage::program_name(&program)) } else { stage::program_name(&program) },
                     at: 0,
                     asleep: false,
@@ -603,7 +603,7 @@ impl DrawingApp {
             Tab::Home => self.island_feed(ui, page, view, time, out),
             Tab::GitHub => self.island_github(ui, page, colors),
             Tab::Music => self.island_music(ui, page, time),
-            Tab::Chats | Tab::Claude => self.island_home(ui, rect, page, view, time, out),
+            Tab::Chats => self.island_home(ui, rect, page, view, time, out),
             Tab::Chat if view.session.is_some() => {
                 self.island_session(ui, page, view, time, out);
                 self.island_edges(ui, rect, out);
@@ -857,8 +857,7 @@ pub(super) fn header_tabs(lines: &[Line]) -> Vec<(Tab, crate::editor::icons::Svg
     let mut tabs = vec![
         (Tab::Home, icons::HOUSE, 17.0, "Início: o resumo"),
         (Tab::Chat, icons::BUBBLE, 19.0, "Chat atual"),
-        (Tab::Chats, icons::LIST, 17.0, "Conversas: os agentes do app"),
-        (Tab::Claude, icons::CLAUDE, 16.0, "Claude Code: as sessões no canvas e fora do app"),
+        (Tab::Chats, icons::LIST, 17.0, "Conversas: os agentes do app e o Claude Code de fora"),
     ];
 
     if on("github") {

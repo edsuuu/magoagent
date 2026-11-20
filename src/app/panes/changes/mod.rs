@@ -52,6 +52,8 @@ pub(crate) struct ChangesPane {
     /// What the field over the list looks for: a file's name or a stretch of its changes.
     pub(crate) search: String,
     pub(crate) review: Review,
+    /// The sections of the list folded by the person: a repository's (`list::group_key`) or a folder's (its `key`).
+    pub(crate) collapsed: std::collections::HashSet<String>,
 }
 
 /// One folder's changes: its tree's id (empty: a worktree no tree shows), the header, the folder, the files.

@@ -1,6 +1,5 @@
-//! The chat's frame: its colors, everything running down the left (running.rs: grouped by space, with the filter
-//! chips and a search; the mini wizard, name, state, last line and the answers) or, narrow or folded, a column of
-//! their initials. Also
+//! The chat's frame: its colors, everything running down the left (running.rs: in sections, with a search; the mini
+//! wizard, name, the state's dot, last line and the answers) or, narrow or folded, a column of their initials. Also
 //! the code card with its header, a message's Copiar / Citar menu and ⌘F's search.
 
 use crate::app::chat::tint;
@@ -12,7 +11,7 @@ pub(crate) mod display;
 pub(crate) mod running;
 pub(crate) mod team;
 mod view;
-pub(crate) use running::{Answer, Show};
+pub(crate) use running::Answer;
 use team::{SUBCHAT_INDENT, team_summary, under_maestros};
 
 /// The whole list's width and the folded column's.
@@ -247,11 +246,10 @@ pub(crate) struct ListAction {
     pub(crate) display: Option<display::ListPrefs>,
 }
 
-/// The list's search and chip, and when each chat last changed (`chat_when`) with when that was looked up.
+/// The list's search, and when each chat last changed (`chat_when`) with when that was looked up.
 #[derive(Default)]
 pub(crate) struct ListState {
     pub(crate) filter: String,
-    pub(crate) show: Show,
     dates: std::cell::RefCell<std::collections::HashMap<String, (f64, Option<i64>)>>,
     /// The chat being renamed and the name typed so far, and its row on screen (the balloon hangs from it).
     pub(crate) renaming: Option<(String, String)>,

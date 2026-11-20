@@ -1,7 +1,7 @@
-use super::display::display_button;
-use super::running::{Entry, chip, counts, kept, space_groups};
+use super::display::{ListPrefs, display_button};
+use super::running::{Entry, chip, kept};
 use super::*;
-use crate::app::chat::accordion::{openness, unfold};
+use crate::app::chat::accordion::{chevron, openness, unfold};
 
 impl DrawingApp {
     /// How long its agent has been waiting on its terminal, when its Claude Code session says.
@@ -49,21 +49,9 @@ impl DrawingApp {
         when
     }
 
-    /// Everything running, under the chips (Todos, Trabalhando, Esperando, Prontos, with their counts) and the search,
-    /// grouped by space (its dot and name); a Maestro's agents right under it. Exibição (display.rs) sets the rows'
-    /// density, the groups, the order and whose chats show.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn chat_list(
-        &self,
-        ui: &mut egui::Ui,
-        side: Rect,
-        entries: &[Entry],
-        look: &Look,
-        t: f64,
-        act: &mut ListAction,
-        filter: &mut String,
-        show: &mut Show,
-    ) {
+    /// Everything running, under the search, in sections that fold (by space, folder or day); a Maestro's agents right
+    /// under it. Exibição (display.rs) sets the rows' density, the sections, the order, whose chats show and Luna.
+    pub(crate) fn chat_list(&self, ui: &mut egui::Ui, side: Rect, entries: &[Entry], look: &Look, t: f64, act: &mut ListAction, filter: &mut String) {
         ui.painter().rect_filled(side, 12, look.panel);
         // the title under the window buttons, and on macOS + and « beside them, as in the reference app
         let inner = Rect::from_min_max(Pos2::new(side.left() + 8.0, (side.top() + 10.0).max(LIGHTS_BOTTOM + 10.0)), side.max - Vec2::new(8.0, 10.0));
@@ -99,39 +87,9 @@ impl DrawingApp {
             act.display = Some(display.clone());
         }
 
-        // the chips count only the agents Exibição shows, wrapping when the list is narrow
+        // only the agents Exibição shows; the search over their names and last lines
         let pool: Vec<&Entry> = entries.iter().filter(|entry| display.agent.keeps(&entry.program)).collect();
-        let (mut x, mut y) = (inner.left() + 2.0, head + 20.0);
-
-        for (chip, count) in Show::ALL.into_iter().zip(counts(pool.iter().copied())) {
-            let label = ui.painter().layout_no_wrap(chip.label().into(), FontId::proportional(12.0), look.text);
-            let number = ui.painter().layout_no_wrap(count.to_string(), FontId::proportional(12.0), look.muted);
-            let width = 10.0 + label.size().x + 6.0 + number.size().x + 10.0;
-
-            if x + width > inner.right() && x > inner.left() + 2.0 {
-                (x, y) = (inner.left() + 2.0, y + 32.0);
-            }
-
-            let rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, 26.0));
-
-            x = rect.right() + 6.0;
-            let response = ui.interact(rect, ui.scope_id().with(("chat_chip", chip.key())), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
-            let on = *show == chip;
-            let p = ui.painter();
-            let (ground, ink, soft) = if on { (ACCENT, Color32::WHITE, Color32::from_white_alpha(180)) } else { (Color32::TRANSPARENT, look.text, look.muted) };
-            let ground = if response.hovered() && !on { look.hover } else { ground };
-
-            p.rect(rect, 13, ground, Stroke::new(1.0, if on { ACCENT } else { look.line }), StrokeKind::Inside);
-            p.text(Pos2::new(rect.left() + 10.0, rect.center().y), egui::Align2::LEFT_CENTER, chip.label(), FontId::proportional(12.0), ink);
-            p.text(Pos2::new(rect.right() - 10.0, rect.center().y), egui::Align2::RIGHT_CENTER, count.to_string(), FontId::proportional(12.0), soft);
-
-            if response.clicked() {
-                *show = chip;
-            }
-        }
-
-        // the search over the names and the last lines
-        let field = Rect::from_min_max(Pos2::new(inner.left() + 2.0, y + 34.0), Pos2::new(inner.right() - 2.0, y + 64.0));
+        let field = Rect::from_min_max(Pos2::new(inner.left() + 2.0, head + 20.0), Pos2::new(inner.right() - 2.0, head + 50.0));
 
         ui.painter().rect_filled(field, 8, look.hover);
         paint_icon(ui.painter(), Icon::Search, Pos2::new(field.left() + 15.0, field.center().y), look.muted);
@@ -146,15 +104,14 @@ impl DrawingApp {
 
         // the frameless field keeps no margin: the room for the magnifier is left out of its rect
         ui.put(Rect::from_min_max(field.min + Vec2::new(30.0, 6.0), field.max - Vec2::new(8.0, 6.0)), edit);
-        let mut shown = kept(pool.iter().copied(), *show, &filter.trim().to_lowercase());
+        let mut shown = kept(pool.iter().copied(), &filter.trim().to_lowercase());
 
         display.order.sort(&mut shown);
-        // the agents a Maestro opened go right under it, indented and folded (team.rs); a chip or a search shows the ones
-        // it found
+        // the agents a Maestro opened go right under it, indented and folded (team.rs); a search shows the ones it found,
+        // the sections it found them in open
         let keyed: Vec<(&str, Option<&AgentRow>)> = shown.iter().map(|entry| (entry.id.as_str(), entry.row.as_ref())).collect();
         let parents = self.team_parents(&keyed);
-        let looking = *show != Show::All || !filter.trim().is_empty();
-        let order: Vec<String> = self.spaces.list.iter().map(|space| space.id.clone()).collect();
+        let looking = !filter.trim().is_empty();
         // the plans' use at the foot (the sidebar that says it on the canvas is hidden here)
         let usage = self.usage_readings();
         let foot = inner.bottom() - crate::app::usage::foot::glance_height(&usage);
@@ -173,57 +130,46 @@ impl DrawingApp {
                     ui.label(egui::RichText::new(words).size(13.0).color(look.muted));
                 }
 
-                // ungrouped, one list with no space's name over it
-                let groups = if display.by_space { space_groups(&shown, &order) } else { vec![(String::new(), (0..shown.len()).collect())] };
+                // each section folds under its name (kept while the app runs); ungrouped, one list with no name over it
+                for (key, name, color, members) in self.list_sections(&shown, &display) {
+                    let section = ui.scope_id().with(("chat_section", display.group.key(), &key));
+                    let open = looking || ui.data(|data| data.get_temp::<bool>(section)).unwrap_or(true);
+                    let section_openness = if name.is_empty() { 1.0 } else { openness(ui.ctx(), section.with("ease"), open) };
 
-                for (space, members) in groups {
-                    if display.by_space {
-                        self.group_label(ui, &space, look);
+                    if !name.is_empty() && group_label(ui, &name, color, section_openness, look) && !looking {
+                        ui.data_mut(|data| data.insert_temp(section, !open));
                     }
 
-                    for (top, team) in under_maestros(&members, &parents) {
-                        self.list_row(ui, shown[top], 0.0, display.compact, look, t, act);
+                    unfold(ui, section.with("body"), section_openness, |ui| {
+                        for (top, team) in under_maestros(&members, &parents) {
+                            self.list_row(ui, shown[top], 0.0, &display, look, t, act);
 
-                        if team.is_empty() {
-                            continue;
-                        }
-
-                        let maestro = &shown[top].id;
-                        let open = looking || self.team_open(maestro);
-                        let openness = openness(ui.ctx(), ui.scope_id().with(("chat_team_open", maestro)), open);
-
-                        if !looking {
-                            let states: Vec<AgentState> = team.iter().map(|&index| shown[index].state).collect();
-
-                            if self.team_fold(ui, maestro, &team_summary(&states), openness, look) {
-                                act.team = Some((maestro.clone(), !open));
+                            if team.is_empty() {
+                                continue;
                             }
-                        }
 
-                        unfold(ui, ui.scope_id().with(("chat_team_body", maestro)), openness, |ui| {
-                            for index in team {
-                                self.list_row(ui, shown[index], SUBCHAT_INDENT, display.compact, look, t, act);
+                            let maestro = &shown[top].id;
+                            let open = looking || self.team_open(maestro);
+                            let openness = openness(ui.ctx(), ui.scope_id().with(("chat_team_open", maestro)), open);
+
+                            if !looking {
+                                let states: Vec<AgentState> = team.iter().map(|&index| shown[index].state).collect();
+
+                                if self.team_fold(ui, maestro, &team_summary(&states), openness, look) {
+                                    act.team = Some((maestro.clone(), !open));
+                                }
                             }
-                        });
-                    }
+
+                            unfold(ui, ui.scope_id().with(("chat_team_body", maestro)), openness, |ui| {
+                                for index in team {
+                                    self.list_row(ui, shown[index], SUBCHAT_INDENT, &display, look, t, act);
+                                }
+                            });
+                        }
+                    });
                 }
             });
         });
-    }
-
-    /// A space's group in the list: its dot and its name in capitals ("PRINCIPAL").
-    fn group_label(&self, ui: &mut egui::Ui, space: &str, look: &Look) {
-        let (name, color) = self.group_look(space);
-        let (label, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 28.0), Sense::hover());
-        let mut job = egui::text::LayoutJob::default();
-        let format = egui::TextFormat { font_id: FontId::proportional(12.0), color: look.muted, extra_letter_spacing: 0.7, ..Default::default() };
-
-        job.append(&name.to_uppercase(), 0.0, format);
-        let g = ui.painter().layout_job(job);
-        let at = Pos2::new(label.left() + 20.0, label.bottom() - g.size().y - 5.0);
-
-        ui.painter().circle_filled(Pos2::new(label.left() + 11.0, at.y + g.size().y / 2.0), 4.0, color);
-        ui.painter().galley(at, g, look.muted);
     }
 
     /// A row's title: the name given with Renomear, else the conversation's own, else the agent's name.
@@ -276,16 +222,18 @@ impl DrawingApp {
         true
     }
 
-    /// A line of the list: the mini wizard in the agent's colour, its name and state's chip, how long ago, its last
-    /// line and, when it waits on the person, the buttons that answer it there; on a chat ⋯ under the pointer
-    /// (Renomear, Mostrar no canvas, Remover chat), and a right click on any agent of the app. `compact` (Exibição): one
-    /// line, a smaller wizard, a dot of the chip's colour in its place and the last line in the row's tip.
-    pub(super) fn list_row(&self, ui: &mut egui::Ui, entry: &Entry, indent: f32, compact: bool, look: &Look, t: f64, act: &mut ListAction) {
+    /// A line of the list: the mini wizard (Luna) in the agent's colour, its name and its state's dot (the state in words
+    /// in the row's tip), how long ago, its last line and, when it waits on the person, the buttons that answer it there;
+    /// on a chat ⋯ under the pointer (Renomear, Mostrar no canvas, Remover chat), and a right click on any agent of the
+    /// app. Exibição: compact, one line, a smaller wizard and the last line in the tip; without Luna, no wizard.
+    pub(super) fn list_row(&self, ui: &mut egui::Ui, entry: &Entry, indent: f32, display: &ListPrefs, look: &Look, t: f64, act: &mut ListAction) {
         let on = self.chat_agent.as_ref() == Some(&entry.id);
         let chat = self.is_chat(&entry.id);
         let width = ui.available_width();
+        let compact = display.compact;
         // the middle of the name's line, where the text starts and how tall the row is without the answers
         let (line, x, tall) = if compact { (16.0, indent + 30.0, 32.0) } else { (17.0, indent + 40.0, 54.0) };
+        let x = if display.luna { x } else { indent + 12.0 };
         // the answers' buttons, laid out first: the row is as tall as they need
         let (answers, guarded) = self.row_answers(&entry.id, t);
         let font = FontId::proportional(12.0);
@@ -348,7 +296,10 @@ impl DrawingApp {
         let (mini, body) =
             if compact { (Pos2::new(left + indent + 15.0, rect.top() + line), 15.0) } else { (Pos2::new(left + indent + 19.0, rect.top() + 25.0), 20.0) };
 
-        crate::app::mascot::mago::paint_mini(p, &format!("chat-list-{}", entry.id), mini, body, entry.color, self.entry_mago(entry), t);
+        if display.luna {
+            crate::app::mascot::mago::paint_mini(p, &format!("chat-list-{}", entry.id), mini, body, entry.color, self.entry_mago(entry), t);
+        }
+
         // how long ago at the right (⋯ in its place on a chat under the pointer)
         let mut right = rect.right() - 10.0;
 
@@ -370,28 +321,19 @@ impl DrawingApp {
             right -= 8.0;
         }
 
-        // the name, then the state's chip (compact, a dot of its colour)
+        // the name, then the state's dot: blue at work, amber waiting, green done
         let (word, color) = chip(&entry.state);
-        // on the light look the words go darker, to read on their pale ground
-        let ink_of_tag = if look.dark { color } else { color.lerp_to_gamma(Color32::BLACK, 0.4) };
-        let tag = p.layout_no_wrap(word.into(), FontId::proportional(12.0), ink_of_tag);
-        let tag_w = if compact { 8.0 } else { tag.size().x + 14.0 };
         let ink = if entry.state == AgentState::Ended { look.soft } else { look.strong };
-        let name = clipped(p, entry.name.clone(), FontId::proportional(14.0), ink, (right - 6.0 - tag_w - (left + x)).max(0.0));
+        let name = clipped(p, entry.name.clone(), FontId::proportional(14.0), ink, (right - 6.0 - 8.0 - (left + x)).max(0.0));
         let at = Pos2::new(left + x, rect.top() + line - name.size().y / 2.0);
         let name_right = at.x + name.size().x;
 
         // painted twice a pixel apart: the UI font has no bold weight
         p.galley(at + Vec2::new(1.0 / p.pixels_per_point(), 0.0), name.clone(), ink);
         p.galley(at, name, ink);
+        p.circle_filled(Pos2::new(name_right + 10.0, rect.top() + line), 3.5, color);
 
-        if compact {
-            p.circle_filled(Pos2::new(name_right + 10.0, rect.top() + line), 3.5, color);
-        } else {
-            let tag_rect = Rect::from_min_size(Pos2::new(name_right + 6.0, rect.top() + line - 10.0), Vec2::new(tag_w, 20.0));
-
-            p.rect_filled(tag_rect, 10, color.gamma_multiply(0.16));
-            p.galley(tag_rect.center() - tag.size() / 2.0, tag, ink_of_tag);
+        if !compact {
             // the last line
             let last = clipped(p, entry.last.clone(), FontId::proportional(12.0), look.soft, (rect.right() - 10.0 - (left + x)).max(0.0));
 
@@ -421,11 +363,10 @@ impl DrawingApp {
             dots_menu(&dots_r, |ui| remove(ui, act));
         }
 
-        // compact, the state and the last line the row leaves out come in its tip
+        // the state in words in the row's tip, and compact, the last line the row leaves out
         let response = match compact {
-            true if entry.last.is_empty() => response.tip(word),
-            true => response.tip(format!("{word} · {}", entry.last)),
-            false => response,
+            true if !entry.last.is_empty() => response.tip(format!("{word} · {}", entry.last)),
+            _ => response.tip(word),
         };
 
         if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
@@ -538,4 +479,29 @@ impl DrawingApp {
             self.chat_listing.removing = Some(id);
         }
     }
+}
+
+/// A section's name in the list, in capitals ("PRINCIPAL", "MAGOAGENT", "HOJE"), a space's with its dot, and the chevron
+/// that folds it at the right, `openness` of it open. True when clicked.
+fn group_label(ui: &mut egui::Ui, name: &str, color: Option<Color32>, openness: f32, look: &Look) -> bool {
+    let (label, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 28.0), Sense::click());
+    let mut job = egui::text::LayoutJob::default();
+    let format = egui::TextFormat { font_id: FontId::proportional(12.0), color: look.muted, extra_letter_spacing: 0.7, ..Default::default() };
+
+    job.append(&name.to_uppercase(), 0.0, format);
+    let g = ui.painter().layout_job(job);
+    let at = Pos2::new(label.left() + if color.is_some() { 20.0 } else { 8.0 }, label.bottom() - g.size().y - 5.0);
+    let middle = at.y + g.size().y / 2.0;
+
+    if let Some(color) = color {
+        ui.painter().circle_filled(Pos2::new(label.left() + 11.0, middle), 4.0, color);
+    }
+
+    let ink = if response.hovered() { look.soft } else { look.muted };
+
+    chevron(ui.painter(), Pos2::new(label.right() - 14.0, middle), 12.0, 2.0, ink, openness);
+    ui.painter().galley(at, g, ink);
+    let tip = if openness > 0.5 { "Recolher a seção" } else { "Mostrar a seção" };
+
+    response.on_hover_cursor(CursorIcon::PointingHand).tip(tip).clicked()
 }

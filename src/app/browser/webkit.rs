@@ -187,6 +187,13 @@ impl GtkPage {
         })
     }
 
+    /// Whether the page's window takes the pointer, or lets it through to the app's (browser/types.rs `take_input`).
+    pub(crate) fn take_input(&self, on: bool) {
+        if self.holder != 0 {
+            crate::app::island::x11::let_through(self.holder, !on);
+        }
+    }
+
     /// The keyboard back to the app's window: a page took it when clicked (`watch`).
     pub(crate) fn focus_parent(&self) -> wry::Result<()> {
         release_keys(Some(self.parent));
@@ -292,7 +299,7 @@ pub(super) fn new_tab_view(
             crate::app::island::x11::veil(holder);
             let webview = GtkPage { number: uid, url: seen, holder, parent: parent as u32, placed: Default::default(), visible: Default::default() };
 
-            Ok(TabView { webview, uid, url: url.into(), loading: true, secret: None })
+            Ok(TabView { webview, uid, url: url.into(), loading: true, secret: None, input: None })
         }
         Some(Err(error)) => Err(error),
         None => {

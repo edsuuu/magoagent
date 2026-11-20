@@ -15,7 +15,8 @@ const SECRETS: [&str; 5] = [
     "prefs-voice-studio-key",
     crate::app::integrations::github::TOKEN_ID,
     crate::app::integrations::spotify::account::TOKEN_ID,
-    crate::app::integrations::whatsapp::CREDENTIAL_ID,
+    // the WhatsApp integration is gone: a credential an older version saved still goes
+    "integration-whatsapp-gowa-credential",
 ];
 
 /// What a cleaning deletes.

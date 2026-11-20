@@ -31,8 +31,7 @@ macro_rules! line {
 filled!(HOUSE, "M12 3.2 2.8 10.6V21h6.6v-5.4h5.2V21h6.6V10.6L12 3.2z");
 filled!(BUBBLE, "M8 4.2h8a5 5 0 0 1 5 5v3a5 5 0 0 1-5 5h-5.3l-4.4 3.2c-.5.4-1.2 0-1.1-.6l.5-2.9A5 5 0 0 1 3 12.2v-3a5 5 0 0 1 5-5z");
 filled!(PLUS, "M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7V4z");
-// the new tabs: Claude Code's spark, a pull request and a note
-line!(CLAUDE, "2.3", "M12 3.6v16.8M3.6 12h16.8M6.1 6.1l11.8 11.8M17.9 6.1 6.1 17.9");
+// the new tabs: a pull request and a note
 line!(
     PULL,
     "1.9",

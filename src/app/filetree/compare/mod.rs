@@ -1,12 +1,13 @@
-//! The tab that compares a file with the last commit, as the JetBrains IDEs' side-by-side diff: two columns (the HEAD's
-//! text and the file's), each with only its own lines, and between them a band per change that joins its lines on the
-//! left to its lines on the right, curving where they sit at different heights (a pure insertion or removal is a line
-//! across the column that lacks it). Removed lines are a soft red, added ones a soft green and, in a modified line, the
-//! changed words stronger. Each column has its numbers at its left edge; a band's small arrow (on hover, or on the change
-//! the walk is on) puts the HEAD's lines back in the file (`compare_ui` returns it; the pane reverts the change). The
-//! columns scroll together: the other follows by the changes, so the lines at the view's third stay side by side. Long unchanged stretches
-//! collapse to a "N linhas sem mudança" row (fold.rs). F7 and Shift+F7 (and Alt+↓ and Alt+↑) walk the changes. "Unificado"
-//! puts both texts in one column, with the arrow at the left of the numbers.
+//! The tab that compares a file with the last commit, as the JetBrains IDEs' side-by-side diff (Darcula): two columns
+//! (the HEAD's text and the file's), each with only its own lines, and between them a band per change that joins its
+//! lines on the left to its lines on the right, curving where they sit at different heights (a pure insertion or removal
+//! is a line across the column that lacks it). A change is colored by its kind, on both sides and in the band: modified
+//! blue, inserted green, deleted gray, and the changed words of a modified line a tone lighter. Each column has its
+//! numbers at its left edge; a band's small arrow (on hover, or on the change the walk is on) puts the HEAD's lines back
+//! in the file (`compare_ui` returns it; the pane reverts the change). The columns scroll together: the other follows by
+//! the changes, so the lines at the view's third stay side by side. Long unchanged stretches collapse to a "N linhas sem
+//! alteração" row (fold.rs). F7 and Shift+F7 (and Alt+↓ and Alt+↑) walk the changes. "Unificado" puts both texts in one
+//! column, with the arrow at the left of the numbers.
 
 use crate::editor::{DiffRow, RowKind, diff_rows, highlight, unified_rows};
 use crate::prelude::*;
@@ -20,12 +21,26 @@ mod ui;
 
 pub(crate) use fold::{Plan, visible_plan};
 pub(crate) use ui::compare_ui;
+#[cfg(test)]
+pub(crate) use ui::differences;
 
-/// A removed and an added line over the editor's background, and the changed words inside them.
-const REMOVED: Color32 = Color32::from_rgb(0x3A, 0x22, 0x25);
-const ADDED: Color32 = Color32::from_rgb(0x1F, 0x33, 0x27);
-const REMOVED_WORD: Color32 = Color32::from_rgb(0x6B, 0x2F, 0x34);
-const ADDED_WORD: Color32 = Color32::from_rgb(0x2C, 0x5C, 0x3A);
+/// Darcula's DIFF_INSERTED, DIFF_MODIFIED and DIFF_DELETED (the editor/mergeview.rs ones), and a changed word a tone lighter.
+const INSERTED: Color32 = Color32::from_rgb(0x29, 0x44, 0x36);
+const MODIFIED: Color32 = Color32::from_rgb(0x38, 0x55, 0x70);
+const DELETED: Color32 = Color32::from_rgb(0x48, 0x4A, 0x4A);
+const INSERTED_WORD: Color32 = Color32::from_rgb(0x3A, 0x6B, 0x4E);
+const MODIFIED_WORD: Color32 = Color32::from_rgb(0x4D, 0x75, 0x9E);
+const DELETED_WORD: Color32 = Color32::from_rgb(0x62, 0x65, 0x65);
+
+/// The line's and the changed word's color of a row of `kind` (none for an unchanged one).
+pub(crate) fn tone(kind: RowKind) -> (Color32, Color32) {
+    match kind {
+        RowKind::Same => (Color32::TRANSPARENT, Color32::TRANSPARENT),
+        RowKind::Insert => (INSERTED, INSERTED_WORD),
+        RowKind::Delete => (DELETED, DELETED_WORD),
+        RowKind::Change => (MODIFIED, MODIFIED_WORD),
+    }
+}
 
 /// One row of a column.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -36,10 +51,12 @@ pub(crate) enum Item {
     Fold { key: usize, count: usize, starts: [usize; 2] },
 }
 
-/// A change: its rows in each column (the second is empty in one column); an empty range is where a pure insertion or removal sits.
+/// A change: its rows in each column (the second is empty in one column); an empty range is where a pure insertion or
+/// removal sits. `kind` colors it: Insert, Delete or Change (lines replaced, or both).
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Block {
     pub(crate) rows: [Range<usize>; 2],
+    pub(crate) kind: RowKind,
 }
 
 pub(crate) struct Compare {
@@ -163,7 +180,11 @@ impl Compare {
                     }
 
                     if spans.get(next).is_some_and(|span| span.end == index + 1) {
-                        self.blocks.push(Block { rows: [started[0]..self.items[0].len(), started[1]..self.items[1].len()] });
+                        let span = &spans[next];
+                        let first = rows[span.start].0.kind;
+                        let kind = if rows[span.clone()].iter().all(|row| row.0.kind == first) { first } else { RowKind::Change };
+
+                        self.blocks.push(Block { rows: [started[0]..self.items[0].len(), started[1]..self.items[1].len()], kind });
                         next += 1;
                     }
                 }

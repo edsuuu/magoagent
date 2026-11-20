@@ -146,25 +146,20 @@ pub(crate) enum Tab {
     /// Início: the summary of every tab, what needs the person first.
     #[default]
     Home,
+    /// The app's agents and chats, and the sessions of Claude Code outside it (Claude Desktop, another terminal): the
+    /// hooks' pills.
     Chats,
     Chat,
     New,
-    /// Claude Code: the app's agents and chats running it, and the sessions outside (Claude Desktop, another
-    /// terminal): the hooks' pills.
-    Claude,
     GitHub,
     /// Spotify.
     Music,
 }
 
 impl Tab {
-    /// The page a pill lives on: the sessions outside the app on Claude Code's, GitHub's and Spotify's on theirs, the
-    /// other integrations (WhatsApp) on Início's, and the app's own agents and chats on Chats.
+    /// The page a pill lives on: GitHub's and Spotify's on theirs, the other integrations on Início's, and the app's own
+    /// agents and chats and the sessions outside the app on Chats.
     pub(crate) fn of(id: &str) -> Tab {
-        if id.starts_with(crate::app::maestro::outside::PILL_PREFIX) {
-            return Tab::Claude;
-        }
-
         match id.strip_prefix(crate::app::integrations::ITEM_PREFIX) {
             Some("github") => Tab::GitHub,
             Some("spotify") => Tab::Music,
@@ -173,10 +168,9 @@ impl Tab {
         }
     }
 
-    /// Whether this page shows `line`: its own, and Claude Code's the app's agents and chats running it too (they live
-    /// on Chats).
+    /// Whether this page shows `line`: its own.
     pub(super) fn shows(self, line: &Line) -> bool {
-        Tab::of(&line.id) == self || (self == Tab::Claude && line.kind.starts_with("Claude Code"))
+        Tab::of(&line.id) == self
     }
 
     /// The grid this page shows the focus of: its own, the conversation's and the new chat's the agents'.
@@ -191,10 +185,10 @@ impl Tab {
     pub(crate) fn named(name: &str) -> Option<Tab> {
         Some(match name {
             "home" | "inicio" | "início" => Tab::Home,
-            "chats" | "conversas" => Tab::Chats,
+            // Claude Code's page joined Chats: the name still opens it
+            "chats" | "conversas" | "claude" | "claude_code" => Tab::Chats,
             "chat" => Tab::Chat,
             "new" | "novo" => Tab::New,
-            "claude" | "claude_code" => Tab::Claude,
             "github" => Tab::GitHub,
             "spotify" | "music" | "musica" | "música" => Tab::Music,
             _ => return None,
@@ -260,7 +254,7 @@ pub(crate) fn target(shape: Shape, tab: Tab, pinned: bool, settings: bool, tall:
         (_, Tab::Home) => (Vec2::new(EXPANDED_W, FEED_H), EXPANDED_CORNER),
         (_, Tab::GitHub) => (Vec2::new(EXPANDED_W, github::HEIGHT), EXPANDED_CORNER),
         (_, Tab::Music) => (Vec2::new(EXPANDED_W, music::HEIGHT), EXPANDED_CORNER),
-        (_, Tab::Chats | Tab::Claude) => (Vec2::new(EXPANDED_W, if tall { home::EDIT_H } else { HOME_H }), EXPANDED_CORNER),
+        (_, Tab::Chats) => (Vec2::new(EXPANDED_W, if tall { home::EDIT_H } else { HOME_H }), EXPANDED_CORNER),
         (_, Tab::Chat) => (chat, EXPANDED_CORNER),
         (_, Tab::New) => (Vec2::new(EXPANDED_W, HOME_H), EXPANDED_CORNER),
     }
@@ -533,11 +527,6 @@ pub(crate) struct NewForm {
 }
 
 impl Island {
-    /// Compact at once: the app took what was pressed on it (Ajustes, a page).
-    pub(crate) fn fold_now(&mut self, time: f64) {
-        self.machine.force_petit(time);
-    }
-
     /// The island as drawn now.
     #[cfg(test)]
     pub(crate) fn size(&self) -> Vec2 {
@@ -1018,6 +1007,7 @@ mod tests {
             effort: String::new(),
             recruit: false,
             named: false,
+            space: String::new(),
             draft: false,
         }
     }
@@ -1145,7 +1135,7 @@ mod tests {
         assert_eq!(target(Shape::Open, Tab::Home, false, false, false, 0.0, chat), (Vec2::new(760.0, 270.0), 22.0), "Início: the summary and the list");
         assert_eq!(target(Shape::Open, Tab::Music, false, true, false, 0.0, chat).0.y, 160.0, "its settings: short, whatever the tab");
         assert_eq!(target(Shape::Open, Tab::Home, false, true, false, 0.0, chat).0.y, 160.0);
-        assert_eq!(target(Shape::Open, Tab::Claude, false, false, false, 0.0, chat), (Vec2::new(760.0, 160.0), 22.0), "a page of pills");
+        assert_eq!(target(Shape::Open, Tab::Chats, false, false, false, 0.0, chat), (Vec2::new(760.0, 160.0), 22.0), "a page of pills");
 
         assert_eq!(
             target(Shape::Open, Tab::Chat, false, false, false, 0.0, Vec2::new(900.0, 500.0)).0,
@@ -1157,7 +1147,7 @@ mod tests {
         assert_eq!(target(Shape::Open, Tab::Home, true, false, false, ask::QUESTION_H - 52.0, chat).0.y, 200.0);
         assert_eq!(target(Shape::Open, Tab::Home, true, false, false, ask::APPROVAL_H - 52.0, chat).0.y, 160.0);
         // an edit in progress makes a page of pills taller, for its change
-        assert_eq!(target(Shape::Open, Tab::Claude, false, false, true, 0.0, chat).0.y, 290.0);
+        assert_eq!(target(Shape::Open, Tab::Chats, false, false, true, 0.0, chat).0.y, 290.0);
     }
 
     #[test]

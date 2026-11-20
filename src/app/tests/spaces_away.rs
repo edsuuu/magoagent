@@ -45,6 +45,7 @@ fn a_recruit_is_born_in_the_workspace_of_the_chats_folder_even_off_view() {
 
         app.apply_agent_command(UiCommand::Recruit {
             from: boss.clone(),
+            name: String::new(),
             command: "claude \"x\"".into(),
             worktree: false,
             mode: Some(AgentMode::Terminal),
@@ -219,7 +220,15 @@ fn a_terminal_recruits_last_words_go_to_the_chat_that_recruited_it_when_its_turn
     let boss = push_chat(&mut app, "Chefe");
     let (reply, said) = std::sync::mpsc::channel();
 
-    app.apply_agent_command(UiCommand::Recruit { from: boss.clone(), command: "claude \"x\"".into(), worktree: false, mode: Some(AgentMode::Terminal), reply });
+    app.apply_agent_command(UiCommand::Recruit {
+        from: boss.clone(),
+        name: String::new(),
+        command: "claude \"x\"".into(),
+        worktree: false,
+        mode: Some(AgentMode::Terminal),
+        reply,
+    });
+
     said.recv().unwrap().unwrap();
     let recruit = app.scene.elements.iter().find(|element| element.terminal.is_some()).unwrap().id.clone();
     let name = app.speaker(&recruit);
