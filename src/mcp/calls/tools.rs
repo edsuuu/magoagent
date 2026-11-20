@@ -8,6 +8,7 @@ pub(crate) fn tools() -> Value {
 
     // its own value: the list is past what one `json!` expands
     let recruit = json!({
+        "name": { "type": "string", "description": "o nome do agente, como você e a pessoa vão chamá-lo (ex.: Aurora); sem isto o app escolhe um nome livre" },
         "command": { "type": "string", "description": "o agente e a tarefa; padrão claude (ex.: codex, ou claude \"revise o diff\")" },
         "model": { "type": "string", "description": "o modelo que você escolhe para a tarefa: haiku (simples e rápido), sonnet (o dia a dia) ou opus (o difícil e longo); no Codex, um modelo da lista dele (ex.: gpt-5-codex); sem isto vale o de Ajustes" },
         "effort": { "type": "string", "enum": ["low", "medium", "high", "xhigh", "max"], "description": "o esforço que você escolhe para a tarefa: low, medium, high, xhigh ou max" },
@@ -234,7 +235,8 @@ pub(crate) fn tools() -> Value {
             "name": "recruit_agent",
             "description": "Cria um agente novo abaixo do seu (com o lugar tomado, no lugar livre mais perto de você), na mesma pasta, já ligado a você: \
                 um chat do app ou um terminal com o Claude Code, como a pessoa escolheu em Ajustes › Agentes › Invocação dos agentes. Ele ganha \
-                um nome (a resposta diz qual, o modelo e o esforço) e você fala com ele com ask_agent. Só de dentro de um terminal ou chat do MagoAgent. \
+                um nome (o seu name, ou um livre que o app escolhe; a resposta diz qual, o modelo e o esforço): chame-o sempre por esse nome e fale com ele \
+                com ask_agent. Só a Luna (o Maestro) recruta, de dentro de um terminal ou chat do MagoAgent: um agente recrutado não recruta outro. \
                 Escolha sempre model e effort à altura da tarefa e diga à pessoa o que escolheu. \
                 Com worktree true ele trabalha num ambiente próprio: um git worktree do seu repositório, num ramo dele, para \
                 dois agentes mexerem no mesmo código sem se atropelar (a resposta diz a pasta e o ramo; nada é juntado nem apagado sozinho).",

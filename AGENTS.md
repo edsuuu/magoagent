@@ -212,9 +212,9 @@ test -s /tmp/e2e.png && echo "passou"
 
 ## Git
 
-Branches: o trabalho dos agentes vai em pull requests para a `dev` (sem CI); lá ele é testado, validado e juntado, com os
-conflitos resolvidos, e a `dev` vai para a `main` num pull request (o CI roda nele e o auto-merge junta; versão nova no
-`Cargo.toml` gera a tag e a release).
+Branches: o trabalho dos agentes vai em pull requests para a `dev`: o CI (formatação, clippy, auditoria, testes, ponta a
+ponta) roda neles e o auto-merge junta quando passa, sem tag nem release. A `dev` vai para a `main` num pull request (o
+mesmo CI e o auto-merge; versão nova no `Cargo.toml` gera a tag e a release). O rótulo `segurar` impede o auto-merge.
 
 Commits sem linha de coautor. Não versionar `target/`, `MagoAgent.app` nem desenhos (`.mago`, `.rea`); a exceção é
 `docs/arquitetura.mago`.

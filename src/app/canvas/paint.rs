@@ -112,7 +112,7 @@ impl DrawingApp {
             _ => &[],
         };
 
-        for element in self.scene.elements.iter().filter(|element| element.rope) {
+        for element in self.scene.elements.iter().filter(|element| element.rope && !hidden_page(&self.scene.elements, element)) {
             let end = |binding: &Option<Binding>| binding.as_ref().map(|binding| binding.element_id.clone()).unwrap_or_default();
             let (start_id, end_id) = (end(&element.ends.start), end(&element.ends.end));
             let lit = asking.iter().any(|(x, y)| (*x == start_id && *y == end_id) || (*x == end_id && *y == start_id));
@@ -457,6 +457,15 @@ impl DrawingApp {
     }
 
     pub(crate) fn text_editor(&mut self, ctx: &Context) {
+        // the chat opened last is on top: a note in focus leaves it (its editor floats over every window)
+        if self.chat_open {
+            if self.elevated_index().is_some_and(|index| self.scene.elements[index].created.is_some()) {
+                self.set_elevated(None);
+            }
+
+            return self.finish_text();
+        }
+
         let Some(index) = self.editing else {
             return;
         };

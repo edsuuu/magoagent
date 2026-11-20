@@ -97,7 +97,7 @@ impl DrawingApp {
         };
 
         // not the ropes between windows: their box would be a block over the map
-        self.scene.elements.iter().filter(|element| !element.rope).map(|element| (element_bounds(element), dot(element))).collect()
+        self.scene.elements.iter().filter(|element| !element.rope && !element.docked()).map(|element| (element_bounds(element), dot(element))).collect()
     }
 
     /// The nodes' box with a margin; what a click may take the view to.

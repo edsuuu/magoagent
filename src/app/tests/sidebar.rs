@@ -85,7 +85,8 @@ fn the_card_counts_who_needs_you_in_every_space() {
     assert!(found(&painted, "Ir para o próximo").is_some() && found(&painted, &keys_label("Cmd ⇧ A")).is_some(), "the button and its keys");
     // the agents of this space are only the two on its canvas
     assert!(found(&painted, "Revisor").is_some() && found(&painted, "Longe").is_none());
-    assert!(painted.iter().any(|(text, _)| text.starts_with("Encerrado")), "its state under its name: {painted:?}");
+    // its state is a dot under its name, the word only in the row's tip
+    assert!(!painted.iter().any(|(text, _)| text.starts_with("Encerrado")), "{painted:?}");
     let said = app.act("sidebar", &json!({ "action": "status" })).unwrap();
 
     assert!(said.starts_with("3 agentes precisam de você.") && said.contains("Revisor") && !said.contains("Longe"), "{said}");

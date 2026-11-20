@@ -163,6 +163,21 @@ pub(crate) fn veil(window: u32) {
     let _ = link.connection.flush();
 }
 
+/// Lets every click and the wheel through `window` to the app's window under it (`through`: its input shape empty), or has
+/// it take them again: a portal's page not in focus (browser/webkit.rs).
+pub(crate) fn let_through(window: u32, through: bool) {
+    let guard = link().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(link) = guard.as_ref() else { return };
+
+    let _ = if through {
+        link.connection.shape_rectangles(SO::SET, SK::INPUT, ClipOrdering::UNSORTED, window, 0, 0, &[])
+    } else {
+        link.connection.shape_mask(SO::SET, SK::INPUT, window, 0, 0, x11rb::NONE)
+    };
+
+    let _ = link.connection.flush();
+}
+
 /// Gives the keyboard to `window`, as the window manager gives it: a portal's page when clicked, the app's window back
 /// when the app is clicked (browser/webkit.rs).
 pub(crate) fn give_keyboard(window: u32) {

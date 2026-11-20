@@ -124,12 +124,14 @@ impl DrawingApp {
                 self.term_ui.copy_out = Some(json!({ "type": "magoagent/clipboard", "elements": interop_elements(&self.clipboard) }).to_string());
             }
             "duplicate" => {
+                let before = self.scene.elements.len();
+
                 self.selected = vec![i];
                 self.duplicate();
 
-                // a terminal an agent opens hangs from it, a copy too (`asker`: who asked, as the bridge says)
-                let copies: Vec<String> =
-                    self.selected.iter().filter_map(|k| self.scene.elements.get(*k)).filter(|e| e.terminal.is_some()).map(|e| e.id.clone()).collect();
+                // a terminal an agent opens hangs from it, a copy too (`asker`: who asked, as the bridge says); the copies
+                // by what was added, not the selection, which leaves out a copy kept in Comandos
+                let copies: Vec<String> = self.scene.elements[before..].iter().filter(|e| e.terminal.is_some()).map(|e| e.id.clone()).collect();
 
                 self.hang_from(args["asker"].as_str().unwrap_or_default(), &copies);
             }
@@ -143,6 +145,11 @@ impl DrawingApp {
 
                 return Ok(format!("{name} {}.", if on { "bloqueado" } else { "desbloqueado" }));
             }
+            "dock" => {
+                let on = switch(args).unwrap_or(!self.scene.elements[i].docked());
+
+                return self.set_docked(&id, on);
+            }
             "delete" => {
                 self.selected = vec![i];
                 self.delete_selected();
@@ -151,7 +158,7 @@ impl DrawingApp {
             }
             other => {
                 return Err(format!(
-                    "ação desconhecida: {other} (copy, paste, select_all, clear_selection, rename, monitor, blur, reload, unload, use_size, use_font, use_theme, copy_element, duplicate, lock, delete)"
+                    "ação desconhecida: {other} (copy, paste, select_all, clear_selection, rename, monitor, blur, reload, unload, use_size, use_font, use_theme, copy_element, duplicate, lock, dock, delete)"
                 ));
             }
         }

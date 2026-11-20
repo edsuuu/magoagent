@@ -84,7 +84,8 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
 
         return format!(
             "Você é {}, um agente do time do MagoAgent, recrutado por outro agente para uma tarefa. Pasta de trabalho: {}. Faça o que for pedido e responda de forma \
-             objetiva. Se outro agente te fizer uma pergunta (ask), a sua resposta volta para ele. Para falar com os outros agentes use `magoagent list|ask|check` \
+             objetiva. Se outro agente te fizer uma pergunta (ask), a sua resposta volta para ele. Você não recruta agentes: só a Luna \
+             recruta; se precisar de mais alguém, peça a ela. Para falar com os outros agentes use `magoagent list|ask|check` \
              (ou o MCP magoagent). Para rodar testes ou uma API e acompanhar, abra um terminal com create_terminal (ou `magoagent terminal <comando>`): ele fica \
              ligado a você por corda e você lê a tela dele com read_terminal (`magoagent check <nome>`). Para dar notícia de como você está \
              (\"estou parado esperando X\", \"terminei\", \"preciso de você\") use notify (`magoagent notify <texto>`); o que você avisa ou manda a \
@@ -111,7 +112,7 @@ pub(crate) fn system_prompt(prefs: &Prefs, chat: &Chat) -> String {
          focus_canvas mostra o canvas centralizado e com zoom no que ela pedir (\"abre o mapa\", \"dá zoom no terminal\"); \
          ide_folder abre uma pasta na Árvore de Arquivos e te dá a estrutura dela; maestro_comment leva ao chat da Luna (o ligado à Árvore) um comentário sobre linhas de um arquivo (o mesmo que a pessoa faz ao selecionar código e escolher \"Comentar para a Luna\"; ele chega como \"Comentário em arquivo:linhas\", com o trecho e o pedido); open_path abre um arquivo na Árvore de Arquivos ou um PDF, \
          imagem ou página num navegador; resize_window amplia, volta ou redimensiona terminais, navegadores e árvores, e maximiza a janela do app; \
-         memory mostra a memória do app e dos agentes por terminal; skills lista as skills que você tem e abre a pasta delas; chat_list, chat_search, chat_new, chat_open e chat_send cuidam dos chats; chats_view abre a área de Chats com tudo o que roda (filtra por estado e busca); voice_call liga, desliga e muta a chamada; file_tree cuida da árvore (arquivos, ramos, conflitos, diffs); portal_tab mexe nas abas; close_window e terminal_restart fecham e \
+         memory mostra a memória do app e dos agentes por terminal; skills lista as skills que você tem e abre a pasta delas; chat_list, chat_search, chat_new, chat_open e chat_send cuidam dos chats; chats_view abre a área de Chats com tudo o que roda (e busca nela); voice_call liga, desliga e muta a chamada; file_tree cuida da árvore (arquivos, ramos, conflitos, diffs); portal_tab mexe nas abas; close_window e terminal_restart fecham e \
          reiniciam janelas; portal_wait espera um elemento, portal_history volta, avança ou recarrega a página, portal_scroll rola até um elemento ou pelos pixels pedidos, portal_console lê os registros e erros da página e portal_screenshot tira uma imagem dela para você ver; set_setting troca tema e voz, mostra o avatar e o deixa parado ou seguindo a janela; history desfaz e refaz; sidebar vai ao próximo agente que precisa da pessoa e abre ou recolhe os Agentes deste espaço e o uso dos planos na lateral; \
          screenshot tira um print do app para você ver como está (\"como está?\" → tire o print e descreva); review abre as \
          mudanças da pasta na Árvore de Arquivos para a pessoa revisar com você; \
@@ -419,6 +420,7 @@ mod tests {
             effort: String::new(),
             recruit: false,
             named: false,
+            space: String::new(),
             draft: false,
         }
     }

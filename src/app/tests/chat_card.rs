@@ -9,7 +9,7 @@ use crate::transcript::{ChatItem, Step, Transcript};
 
 /// A few lines of conversation: what the card keeps above its pinned part, at the least size it shows its chat at.
 const A_FEW_LINES: f32 = 40.0;
-const TASK: &str = "Teste INV-168: perguntas via WhatsApp.\n\nLeia o fluxo de perguntas, rode os testes de integração e diga à Luna o que \
+const TASK: &str = "Teste INV-168: perguntas via Telegram.\n\nLeia o fluxo de perguntas, rode os testes de integração e diga à Luna o que \
                     falta. Já estão prontos o webhook e a fila; o que falta é o retorno das respostas para quem perguntou.";
 const ANSWER: &str = "Passo 0 concluído, Luna.\n\n- **Ferramentas:** tenho o MCP do app e o `magoagent`.\n- **Testes:** 14 passaram, nenhum falhou.";
 
@@ -25,7 +25,7 @@ fn recruit(app: &mut DrawingApp) -> String {
     let (reply, said) = std::sync::mpsc::channel();
     let command = "claude \"faça o passo 0\"".into();
 
-    app.apply_agent_command(UiCommand::Recruit { from: boss, command, worktree: false, mode: Some(AgentMode::Chat), reply });
+    app.apply_agent_command(UiCommand::Recruit { from: boss, name: String::new(), command, worktree: false, mode: Some(AgentMode::Chat), reply });
     assert!(said.recv().unwrap().is_ok());
     let id = app.chats.iter().find(|c| c.recruit).unwrap().id.clone();
     let mut transcript = Transcript::new(PathBuf::new());
@@ -195,7 +195,7 @@ fn a_chat_card_keeps_its_box_inside_and_the_conversation_scrolls_above_it() {
 const REPORT: &str = "Feito.\n\n- **O que aconteceu:** o clique na caixa *Buscar* não chegou\n- **O que fiz:** rodei `--fechar` e abri de novo";
 /// A command longer than its row.
 const COMMAND: &str =
-    "php ~/.claude/obsidian-memory/ferramentas/hdtb-inv168/whatsapp/rodar.php -- --desde=35728,2 --ate=35800 --fila=perguntas --modo=completo";
+    "php ~/.claude/obsidian-memory/ferramentas/hdtb-inv168/telegram/rodar.php -- --desde=35728,2 --ate=35800 --fila=perguntas --modo=completo";
 
 /// Each text painted in a frame of the cards at `time`: what shows of it (its rows' letters: a cut one ends in "…"),
 /// whether it was cut, and where.

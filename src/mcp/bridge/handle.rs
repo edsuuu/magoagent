@@ -331,6 +331,7 @@ pub(crate) fn handle(request: &Value, shared: &Mutex<Shared>, sender: &mpsc::Sen
 
             send(UiCommand::Recruit {
                 from: builder.into(),
+                name: name.into(),
                 command,
                 worktree: request["worktree"] == true,
                 mode: request["mode"].as_str().and_then(AgentMode::parse),

@@ -10,6 +10,7 @@ mod chat_images;
 mod chat_node;
 mod chat_queue;
 mod chats_view;
+mod commands;
 mod conflicts;
 mod dialogs;
 mod doubts;
@@ -169,6 +170,7 @@ fn chat(id: &str, agent: &str, name: &str) -> crate::app::chat::direct::Chat {
         effort: String::new(),
         recruit: false,
         named: false,
+        space: String::new(),
         draft: false,
     }
 }

@@ -156,9 +156,46 @@ pub(crate) struct TabView {
     pub(super) loading: bool,
     /// The secret the Design overlay in this tab's page was armed with (design.rs).
     pub(crate) secret: Option<String>,
+    /// Whether the page was last let take the pointer and the keys (`take_input`); None before the first time.
+    pub(super) input: Option<bool>,
+    /// macOS: what lets the pointer through the page while it is not in focus.
+    #[cfg(target_os = "macos")]
+    pub(super) glass: Option<Glass>,
 }
 
 impl TabView {
+    /// Whether the page takes the pointer and the keys: only the portal clicked into does (`portal_focus`); the others
+    /// let the pointer through to the canvas, which then pans and zooms over them.
+    pub(super) fn take_input(&mut self, on: bool) {
+        if self.input == Some(on) {
+            return;
+        }
+
+        self.input = Some(on);
+
+        // the system's hit test skips a disabled child window: the click and the wheel go to the app's window under it
+        #[cfg(windows)]
+        {
+            use wry::WebViewExtWindows;
+
+            #[link(name = "user32")]
+            unsafe extern "system" {
+                fn EnableWindow(hwnd: isize, enable: i32) -> i32;
+            }
+
+            // SAFETY: wry's own window that holds the page, alive while the page is
+            unsafe { EnableWindow(self.webview.hwnd().0 as isize, i32::from(on)) };
+        }
+
+        #[cfg(target_os = "linux")]
+        self.webview.take_input(on);
+
+        #[cfg(target_os = "macos")]
+        if let Some(glass) = &self.glass {
+            glass.0.setHidden(on);
+        }
+    }
+
     /// wry drops a page's `ipc.postMessage` when the page's URL isn't an `http::Uri`, as file:///C:/…
     /// on Windows and file:///… on Linux: there Design's overlay keeps its messages and the app fetches them each frame.
     pub(crate) fn polls_design(&self) -> bool {
@@ -199,7 +236,52 @@ pub(super) fn new_tab_view(
     #[cfg(target_os = "macos")]
     wry::WebViewExtMacOS::webview(&webview).setAutoresizingMask(objc2_app_kit::NSAutoresizingMaskOptions::empty());
 
-    Ok(TabView { webview, uid, url: url.into(), loading: true, secret: None })
+    #[cfg(target_os = "macos")]
+    let glass = Glass::over(&webview);
+
+    Ok(TabView {
+        webview,
+        uid,
+        url: url.into(),
+        loading: true,
+        secret: None,
+        input: None,
+        #[cfg(target_os = "macos")]
+        glass,
+    })
+}
+
+/// macOS: a bare view over a page, in the app's view: AppKit has no switch to let a view's clicks through, but a view
+/// that does not handle a mouse event (a click, the wheel, a pinch) hands it to its superview, the app's. Shown while the
+/// page is not in focus.
+#[cfg(target_os = "macos")]
+pub(crate) struct Glass(objc2::rc::Retained<objc2_app_kit::NSView>);
+
+#[cfg(target_os = "macos")]
+impl Glass {
+    fn over(webview: &wry::WebView) -> Option<Self> {
+        use wry::WebViewExtMacOS;
+        let mtm = objc2::MainThreadMarker::new()?;
+        let page = webview.webview();
+        // SAFETY: wry put the page in the app's view, which outlives it
+        let parent = unsafe { page.superview() }?;
+        let glass = objc2_app_kit::NSView::initWithFrame(mtm.alloc(), page.frame());
+
+        parent.addSubview(&glass);
+        Some(Self(glass))
+    }
+
+    /// Over the page again, after it was given a new box.
+    pub(super) fn follow(&self, webview: &wry::WebView) {
+        self.0.setFrame(wry::WebViewExtMacOS::webview(webview).frame());
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for Glass {
+    fn drop(&mut self) {
+        self.0.removeFromSuperview();
+    }
 }
 
 /// A tab's page as wry makes it, on the thread that makes it: the console kept, hidden and
