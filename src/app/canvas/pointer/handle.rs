@@ -20,19 +20,31 @@ impl DrawingApp {
         // images dragged in land where they're dropped; with the chat open, in its box
         let dropped: Vec<PathBuf> = ctx.input(|input| input.raw.dropped_files.iter().map(|file| file.path().to_path_buf()).collect());
 
-        if self.chat_open || self.mini_takes_files(&ctx) {
-            // an image pasted (Ctrl+V with no text on the clipboard) goes in as a png in the temp folder
-            let pasted: Vec<_> = ctx.input(|input| {
+        // an image pasted (Ctrl+V with no text on the clipboard) goes in as a png in the temp folder
+        let pasted = || -> Vec<PathBuf> {
+            let images: Vec<_> = ctx.input(|input| {
                 input.events.iter().filter_map(|event| if let egui::Event::PasteImage(image) = event { Some(image.clone()) } else { None }).collect()
             });
 
-            let pasted = pasted.iter().filter_map(|image| save_pasted(image, &std::env::temp_dir())).collect();
+            images.iter().filter_map(|image| save_pasted(image, &std::env::temp_dir())).collect()
+        };
 
+        if self.chat_open || self.mini_takes_files(&ctx) {
             // the open chat hides the drawing: what's dropped goes into its box (pictures as
             // previews), as paths Claude Code reads
             self.chat_add_files(&ctx, dropped, false);
-            self.chat_add_files(&ctx, pasted, true);
+            self.chat_add_files(&ctx, pasted(), true);
         } else {
+            // a chat card's box with the keys takes the pictures pasted, and keeps the keys
+            if let Some(card) = self.focused_chat_card(&ctx) {
+                let pasted = pasted();
+
+                if !pasted.is_empty() {
+                    self.chat_add_files(&ctx, pasted, true);
+                    ctx.memory_mut(|m| m.request_focus(crate::app::chat::node_ui::card_box_id(&card)));
+                }
+            }
+
             if !dropped.is_empty() {
                 let at = ctx.input(|input| input.pointer.hover_pos()).unwrap_or(self.canvas_rect.center());
 
