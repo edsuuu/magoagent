@@ -92,6 +92,54 @@ fn an_image_pasted_on_the_canvas_becomes_a_picture() {
     assert_eq!(app.scene.elements.len(), 1);
 }
 
+/// A picture pasted while a chat card's box on the canvas has the keys goes into that box, as on the chat screen. It used
+/// to go nowhere: the canvas left it to the box, and only the chat screen and the mini chat took pictures.
+#[test]
+fn an_image_pasted_in_a_chat_cards_box_goes_into_it() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = push_chat(&mut app, "Luna");
+
+    // the test's frame and the chat cards drawn over the canvas, as the app draws them
+    let with_cards = |app: &mut DrawingApp, events: Vec<egui::Event>| {
+        let raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1400.0, 900.0))), events, ..Default::default() };
+
+        let mut output = ctx.run_ui(raw, |ui| {
+            app.handle_shortcuts(&ctx);
+
+            egui::CentralPanel::no_frame().show(ui, |ui| {
+                let (response, _) = ui.allocate_painter(ui.available_size(), Sense::CLICK | Sense::DRAG);
+
+                app.handle_canvas(&response, response.rect);
+            });
+
+            app.chat_node_overlay(&ctx);
+        });
+
+        output.textures_delta.clear();
+    };
+
+    with_cards(&mut app, vec![]);
+    let card = app.add_chat_node(&id, None).unwrap();
+
+    // a small card shows only its last words; grown (or enlarged, "Tela cheia no canvas") it has its box
+    if let ElementKind::Rectangle { width, height, .. } = &mut app.scene.elements[card].kind {
+        (*width, *height) = (500.0, 600.0);
+    }
+
+    with_cards(&mut app, vec![]);
+    with_cards(&mut app, vec![]);
+    ctx.memory_mut(|m| m.request_focus(crate::app::chat::node_ui::card_box_id(&id)));
+    with_cards(&mut app, vec![]);
+    assert_eq!(app.focused_chat_card(&ctx).as_deref(), Some(id.as_str()));
+    let elements = app.scene.elements.len();
+
+    with_cards(&mut app, vec![egui::Event::PasteImage(std::sync::Arc::new(egui::ColorImage::new([3, 2], vec![egui::Color32::RED; 6])))]);
+    assert!(app.has_attached(), "the picture waits in the card's box");
+    assert_eq!(app.scene.elements.len(), elements, "not on the canvas");
+    assert_eq!(app.focused_chat_card(&ctx).as_deref(), Some(id.as_str()), "the box keeps the keys");
+}
+
 #[test]
 fn the_mcp_drops_files_and_never_runs_programs() {
     let dir = std::env::temp_dir().join(format!("magoagent-drops-act-{}", std::process::id()));

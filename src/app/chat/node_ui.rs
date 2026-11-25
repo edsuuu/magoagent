@@ -148,6 +148,11 @@ impl DrawingApp {
         self.recruit_fold_buttons(ctx, canvas);
     }
 
+    /// The chat whose card's box on the canvas has the keys: a picture pasted goes into it.
+    pub(crate) fn focused_chat_card(&self, ctx: &Context) -> Option<String> {
+        self.chats.iter().map(|chat| &chat.id).find(|id| ctx.memory(|m| m.has_focus(card_box_id(id)))).cloned()
+    }
+
     /// One card: drawn at the canvas's scale by the layer's transform, laid out in the card's own size.
     fn chat_card_ui(&mut self, ctx: &Context, id: &str, body: Rect, z: f32, canvas: Rect) {
         let Some(row) = self.chat_rows().into_iter().find(|r| r.id == id) else { return };
@@ -156,7 +161,7 @@ impl DrawingApp {
         let time = ctx.input(|i| i.time);
         // the card's own box and chat for this frame: what the box and its chips act on
         let draft_key = egui::Id::unique(("chat_card_draft", id));
-        let draft_id = egui::Id::unique(("chat_card_box", id));
+        let draft_id = card_box_id(id);
         let card_draft = ctx.data_mut(|d| d.get_temp::<String>(draft_key)).unwrap_or_default();
         let outer_agent = self.chat_agent.replace(id.to_string());
         let outer_draft = std::mem::replace(&mut self.chat_draft, card_draft);
@@ -261,4 +266,9 @@ impl DrawingApp {
         self.chat_agent = outer_agent;
         ctx.data_mut(|d| d.insert_temp(draft_key, card_draft));
     }
+}
+
+/// The id of chat `id`'s box on its card.
+pub(crate) fn card_box_id(id: &str) -> egui::Id {
+    egui::Id::unique(("chat_card_box", id))
 }
