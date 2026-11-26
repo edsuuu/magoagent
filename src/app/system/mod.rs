@@ -10,6 +10,7 @@ pub(crate) mod finish;
 pub(crate) mod gtk;
 #[cfg(target_os = "macos")]
 pub(crate) mod login_path;
+pub(crate) mod mac_update;
 pub(crate) mod mcp_register;
 pub(crate) mod memory;
 pub(crate) mod run_at_login;

@@ -47,14 +47,19 @@ fn program() -> Option<PathBuf> {
     Some(PathBuf::from(text.strip_suffix(" (deleted)").unwrap_or(&text)))
 }
 
-/// The shell line that waits for the app with `pid` to close and then opens `program`: `sh -c LINE name pid program`.
-pub(crate) const REOPEN: &str = r#"while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; exec "$2""#;
+/// The shell line that waits for the app with `pid` to close and then runs the rest: `sh -c LINE name pid command…`.
+pub(crate) const REOPEN: &str = r#"pid=$1; shift; while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done; exec "$@""#;
 
 impl DrawingApp {
     /// The new version is installed: save, stop, leave the answer for the app that opens, reopen and close.
     pub(crate) fn reopen_updated(&mut self, release: &Release) -> Result<(), String> {
         let version = &release.version;
-        let program = program().ok_or("não sei onde o MagoAgent está")?;
+
+        // on a Mac the .app is opened (mac_update.rs), its program having been swapped under this one
+        let command: Vec<std::ffi::OsString> = match super::mac_update::bundle_here() {
+            Some(bundle) => vec!["open".into(), "-n".into(), bundle.into()],
+            None => vec![program().ok_or("não sei onde o MagoAgent está")?.into()],
+        };
 
         self.save_everything().map_err(|why| format!("a versão {version} foi instalada, mas o trabalho não foi salvo ({why}); salve e reabra o MagoAgent"))?;
         self.stop_everything();
@@ -65,7 +70,7 @@ impl DrawingApp {
 
         let mut reopen = crate::editor::command("sh");
 
-        reopen.args(["-c", REOPEN, "magoagent-reabrir"]).arg(std::process::id().to_string()).arg(&program);
+        reopen.args(["-c", REOPEN, "magoagent-reabrir"]).arg(std::process::id().to_string()).args(&command);
         reopen.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
 
         // a group of its own: it outlives the app
@@ -102,8 +107,9 @@ mod tests {
         let pid = gone.id().to_string();
 
         gone.wait().unwrap();
-        let output = std::process::Command::new("sh").args(["-c", REOPEN, "teste", &pid, "echo"]).output().unwrap();
+        let output = std::process::Command::new("sh").args(["-c", REOPEN, "teste", &pid, "echo", "-n", "aberto"]).output().unwrap();
 
         assert!(output.status.success());
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "aberto", "the command runs with its arguments");
     }
 }

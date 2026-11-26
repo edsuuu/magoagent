@@ -14,6 +14,8 @@ mod archive;
 mod sync;
 mod title;
 pub(crate) use archive::{is_new_session_mark, new_session_mark};
+#[cfg(test)]
+pub(crate) use sync::session_anywhere;
 pub(crate) use title::ChatTitles;
 
 /// What a chat runs, where, and how far it got.
