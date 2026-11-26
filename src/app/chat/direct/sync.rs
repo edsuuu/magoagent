@@ -20,6 +20,11 @@ fn takes_folder<'a>(fresh: &mut bool, event: &'a Value) -> Option<&'a str> {
     std::mem::take(fresh).then_some(cwd)
 }
 
+/// The session's file in any of Claude Code's project folders: a session's id is unique.
+pub(crate) fn session_anywhere(projects: &std::path::Path, file: &str) -> Option<PathBuf> {
+    fs::read_dir(projects).ok()?.flatten().map(|folder| folder.path().join(file)).find(|path| path.is_file())
+}
+
 impl DrawingApp {
     /// Esc: the answer stops where it is.
     pub(crate) fn chat_stop(&mut self, id: &str) {
@@ -66,6 +71,14 @@ impl DrawingApp {
             && there.is_file()
         {
             return Some(there);
+        }
+
+        // a chat kept with another folder (an older version took the one a resumed run had moved to) still finds its
+        // conversation, in whichever project folder has it
+        if here.as_ref().is_none_or(|path| !path.is_file())
+            && let Some(found) = claude_dir().and_then(|dir| session_anywhere(&dir.join("projects"), &file))
+        {
+            return Some(found);
         }
 
         here
