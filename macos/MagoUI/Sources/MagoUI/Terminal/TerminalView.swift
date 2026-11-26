@@ -129,7 +129,8 @@ public struct TerminalView: View {
             }
             if state.status == "running" {
                 Button { procsOpen.toggle() } label: {
-                    Image(systemName: "cpu").font(.system(size: 10)).foregroundStyle(muted).frame(width: 18, height: 16)
+                    // the egui footer's `MenuIcon::Server` (procs.rs)
+                    FTGlyph(name: "server", size: 10, color: NSColor(rgb: look.fg).withAlphaComponent(0.6)).frame(width: 18, height: 16)
                 }
                 .buttonStyle(.plain)
                 .help("Processos")
