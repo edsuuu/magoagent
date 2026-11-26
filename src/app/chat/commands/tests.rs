@@ -70,7 +70,7 @@ fn the_menu_filters_and_lists_the_custom_commands() {
     fs::write(home.join(".claude/commands/resumo.md"), "Resume o dia").unwrap();
     fs::create_dir_all(home.join(".claude/skills/pdf")).unwrap();
     fs::write(home.join(".claude/skills/pdf/SKILL.md"), "---\nname: pdf\ndescription: Mexe em PDF\n---\n").unwrap();
-    let found = discover(&cwd, Some(&home));
+    let found = discover(&cwd, Some(&home), &Known::default());
     let line = |n: &str| found.iter().find(|e| e.name == n).map(|e| e.desc.clone());
 
     assert_eq!(line("deploy").as_deref(), Some("Sobe o app (projeto)"), "the folder's wins over the home's");
@@ -189,4 +189,62 @@ fn btw_usage_and_context_are_the_chats_own() {
     app.prefs.chat_panel = false;
     assert!(app.chat_submit(&ctx, &id, "/context", "/context"));
     assert!(app.prefs.chat_panel);
+}
+
+/// The skills Claude Code said it has (its `init`) that no `.claude` folder shows come in the menu: a plugin's with what
+/// its SKILL.md says, one synced from the account (a few folders down) by its name, Claude Code's own; none twice.
+#[test]
+fn the_skills_claude_code_said_it_has_come_in_the_menu() {
+    let (cwd, home, plugin) = (temp(), temp(), temp());
+
+    fs::create_dir_all(plugin.join("skills/brainstorming")).unwrap();
+    fs::write(plugin.join("skills/brainstorming/SKILL.md"), "---\nname: brainstorming\ndescription: Antes de criar\n---\n").unwrap();
+    fs::create_dir_all(home.join(".claude/skills/synced/conta/pdf")).unwrap();
+    fs::write(home.join(".claude/skills/synced/conta/pdf/SKILL.md"), "---\ndescription: Mexe em PDF\n---\n").unwrap();
+    fs::create_dir_all(home.join(".claude/skills/aws")).unwrap();
+    fs::write(home.join(".claude/skills/aws/SKILL.md"), "---\ndescription: Nuvem\n---\n").unwrap();
+
+    let init = serde_json::json!({
+        "type": "system", "subtype": "init",
+        "skills": ["aws", "superpowers:brainstorming", "anthropic-skills:pdf", "simplify"],
+        "plugins": [{ "name": "superpowers", "path": plugin.display().to_string() }, { "name": "interno", "path": "builtin" }],
+    });
+
+    let known = Known::of_init(&init).unwrap();
+
+    assert_eq!(known.plugins.len(), 1, "a built-in plugin has no folder");
+    assert_eq!(Known::of_init(&serde_json::json!({ "type": "assistant" })), None);
+    let found = discover(&cwd, Some(&home), &known);
+    let line = |n: &str| found.iter().find(|e| e.name == n).map(|e| e.desc.clone());
+
+    assert_eq!(line("superpowers:brainstorming").as_deref(), Some("Skill · Antes de criar"));
+    assert_eq!(line("anthropic-skills:pdf").as_deref(), Some("Skill · Mexe em PDF"));
+    assert_eq!(line("simplify").as_deref(), Some("Skill do Claude Code"));
+    assert_eq!(line("aws").as_deref(), Some("Skill · Nuvem (pessoal)"), "the folder's line stays");
+    assert_eq!(found.iter().filter(|e| e.name == "aws").count(), 1);
+    let _ = (fs::remove_dir_all(cwd), fs::remove_dir_all(home), fs::remove_dir_all(plugin));
+}
+
+/// The arrows are taken by the box before the menu is drawn: the move is kept, and the menu scrolls to the pick once.
+#[test]
+fn the_arrows_leave_the_menu_a_scroll_to_the_pick() {
+    let ctx = Context::default();
+    let mut app = DrawingApp::default();
+    let id = egui::Id::unique("caixa_teste");
+    let entries: Vec<Entry> = (0..20).map(|n| Entry { name: format!("s{n}"), args: String::new(), desc: String::new() }).collect();
+    let mut draft = "/s".to_string();
+
+    let down = egui::Event::Key { key: Key::ArrowDown, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+
+    // the box with the keys, as the chat draws it: the menu's keys first, then the box
+    for events in [vec![], vec![down]] {
+        let _ = ctx.run_ui(egui::RawInput { events, ..Default::default() }, |ui| {
+            app.slash_keys(ui.ctx(), &mut draft, &entries, id);
+            ui.add(egui::TextEdit::singleline(&mut draft).id(id)).request_focus();
+        });
+    }
+
+    assert_eq!(app.slash.sel, 1);
+    assert!(app.slash.moved.take(), "the menu is told to scroll");
+    assert!(!app.slash.moved.get(), "once");
 }

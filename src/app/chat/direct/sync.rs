@@ -119,6 +119,7 @@ impl DrawingApp {
                         // a limit event of the stream: how much of the plan is used (usage.rs)
                         self.usage.plan.merge(crate::app::usage::plan_of_event(&value), now_ms() / 1000);
                         self.context_event(&id, &value);
+                        self.slash_heard(&value);
 
                         // the folder as Claude Code names it, and the session it keeps (a resumed
                         // one may go on as a copy)

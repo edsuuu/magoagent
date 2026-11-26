@@ -22,6 +22,10 @@ pub(crate) struct Slash {
     last: String,
     off: Option<String>,
     custom: Option<(String, f64, Vec<Entry>)>,
+    /// What Claude Code said it has (`Known`), kept in `skills-claude.json`: read when the menu first opens.
+    known: Option<Known>,
+    /// The arrows moved the pick (or the list changed): the menu scrolls to it when it is drawn next.
+    moved: std::cell::Cell<bool>,
     /// The last message sent per chat, and the chats whose login came back since it failed.
     pub(crate) sent: std::collections::HashMap<String, String>,
     pub(crate) retry: std::collections::HashSet<String>,

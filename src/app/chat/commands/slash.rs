@@ -57,7 +57,8 @@ impl DrawingApp {
         let stale = self.slash.custom.as_ref().is_none_or(|(cwd, at, _)| *cwd != chat.cwd || self.now - at > 5.0);
 
         if stale {
-            let found = folder(&chat.cwd).map(|d| discover(&d, std::env::home_dir().as_deref())).unwrap_or_default();
+            let known = self.slash_known();
+            let found = folder(&chat.cwd).map(|d| discover(&d, std::env::home_dir().as_deref(), &known)).unwrap_or_default();
 
             self.slash.custom = Some((chat.cwd.clone(), self.now, found));
         }
@@ -66,6 +67,39 @@ impl DrawingApp {
 
         // a custom name the chat answers itself stays the chat's
         self.slash.custom.iter().flat_map(|(.., list)| list.iter().filter(|e| !own.iter().any(|o| o.name == e.name)).cloned()).collect()
+    }
+
+    /// Where what Claude Code said it has is kept, beside the drawing.
+    fn known_path(&self) -> Option<PathBuf> {
+        self.autosave.as_ref().map(|path| path.with_file_name("skills-claude.json"))
+    }
+
+    /// What Claude Code said it has, read from its file the first time.
+    fn slash_known(&mut self) -> Known {
+        if self.slash.known.is_none() {
+            self.slash.known = Some(self.known_path().and_then(|path| read_json::<Known>(&path)).unwrap_or_default());
+        }
+
+        self.slash.known.clone().unwrap_or_default()
+    }
+
+    /// A line of a Claude chat's answer: its `init` says the skills Claude Code has, kept for the menu (and for the next
+    /// chats, which have none yet).
+    pub(crate) fn slash_heard(&mut self, event: &Value) {
+        let Some(known) = Known::of_init(event) else { return };
+
+        if self.slash.known.as_ref() == Some(&known) {
+            return;
+        }
+
+        if let Some(path) = self.known_path()
+            && let Ok(text) = serde_json::to_string(&known)
+        {
+            std::thread::spawn(move || _ = fs::write(path, text));
+        }
+
+        self.slash.known = Some(known);
+        self.slash.custom = None;
     }
 
     /// The menu's rows for what the box says now; None when it is closed.
@@ -88,6 +122,7 @@ impl DrawingApp {
 
         if self.slash.last != draft {
             (self.slash.last, self.slash.sel) = (draft.to_string(), 0);
+            self.slash.moved.set(true);
         }
 
         let custom = self.slash_custom(&chat);
@@ -126,6 +161,10 @@ impl DrawingApp {
 
         self.slash.sel = sel;
 
+        if down || up {
+            self.slash.moved.set(true);
+        }
+
         if esc {
             self.slash.off = Some(draft.clone());
         }
@@ -160,7 +199,8 @@ impl DrawingApp {
                             ui.painter().rect_filled(rect, 8, if i == selected { look.selected } else { look.raised });
                         }
 
-                        if i == selected && ctx.input(|i| i.key_pressed(Key::ArrowDown) || i.key_pressed(Key::ArrowUp)) {
+                        // the arrows were taken by `slash_keys` before the menu is drawn: it says so in `moved`
+                        if i == selected && self.slash.moved.take() {
                             ui.scroll_to_rect(rect, None);
                         }
 
