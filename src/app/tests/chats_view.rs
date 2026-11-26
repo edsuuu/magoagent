@@ -525,3 +525,21 @@ fn exibicao_orders_by_name_or_recency_and_shows_one_agents_chats() {
     assert!(at(&shown(&mut app, &ctx, vec![]), "Nada com esse filtro.").is_some());
     assert!(app.act("set_setting", &json!({ "name": "chat_list_order", "value": "tamanho" })).is_err());
 }
+
+/// A chat kept with a folder that is not where Claude Code filed its session (`api` inside the project) still finds
+/// the conversation, by the session's id, in whichever project folder has it.
+#[test]
+fn a_chat_kept_with_another_folder_finds_its_conversation_by_the_session() {
+    let projects = std::env::temp_dir().join(format!("mago-sessao-achada-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&projects);
+    let filed = projects.join(crate::transcript::project_folder("/u/budget-master")).join("abc.jsonl");
+
+    fs::create_dir_all(filed.parent().unwrap()).unwrap();
+    fs::create_dir_all(projects.join(crate::transcript::project_folder("/u/budget-master/api"))).unwrap();
+    fs::write(&filed, "{}").unwrap();
+
+    assert_eq!(crate::app::chat::direct::session_anywhere(&projects, "abc.jsonl"), Some(filed));
+    assert_eq!(crate::app::chat::direct::session_anywhere(&projects, "outra.jsonl"), None);
+
+    let _ = fs::remove_dir_all(&projects);
+}
