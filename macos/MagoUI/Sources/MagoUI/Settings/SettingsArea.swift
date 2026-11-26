@@ -21,7 +21,6 @@ import SwiftUI
     if let text = button.copy {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-    } else {
-        settingsSend("press", ["id": button.id, "arg": button.arg ?? "", "value": value])
     }
+    settingsSend("press", ["id": button.id, "arg": button.arg ?? "", "value": value])
 }

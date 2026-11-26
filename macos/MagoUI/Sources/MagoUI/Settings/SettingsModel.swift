@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 /// The topic "settings" (src/app/ui/settings/native): the open page as groups of rows. Keys are camelCase on the Rust
 /// side, so the decoder's snake-case strategy, if any, changes nothing.
@@ -19,6 +19,7 @@ enum JSON: Decodable, Equatable {
     var bool: Bool { if case .bool(let value) = self { value } else { false } }
     var int: Int { switch self { case .int(let value): value; case .double(let value): Int(value); default: 0 } }
     var string: String { if case .string(let value) = self { value } else { "" } }
+    var array: [JSON] { if case .array(let value) = self { value } else { [] } }
     subscript(key: String) -> JSON { if case .object(let map) = self { map[key] ?? .null } else { .null } }
 }
 
@@ -27,8 +28,6 @@ struct SettingsButton: Decodable {
     let label: String
     let arg: String?
     let copy: String?
-    let primary: Bool
-    let destructive: Bool
 }
 
 struct SettingsKeys: Decodable {
@@ -53,6 +52,7 @@ struct SettingsItem: Decodable {
     let max: Int
     let suffix: String
     let placeholder: String
+    let width: CGFloat
     let secret: Bool
     let tone: String
     let buttons: [SettingsButton]
@@ -62,6 +62,7 @@ struct SettingsItem: Decodable {
 struct SettingsGroup: Decodable {
     let title: String
     let items: [SettingsItem]
+    let scrollId: String?
 }
 
 struct SettingsPreview: Decodable {
@@ -74,10 +75,10 @@ struct SettingsPreview: Decodable {
 
 struct SettingsSnapshot: Decodable {
     let tabs: [String]
-    let tab: Int
     let title: String
     let subtitle: String
     let groups: [SettingsGroup]
     let hooksPreview: SettingsPreview?
     let wipe: [String]?
+    let scrollTo: String?
 }

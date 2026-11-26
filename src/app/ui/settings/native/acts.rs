@@ -10,9 +10,14 @@ impl DrawingApp {
 
         match verb {
             "tab" => {
-                let index = args["index"].as_u64().ok_or("tab pede o index")? as usize;
+                let name = args["name"].as_str().ok_or("tab pede o name")?;
 
-                self.settings_tab = index.min(super::super::SETTINGS_TABS.len() - 1);
+                // only the pages of the sidebar: the hidden ones are not offered
+                self.settings_tab = visible_tabs()
+                    .contains(&name)
+                    .then(|| super::super::SETTINGS_TABS.iter().position(|tab| *tab == name))
+                    .flatten()
+                    .ok_or_else(|| format!("página desconhecida: {name}"))?;
                 self.settings_edit = None;
                 Ok(String::new())
             }
@@ -56,6 +61,19 @@ impl DrawingApp {
             value.as_str().unwrap_or_default().to_string(),
         );
 
+        if id == "run_at_login" {
+            // refused by the system: the switch stays and the reason shows, as the egui page does
+            if let Err(error) = crate::app::system::run_at_login::set_run_at_login(on) {
+                self.toast(error.clone());
+
+                return Err(error);
+            }
+
+            self.prefs.run_at_login = on;
+
+            return Ok(String::new());
+        }
+
         let prefs = &mut self.prefs;
 
         if let Some(rest) = id.strip_prefix("preset.") {
@@ -67,6 +85,7 @@ impl DrawingApp {
                 "name" => preset.name = words,
                 "command" => preset.command = words,
                 "icon" => preset.icon = crate::app::ui::TERMINAL_ICONS.get(index).copied().unwrap_or_default().into(),
+                "color" => preset.color = crate::app::ui::TERMINAL_COLORS.get(index).copied().flatten(),
                 _ => return Err(format!("campo do preset desconhecido: {field}")),
             }
 
@@ -78,10 +97,6 @@ impl DrawingApp {
             "language" => prefs.language = index.min(super::super::LANGUAGES.len() - 1),
             "frame_rate" => prefs.frame_rate = FRAME_RATES[index.min(FRAME_RATES.len() - 1)],
             "start_in_chat" => prefs.start_in_chat = index == 1,
-            "run_at_login" => {
-                crate::app::system::run_at_login::set_run_at_login(on)?;
-                prefs.run_at_login = on;
-            }
             "close_to_background" => prefs.close_to_background = on,
             "island" => prefs.island = on,
             "island_place" => self.put_island(*Place::ALL.get(index).ok_or("lugar desconhecido")?),
@@ -106,6 +121,7 @@ impl DrawingApp {
             }
             "copy_on_select" => prefs.terminal.copy_on_select = on,
             "terminal_history" => prefs.terminal_history = [1_000, 5_000, 10_000][index.min(2)],
+            "work_outside_temp" => prefs.work_outside_temp = on,
             "agent_mode" => prefs.agent_mode = [AgentMode::Terminal, AgentMode::Chat][index.min(1)],
             "usage_stop" => prefs.usage_stop = [70, 80, 90, 0][index.min(3)],
             "chat_agent" => prefs.chat_agent = ["claude", "codex"][index.min(1)].into(),
@@ -120,36 +136,6 @@ impl DrawingApp {
                 }
             }
             "chat_panel" => prefs.chat_panel = on,
-            "voice_engine" => (prefs.voice_codex, prefs.voice_openai) = (index == 0, index == 2),
-            "codex_voice" => prefs.codex_voice = crate::voice::codex::CODEX_VOICES.get(index).ok_or("voz desconhecida")?.0.into(),
-            "openai_voice" => prefs.openai_voice = crate::voice::openai::OPENAI_VOICES.get(index).ok_or("voz desconhecida")?.0.into(),
-            "openai_key" => prefs.openai_key = words,
-            "studio_url" | "studio_key" => {
-                if id == "studio_url" {
-                    prefs.voice_studio_url = words
-                } else {
-                    prefs.voice_studio_key = words
-                }
-
-                // another address or key: the list is asked again
-                *self.studio_voices.lock().unwrap() = crate::voice::studio::StudioVoices::Idle;
-            }
-            "studio_voice" => {
-                let found = match &*self.studio_voices.lock().unwrap() {
-                    crate::voice::studio::StudioVoices::Done(found) => found.get(index).map(|(id, _)| id.clone()),
-                    _ => None,
-                };
-
-                prefs.voice_studio_voice = found.ok_or("voz desconhecida")?;
-            }
-            "voice_mic" => {
-                let mics = crate::voice::input_names();
-
-                prefs.voice_mic = if index == 0 { String::new() } else { mics.get(index - 1).ok_or("microfone desconhecido")?.clone() };
-            }
-            "voice_pause" => prefs.voice_pause = number.clamp(4, 16) as f32 / 4.0,
-            "ok_mago" => prefs.ok_mago = on,
-            "speak_answers" => prefs.speak_answers = on,
             "github" => prefs.integrations.github = on,
             "spotify" => prefs.integrations.spotify = on,
             "hermes" => {
@@ -184,7 +170,12 @@ impl DrawingApp {
             match op {
                 "up" if at > 0 && at < presets.len() => presets.swap(at, at - 1),
                 "down" if at + 1 < presets.len() => presets.swap(at, at + 1),
-                "remove" if at < presets.len() => drop(presets.remove(at)),
+                "remove" if at < presets.len() => {
+                    presets.remove(at);
+                    self.settings_edit = None;
+                }
+                // one at a time: its name and command become fields, and its mark and tint show under it
+                "edit" if at < presets.len() => self.settings_edit = if self.settings_edit == Some(at) { None } else { Some(at) },
                 _ => {}
             }
 
@@ -197,39 +188,31 @@ impl DrawingApp {
                 self.reset_island();
                 self.toast("A ilha voltou ao topo da tela.");
             }
-            "presets_add" => self.prefs.presets.push(Preset::new("", "")),
-            "presets_reset" => self.prefs.presets = default_presets(),
+            "presets_add" => {
+                self.prefs.presets.push(Preset::new("", ""));
+                self.settings_edit = Some(self.prefs.presets.len() - 1);
+            }
+            "presets_reset" => {
+                self.prefs.presets = default_presets();
+                self.settings_edit = None;
+            }
             "mcp_register" | "mcp_remove" => {
                 use crate::app::system::mcp_register::{MCP_AGENTS, McpAction, mcp_soon};
                 let agent = MCP_AGENTS.iter().find(|(name, _)| *name == arg).map(|(name, _)| *name).ok_or("agente desconhecido")?;
                 let action = if id == "mcp_remove" { McpAction::Remove } else { McpAction::Register };
 
-                mcp_soon(agent, action, &Context::default());
+                mcp_soon(agent, action, &context());
             }
             "style_skill_open" => {
                 if let Err(why) = self.show_in_tree(&self.prefs.style_skill.clone()) {
                     self.toast(why);
                 }
             }
-            "voice_play" => {
-                use crate::voice::studio::{StudioServer, StudioVoices};
-
-                let failed = match &*self.studio_voices.lock().unwrap() {
-                    StudioVoices::Failed(why) => Some(why.clone()),
-                    _ => None,
-                };
-
-                let sample = "Olá! Eu sou a Luna, a assistente do MagoAgent.";
-
-                match (self.prefs.voice_openai, crate::voice::openai::key(&self.prefs), failed) {
-                    (true, Some(key), _) => self.voice_sample = crate::voice::openai::say(&key, &self.prefs.openai_voice, sample),
-                    (true, None, _) => self.toast("Ponha a chave da OpenAI em Ajustes › Voz."),
-                    (false, _, Some(why)) => self.toast(why),
-                    (false, _, None) => self.voice_sample = StudioServer::from_prefs(&self.prefs).say(sample),
+            "skills_open" => {
+                if let Err(why) = crate::app::maestro::skills::open(std::path::Path::new(&arg)) {
+                    self.toast(why);
                 }
             }
-            "studio_refresh" => *self.studio_voices.lock().unwrap() = crate::voice::studio::StudioVoices::Idle,
-            "call_toggle" => self.voice_toggle(),
             "hooks_install" if arg == "claude" => self.claude_hooks_open_preview(),
             "hooks_install" => {
                 let said = self.act_codex_hooks("install");
@@ -260,6 +243,8 @@ impl DrawingApp {
                 toast(self, said);
             }
             "spotify_cancel" => self.spotify_cancel_login(),
+            // Swift copied it already
+            "spotify_redirect_copy" => self.toast("Redirect URI copiado."),
             "spotify_disconnect" => {
                 let said = self.spotify_disconnect().map_err(|why| format!("A conta não foi desconectada: {why}"));
 

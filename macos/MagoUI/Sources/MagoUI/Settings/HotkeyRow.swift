@@ -9,32 +9,30 @@ private let namedKeys: [UInt16: String] = [
     122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6", 98: "F7", 100: "F8", 101: "F9", 109: "F10", 103: "F11", 111: "F12",
 ]
 
-/// A shortcut: its keys (a click records others), Limpar and Padrão, a global one's switch. While it changes: what was
-/// pressed, Salvar (or Enter) and Cancelar (or Esc).
+/// A shortcut (`hotkeys.rs`): at the right, a global one's switch, Padrão, Limpar and its keys (a click records others).
+/// While it changes: what was pressed, Salvar (or Enter) and Cancelar (or Esc).
 struct HotkeyRow: View {
     let item: SettingsItem
     @State private var held = ""
     @State private var monitor: Any?
 
+    /// `ItemRow` only makes the row when the shortcut came with its keys.
     private var keys: SettingsKeys { item.keys! }
 
     var body: some View {
-        Shell(item: item) {
-            HStack(spacing: 6) {
-                if keys.editing {
-                    Button("Cancelar") { act("cancel") }
-                    if keys.pending {
-                        Button("Salvar") { act("save") }.buttonStyle(.borderedProminent).disabled(keys.problem)
-                    }
-                    keysButton(edge: keys.problem ? .red : .accentColor)
-                } else {
-                    if keys.global {
-                        Toggle(item.label, isOn: Binding(get: { keys.enabled }, set: { settingsSend("hotkey", ["op": "switch", "id": item.id, "on": $0]) }))
-                            .labelsHidden().toggleStyle(.switch)
-                    }
-                    iconButton("arrow.counterclockwise", "Voltar ao padrão", enabled: keys.changed) { act("default") }
-                    iconButton("trash", "Limpar: deixar sem tecla", enabled: keys.canClear) { act("clear") }
-                    keysButton(edge: nil)
+        RowShell(label: item.label, hint: item.hint) {
+            if keys.editing {
+                KeysButton(text: shown, none: waiting, edge: keys.problem ? .destructive : .primary) {}
+                if keys.pending { SaveButton(enabled: !keys.problem) { act("save") } }
+                Button("Cancelar") { act("cancel") }.buttonStyle(KitButtonStyle())
+            } else {
+                KeysButton(text: keys.text, none: keys.text == "Sem tecla", edge: nil) { act("record") }
+                    .help("Clique para gravar outras teclas")
+                GhostButton(icon: "trash", name: "Limpar: \(item.label)", enabled: keys.canClear, danger: true) { act("clear") }
+                GhostButton(icon: "restart", name: "Voltar ao padrão: \(item.label)", enabled: keys.changed) { act("default") }
+                if keys.global {
+                    Toggle(item.label, isOn: Binding(get: { keys.enabled }, set: { settingsSend("hotkey", ["op": "switch", "id": item.id, "on": $0]) }))
+                        .toggleStyle(SwitchStyle())
                 }
             }
         }
@@ -42,23 +40,11 @@ struct HotkeyRow: View {
         .onDisappear { stop() }
     }
 
+    /// Waiting for keys: the modifiers held, as egui names them (Cmd is Ctrl there), or the invitation.
+    private var waiting: Bool { !keys.pending }
+    private var shown: String { waiting ? (held.isEmpty ? "Pressione as teclas…" : held) : keys.text }
+
     private func act(_ op: String) { settingsSend("hotkey", ["op": op, "id": item.id]) }
-
-    private func iconButton(_ symbol: String, _ tip: String, enabled: Bool, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) { Image(systemName: symbol) }
-            .buttonStyle(.borderless).disabled(!enabled).help(tip).accessibilityLabel("\(tip): \(item.label)")
-    }
-
-    private func keysButton(edge: Color?) -> some View {
-        let waiting = keys.editing && !keys.pending
-        let text = waiting ? (held.isEmpty ? "Pressione as teclas…" : held) : keys.text
-        return Button(text) { if !keys.editing { act("record") } }
-            .buttonStyle(.bordered)
-            .foregroundStyle(waiting || keys.text == "Sem tecla" ? .secondary : .primary)
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(edge ?? .clear, lineWidth: 1.5))
-            .frame(minWidth: 96)
-            .help("Clique para gravar outras teclas")
-    }
 
     /// While recording, the keys pressed go to the shortcut and nowhere else.
     private func listen() {
@@ -69,10 +55,8 @@ struct HotkeyRow: View {
             let (isFlags, flags, code, chars, again) = (event.type == .flagsChanged, event.modifierFlags, event.keyCode, event.charactersIgnoringModifiers ?? "", event.isARepeat)
             let swallow: Bool = MainActor.assumeIsolated {
                 if isFlags {
-                    var parts: [String] = []
-                    if flags.contains(.command) { parts.append("Cmd") }
-                    if flags.contains(.option) { parts.append("Alt") }
-                    if flags.contains(.shift) { parts.append("Shift") }
+                    // `keys::held_label`: the command key reads Ctrl, as the egui page shows it
+                    let parts = [(flags.contains(.command), "Ctrl"), (flags.contains(.option), "Alt"), (flags.contains(.shift), "Shift")].filter(\.0).map(\.1)
                     held = parts.isEmpty ? "" : parts.joined(separator: "+") + "+…"
                     return false
                 }
@@ -93,5 +77,60 @@ struct HotkeyRow: View {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
         held = ""
+    }
+}
+
+/// A shortcut's keys as a button 30 high, at least 96 wide; its line the accent while it changes (red while what was
+/// pressed can't be saved).
+private struct KeysButton: View {
+    enum Edge { case primary, destructive }
+    let text: String
+    let none: Bool
+    let edge: Edge?
+    let action: () -> Void
+    @Environment(\.colorScheme) private var scheme
+    @State private var hover = false
+
+    var body: some View {
+        let k = SK.of(scheme)
+        let line = edge.map { $0 == .primary ? k.primary : k.destructive } ?? k.buttonLine
+        Button(action: action) {
+            Text(text).font(.kit(12.5)).foregroundStyle(none || text.hasSuffix("…") ? k.mutedFg : k.fg).lineLimit(1).fixedSize()
+                .padding(.horizontal, 12)
+                .frame(minWidth: 96, minHeight: 30, maxHeight: 30)
+                .background(hover ? k.buttonHover : k.button, in: .rect(cornerRadius: 8))
+                .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(line, lineWidth: edge == nil ? 1 : 1.5) }
+                .contentShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .handCursor()
+        .accessibilityLabel(text)
+    }
+}
+
+/// Salvar, in the accent; dimmed and deaf while what was pressed can't be saved.
+private struct SaveButton: View {
+    let enabled: Bool
+    let action: () -> Void
+    @Environment(\.colorScheme) private var scheme
+    @State private var hover = false
+
+    var body: some View {
+        let k = SK.of(scheme)
+        Button(action: action) {
+            Text("Salvar").font(.kit(12.5)).foregroundStyle(.white.opacity(enabled ? 1 : 0.6))
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background {
+                    RoundedRectangle(cornerRadius: 8).fill(k.primary.opacity(enabled ? 1 : 0.35))
+                    if enabled && hover { RoundedRectangle(cornerRadius: 8).fill(.white.opacity(0.12)) }
+                }
+                .contentShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .onHover { hover = $0 }
+        .handCursor()
     }
 }
