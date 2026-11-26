@@ -235,8 +235,50 @@ pub(super) fn scan(claude: &Path, from: &str, out: &mut Vec<Entry>) {
     }
 }
 
-/// The folder's own commands first, then the person's; a name already taken stays with the first.
-pub(crate) fn discover(cwd: &Path, home: Option<&Path>) -> Vec<Entry> {
+/// What Claude Code said it has when an answer began (the `init` of `claude -p`): its skills by the names it takes
+/// (`plugin:nome` for a plugin's), and the plugins' folders, whose SKILL.md say what each one is for.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct Known {
+    pub(crate) skills: Vec<String>,
+    pub(crate) plugins: Vec<(String, PathBuf)>,
+}
+
+impl Known {
+    /// From an `init` line of the answer; None for any other.
+    pub(crate) fn of_init(event: &Value) -> Option<Known> {
+        if event["type"] != "system" || event["subtype"] != "init" {
+            return None;
+        }
+
+        let skills = event["skills"].as_array()?.iter().filter_map(Value::as_str).map(String::from).collect();
+        let plugins = event["plugins"].as_array().into_iter().flatten();
+        let plugins = plugins.filter_map(|plugin| Some((plugin["name"].as_str()?.to_string(), PathBuf::from(plugin["path"].as_str()?))));
+
+        Some(Known { skills, plugins: plugins.filter(|(_, path)| path.is_absolute()).collect() })
+    }
+}
+
+/// What each SKILL.md under `dir` says it is for, by `prefix` and its folder's name; a folder without one is looked
+/// into (the skills synced from the account are a few levels down).
+fn skill_descs(dir: &Path, prefix: &str, depth: usize, out: &mut std::collections::HashMap<String, String>) {
+    let Ok(read) = fs::read_dir(dir) else { return };
+
+    for entry in read.flatten() {
+        let path = entry.path();
+
+        match fs::read_to_string(path.join("SKILL.md")) {
+            Ok(text) => {
+                out.entry(format!("{prefix}{}", entry.file_name().to_string_lossy())).or_insert_with(|| describe(&text));
+            }
+            Err(_) if depth < 3 && path.is_dir() => skill_descs(&path, prefix, depth + 1, out),
+            Err(_) => {}
+        }
+    }
+}
+
+/// The folder's own commands first, then the person's, then the skills Claude Code said it has that no folder shows
+/// (`known`: its plugins', those synced from the account, its own); a name already taken stays with the first.
+pub(crate) fn discover(cwd: &Path, home: Option<&Path>, known: &Known) -> Vec<Entry> {
     let mut all = Vec::new();
 
     scan(&cwd.join(".claude"), "projeto", &mut all);
@@ -248,6 +290,23 @@ pub(crate) fn discover(cwd: &Path, home: Option<&Path>) -> Vec<Entry> {
     let mut seen = std::collections::HashSet::new();
 
     all.retain(|e| seen.insert(e.name.clone()));
+    let mut descs = std::collections::HashMap::new();
+
+    for (plugin, path) in &known.plugins {
+        skill_descs(&path.join("skills"), &format!("{plugin}:"), 0, &mut descs);
+    }
+
+    if let Some(home) = home {
+        skill_descs(&home.join(".claude/skills"), "", 0, &mut descs);
+    }
+
+    for name in known.skills.iter().filter(|name| seen.insert(name.to_string())) {
+        let bare = name.rsplit(':').next().unwrap_or(name);
+        let desc = descs.get(name).or_else(|| descs.get(bare)).map_or_else(|| "Skill do Claude Code".to_string(), |desc| format!("Skill · {desc}"));
+
+        all.push(Entry { name: name.clone(), args: String::new(), desc });
+    }
+
     all
 }
 
