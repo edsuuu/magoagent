@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Changelog — MagoAgent</title>
+<meta name="description" content="O que mudou em cada versão do MagoAgent, com os arquivos para baixar.">
+<meta name="theme-color" content="#f7f7f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1e1e1e" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Cpath%20fill%3D%22%2338bdf8%22%20d%3D%22M50%206C60%2024%2080%2038%2080%2062C80%2080%2067%2093%2050%2093C33%2093%2020%2080%2020%2062C20%2046%2031%2036%2038%2024C41%2033%2045%2038%2050%2040C49%2029%2047%2017%2050%206Z%22/%3E%3Cg%20fill%3D%22%2317142b%22%3E%3Crect%20x%3D%2233%22%20y%3D%2262%22%20width%3D%2212%22%20height%3D%2214%22%20rx%3D%226%22/%3E%3Crect%20x%3D%2255%22%20y%3D%2262%22%20width%3D%2212%22%20height%3D%2214%22%20rx%3D%226%22/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+<header class="topo">
+  <div class="largura">
+    <a class="marca" href="./"><svg class="luna" viewBox="0 0 100 100" aria-hidden="true"><path fill="currentColor" d="M50 6C60 24 80 38 80 62C80 80 67 93 50 93C33 93 20 80 20 62C20 46 31 36 38 24C41 33 45 38 50 40C49 29 47 17 50 6Z"/><g class="luna-olhos"><rect x="34.95" y="64.35" width="8.5" height="9.7" rx="4.25"/><rect x="56.55" y="64.35" width="8.5" height="9.7" rx="4.25"/></g></svg>MagoAgent</a>
+    <a class="botao pequeno" href="./#instalar">Baixar</a>
+  </div>
+</header>
+
+<main class="largura estreita secao">
+  <h1 class="titulo">Changelog</h1>
+  <p class="intro">O que mudou em cada versão, com os arquivos para baixar.</p>
+  <div id="versoes" aria-live="polite"><p class="suave">Carregando as versões…</p></div>
+</main>
+
+<footer class="rodape"><div class="largura"><span class="mao">MagoAgent</span><a href="changelog.html">Changelog</a><a href="design-system.html">Design system</a><a href="https://github.com/edsuuu/magoagent">Código no GitHub</a><a href="https://github.com/edsuuu/magoagent/releases">Releases</a></div></footer>
+
+<script>
+var paginaReleases = "https://github.com/edsuuu/magoagent/releases";
+var versoes = document.getElementById("versoes");
+
+function elemento(tag, classe, texto) {
+  var novo = document.createElement(tag);
+  if (classe) novo.className = classe;
+  if (texto != null) novo.textContent = texto;
+  return novo;
+}
+
+// Markdown simples das notas, montado com nós do DOM (texto sempre por textContent, nunca innerHTML):
+// títulos (#), listas (- ou *), parágrafos, **negrito**, `código` e [links](https://...).
+// shortcut: sem listas aninhadas, tabelas nem blocos de código; ampliar se as notas passarem a usar.
+function emLinha(destino, texto) {
+  var padrao = /\*\*(.+?)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, inicio = 0, achado;
+  while ((achado = padrao.exec(texto))) {
+    destino.appendChild(document.createTextNode(texto.slice(inicio, achado.index)));
+    if (achado[1] != null) emLinha(destino.appendChild(elemento("strong")), achado[1]);
+    else if (achado[2] != null) destino.appendChild(elemento("code", null, achado[2]));
+    else {
+      var link = elemento("a", null, achado[3]);
+      link.href = achado[4];
+      link.rel = "noopener";
+      destino.appendChild(link);
+    }
+    inicio = padrao.lastIndex;
+  }
+  destino.appendChild(document.createTextNode(texto.slice(inicio)));
+}
+function notas(markdown) {
+  var caixa = elemento("div", "notas"), lista = null, paragrafo = null;
+  (markdown || "").replace(/\r/g, "").split("\n").forEach(function (linha) {
+    var titulo = linha.match(/^\s*#{1,6}\s+(.*)$/), item = linha.match(/^\s*[-*]\s+(.*)$/);
+    if (titulo) {
+      lista = paragrafo = null;
+      emLinha(caixa.appendChild(elemento("h3")), titulo[1]);
+    } else if (item) {
+      paragrafo = null;
+      if (!lista) lista = caixa.appendChild(elemento("ul"));
+      emLinha(lista.appendChild(elemento("li")), item[1]);
+    } else if (!linha.trim()) {
+      lista = paragrafo = null;
+    } else if (lista && /^\s+/.test(linha)) {
+      emLinha(lista.lastChild, " " + linha.trim());
+    } else {
+      lista = null;
+      if (paragrafo) paragrafo.appendChild(document.createTextNode(" "));
+      else paragrafo = caixa.appendChild(elemento("p"));
+      emLinha(paragrafo, linha.trim());
+    }
+  });
+  return caixa;
+}
+
+function rotulo(nome) {
+  if (/\.msi$/i.test(nome)) return "Windows (.msi)";
+  if (/\.exe$/i.test(nome)) return "Windows (.exe)";
+  if (/\.deb$/i.test(nome)) return "Linux (.deb)";
+  if (/\.tar\.gz$/i.test(nome)) return "Linux (.tar.gz)";
+  if (/\.dmg$/i.test(nome)) return "macOS (.dmg)";
+  return nome;
+}
+function versao(release, primeira) {
+  var cartao = elemento("article", "cartao versao" + (primeira ? " destaque" : ""));
+  var topo = cartao.appendChild(elemento("header"));
+  topo.appendChild(elemento("h2", "mao", release.name || release.tag_name));
+  if (primeira) topo.appendChild(elemento("span", "etiqueta", "Última versão"));
+  if (release.prerelease) topo.appendChild(elemento("span", "etiqueta", "Prévia"));
+  var data = elemento("time", "suave", new Date(release.published_at).toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" }));
+  data.dateTime = release.published_at;
+  topo.appendChild(data);
+  cartao.appendChild(notas(release.body));
+  var arquivos = (release.assets || []).filter(function (a) { return /\.(msi|exe|deb|dmg)$|\.tar\.gz$/i.test(a.name); });
+  if (arquivos.length) {
+    var botoes = cartao.appendChild(elemento("div", "arquivos"));
+    arquivos.forEach(function (arquivo) {
+      var link = elemento("a", primeira ? "botao" : "botao sec", (primeira ? "Baixar " : "") + rotulo(arquivo.name));
+      link.href = arquivo.browser_download_url;
+      link.title = arquivo.name + " · " + (arquivo.size / 1048576).toFixed(1) + " MB";
+      botoes.appendChild(link);
+    });
+  }
+  var noGithub = elemento("a", null, "Ver no GitHub");
+  noGithub.href = release.html_url;
+  var rodape = cartao.appendChild(elemento("p", "suave mt"));
+  rodape.appendChild(noGithub);
+  return cartao;
+}
+function falhou() {
+  versoes.textContent = "";
+  var aviso = versoes.appendChild(elemento("p", "suave", "Não deu para carregar as versões agora. Veja todas na "));
+  var link = elemento("a", null, "página de releases do GitHub");
+  link.href = paginaReleases;
+  aviso.appendChild(link);
+  aviso.appendChild(document.createTextNode("."));
+}
+
+fetch("https://api.github.com/repos/edsuuu/magoagent/releases?per_page=30")
+  .then(function (resposta) { if (!resposta.ok) throw 0; return resposta.json(); })
+  .then(function (lista) {
+    lista = lista.filter(function (release) { return !release.draft; });
+    if (!lista.length) return falhou();
+    versoes.textContent = "";
+    lista.forEach(function (release, indice) { versoes.appendChild(versao(release, indice === 0)); });
+  })
+  .catch(falhou);
+</script>
+</body>
+</html>

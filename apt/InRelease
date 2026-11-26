@@ -1,0 +1,40 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Architectures: amd64
+Date: Thu, 26 Nov 2026 17:55:13 +0000
+Label: MagoAgent
+Origin: MagoAgent
+Suite: stable
+MD5Sum:
+ dbee07ccc2651e4b5e929e78073fd38d             1362 Packages
+ 8da4823dc743e4ca4e52ff9f9b758be6              831 Packages.gz
+ 3501d2dfdd4c8f581450103c876393bb              108 Release
+SHA1:
+ 6a249334421c957eccd4771cce0995d417a205ae             1362 Packages
+ fcdf7f2e6b9f26b9af5ed83d491894c46cee92e3              831 Packages.gz
+ 128d4e3f8353d80e2ab845becbb15ba01f3ae135              108 Release
+SHA256:
+ f7168a6c53d4ef35cdfeb3e33452c7ea41016f1fef11f52855da423c19f90643             1362 Packages
+ 4a4f9ab916bb256face6072df5bf2b0fdeda9b5c0f90a9fbc6e3270e90a520df              831 Packages.gz
+ 9fd8ad4d66506fcc498ab9834133806cd1b6b8b92c057d8f0a9d412bf9bf5244              108 Release
+SHA512:
+ ef1775e838d6bae9d4c3d9973e34df20e72489bd1ce9a8874a31001b225fbdd225e180b497553f977b2cce7f7d11d3567ea734a56d7045b4ae6b788f9364237d             1362 Packages
+ b0c8bda0426366327d40f24faa2a7e976ed2314782e7d7c4202ad7a2509d0abf8c5a4e32c0b4e1b5dc8beb734a2beb046fd99ad73163771beb149b9f386369a9              831 Packages.gz
+ ecd8bcab0d8bf05cd9c6b3267520d17fca1dbac6c14f79340b5c30ddbf40689aa3e9be9bf9c19fdec15d550c3d09dcdaa750da8b847b006c1db2f7e35ee4e3ec              108 Release
+-----BEGIN PGP SIGNATURE-----
+
+iQIzBAEBCgAdFiEEUwm7JvaYUrCGxgjRZArbNEOl1hwFAmsIcoEACgkQZArbNEOl
+1hw7LQ//co4lqFi6iTnrumpLl69bvg0cUemah1Bvrb+LTt27w2PIpMrLgthsSulY
+yM49bYi6H//K074TRf4vEfuAznbocW5oKlZD8EOdmgLEU+UyRUNhMDhe1MnqkvG9
+ksF5bQx6O0BxeZBxUheXX7YmY+us4j8X1w3lVn/MpChx3BENaHsuJA+qCTRlLGA7
+h7GE+uXmmLjImBCIiRP/HLUdgqeclRjRXUxxisPHmsUomSvu7kO/07osScKOvdFQ
+u9OqthaFYt9E7npGbfYocAc00emZG8sglup2RbZsNtsNkxXCjrqiVX46KOaBFaxQ
+1/gi9RpzJ+yjU1MvRkMwom7taWSNjCtmotsz2R8CSXUwY8pmD3RFnc8mSTWpwMJW
+NQiXYylL043kvtFK+UvM8l24R7tXviEg/6DFzNCwHU+T3bIlMDYZgevF+X8OqKbE
+AeqUAK0W1nbJ++cIKHYGpSIpXHPu8ChMq8rIrEezz6XclLz+1jBFQ9WLyOUeNOMN
+p5sPHD09am38IUSOTJ/7SPUZ9jfGBZIhL58gBdKsHfgq5ANU6WUcPJfbJWp3ZqtL
+S0/fIUUbZGn3fJNebfamf02KI3GomRf4hBwybT9yrYG99WzuDd2eP20KjA+qGkjg
+94X4ghDtWNVChjQ8jrgyrb4Wgz1p7j6D6s6B9wNLiKoy9QHgQJg=
+=N72V
+-----END PGP SIGNATURE-----
