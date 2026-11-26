@@ -96,7 +96,7 @@ impl DrawingApp {
 }
 
 /// The temporary folders the hint names, as this system has them.
-fn temp_names() -> &'static str {
+pub(super) fn temp_names() -> &'static str {
     if cfg!(windows) {
         "%TEMP%"
     } else if cfg!(target_os = "macos") {

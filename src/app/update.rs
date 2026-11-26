@@ -100,6 +100,12 @@ impl eframe::App for DrawingApp {
         const EVERY: std::time::Duration = std::time::Duration::from_millis(400);
 
         FRAME_RATE.store(self.prefs.frame_rate, std::sync::atomic::Ordering::Relaxed);
+        // TEMPTEST-BEGIN
+        if let Ok(tab) = std::env::var("MAGOAGENT_TEST_TAB") {
+            static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+            if !DONE.swap(true, std::sync::atomic::Ordering::Relaxed) { self.open_settings_at(&tab); }
+        }
+        // TEMPTEST-END
 
         #[cfg(target_os = "linux")]
         if crate::app::island::x11::active() {

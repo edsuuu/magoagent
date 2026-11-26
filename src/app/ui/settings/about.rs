@@ -7,7 +7,7 @@ use crate::prelude::*;
 
 /// Who made the app, as on GitHub, and the page its button opens.
 pub(crate) const AUTHOR: &str = "edsuuu";
-const AUTHOR_PAGE: &str = "https://github.com/edsuuu";
+pub(super) const AUTHOR_PAGE: &str = "https://github.com/edsuuu";
 
 impl DrawingApp {
     pub(super) fn settings_about(&mut self, ui: &mut egui::Ui, k: &K) {

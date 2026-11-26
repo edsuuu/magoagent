@@ -1,22 +1,18 @@
-//! Ajustes › Integrações as rows: the hooks outside the app, GitHub, Spotify, Hermes Agent and WhatsApp.
+//! Ajustes › Integrações as rows: the hooks and the MCP outside the app, then GitHub, Spotify, Hermes Agent and WhatsApp.
 
 use super::*;
 use crate::app::ui::settings;
 
 impl DrawingApp {
     pub(super) fn settings_swift_integrations(&self) -> Vec<Group> {
-        use crate::app::integrations::{github, hermes, spotify::Player, whatsapp::Link as Gateway};
+        use crate::app::integrations::{github, hermes, whatsapp::Link as Gateway};
         use crate::app::maestro::claude_hooks::{self, HooksState};
         let prefs = &self.prefs;
 
         let hooks = |state: HooksState, path: Option<&std::path::Path>, preview: bool, id: &str| {
             let (label, labels) = settings::hooks::hooks_row(state, preview);
-
-            let buttons = labels
-                .iter()
-                .map(|name| button(if *name == "Remover" { "hooks_remove" } else { "hooks_install" }, name, Some(id)))
-                .map(|button| Button { primary: button.id == "hooks_install", ..button })
-                .collect();
+            // the egui row lays them out from the right edge: the first one is the rightmost
+            let buttons = labels.iter().rev().map(|name| button(if *name == "Remover" { "hooks_remove" } else { "hooks_install" }, name, Some(id))).collect();
 
             row(&format!("hooks.{id}"), label, &settings::hooks::hooks_hint(state, path), buttons)
         };
@@ -47,8 +43,8 @@ impl DrawingApp {
             hooks(if installed { HooksState::Installed } else { HooksState::Missing }, codex_path.as_deref(), false, "codex"),
         ];
 
-        let mut groups = vec![group("CLAUDE CODE FORA DO APP", claude), group("CODEX FORA DO APP", codex)];
-
+        let mut groups = vec![group("CLAUDE CODE FORA DO APP", claude), group("CODEX FORA DO APP", codex), group("MCP EM OUTROS AGENTES", mcp_rows())];
+        // then a card for each service under one title (the page's line says what they are and where the secrets go)
         let integrations = &self.integrations;
 
         // GitHub
@@ -61,20 +57,24 @@ impl DrawingApp {
         )];
 
         if prefs.integrations.github {
-            let mut token = text(
-                "github_token",
-                "Token pessoal",
-                "Clássico com o escopo repo, ou fine-grained com leitura em Commit statuses e Actions e leitura e escrita em Pull requests (para salvar a descrição e comentar pela ilha).",
-                "",
-                "ghp_… ou github_pat_…",
-                true,
-            );
-
-            token.buttons = vec![Button { primary: true, ..button("github_save", "Salvar", None) }, button("open", "Criar token…", Some(github::TOKENS_PAGE))];
-            github_items.push(token);
             let state = &integrations.github;
 
-            if state.has_token() {
+            // with a token saved only its line shows (Remover brings the field back)
+            if !state.has_token() {
+                let mut token = text(
+                    "github_token",
+                    "Token pessoal",
+                    "Clássico com o escopo repo, ou fine-grained com leitura em Commit statuses e Actions e leitura e escrita em Pull requests (para salvar a descrição e comentar pela ilha).",
+                    "",
+                    "ghp_… ou github_pat_…",
+                    250.0,
+                    true,
+                );
+
+                token.buttons = vec![button("open", "Criar token…", Some(github::TOKENS_PAGE)), button("github_save", "Salvar", None)];
+                github_items.push(token);
+                github_items.push(note("Sem token: crie um, cole acima e salve. Ele vai para o cofre do sistema, nunca para um arquivo."));
+            } else {
                 let (status, detail) = match (&state.pulse, &state.error) {
                     (_, Some(error)) => ("Não conectado".to_string(), error.clone()),
                     (Some(pulse), None) => (format!("Conectado como @{}", pulse.login), pulse.summary()),
@@ -87,8 +87,6 @@ impl DrawingApp {
                     &detail,
                     vec![button("github_test", if state.testing { "Testando…" } else { "Testar" }, None), button("github_remove", "Remover", None)],
                 ));
-            } else {
-                github_items.push(note("Sem token: crie um, cole acima e salve. Ele vai para o cofre do sistema, nunca para um arquivo."));
             }
 
             if let Some(pulse) = &state.pulse {
@@ -120,37 +118,25 @@ impl DrawingApp {
 
             if let Some(activity) = &state.activity {
                 github_items.push(note(&format!("{} · {} hoje", activity.summary(), activity.today)));
+                // a column a week, each day its line and its level (0 to 4)
+                let weeks: Vec<Vec<[u8; 2]>> = activity.weeks.iter().map(|week| week.iter().map(|day| [day.weekday, day.level]).collect()).collect();
+
+                github_items.push(Item { value: json!(weeks), ..item("", "calendar", "", "") });
             }
         }
 
-        groups.push(group("GITHUB", github_items));
+        groups.push(group("SERVIÇOS", github_items));
 
-        // Spotify
-        let playing = integrations.spotify.now.as_ref().is_some_and(|now| now.on(Player::App));
-
+        // Spotify: what plays shows on the island, not here
         let mut spotify = vec![head(
             "spotify",
             "Spotify",
-            "A música que toca, com a capa e os botões de tocar, pausar e pular. Sem conta e sem chave: fala com o Spotify aberto neste computador.",
-            playing,
+            "A música que toca, na ilha, com a capa e os botões. Sem conta e sem chave: fala com o Spotify aberto neste computador.",
+            integrations.spotify.now.is_some(),
             prefs.integrations.spotify,
         )];
 
         if prefs.integrations.spotify {
-            let now = integrations.spotify.now.clone().filter(|now| now.on(Player::App));
-
-            let buttons = now
-                .map(|now| {
-                    vec![
-                        button("spotify_previous", "Anterior", None),
-                        button("spotify_play_pause", if now.playing { "Pausar" } else { "Tocar" }, None),
-                        button("spotify_next", "Próxima", None),
-                    ]
-                })
-                .unwrap_or_default();
-
-            spotify.push(row("spotify_player", &integrations.spotify.report_of(Player::App), "", buttons));
-
             spotify.push(toggle(
                 "luna_dances",
                 "A Luna dança com a música",
@@ -161,7 +147,7 @@ impl DrawingApp {
             spotify.extend(self.settings_swift_spotify_account());
         }
 
-        groups.push(group("SPOTIFY", spotify));
+        groups.push(group("", spotify));
 
         if hermes::available() {
             let status = match (prefs.integrations.hermes, hermes::home(), std::env::current_exe()) {
@@ -185,7 +171,7 @@ impl DrawingApp {
                         "hermes_ask",
                         "Instalar o plugin no Hermes?",
                         will,
-                        vec![button("hermes_cancel", "Cancelar", None), Button { primary: true, ..button("hermes_install", "Instalar", None) }],
+                        vec![button("hermes_install", "Instalar", None), button("hermes_cancel", "Cancelar", None)],
                     ));
                 } else {
                     let mut buttons = vec![];
@@ -202,7 +188,7 @@ impl DrawingApp {
                 }
             }
 
-            groups.push(group("HERMES AGENT", items));
+            groups.push(group("", items));
         }
 
         // WhatsApp
@@ -223,6 +209,7 @@ impl DrawingApp {
                 "http://127.0.0.1:3000 (padrão GOWA)",
                 &prefs.integrations.whatsapp_base,
                 "http://127.0.0.1:3000",
+                250.0,
                 false,
             ));
 
@@ -232,10 +219,11 @@ impl DrawingApp {
                 "Credencial GOWA no formato usuário:senha, quando o gateway pede; vazio para gateway sem autenticação.",
                 "",
                 "user:pass ou vazio",
+                250.0,
                 true,
             );
 
-            credential.buttons = vec![Button { primary: true, ..button("whatsapp_save", "Salvar", None) }];
+            credential.buttons = vec![button("whatsapp_save", "Salvar", None)];
             items.push(credential);
             let status = if whatsapp.checking { "Testando…" } else { whatsapp.report() };
 
@@ -250,55 +238,95 @@ impl DrawingApp {
             ));
         }
 
-        groups.push(group("WHATSAPP", items));
+        groups.push(Group { scroll_id: Some("whatsapp"), ..group("", items) });
         groups
     }
 
-    /// Conta do Spotify: the status with Conectar, the Client ID of the person's own app and the Redirect URI to register.
-    pub(super) fn settings_swift_spotify_account(&self) -> Vec<Item> {
-        use crate::app::integrations::spotify::account::{DASHBOARD, Link, REDIRECT_URI};
+    /// Conta do Spotify, in steps until there is a Client ID (`settings_spotify_account`): with it only Conectar shows
+    /// (Desconectar once linked); a failed login shows the steps again.
+    fn settings_swift_spotify_account(&self) -> Vec<Item> {
+        use crate::app::integrations::spotify::account::{DASHBOARD, Link, REDIRECT_URI, client_id_looks_right};
         let account = &self.integrations.spotify.account;
+        let has_app = client_id_looks_right(self.prefs.integrations.spotify_client_id.trim());
 
         let (status, detail) = match &account.link {
             Link::Linked if account.name.is_empty() => ("Conta do Spotify conectada".to_string(), "O token fica no cofre do sistema.".to_string()),
             Link::Linked => (format!("Conectada como {}", account.name), "O token fica no cofre do sistema.".to_string()),
             Link::Waiting => ("Esperando o navegador…".to_string(), "Autorize no site do Spotify que abriu; depois volte aqui.".to_string()),
             Link::Failed(why) => ("Conta do Spotify não conectada".to_string(), why.clone()),
+            Link::Off if has_app => {
+                ("Conta do Spotify".to_string(), "Traz a fila, as Curtidas, as suas playlists, a busca e o coração para a ilha.".to_string())
+            }
             Link::Off => (
                 "Conta do Spotify".to_string(),
-                "Opcional: traz a fila do app, as Curtidas, as suas playlists, a busca e o coração para a página do Spotify na ilha.".to_string(),
+                "Opcional, para a fila, as Curtidas, as playlists e a busca na ilha: crie um app no painel do Spotify e siga os passos.".to_string(),
             ),
         };
 
         let link = match account.link {
-            Link::Linked => button("spotify_disconnect", "Desconectar", None),
-            Link::Waiting => button("spotify_cancel", "Cancelar", None),
-            Link::Off | Link::Failed(_) => Button { primary: true, ..button("spotify_connect", "Conectar", None) },
+            Link::Linked => vec![button("spotify_disconnect", "Desconectar", None)],
+            Link::Waiting => vec![button("spotify_cancel", "Cancelar", None)],
+            Link::Off | Link::Failed(_) if has_app => vec![button("spotify_connect", "Conectar", None)],
+            Link::Off | Link::Failed(_) => vec![],
         };
 
-        let mut client = text(
-            "spotify_client_id",
-            "Client ID",
-            "O Client ID do seu app no painel do Spotify para desenvolvedores (sem segredo: o app usa PKCE). Sem app: Criar app, cole o Redirect URI abaixo, marque Web API e salve; o Client ID aparece na página dele.",
-            &self.prefs.integrations.spotify_client_id,
-            "32 letras e números",
-            false,
-        );
+        let mut items = vec![row("spotify_account", &status, &detail, link)];
 
-        client.buttons = vec![button("open", "Abrir painel…", Some(DASHBOARD))];
+        // the steps, until the Client ID is pasted (and again when a login failed, to fix the app)
+        if !has_app || matches!(account.link, Link::Failed(_)) {
+            items.push(row(
+                "spotify_dashboard",
+                "1. Abrir o painel do Spotify",
+                "No painel do Spotify para desenvolvedores: Create app, com Web API marcada.",
+                vec![button("open", "Abrir painel", Some(DASHBOARD))],
+            ));
 
-        vec![
-            row("spotify_account", &status, &detail, vec![link]),
-            client,
-            row(
+            items.push(row(
                 "spotify_redirect",
-                REDIRECT_URI,
-                "Redirect URI: cadastre este endereço exato no app do Spotify (Edit settings › Redirect URIs).",
-                vec![Button { copy: Some(REDIRECT_URI.into()), ..button("copy", "Copiar", None) }],
-            ),
-            note(
-                "Já tem um Client ID do Spotifast (callback http://127.0.0.1:8989/login)? O mesmo serve: no painel, adicione também o Redirect URI acima ao app. Em Development Mode, a sua conta precisa estar na lista de usuários do app.",
-            ),
-        ]
+                "2. Copiar o Redirect URI",
+                &format!("{REDIRECT_URI}: cole em Redirect URIs, no app criado, e salve."),
+                vec![Button { copy: Some(REDIRECT_URI.into()), ..button("spotify_redirect_copy", "Copiar", None) }],
+            ));
+
+            items.push(text(
+                "spotify_client_id",
+                "3. Colar o Client ID",
+                "Está na página do app, no painel. Sem segredo: o app usa PKCE.",
+                &self.prefs.integrations.spotify_client_id,
+                "32 letras e números",
+                250.0,
+                false,
+            ));
+        }
+
+        items
     }
+}
+
+/// MCP em outros agentes (`mcp.rs`): each agent, how its registration stands and Registrar or Remover.
+fn mcp_rows() -> Vec<Item> {
+    use crate::app::system::mcp_register::*;
+    let mut items = vec![note("Registra o MCP do MagoAgent no Claude Code ou no Codex de fora do app, para as sessões de lá também usarem o canvas.")];
+
+    for (agent, name) in MCP_AGENTS {
+        let (status, doing) = (mcp_status(agent), mcp_doing(agent));
+
+        let state = match (doing, status) {
+            (Some(doing), _) => doing.to_string(),
+            (None, McpStatus::Checking) => "Verificando…".into(),
+            (None, McpStatus::Registered) => "Registrado".into(),
+            (None, McpStatus::NotRegistered) => "Não registrado".into(),
+            (None, McpStatus::Missing) => format!("{name} não encontrado"),
+        };
+
+        let buttons = match mcp_action(status, doing.is_some()) {
+            Some(McpAction::Remove) => vec![button("mcp_remove", "Remover", Some(agent))],
+            Some(McpAction::Register) => vec![button("mcp_register", &format!("Registrar no {name}"), Some(agent))],
+            None => vec![],
+        };
+
+        items.push(row(&format!("mcp.{agent}"), name, &state, buttons));
+    }
+
+    items
 }

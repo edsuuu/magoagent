@@ -154,7 +154,7 @@ impl DrawingApp {
             chats.push(row("data_projects", "Chats sem pasta", &hint, if projects.is_dir() { open(&projects, "Abrir") } else { vec![] }));
         }
 
-        let wipe = vec![Button { destructive: true, ..button("wipe", "Limpar…", None) }];
+        let wipe = vec![button("wipe", "Limpar…", None)];
 
         vec![
             group("DESENHOS DO CANVAS", canvas),
@@ -178,7 +178,7 @@ impl DrawingApp {
         let available = matches!(state, UpdateState::Available(_));
 
         let buttons = if available {
-            vec![Button { primary: true, ..button("update_install", "Atualizar", None) }]
+            vec![button("update_install", "Atualizar", None)]
         } else if !busy {
             vec![button("update_check", "Verificar atualizações", None)]
         } else {
@@ -197,13 +197,7 @@ impl DrawingApp {
 
         if self.updates.confirming && available {
             version.push(note(CLOSES_AND_REOPENS));
-
-            version.push(row(
-                "update_confirm",
-                "",
-                "",
-                vec![Button { primary: true, ..button("update_install_now", "Atualizar e reiniciar", None) }, button("update_cancel", "Cancelar", None)],
-            ));
+            version.push(button_block("block", vec![button("update_install_now", "Atualizar e reiniciar", None), button("update_cancel", "Cancelar", None)]));
         }
 
         let release = match state {
@@ -211,24 +205,33 @@ impl DrawingApp {
             _ => None,
         };
 
-        let mut groups = vec![group("VERSÃO", version)];
+        let mut groups = vec![];
 
         match release {
             Some(release) => {
-                let mut news = vec![];
-
                 if matches!(state, UpdateState::Available(release) if !installs_in_place(release)) {
-                    news.push(note("Neste sistema a atualização se baixa pela página da release: o botão a abre."));
+                    version.push(note("Neste sistema a atualização se baixa pela página da release: o botão a abre."));
                 }
 
+                groups.push(group("VERSÃO", version));
                 let notes = plain_notes(&release.notes);
+                let words = if notes.is_empty() { "Essa release não traz notas." } else { &notes };
+                let news = Item { buttons: vec![button("open", "Abrir a página da release", Some(&release.page))], ..item("", "notes", "", words) };
 
-                news.push(item("", "notes", "", if notes.is_empty() { "Essa release não traz notas." } else { &notes }));
-                news.push(row("release", "", "", vec![button("open", "Abrir a página da release", Some(&release.page))]));
-                groups.push(group(&format!("NOVIDADES DA {}", release.version), news));
+                groups.push(group(&format!("NOVIDADES DA {}", release.version), vec![news]));
             }
-            None => groups[0].items.push(row("releases", "", "", vec![button("open", "Ver as releases no GitHub", Some(RELEASES_PAGE))])),
+            None => {
+                version.push(button_block("block", vec![button("open", "Ver as releases no GitHub", Some(RELEASES_PAGE))]));
+                groups.push(group("VERSÃO", version));
+            }
         }
+
+        let author = settings::about::AUTHOR;
+
+        groups.push(group(
+            "AUTOR",
+            vec![row("author", &format!("Criado por {author}"), "github.com/edsuuu", vec![button("open", "Abrir no GitHub", Some(settings::about::AUTHOR_PAGE))])],
+        ));
 
         let rows = [
             ("O app", "Não envia nada por conta própria. Olha por uma versão nova no GitHub como Procurar atualizações manda."),
