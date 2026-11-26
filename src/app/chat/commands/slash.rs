@@ -114,7 +114,7 @@ impl DrawingApp {
     pub(crate) fn slash_entries_of(&mut self, id: &str, draft: &str) -> Option<Vec<Entry>> {
         let query = draft.strip_prefix('/')?;
 
-        if query.contains(char::is_whitespace) || self.slash.off.as_deref() == Some(draft) {
+        if self.slash.off.as_deref() == Some(draft) {
             return None;
         }
 
@@ -123,6 +123,20 @@ impl DrawingApp {
         if self.slash.last != draft {
             (self.slash.last, self.slash.sel) = (draft.to_string(), 0);
             self.slash.moved.set(true);
+        }
+
+        // "/model op": the command's own list (pickers.rs), by what follows; a space after it closes the menu
+        if let Some((word, rest)) = query.split_once(char::is_whitespace) {
+            if rest.ends_with(char::is_whitespace) {
+                return None;
+            }
+
+            let rest = rest.to_lowercase();
+            let rows = self.slash_args(&chat, word)?;
+            let value = |row: &Entry| row.name.split_once(' ').map_or(String::new(), |(_, value)| value.to_lowercase());
+            let kept: Vec<Entry> = rows.into_iter().filter(|row| value(row).contains(&rest) || row.desc.to_lowercase().contains(&rest)).collect();
+
+            return Some(kept).filter(|kept| !kept.is_empty());
         }
 
         let custom = self.slash_custom(&chat);
@@ -167,6 +181,19 @@ impl DrawingApp {
 
         if esc {
             self.slash.off = Some(draft.clone());
+        }
+
+        // a row of a command's list: Enter takes it and sends ("/model opus"), but a subagent's fills the box
+        if enter && let Some((word, _)) = entries[sel].name.split_once(' ') {
+            if word == "agents" {
+                complete_into(ctx, draft, &entries[sel].name, id);
+
+                return true;
+            }
+
+            *draft = format!("/{}", entries[sel].name);
+
+            return false;
         }
 
         let complete = tab || (enter && draft.trim_start_matches('/') != entries[sel].name);
