@@ -77,6 +77,22 @@ pub(crate) struct Report {
 }
 
 impl Report {
+    /// O rodapé: "Memória: CLAUDE.md", ou "Memória: CLAUDE.md e mais 2"; "" sem arquivos de memória.
+    pub(crate) fn memory_words(&self) -> String {
+        let Some((path, _)) = self.memory.first() else { return String::new() };
+        let first = path.rsplit(['/', '\\']).next().unwrap_or(path);
+
+        match self.memory.len() {
+            1 => format!("Memória: {first}"),
+            n => format!("Memória: {first} e mais {}", n - 1),
+        }
+    }
+
+    /// A dica do rodapé: cada arquivo de memória com os tokens dele.
+    pub(crate) fn memory_tip(&self) -> String {
+        self.memory.iter().map(|(path, count)| format!("{path}: {}", tokens(*count))).collect::<Vec<_>>().join("\n")
+    }
+
     pub(crate) fn cat(&self, name: &str) -> u64 {
         self.cats.iter().find(|c| c.name == name).map_or(0, |c| c.tokens)
     }
@@ -111,6 +127,11 @@ pub(crate) fn short(n: u64) -> String {
     }
 }
 
+/// "301,8k": os tokens com a vírgula daqui.
+pub(crate) fn tokens(n: u64) -> String {
+    short(n).replace('.', ",")
+}
+
 /// 55.2 → "55,2%": a vírgula decimal, como no resto do app.
 pub(crate) fn percent(pct: f32) -> String {
     format!("{pct:.1}%").replace('.', ",")
@@ -124,6 +145,38 @@ pub(crate) fn norm(name: &str) -> String {
 /// A ferramenta sem o prefixo do conector: "mcp__rea__xrefs" → "xrefs".
 pub(crate) fn tool_name<'a>(full: &'a str, server: &str) -> &'a str {
     full.strip_prefix("mcp__").and_then(|r| r.strip_prefix(norm(server).as_str())).and_then(|r| r.strip_prefix("__")).unwrap_or(full)
+}
+
+/// As ferramentas de um conector, sem o prefixo dele.
+pub(crate) fn server_tools<'a>(tools: &'a [String], server: &str) -> Vec<&'a str> {
+    let prefix = format!("mcp__{}__", norm(server));
+
+    tools.iter().filter(|tool| tool.starts_with(&prefix)).map(|tool| tool_name(tool, server)).collect()
+}
+
+/// O que um conector diz sob o nome: quantas ferramentas tem (quando o init as disse) ou o estado.
+pub(crate) fn connector_note(server: &Server, tools: &[String]) -> String {
+    match server.status {
+        Status::Connected if !tools.is_empty() => format!("{} ferramentas", server_tools(tools, &server.name).len()),
+        Status::Connected => "Conectado".to_string(),
+        Status::NeedsAuth => "Precisa entrar".to_string(),
+        Status::Failed => "Não respondeu".to_string(),
+        Status::Pending => server.status.label().to_string(),
+    }
+}
+
+/// "3 de 5 conectados", ao lado de CONECTORES.
+pub(crate) fn connected_words(list: &[&Server]) -> String {
+    let on = list.iter().filter(|server| server.status == Status::Connected).count();
+
+    format!("{on} de {} conectados", list.len())
+}
+
+/// Os conectores recolhidos depois dos 5 primeiros: "+ 3 conectados" (todos ligados) ou "+ 3 conectores".
+pub(crate) fn more_label(rest: &[&Server]) -> String {
+    let all_on = rest.iter().all(|server| server.status == Status::Connected);
+
+    format!("+ {} {}", rest.len(), if all_on { "conectados" } else { "conectores" })
 }
 
 /// As células de uma linha de tabela markdown; None para o traço e para o que não é linha.

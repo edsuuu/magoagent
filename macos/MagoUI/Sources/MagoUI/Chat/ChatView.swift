@@ -75,7 +75,7 @@ struct ChatHeader: View {
                 }
             }
             Spacer(minLength: 8)
-            if snapshot.ring { ContextRing(share: snapshot.context) }
+            if snapshot.ring { ContextRing(chat: snapshot.id, share: snapshot.context) }
             if searching {
                 HStack(spacing: 6) {
                     TextField("", text: $query, prompt: Text("Buscar na conversa").foregroundStyle(look.muted))
@@ -125,25 +125,31 @@ struct ChatHeader: View {
 }
 
 /// The context ring (header.rs `ring`): the share of the window in use in blue over a grey track, from the top, with the
-/// percentage beside it once read.
-// ponytail: shows the share only; egui's click opens the Contexto panel (context_view.rs), not in SwiftUI yet
+/// percentage beside it once read; a click opens and closes the Contexto panel (ContextPanel.swift), lit while open.
 private struct ContextRing: View {
+    let chat: String
     let share: Double?
     @Environment(\.chatLook) private var look
 
     var body: some View {
-        HStack(spacing: 8) {
-            ZStack {
-                Circle().stroke(look.raised, lineWidth: 2.4)
-                Circle().trim(from: 0, to: min(max((share ?? 0) / 100, 0), 1)).stroke(ChatLook.blue, lineWidth: 2.4).rotationEffect(.degrees(-90))
+        let open = ChatPanel.current?.chat == chat
+        Button { ChatPanel.send(chat, open ? "close" : "open") } label: {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle().stroke(look.raised, lineWidth: 2.4)
+                    Circle().trim(from: 0, to: min(max((share ?? 0) / 100, 0), 1)).stroke(ChatLook.blue, lineWidth: 2.4).rotationEffect(.degrees(-90))
+                }
+                .frame(width: 11.2, height: 11.2)
+                if let share { Text("\(Int(share.rounded()))%").font(.app(13)).foregroundStyle(look.soft) }
             }
-            .frame(width: 11.2, height: 11.2)
-            if let share { Text("\(Int(share.rounded()))%").font(.app(13)).foregroundStyle(look.soft) }
+            .padding(.leading, 12.4).padding(.trailing, share == nil ? 12.4 : 10)
+            .frame(height: 32)
+            .background(RoundedRectangle(cornerRadius: 8).fill(open ? look.hover : .clear))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(look.line))
+            .contentShape(Rectangle())
         }
-        .padding(.leading, 12.4).padding(.trailing, share == nil ? 12.4 : 10)
-        .frame(height: 32)
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(look.line))
-        .help(share.map { "Contexto: \(Int($0.rounded()))% da janela em uso" } ?? "Contexto e conectores")
+        .buttonStyle(HoverGround(radius: 8, color: look.hover))
+        .help(share.map { "Contexto: \(Int($0.rounded()))% da janela em uso · clique para ver o painel" } ?? "Contexto e conectores")
     }
 }
 

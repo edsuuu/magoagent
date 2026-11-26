@@ -11,15 +11,32 @@ import SwiftUI
 }
 
 /// The Chats screen (chat/mod.rs `chat_screen`): the list 320 wide at the left, 16 from the edges, the conversation open
-/// beside it; « folds the list and » brings it back.
+/// beside it; « folds the list and » brings it back. The Contexto panel, when open, takes the right edge from top to
+/// bottom (context_ui.rs `context_rect`: 312 wide, at most 30% of the screen, at least 240), beside the conversation or
+/// over it when the screen is narrow.
 struct ChatsScreen: View {
     private let store = MagoStore.shared
     @Environment(\.chatLook) private var look
     @State private var folded = false
 
     var body: some View {
+        let panel = ChatPanel.current
+        GeometryReader { geometry in
+            let width = min(max(min(312, geometry.size.width * 0.3), 240), geometry.size.width)
+            let narrow = geometry.size.width < 832
+            screen
+                .padding(.trailing, panel != nil && !narrow ? width : 0)
+                .overlay(alignment: .trailing) {
+                    // under the window's top row (ui/mod.rs `TOP_ROW`), down to the bottom
+                    if let panel { ContextPanel(panel: panel).frame(width: width).padding(.top, 12).transition(.move(edge: .trailing)) }
+                }
+                .animation(.smooth(duration: 0.2), value: panel?.chat)
+        }
+    }
+
+    private var screen: some View {
         let list = store.decode(ChatsSnapshot.self, topic: "chats")
-        HStack(alignment: .top, spacing: 16) {
+        return HStack(alignment: .top, spacing: 16) {
             if !folded {
                 ChatList(list: list, folded: $folded)
                     .frame(width: 320)

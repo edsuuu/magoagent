@@ -172,3 +172,40 @@ fn the_list_follows_exibicao_and_the_header_names_the_agent() {
     assert_eq!((list.agent_filter, list.counts[0]), ("codex", 0));
     assert!(list.groups.iter().all(|group| group.entries.is_empty()));
 }
+
+#[test]
+fn the_contexto_panel_goes_out_while_open_and_its_buttons_act_as_egui() {
+    use crate::app::chat::context::{Server, Status, parse_context};
+
+    let mut app = app_with_chat();
+
+    // closed: null; the ring's open (the MCP's chat_context) brings it, still unread
+    assert!(app.context_snapshot().is_none());
+    app.act_chat_context("c1", "open").expect("open");
+    let panel = app.context_snapshot().expect("open");
+
+    assert_eq!((panel.chat.as_str(), panel.note.as_str()), ("c1", "Mande uma mensagem para ver o contexto."));
+    assert!(panel.report.is_none() && panel.connectors.is_empty());
+    // a /context read and seven connectors: the numbers, the one that failed first, past 5 folded
+    let text = "**Tokens:** 301.8k / 400k (75%)\n\n### Estimated usage by category\n\n| Category | Tokens | Percentage |\n|---|---|---|\n| Messages | 221k | 55.2% |\n| Free space | 65.2k | 16.3% |\n| Autocompact buffer | 33k | 8.3% |\n\n### Memory Files\n\n| Type | Path | Tokens |\n|---|---|---|\n| Project | /p/CLAUDE.md | 21 |\n";
+    let info = app.chat_ctx.info.entry("c1".into()).or_default();
+
+    info.report = Some(parse_context(text).expect("the report"));
+    info.listed = (0..7).map(|index| Server { name: format!("s{index}"), status: if index == 6 { Status::Failed } else { Status::Connected } }).collect();
+    let panel = app.context_snapshot().expect("open");
+    let report = panel.report.expect("read");
+
+    assert_eq!((report.percent.as_str(), report.used.as_str(), report.until.as_str()), ("75%", "301,8k de 400k tokens", "65,2k"));
+    assert_eq!(report.legend.iter().map(|row| row.name).collect::<Vec<_>>(), ["Mensagens", "Reserva da auto-compactação", "Livre"]);
+    assert!(!report.legend[2].counts && report.bar.len() == 2 && report.memory == "Memória: CLAUDE.md");
+    assert_eq!((panel.connectors[0].status, panel.connected.as_str(), panel.more.as_str()), ("failed", "6 de 7 conectados", "+ 2 conectados"));
+    // "Compactar automaticamente em" reads again; Compactar and Tentar wait for the frame; × closes
+    app.native_chat_act("context", &json!({ "chat": "c1", "action": "autocompact", "value": "200k" })).expect("pick");
+    assert!(app.prefs.chat_autocompact == "200k" && app.chat_ctx.info["c1"].dirty);
+    assert!(app.native_chat_act("context", &json!({ "chat": "c1", "action": "autocompact", "value": "x; rm" })).is_err());
+    app.native_chat_act("context", &json!({ "chat": "c1", "action": "retry" })).expect("retry");
+    app.native_chat_act("context", &json!({ "chat": "c1", "action": "compact" })).expect("compact");
+    assert!(app.chat_ctx.info["c1"].retried && NATIVE.with_borrow(|native| native.context == [("c1".to_string(), "retry"), ("c1".to_string(), "compact")]));
+    app.act_chat_context("c1", "close").expect("close");
+    assert!(app.context_snapshot().is_none());
+}

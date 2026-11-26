@@ -3,6 +3,7 @@
 //! asks comes back as `ui.chat.<verb>` and runs the same functions the egui chat runs. The egui chat steps aside
 //! (`chat_screen`, `mini_chat_ui`).
 
+mod context;
 mod list;
 mod snapshot;
 mod words;
@@ -32,6 +33,8 @@ struct Native {
     attach: Vec<PathBuf>,
     /// Buscar na conversa: the chat searched and the words.
     search: Option<(String, String)>,
+    /// The Contexto panel's Compactar and Tentar, for the next frame (they need its context): the chat and which.
+    context: Vec<(String, &'static str)>,
     /// The box's words as SwiftUI last had them; when Rust changes them (Editar, a refused send) `draft_seq` grows and
     /// SwiftUI takes them.
     draft_seen: String,
@@ -113,6 +116,7 @@ impl DrawingApp {
         }
 
         crate::app::native::publish("chats", &self.native_chats_snapshot());
+        crate::app::native::publish("chat_context", &self.context_snapshot());
 
         for id in ids {
             if let Some(snapshot) = self.native_chat_snapshot(&id) {
@@ -130,6 +134,18 @@ impl DrawingApp {
         let picked = NATIVE.with_borrow_mut(|native| std::mem::take(&mut native.attach));
 
         self.chat_add_files(ctx, picked, false);
+
+        for (id, action) in NATIVE.with_borrow_mut(|native| std::mem::take(&mut native.context)) {
+            match action {
+                "compact" => _ = self.chat_submit(ctx, &id, "/compact", "/compact"),
+                _ => self.spawn_servers(ctx, &id),
+            }
+        }
+
+        // the Contexto panel's reads, as `chat_screen` asks them each frame
+        if let Some(id) = self.chat_agent.clone().filter(|id| self.chat_open && self.context_wanted(id)) {
+            self.context_tick(ctx, &id, self.prefs.chat_panel);
+        }
     }
 
     /// `ui.chat.<verb>`: what has no action of its own in the MCP layer.
@@ -326,6 +342,39 @@ impl DrawingApp {
                 let (id, query) = (chat()?, text("query"));
 
                 NATIVE.with_borrow_mut(|native| native.search = (!query.trim().is_empty()).then_some((id, query)));
+                Ok(String::new())
+            }
+            // the Contexto panel (context_view.rs): Compactar, Tentar on a connector that failed and "Compactar
+            // automaticamente em"; opening, closing and Atualizar are the MCP's `chat_context`
+            "context" => {
+                let id = chat()?;
+                let info = self.chat_ctx.info.get_mut(&id);
+
+                match text("action").as_str() {
+                    "autocompact" => {
+                        let value = text("value");
+
+                        if !value.is_empty() && !crate::app::chat::context::COMPACT_CHOICES.contains(&value.as_str()) {
+                            return Err(format!("valor desconhecido: {value}"));
+                        }
+
+                        self.prefs.chat_autocompact = value;
+
+                        if let Some(info) = info {
+                            info.dirty = true;
+                        }
+                    }
+                    "compact" => NATIVE.with_borrow_mut(|native| native.context.push((id, "compact"))),
+                    // Tentar: the `claude mcp list` tries the connectors again
+                    "retry" => {
+                        if let Some(info) = info {
+                            (info.retried, info.listing) = (true, true);
+                            NATIVE.with_borrow_mut(|native| native.context.push((id, "retry")));
+                        }
+                    }
+                    other => return Err(format!("action desconhecida: {other}. Use compact, retry ou autocompact.")),
+                }
+
                 Ok(String::new())
             }
             // Copiar on a step's card: the whole of what it printed (the card shows its end)
