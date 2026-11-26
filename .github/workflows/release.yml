@@ -1,4 +1,4 @@
-# Uma tag v* gera o MSI do Windows e os pacotes do Linux (.tar.gz e .deb) numa release PUBLICADA (os arquivos sobem com
+# Uma tag v* gera o MSI do Windows, os pacotes do Linux (.tar.gz e .deb) e o .app do macOS (.zip) numa release PUBLICADA (os arquivos sobem com
 # o gh, que já vem no runner): ela nasce em rascunho só até os pacotes subirem, para o atualizador nunca achar uma release
 # sem eles, e então sai como a mais recente. Publicada, o pages.yml põe o .deb no repositório apt (GitHub Pages).
 # Os pacotes compilam junto com o CI (antes esperavam por ele: uns 9 minutos a mais); a release e os arquivos só
@@ -36,7 +36,7 @@ jobs:
 
   # a release com os pacotes, só com o CI e os dois builds prontos
   publish:
-    needs: [ci, version, windows, linux]
+    needs: [ci, version, windows, linux, macos]
     runs-on: ubuntu-latest
     # actions: o pages.yml é chamado à mão (a release publicada pelo GITHUB_TOKEN não dispara outro workflow)
     permissions:
@@ -131,4 +131,25 @@ jobs:
           path: |
             MagoAgent-*-linux-x86_64.tar.gz
             magoagent_*_amd64.deb
+          if-no-files-found: error
+
+  # o MagoAgent.app (Apple Silicon) zipado, com assinatura ad-hoc: o Atualizar do app no Mac o baixa e troca o .app
+  macos:
+    needs: [version]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4.2.2
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.100.0
+      # nada de cache gravado na tag: só ela o usaria (ver ci.yml)
+      - uses: Swatinem/rust-cache@v2.8.1
+        with:
+          save-if: false
+      - name: .app zipado
+        run: sh build-macos-app.sh
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: pacote-macos
+          path: MagoAgent-*-macos-arm64.zip
           if-no-files-found: error

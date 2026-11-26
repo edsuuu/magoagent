@@ -32,4 +32,9 @@ cat > MagoAgent.app/Contents/Info.plist <<PLIST
 PLIST
 # ad-hoc signature: without one macOS forgets the permissions (microphone) at every build
 codesign --force --deep --sign - MagoAgent.app
-open MagoAgent.app
+# na release (CI): o .app zipado, que o Atualizar do app baixa (mac_update.rs); aqui, o app abre
+if [ -n "${CI:-}" ]; then
+  ditto -c -k --keepParent MagoAgent.app "MagoAgent-$version-macos-arm64.zip"
+else
+  open MagoAgent.app
+fi
