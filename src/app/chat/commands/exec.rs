@@ -65,6 +65,22 @@ impl DrawingApp {
             Local::Model(arg) => self.chat_set_model(id, &arg),
             Local::Effort(arg) => self.chat_set_effort(id, &arg),
             Local::Context => self.prefs.chat_panel = true,
+            Local::Config => self.open_settings_at("Agentes"),
+            Local::Permissions(arg) => self.chat_set_mode(id, &arg),
+            Local::Resume(arg) => self.chat_resume(id, &arg),
+            Local::Agents => {
+                let rows = self.slash_args(&chat, "agents").unwrap_or_default();
+                let names: Vec<String> = rows.iter().map(|row| format!("{} · {}", row.name.trim_start_matches("agents "), row.desc)).collect();
+
+                self.chat_note(
+                    id,
+                    if names.is_empty() {
+                        "Nenhum subagente em .claude/agents (da pasta ou o seu).".to_string()
+                    } else {
+                        format!("Subagentes (escolha em /agents):\n{}", names.join("\n"))
+                    },
+                );
+            }
             Local::StopAll => {
                 let said = self.stop_all();
 
@@ -97,7 +113,7 @@ impl DrawingApp {
                             }
                             Local::Status => Kind::Status(self.chat_summary(&chat)),
                             Local::Logout => Kind::Plain("/logout"),
-                            Local::Mcp => Kind::Plain("/mcp"),
+                            Local::Mcp(_) => Kind::Plain("/mcp"),
                             Local::Doctor => Kind::Plain("/doctor"),
                             _ => Kind::Plain("/update"),
                         };

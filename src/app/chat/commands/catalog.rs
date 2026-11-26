@@ -9,16 +9,20 @@ pub(crate) struct Entry {
 }
 
 /// (name, argument, what it does, Codex has it too)
-pub(super) const DEFS: [(&str, &str, &str, bool); 14] = [
+pub(super) const DEFS: [(&str, &str, &str, bool); 18] = [
     ("login", "[console|sso]", "Entrar na sua conta (abre o navegador)", true),
     ("logout", "", "Sair da conta", true),
     ("status", "", "Mostra quem está logado e os ajustes do chat", true),
-    ("mcp", "", "Lista os servidores MCP", true),
+    ("mcp", "[servidor]", "Lista os servidores MCP; com um, mostra como ele está", true),
     ("doctor", "", "Confere a instalação do Claude Code", false),
     ("update", "", "Atualiza o Claude Code", false),
     ("clear", "", "Começa uma conversa nova neste chat", true),
     ("model", "<nome>", "Troca o modelo do agente", true),
     ("effort", "<nível>", "Troca o esforço do agente", true),
+    ("permissions", "<modo>", "Troca o modo de permissão do chat", true),
+    ("resume", "<conversa>", "Retoma uma conversa anterior desta pasta neste chat", false),
+    ("agents", "<subagente>", "Pede a tarefa a um subagente de .claude/agents", false),
+    ("config", "", "Abre os Ajustes", true),
     ("help", "", "Lista os comandos", true),
     ("btw", "<pergunta>", "Pergunta à parte, mesmo com o agente trabalhando; não entra na conversa", false),
     ("usage", "", "Mostra o consumo do plano: 5 horas e 7 dias", true),
@@ -43,7 +47,15 @@ pub(crate) enum Local {
     Login(String),
     Logout,
     Status,
-    Mcp,
+    /// `/mcp`, and a server's name to see how it is.
+    Mcp(String),
+    /// `/permissions`: the chat's mode, by name.
+    Permissions(String),
+    /// `/resume`: an earlier conversation of the folder, by the start of its id.
+    Resume(String),
+    /// `/agents`: alone, the subagents listed (picked in the menu, it fills the box instead).
+    Agents,
+    Config,
     Doctor,
     Update,
     Clear,
@@ -73,7 +85,11 @@ pub(crate) fn parse(text: &str, agent: &str) -> Option<Result<Local, String>> {
         "login" => Local::Login(arg),
         "logout" => Local::Logout,
         "status" => Local::Status,
-        "mcp" => Local::Mcp,
+        "mcp" => Local::Mcp(arg),
+        "permissions" => Local::Permissions(arg),
+        "resume" => Local::Resume(arg),
+        "agents" => Local::Agents,
+        "config" => Local::Config,
         "doctor" => Local::Doctor,
         "update" => Local::Update,
         "clear" => Local::Clear,
@@ -87,7 +103,7 @@ pub(crate) fn parse(text: &str, agent: &str) -> Option<Result<Local, String>> {
         _ => return None,
     };
 
-    if agent == "codex" && matches!(local, Local::Doctor | Local::Update | Local::Btw(_) | Local::Context) {
+    if agent == "codex" && matches!(local, Local::Doctor | Local::Update | Local::Btw(_) | Local::Context | Local::Resume(_) | Local::Agents) {
         return Some(Err(format!("/{word} só existe no Claude Code.")));
     }
 
@@ -119,7 +135,8 @@ pub(crate) fn cli_args(agent: &str, local: &Local) -> Result<Vec<String>, String
         (true, Local::Logout) => &["logout"],
         (false, Local::Status) => &["auth", "status", "--json"],
         (true, Local::Status) => &["login", "status"],
-        (_, Local::Mcp) => &["mcp", "list"],
+        (_, Local::Mcp(server)) if server.is_empty() => &["mcp", "list"],
+        (_, Local::Mcp(server)) => return Ok(vec!["mcp".into(), "get".into(), server.clone()]),
         (false, Local::Doctor) => &["doctor"],
         (false, Local::Update) => &["update"],
         _ => return Err("Esse comando não roda o agente.".into()),
@@ -235,8 +252,50 @@ pub(super) fn scan(claude: &Path, from: &str, out: &mut Vec<Entry>) {
     }
 }
 
-/// The folder's own commands first, then the person's; a name already taken stays with the first.
-pub(crate) fn discover(cwd: &Path, home: Option<&Path>) -> Vec<Entry> {
+/// What Claude Code said it has when an answer began (the `init` of `claude -p`): its skills by the names it takes
+/// (`plugin:nome` for a plugin's), and the plugins' folders, whose SKILL.md say what each one is for.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct Known {
+    pub(crate) skills: Vec<String>,
+    pub(crate) plugins: Vec<(String, PathBuf)>,
+}
+
+impl Known {
+    /// From an `init` line of the answer; None for any other.
+    pub(crate) fn of_init(event: &Value) -> Option<Known> {
+        if event["type"] != "system" || event["subtype"] != "init" {
+            return None;
+        }
+
+        let skills = event["skills"].as_array()?.iter().filter_map(Value::as_str).map(String::from).collect();
+        let plugins = event["plugins"].as_array().into_iter().flatten();
+        let plugins = plugins.filter_map(|plugin| Some((plugin["name"].as_str()?.to_string(), PathBuf::from(plugin["path"].as_str()?))));
+
+        Some(Known { skills, plugins: plugins.filter(|(_, path)| path.is_absolute()).collect() })
+    }
+}
+
+/// What each SKILL.md under `dir` says it is for, by `prefix` and its folder's name; a folder without one is looked
+/// into (the skills synced from the account are a few levels down).
+fn skill_descs(dir: &Path, prefix: &str, depth: usize, out: &mut std::collections::HashMap<String, String>) {
+    let Ok(read) = fs::read_dir(dir) else { return };
+
+    for entry in read.flatten() {
+        let path = entry.path();
+
+        match fs::read_to_string(path.join("SKILL.md")) {
+            Ok(text) => {
+                out.entry(format!("{prefix}{}", entry.file_name().to_string_lossy())).or_insert_with(|| describe(&text));
+            }
+            Err(_) if depth < 3 && path.is_dir() => skill_descs(&path, prefix, depth + 1, out),
+            Err(_) => {}
+        }
+    }
+}
+
+/// The folder's own commands first, then the person's, then the skills Claude Code said it has that no folder shows
+/// (`known`: its plugins', those synced from the account, its own); a name already taken stays with the first.
+pub(crate) fn discover(cwd: &Path, home: Option<&Path>, known: &Known) -> Vec<Entry> {
     let mut all = Vec::new();
 
     scan(&cwd.join(".claude"), "projeto", &mut all);
@@ -248,6 +307,23 @@ pub(crate) fn discover(cwd: &Path, home: Option<&Path>) -> Vec<Entry> {
     let mut seen = std::collections::HashSet::new();
 
     all.retain(|e| seen.insert(e.name.clone()));
+    let mut descs = std::collections::HashMap::new();
+
+    for (plugin, path) in &known.plugins {
+        skill_descs(&path.join("skills"), &format!("{plugin}:"), 0, &mut descs);
+    }
+
+    if let Some(home) = home {
+        skill_descs(&home.join(".claude/skills"), "", 0, &mut descs);
+    }
+
+    for name in known.skills.iter().filter(|name| seen.insert(name.to_string())) {
+        let bare = name.rsplit(':').next().unwrap_or(name);
+        let desc = descs.get(name).or_else(|| descs.get(bare)).map_or_else(|| "Skill do Claude Code".to_string(), |desc| format!("Skill · {desc}"));
+
+        all.push(Entry { name: name.clone(), args: String::new(), desc });
+    }
+
     all
 }
 

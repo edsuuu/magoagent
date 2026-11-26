@@ -22,6 +22,12 @@ pub(crate) struct Slash {
     last: String,
     off: Option<String>,
     custom: Option<(String, f64, Vec<Entry>)>,
+    /// What Claude Code said it has (`Known`), kept in `skills-claude.json`: read when the menu first opens.
+    known: Option<Known>,
+    /// The rows of the command whose argument is being picked (`pickers.rs`): for which chat and command, when.
+    args: Option<(String, f64, Vec<Entry>)>,
+    /// The arrows moved the pick (or the list changed): the menu scrolls to it when it is drawn next.
+    moved: std::cell::Cell<bool>,
     /// The last message sent per chat, and the chats whose login came back since it failed.
     pub(crate) sent: std::collections::HashMap<String, String>,
     pub(crate) retry: std::collections::HashSet<String>,
@@ -84,7 +90,12 @@ impl DrawingApp {}
 
 /// The box takes "/name " and its cursor goes to the end.
 pub(crate) fn complete_into(ctx: &Context, draft: &mut String, name: &str, id: egui::Id) {
-    *draft = format!("/{name} ");
+    // a subagent picked in /agents: the request starts, for the person to finish
+    *draft = match name.split_once(' ') {
+        Some(("agents", agent)) => subagent_request(agent),
+        _ => format!("/{name} "),
+    };
+
     let mut state = egui::TextEdit::load_state(ctx, id).unwrap_or_default();
 
     state.cursor.set_char_range(Some(egui::text::CCursorRange::one(egui::text::CCursor::new(draft.chars().count()))));
@@ -167,7 +178,9 @@ impl DrawingApp {
 
 mod catalog;
 mod exec;
+mod pickers;
 mod slash;
 #[cfg(test)]
 mod tests;
 pub(crate) use catalog::*;
+pub(crate) use pickers::subagent_request;
