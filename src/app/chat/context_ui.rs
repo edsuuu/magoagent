@@ -65,6 +65,47 @@ impl Info {
             _ => &self.listed,
         }
     }
+
+    /// Os conectores com os que pedem atenção primeiro.
+    pub(crate) fn ranked(&self) -> Vec<&Server> {
+        let rank = |server: &&Server| match server.status {
+            Status::Failed => 0,
+            Status::NeedsAuth => 1,
+            Status::Pending => 2,
+            Status::Connected => 3,
+        };
+
+        let mut sorted: Vec<&Server> = self.servers().iter().collect();
+
+        sorted.sort_by_key(rank);
+        sorted
+    }
+
+    /// As ferramentas MCP que o init da última resposta disse.
+    pub(crate) fn tools(&self) -> &[String] {
+        self.init.as_ref().map_or(&[], |init| init.mcp_tools.as_slice())
+    }
+}
+
+/// O que a lista de conectores diz quando não tem nenhum.
+pub(crate) fn connectors_note(info: Option<&Info>) -> &'static str {
+    if info.is_none_or(|info| info.listing) { "Lendo os conectores…" } else { "Nenhum conector configurado." }
+}
+
+/// O que o painel diz no lugar dos números enquanto não há `/context` lido; None quando há.
+pub(crate) fn summary_note(info: Option<&Info>) -> Option<String> {
+    let Some(info) = info else { return Some("Mande uma mensagem para ver o contexto.".into()) };
+
+    if info.report.is_some() {
+        return None;
+    }
+
+    Some(match (&info.error, info.loading, info.live) {
+        (Some(error), ..) => format!("Não foi possível ler o contexto: {error}"),
+        (_, true, _) => "Lendo o contexto…".to_string(),
+        (_, _, live) if live > 0 => format!("{} tokens em uso.", tokens(live)),
+        _ => "Mande uma mensagem para ver o contexto.".to_string(),
+    })
 }
 
 impl DrawingApp {
@@ -79,7 +120,12 @@ impl DrawingApp {
         match state {
             "open" => self.prefs.chat_panel = true,
             "close" => self.prefs.chat_panel = false,
-            "refresh" => self.chat_ctx.info.entry(id.clone()).or_default().dirty = true,
+            // Atualizar, como no painel: lê de novo e esquece o erro de antes
+            "refresh" => {
+                let info = self.chat_ctx.info.entry(id.clone()).or_default();
+
+                (info.dirty, info.error) = (true, None);
+            }
             _ => {}
         }
 
@@ -177,6 +223,9 @@ Conector {}: {}{}",
     /// Cada quadro: lê o que as threads trouxeram e, com o painel aberto, pede o que falta.
     pub(crate) fn context_tick(&mut self, ctx: &Context, id: &str, open: bool) {
         while let Ok(job) = self.chat_ctx.rx.try_recv() {
+            // mais um quadro logo depois: o chat em SwiftUI publica o que chegou (no máximo 15 vezes por segundo)
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+
             match job {
                 Job::Report(chat, result) => {
                     let info = self.chat_ctx.info.entry(chat).or_default();

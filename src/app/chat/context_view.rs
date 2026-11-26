@@ -4,7 +4,7 @@
 //! "+ N") e, no rodapé, os arquivos de memória. Os dados são os de chat/context_ui.rs.
 
 use crate::app::chat::context::*;
-use crate::app::chat::context_ui::Info;
+use crate::app::chat::context_ui::{Info, connectors_note, summary_note};
 use crate::app::chat::header::READY;
 use crate::app::chat::list::{ACCENT, AMBER, CROSS, DOWN, Look, RED, bold, clipped, glyph};
 use crate::app::chat::thinking::CLAUDE;
@@ -28,8 +28,16 @@ pub(crate) fn style(name: &str) -> (&'static str, Color32, bool) {
     }
 }
 
+/// `style` com a linha do que cresceu desde o último `/context` ("Since"), nas Mensagens esmaecidas.
+pub(crate) fn key_style(key: &str) -> (&'static str, Color32, bool) {
+    match key {
+        "Since" => ("Desde a última atualização", style("Messages").1.gamma_multiply(0.6), true),
+        _ => style(key),
+    }
+}
+
 /// A ordem da legenda, como no painel do Claude Code.
-const ORDER: [&str; 12] = [
+pub(crate) const ORDER: [&str; 12] = [
     "System prompt",
     "System tools",
     "MCP tools",
@@ -44,19 +52,24 @@ const ORDER: [&str; 12] = [
     "System tools (deferred)",
 ];
 
-/// "301,8k": os tokens com a vírgula daqui.
-fn tokens(n: u64) -> String {
-    short(n).replace('.', ",")
-}
-
-/// A letra do conector em cores tiradas do nome, sempre as mesmas para ele.
-fn initial_colors(name: &str, look: &Look) -> (Color32, Color32) {
+/// A cor da letra do conector, tirada do nome: sempre a mesma para ele.
+pub(crate) fn initial_ink(name: &str) -> Color32 {
     const INKS: [u32; 6] = [0xd97757, 0x64a8ff, 0xffb340, 0xff6961, 0x4cd47c, 0xbf8cff];
     let k = name.bytes().fold(7u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32)) as usize % INKS.len();
-    let v = INKS[k];
-    let ink = rgb_hex(v);
+
+    rgb_hex(INKS[k])
+}
+
+/// A letra do conector: o fundo (o do chat puxado para a cor) e a cor.
+fn initial_colors(name: &str, look: &Look) -> (Color32, Color32) {
+    let ink = initial_ink(name);
 
     (look.bg.lerp_to_gamma(ink, if look.dark { 0.14 } else { 0.18 }), ink)
+}
+
+/// A primeira letra ou algarismo do nome, em maiúscula.
+pub(crate) fn initial(name: &str) -> String {
+    name.chars().find(|c| c.is_alphanumeric()).map(|c| c.to_uppercase().collect()).unwrap_or_default()
 }
 
 /// O que o painel pede, aplicado depois do quadro.
@@ -209,18 +222,11 @@ fn empty(ui: &mut egui::Ui, look: &Look, note: &str) {
 
 /// A porcentagem, a barra empilhada e a legenda, a faixa de quando compacta e o seletor.
 fn summary(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, current: &str, asked: &mut Asked) {
-    let Some(info) = info else { return empty(ui, look, "Mande uma mensagem para ver o contexto.") };
-
-    let Some(report) = &info.report else {
-        let note = match (&info.error, info.loading, info.live) {
-            (Some(error), ..) => format!("Não foi possível ler o contexto: {error}"),
-            (_, true, _) => "Lendo o contexto…".to_string(),
-            (_, _, live) if live > 0 => format!("{} tokens em uso.", tokens(live)),
-            _ => "Mande uma mensagem para ver o contexto.".to_string(),
-        };
-
+    if let Some(note) = summary_note(info) {
         return empty(ui, look, &note);
-    };
+    }
+
+    let Some((info, Some(report))) = info.map(|info| (info, info.report.as_ref())) else { return };
 
     let since = info.since();
     let used = report.used + since;
@@ -250,9 +256,7 @@ fn summary(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, current: &str, a
         let w = bar.width() * (value(key) as f32 / window as f32);
 
         if w >= 0.5 {
-            let color = if *key == "Since" { style("Messages").1.gamma_multiply(0.6) } else { style(key).1 };
-
-            clip.rect_filled(Rect::from_min_size(Pos2::new(x, bar.top()), Vec2::new(w, bar.height())), 0, color);
+            clip.rect_filled(Rect::from_min_size(Pos2::new(x, bar.top()), Vec2::new(w, bar.height())), 0, key_style(key).1);
             x += w;
         }
     }
@@ -268,9 +272,7 @@ fn summary(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, current: &str, a
                 continue;
             }
 
-            let (name, color, counts) = style(key);
-            let name = if key == "Since" { "Desde a última atualização" } else { name };
-            let color = if key == "Since" { style("Messages").1.gamma_multiply(0.6) } else { color };
+            let (name, color, counts) = key_style(key);
             let (row, hover) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 14.0), Sense::hover());
 
             if counts {
@@ -389,7 +391,7 @@ fn summary(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, current: &str, a
 /// Os conectores: o rótulo com quantos estão conectados; os com problema primeiro; cada um com a
 /// inicial, o nome, as ferramentas ou o estado e a bolinha verde; Tentar nos que falharam.
 fn connectors(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, retry: &mut bool) {
-    let list: Vec<&Server> = info.map(|i| i.servers().iter().collect()).unwrap_or_default();
+    let sorted: Vec<&Server> = info.map(Info::ranked).unwrap_or_default();
     let width = ui.available_width();
     let (head, _) = ui.allocate_exact_size(Vec2::new(width, 38.0), Sense::hover());
     let p = ui.painter();
@@ -402,40 +404,21 @@ fn connectors(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, retry: &mut b
 
     p.galley(Pos2::new(head.left() + 18.0, y - g.size().y / 2.0), g, look.faint);
 
-    if !list.is_empty() {
-        let on = list.iter().filter(|s| s.status == Status::Connected).count();
-        let words = format!("{on} de {} conectados", list.len());
-
-        p.text(Pos2::new(head.right() - 18.0, y), egui::Align2::RIGHT_CENTER, words, FontId::proportional(12.0), look.faint);
+    if !sorted.is_empty() {
+        p.text(Pos2::new(head.right() - 18.0, y), egui::Align2::RIGHT_CENTER, connected_words(&sorted), FontId::proportional(12.0), look.faint);
     }
 
     egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 8, top: 0, bottom: 12 }).show(ui, |ui| {
         ui.set_width(width - 16.0);
         ui.spacing_mut().item_spacing.y = 2.0;
 
-        if list.is_empty() {
-            let reading = info.is_none_or(|i| i.listing);
-
-            egui::Frame::new()
-                .inner_margin(egui::Margin::symmetric(10, 4))
-                .show(ui, |ui| empty(ui, look, if reading { "Lendo os conectores…" } else { "Nenhum conector configurado." }));
+        if sorted.is_empty() {
+            egui::Frame::new().inner_margin(egui::Margin::symmetric(10, 4)).show(ui, |ui| empty(ui, look, connectors_note(info)));
 
             return;
         }
 
-        let tools: &[String] = info.and_then(|i| i.init.as_ref()).map_or(&[], |init| init.mcp_tools.as_slice());
-
-        // os que pedem atenção primeiro
-        let rank = |s: &Server| match s.status {
-            Status::Failed => 0,
-            Status::NeedsAuth => 1,
-            Status::Pending => 2,
-            Status::Connected => 3,
-        };
-
-        let mut sorted = list.clone();
-
-        sorted.sort_by_key(|s| rank(s));
+        let tools: &[String] = info.map_or(&[], Info::tools);
         let more_id = ui.make_persistent_id("ctx_more");
         let open = ui.data(|d| d.get_temp::<bool>(more_id).unwrap_or(false));
         let shown = if open || sorted.len() <= 6 { sorted.len() } else { 5 };
@@ -449,9 +432,7 @@ fn connectors(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, retry: &mut b
         let label = if open && sorted.len() > 6 {
             Some("Mostrar menos".to_string())
         } else if !rest.is_empty() {
-            let all_on = rest.iter().all(|s| s.status == Status::Connected);
-
-            Some(format!("+ {} {}", rest.len(), if all_on { "conectados" } else { "conectores" }))
+            Some(more_label(rest))
         } else {
             None
         };
@@ -472,17 +453,16 @@ fn connectors(ui: &mut egui::Ui, info: Option<&Info>, look: &Look, retry: &mut b
 
 /// Uma linha de conector; um clique mostra as ferramentas dele. Diz se Tentar foi clicado.
 fn connector_row(ui: &mut egui::Ui, server: &Server, tools: &[String], look: &Look) -> bool {
-    let mine: Vec<&str> = tools.iter().filter(|t| t.starts_with(&format!("mcp__{}__", norm(&server.name)))).map(|t| tool_name(t, &server.name)).collect();
+    let mine = server_tools(tools, &server.name);
     let id = ui.make_persistent_id(("ctx_server", &server.name));
     let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, false);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::click());
+    let note = connector_note(server, tools);
 
-    let (note, note_color) = match server.status {
-        Status::Connected if !tools.is_empty() => (format!("{} ferramentas", mine.len()), look.muted),
-        Status::Connected => ("Conectado".to_string(), look.muted),
-        Status::NeedsAuth => ("Precisa entrar".to_string(), AMBER),
-        Status::Failed => ("Não respondeu".to_string(), RED),
-        Status::Pending => (server.status.label().to_string(), look.muted),
+    let note_color = match server.status {
+        Status::NeedsAuth => AMBER,
+        Status::Failed => RED,
+        _ => look.muted,
     };
 
     // Tentar: só nos que falharam, o que o `claude mcp list` faz de verdade
@@ -506,7 +486,7 @@ fn connector_row(ui: &mut egui::Ui, server: &Server, tools: &[String], look: &Lo
     let (fill, ink) = initial_colors(&server.name, look);
 
     p.rect_filled(square, 7, fill);
-    let letter: String = server.name.chars().find(|c| c.is_alphanumeric()).map(|c| c.to_uppercase().collect()).unwrap_or_default();
+    let letter = initial(&server.name);
     let g = p.layout_no_wrap(letter.clone(), FontId::proportional(13.0), ink);
 
     bold(p, square.center() - g.size() / 2.0, &letter, 12.0, ink);
@@ -564,18 +544,9 @@ fn memory_footer(ui: &mut egui::Ui, rect: Rect, report: &Report, look: &Look) {
     let total: u64 = report.memory.iter().map(|(_, t)| t).sum();
     let font = FontId::proportional(13.0);
     let v = p.text(Pos2::new(rect.right() - 18.0, y), egui::Align2::RIGHT_CENTER, tokens(total), font.clone(), look.muted);
-    let first = report.memory[0].0.rsplit(['/', '\\']).next().unwrap_or(&report.memory[0].0);
-
-    let words = match report.memory.len() {
-        1 => format!("Memória: {first}"),
-        n => format!("Memória: {first} e mais {}", n - 1),
-    };
-
-    let g = clipped(p, words, font, look.muted, (v.left() - rect.left() - 46.0).max(20.0));
+    let g = clipped(p, report.memory_words(), font, look.muted, (v.left() - rect.left() - 46.0).max(20.0));
     let text = Rect::from_min_size(Pos2::new(rect.left() + 36.0, y - g.size().y / 2.0), g.size());
 
     p.galley(text.min, g, look.muted);
-    let all: Vec<String> = report.memory.iter().map(|(path, t)| format!("{path}: {}", tokens(*t))).collect();
-
-    ui.interact(text, ui.scope_id().with("ctx_memory"), Sense::hover()).tip(all.join("\n"));
+    ui.interact(text, ui.scope_id().with("ctx_memory"), Sense::hover()).tip(report.memory_tip());
 }
