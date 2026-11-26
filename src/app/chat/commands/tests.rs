@@ -30,7 +30,7 @@ fn each_command_builds_its_cli_arguments() {
     assert!(cli_args("claude", &Local::Login("x".into())).is_err());
     assert_eq!(args("claude", Local::Logout), ["auth", "logout"]);
     assert_eq!(args("claude", Local::Status), ["auth", "status", "--json"]);
-    assert_eq!(args("claude", Local::Mcp), ["mcp", "list"]);
+    assert_eq!(args("claude", Local::Mcp(String::new())), ["mcp", "list"]);
     assert_eq!(args("claude", Local::Doctor), ["doctor"]);
     assert_eq!(args("claude", Local::Update), ["update"]);
     assert_eq!(args("codex", Local::Login(String::new())), ["login"]);
@@ -56,7 +56,7 @@ fn the_menu_filters_and_lists_the_custom_commands() {
     let names = |q: &str| filter(&all, q).into_iter().map(|e| e.name).collect::<Vec<_>>();
 
     assert_eq!(names("lo"), ["login", "logout"]);
-    assert_eq!(names("m")[..3], ["mcp", "model", "compact"], "starts-with first, then the ones that hold it");
+    assert_eq!(names("m")[..3], ["mcp", "model", "permissions"], "starts-with first, then the ones that hold it");
     assert!(names("").len() == all.len() && names("zzz").is_empty());
     assert!(!catalog("codex").iter().any(|e| e.name == "doctor"));
 
@@ -125,8 +125,11 @@ fn clear_starts_a_new_session_and_the_commands_change_the_chat() {
     assert!(app.chat_submit(&ctx, &id, "/help", "/help"));
     assert!(matches!(app.transcripts[&id].items.last(), Some(ChatItem::System(h)) if h.contains("/login") && h.contains("/clear")));
     // the menu opens on a slash with no space after it
+    // the person's own skills come after (this computer's may hold "lo")
     app.chat_draft = "/lo".into();
-    assert_eq!(app.slash_entries().map(|l| l.len()), Some(2));
+    let first: Vec<String> = app.slash_entries().unwrap().into_iter().take(2).map(|entry| entry.name).collect();
+
+    assert_eq!(first, ["login", "logout"]);
     app.chat_draft = "/login sso".into();
     assert!(app.slash_entries().is_none());
 }
@@ -247,4 +250,110 @@ fn the_arrows_leave_the_menu_a_scroll_to_the_pick() {
     assert_eq!(app.slash.sel, 1);
     assert!(app.slash.moved.take(), "the menu is told to scroll");
     assert!(!app.slash.moved.get(), "once");
+}
+
+#[test]
+fn the_interactive_commands_are_read_from_the_box() {
+    assert_eq!(parse("/resume 6a9bb4c4", "claude"), Some(Ok(Local::Resume("6a9bb4c4".into()))));
+    assert_eq!(parse("/permissions bypass", "claude"), Some(Ok(Local::Permissions("bypass".into()))));
+    assert_eq!(parse("/config", "codex"), Some(Ok(Local::Config)));
+    assert!(matches!(parse("/resume x", "codex"), Some(Err(_))), "a Codex thread is not resumed this way");
+    assert_eq!(cli_args("claude", &Local::Mcp(String::new())).unwrap(), ["mcp", "list"]);
+    assert_eq!(cli_args("claude", &Local::Mcp("magoagent".into())).unwrap(), ["mcp", "get", "magoagent"]);
+    assert_eq!(pickers::resolve_mode("bypass"), Some(1));
+    assert_eq!(pickers::resolve_mode("Auto"), Some(0));
+    assert_eq!(pickers::resolve_mode(""), None);
+    assert_eq!(pickers::resolve_mode("outro"), None);
+}
+
+/// `/resume`'s list: the folder's conversations by their first message, newest first, without those a chat holds.
+#[test]
+fn resume_lists_the_folders_earlier_conversations() {
+    let projects = temp();
+    let said = |text: &str| format!("{}\n", serde_json::json!({ "type": "user", "message": { "role": "user", "content": text } }));
+
+    fs::write(projects.join("aaaa1111-velha.jsonl"), said("arrume o login")).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    fs::write(projects.join("bbbb2222-nova.jsonl"), said("suba a versão")).unwrap();
+    fs::write(projects.join("cccc3333-aberta.jsonl"), said("já num chat")).unwrap();
+    fs::write(projects.join("nota.txt"), "x").unwrap();
+    let found = pickers::sessions(&projects, &["cccc3333-aberta".into()], std::time::SystemTime::now());
+    let ids: Vec<&str> = found.iter().map(|(id, ..)| id.as_str()).collect();
+
+    assert_eq!(ids, ["bbbb2222-nova", "aaaa1111-velha"]);
+    assert_eq!(found[0].1, "suba a versão");
+    let rows = pickers::resume_rows(&found);
+
+    assert_eq!(rows[0].name, "resume bbbb2222");
+    assert!(rows[0].desc.starts_with("suba a versão · "), "{}", rows[0].desc);
+    assert_eq!(pickers::resume_rows(&[("dddd4444".into(), "velha".into(), 6.5 * 86400.0)])[0].desc, "velha · há 6 dias");
+    let _ = fs::remove_dir_all(projects);
+}
+
+#[test]
+fn mcp_and_agents_list_what_claude_code_has() {
+    let user = serde_json::json!({
+        "mcpServers": { "magoagent": { "command": "/x/magoagent" } },
+        "projects": { "/p": { "mcpServers": { "banco": { "url": "http://localhost:9" } } }, "/outra": { "mcpServers": { "fora": {} } } },
+    });
+
+    let folder = serde_json::json!({ "mcpServers": { "banco": { "command": "repetido" }, "docs": { "command": "npx docs" } } });
+    let servers = pickers::mcp_servers(Some(&user), Some(&folder), "/p");
+
+    assert_eq!(servers, [("magoagent".into(), "/x/magoagent".into()), ("banco".into(), "http://localhost:9".into()), ("docs".into(), "npx docs".into())]);
+    let claude = temp();
+
+    fs::create_dir_all(claude.join("agents")).unwrap();
+    fs::write(claude.join("agents/revisor.md"), "---\nname: revisor-de-pr\ndescription: Revisa o PR\n---\ncorpo").unwrap();
+    fs::write(claude.join("agents/notas.txt"), "x").unwrap();
+    let mut found = Vec::new();
+
+    pickers::subagents(&claude, "projeto", &mut found);
+    assert_eq!(found, [("revisor-de-pr".to_string(), "Revisa o PR (projeto)".to_string())]);
+    assert_eq!(subagent_request("revisor-de-pr"), "Use o subagente revisor-de-pr para ");
+    let _ = fs::remove_dir_all(claude);
+}
+
+/// After "/model " the menu is the models; what follows filters them; Enter on a row sends "/model id"; a mode is set
+/// by /permissions.
+#[test]
+fn a_commands_list_is_picked_in_the_menu_and_applied() {
+    let mut app = DrawingApp::default();
+    let ctx = Context::default();
+    let installed = [Preset::new("Claude Code", "claude")];
+
+    app.create_chat(&crate::app::chat::direct::NewChat { agent: 0, cwd: "~/projeto".into(), mode: 0 }, &installed);
+    let id = app.chat_agent.clone().unwrap();
+
+    app.chat_draft = "/permissions ".into();
+    let rows = app.slash_entries().unwrap();
+
+    assert_eq!(rows.iter().map(|row| row.name.as_str()).collect::<Vec<_>>(), ["permissions Auto", "permissions Bypass permissions"]);
+    assert_eq!(rows[0].desc, "Atual");
+    app.chat_draft = "/permissions byp".into();
+    let rows = app.slash_entries().unwrap();
+
+    assert_eq!(rows.len(), 1);
+    app.chat_draft = "/permissions Auto ".into();
+    assert!(app.slash_entries().is_none(), "a space after the value closes the menu");
+    app.chat_draft = "/model ".into();
+    assert!(app.slash_entries().unwrap().iter().all(|row| row.name.starts_with("model ")));
+    // Enter on a row: the box says the command with it, and it goes (the Enter is not taken)
+    let box_id = egui::Id::unique("caixa_lista");
+    let mut draft = "/permissions byp".to_string();
+    let enter = egui::Event::Key { key: Key::Enter, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE };
+    let rows = app.slash_entries_of(&id, &draft).unwrap();
+    let mut taken = true;
+
+    for events in [vec![], vec![enter]] {
+        let _ = ctx.run_ui(egui::RawInput { events, ..Default::default() }, |ui| {
+            taken = app.slash_keys(ui.ctx(), &mut draft, &rows, box_id);
+            ui.add(egui::TextEdit::singleline(&mut draft).id(box_id)).request_focus();
+        });
+    }
+
+    assert!(!taken);
+    assert_eq!(draft, "/permissions Bypass permissions");
+    assert!(app.chat_submit(&ctx, &id, &draft, &draft));
+    assert_eq!(app.chats[0].mode, 1);
 }

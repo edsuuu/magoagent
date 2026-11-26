@@ -9,16 +9,20 @@ pub(crate) struct Entry {
 }
 
 /// (name, argument, what it does, Codex has it too)
-pub(super) const DEFS: [(&str, &str, &str, bool); 14] = [
+pub(super) const DEFS: [(&str, &str, &str, bool); 18] = [
     ("login", "[console|sso]", "Entrar na sua conta (abre o navegador)", true),
     ("logout", "", "Sair da conta", true),
     ("status", "", "Mostra quem está logado e os ajustes do chat", true),
-    ("mcp", "", "Lista os servidores MCP", true),
+    ("mcp", "[servidor]", "Lista os servidores MCP; com um, mostra como ele está", true),
     ("doctor", "", "Confere a instalação do Claude Code", false),
     ("update", "", "Atualiza o Claude Code", false),
     ("clear", "", "Começa uma conversa nova neste chat", true),
     ("model", "<nome>", "Troca o modelo do agente", true),
     ("effort", "<nível>", "Troca o esforço do agente", true),
+    ("permissions", "<modo>", "Troca o modo de permissão do chat", true),
+    ("resume", "<conversa>", "Retoma uma conversa anterior desta pasta neste chat", false),
+    ("agents", "<subagente>", "Pede a tarefa a um subagente de .claude/agents", false),
+    ("config", "", "Abre os Ajustes", true),
     ("help", "", "Lista os comandos", true),
     ("btw", "<pergunta>", "Pergunta à parte, mesmo com o agente trabalhando; não entra na conversa", false),
     ("usage", "", "Mostra o consumo do plano: 5 horas e 7 dias", true),
@@ -43,7 +47,15 @@ pub(crate) enum Local {
     Login(String),
     Logout,
     Status,
-    Mcp,
+    /// `/mcp`, and a server's name to see how it is.
+    Mcp(String),
+    /// `/permissions`: the chat's mode, by name.
+    Permissions(String),
+    /// `/resume`: an earlier conversation of the folder, by the start of its id.
+    Resume(String),
+    /// `/agents`: alone, the subagents listed (picked in the menu, it fills the box instead).
+    Agents,
+    Config,
     Doctor,
     Update,
     Clear,
@@ -73,7 +85,11 @@ pub(crate) fn parse(text: &str, agent: &str) -> Option<Result<Local, String>> {
         "login" => Local::Login(arg),
         "logout" => Local::Logout,
         "status" => Local::Status,
-        "mcp" => Local::Mcp,
+        "mcp" => Local::Mcp(arg),
+        "permissions" => Local::Permissions(arg),
+        "resume" => Local::Resume(arg),
+        "agents" => Local::Agents,
+        "config" => Local::Config,
         "doctor" => Local::Doctor,
         "update" => Local::Update,
         "clear" => Local::Clear,
@@ -87,7 +103,7 @@ pub(crate) fn parse(text: &str, agent: &str) -> Option<Result<Local, String>> {
         _ => return None,
     };
 
-    if agent == "codex" && matches!(local, Local::Doctor | Local::Update | Local::Btw(_) | Local::Context) {
+    if agent == "codex" && matches!(local, Local::Doctor | Local::Update | Local::Btw(_) | Local::Context | Local::Resume(_) | Local::Agents) {
         return Some(Err(format!("/{word} só existe no Claude Code.")));
     }
 
@@ -119,7 +135,8 @@ pub(crate) fn cli_args(agent: &str, local: &Local) -> Result<Vec<String>, String
         (true, Local::Logout) => &["logout"],
         (false, Local::Status) => &["auth", "status", "--json"],
         (true, Local::Status) => &["login", "status"],
-        (_, Local::Mcp) => &["mcp", "list"],
+        (_, Local::Mcp(server)) if server.is_empty() => &["mcp", "list"],
+        (_, Local::Mcp(server)) => return Ok(vec!["mcp".into(), "get".into(), server.clone()]),
         (false, Local::Doctor) => &["doctor"],
         (false, Local::Update) => &["update"],
         _ => return Err("Esse comando não roda o agente.".into()),
