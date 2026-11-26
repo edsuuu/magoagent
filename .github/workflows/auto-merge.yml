@@ -3,6 +3,8 @@
 # validar antes). Só na main: depois do merge, se a versão do Cargo.toml mudou e a tag ainda não existe, cria a tag
 # v<versão> e dispara a release (release.yml), que gera o MSI e os pacotes do Linux e publica a release.
 # O merge feito pelo GITHUB_TOKEN não dispara outros workflows por push; por isso a release vai por workflow_dispatch.
+# Pelo mesmo motivo, o CI do PR da dev para a main depois de um merge na dev fica esperando aprovação (e rodá-lo de novo
+# não chama este workflow): juntado um PR na dev, o CI da dev roda por workflow_dispatch, e o fim dele junta o PR aberto.
 name: Auto-merge
 on:
   workflow_run:
@@ -14,18 +16,20 @@ permissions:
   actions: write
 jobs:
   merge:
-    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    if: (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
       HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
     steps:
       - name: Achar o PR e conferir se pode juntar
         id: pr
         run: |
           set -euo pipefail
-          pr=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" --jq '[.[] | select(.state == "open")][0]')
+          # pelo ramo e pelo commit: a busca pelo commit (commits/<sha>/pulls) não acha o PR da dev para a main
+          pr=$(gh api "repos/$REPO/pulls?state=open&head=${REPO%%/*}:$HEAD_BRANCH" --jq "[.[] | select(.head.sha == \"$HEAD_SHA\")][0]")
           if [ -z "$pr" ] || [ "$pr" = "null" ]; then echo "nenhum PR aberto com este commit"; exit 0; fi
           number=$(jq -r .number <<<"$pr")
           base=$(jq -r .base.ref <<<"$pr")
@@ -42,6 +46,14 @@ jobs:
       - name: Juntar
         if: steps.pr.outputs.number != ''
         run: gh pr merge "${{ steps.pr.outputs.number }}" --repo "$REPO" --merge --match-head-commit "$HEAD_SHA"
+      - name: O CI do PR da dev para a main, quando há um aberto
+        if: steps.pr.outputs.base == 'dev'
+        run: |
+          set -euo pipefail
+          if [ -n "$(gh pr list --repo "$REPO" --base main --head dev --state open --json number --jq '.[].number')" ]; then
+            gh workflow run ci.yml --repo "$REPO" --ref dev
+            echo "CI da dev disparado: o fim dele junta o PR para a main"
+          fi
       - uses: actions/checkout@v4.2.2
         if: steps.pr.outputs.base == 'main'
         with:
