@@ -11,6 +11,9 @@ on:
     branches: [main, dev]
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_call:
+  # o auto-merge.yml roda o CI da dev assim depois de juntar um PR nela: o CI do PR da dev para a main, disparado pelo bot,
+  # fica esperando aprovação e nunca chega ao auto-merge
+  workflow_dispatch:
 # um push novo no mesmo PR cancela o CI do anterior, que já não vale
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
